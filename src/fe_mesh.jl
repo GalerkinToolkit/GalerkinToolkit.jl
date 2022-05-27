@@ -47,6 +47,7 @@ default_periodic_nodes(geo) = (Int32[],Int32[])
 default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
 default_num_nodes(geo) = length(node_coordinates(geo))
 default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
+default_physical_groups(geo) = GroupCollection(void,domain_dim(geo))
 
 is_simplex(geo) = default_is_simplex(geo)
 is_hypercube(geo) = default_is_hypercube(geo)
@@ -146,9 +147,9 @@ hanging_nodes(m::SimpleFEMesh) = m.periodic_nodes
 physical_groups(m::SimpleFEMesh) = m.physical_groups
 
 node_coordinates!(m::SimpleFEMesh,v) = (m.node_coordinates = v)
-face_nodes!(m::SimpleFEMesh,v,rank) = (m.face_nodes[rank+1] = v)
-face_ref_id!(m::SimpleFEMesh,v,rank) = (m.face_ref_id[rank+1] = v)
-ref_faces!(m::SimpleFEMesh,v,rank) = (m.ref_faces[rank+1] = v)
+face_nodes!(m::SimpleFEMesh,rank,v) = (m.face_nodes[rank+1] = v)
+face_ref_id!(m::SimpleFEMesh,rank,v) = (m.face_ref_id[rank+1] = v)
+ref_faces!(m::SimpleFEMesh,rank,v) = (m.ref_faces[rank+1] = v)
 periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 hanging_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)

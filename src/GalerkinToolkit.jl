@@ -1,6 +1,7 @@
 module GalerkinToolkit
 
 using StaticArrays
+import Meshes
 
 export prefix!
 export rewind!
@@ -40,7 +41,6 @@ export SimpleFEMesh
 export fe_mesh
 include("fe_mesh.jl")
 
-#import Meshes
-#include("meshes.jl")
+include("meshes.jl")
 
 end

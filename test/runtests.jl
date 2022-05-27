@@ -7,4 +7,6 @@ using Test
 
 @time @testset "fe_mesh" begin include("fe_mesh_tests.jl") end
 
+@time @testset "meshes" begin include("meshes_tests.jl") end
+
 end # module
