@@ -3,6 +3,8 @@ module GalerkinToolkitTests
 using GalerkinToolkit
 using Test
 
-@time @testset "JaggedArray" begin include("jagged_array_tests.jl") end
+@time @testset "jagged_array" begin include("jagged_array_tests.jl") end
+
+@time @testset "fe_mesh" begin include("fe_mesh_tests.jl") end
 
 end # module

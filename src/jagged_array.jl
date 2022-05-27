@@ -22,6 +22,8 @@ struct JaggedArray{T,A,B} <: AbstractVector{T}
   ptrs::B
 end
 
+const JArray{T} = JaggedArray{SubArray{T,1,Vector{T},Tuple{UnitRange{Int32}},true},Vector{T},Vector{Int32}}
+
 function JaggedArray(data,ptrs)
   Tp = eltype(ptrs)
   T = typeof(view(data,Tp(1):Tp(0)))

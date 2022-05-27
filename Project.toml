@@ -3,6 +3,9 @@ uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
 authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
 version = "0.1.0"
 
+[deps]
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
 [compat]
 julia = "1"
 
