@@ -1,6 +1,8 @@
+module GalerkinToolkitTests
+
 using GalerkinToolkit
 using Test
 
-@testset "GalerkinToolkit.jl" begin
-    # Write your tests here.
-end
+@time @testset "JaggedArray" begin include("jagged_array_tests.jl") end
+
+end # module
