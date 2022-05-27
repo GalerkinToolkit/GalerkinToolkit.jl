@@ -1,0 +1,13 @@
+name = "GalerkinToolkit"
+uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
+authors = ["Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
