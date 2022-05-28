@@ -84,6 +84,7 @@ end
 face_nodes(a::Meshes.Point,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Point,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Point) = [Meshes.coordinates(a)]
+vtk_cell_type(a::Meshes.Point) = WriteVTK.VTKCellTypes.VTK_VERTEX
 
 # Segment
 domain_dim(a::Meshes.Segment) = 1
@@ -112,6 +113,7 @@ end
 face_nodes(a::Meshes.Segment,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Segment,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Segment) = collect(Meshes.coordinates.(Meshes.vertices(a)))
+vtk_cell_type(a::Meshes.Segment) = WriteVTK.VTKCellTypes.VTK_LINE
 
 # Quadrangle
 domain_dim(a::Meshes.Quadrangle) = 2
@@ -146,6 +148,7 @@ end
 face_nodes(a::Meshes.Quadrangle,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Quadrangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Quadrangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
+vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
 
 # Triangle
 domain_dim(a::Meshes.Triangle) = 2
@@ -180,6 +183,7 @@ end
 face_nodes(a::Meshes.Triangle,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Triangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Triangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
+vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
 
 function fe_mesh(
   mesh::Meshes.CartesianGrid;

@@ -11,4 +11,6 @@ using Test
 
 @time @testset "gmsh" begin include("gmsh_tests.jl") end
 
+@time @testset "vtk" begin include("vtk_tests.jl") end
+
 end # module

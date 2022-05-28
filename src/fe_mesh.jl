@@ -68,6 +68,7 @@ struct EmptyInitializer end
 const VOID = EmptyInitializer()
 
 # Allow same ids in different dims?
+# TO-think about the union of groups in different dims
 struct GroupCollection
   domain_dim::Int
   group_dim::Dict{Int,Int}
@@ -135,25 +136,6 @@ end
 function group_dims(g::GroupCollection,d)
   ids = group_ids(g,d)
   [ g.group_dim[i] for i in ids]
-end
-function group_names(g::GroupCollection,rank)
-  names = String[]
-  for (id,name) in g.group_names
-    dim = g.group_dim[id]
-    if dim == rank
-      push!(names,name)
-    end
-  end
-  sort(names)
-end
-function group_ids(g::GroupCollection,rank)
-  ids = Int[]
-  for (id,dim) in g.group_dim
-    if dim == rank
-      push!(ids,id)
-    end
-  end
-  sort(ids)
 end
 
 mutable struct SimpleFEMesh{T}

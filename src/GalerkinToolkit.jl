@@ -3,6 +3,7 @@ module GalerkinToolkit
 using StaticArrays
 import Meshes
 using Gmsh: gmsh
+import WriteVTK
 
 export prefix!
 export rewind!
@@ -49,5 +50,8 @@ include("meshes.jl")
 export msh_file
 export with_gmsh
 include("gmsh.jl")
+
+export vtk_args
+include("vtk.jl")
 
 end
