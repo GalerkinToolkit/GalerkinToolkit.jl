@@ -9,7 +9,7 @@ function default_fe_mesh(
 
   D = domain_dim(mesh)
   T = SVector{ambient_dim(mesh),Float64}
-  fe_mesh = SimpleFEMesh{T}(void,D)
+  fe_mesh = SimpleFEMesh{T}(VOID,D)
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
     face_nodes!(fe_mesh,d,face_nodes(mesh,d))
