@@ -36,7 +36,7 @@ export group_id
 export group_ids
 export GroupCollection
 export physical_groups
-export void
+export VOID
 export SimpleFEMesh
 export fe_mesh
 include("fe_mesh.jl")

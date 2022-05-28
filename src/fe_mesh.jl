@@ -19,6 +19,7 @@ function vertex_node end
 function node_vertex end
 function group_faces end
 function group_name end
+function group_dim end
 function group_names end
 function group_id end
 function group_ids end
@@ -47,7 +48,7 @@ default_periodic_nodes(geo) = (Int32[],Int32[])
 default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
 default_num_nodes(geo) = length(node_coordinates(geo))
 default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
-default_physical_groups(geo) = GroupCollection(void,domain_dim(geo))
+default_physical_groups(geo) = GroupCollection(VOID,domain_dim(geo))
 
 is_simplex(geo) = default_is_simplex(geo)
 is_hypercube(geo) = default_is_hypercube(geo)
@@ -59,59 +60,73 @@ num_faces(geo,rank) = default_num_faces(geo,rank)
 num_nodes(geo) = default_num_nodes(geo)
 ambient_dim(geo) = default_ambient_dim(geo)
 
-struct GroupCollection
-  domain_dim::Int
-  group_names::Dict{Int,String}
-  group_ids::Dict{String,Int}
-  group_faces::Dict{Int,Vector{Vector{Int32}}}
-end
-
 struct EmptyInitializer end
 
-const void = EmptyInitializer()
+const VOID = EmptyInitializer()
 
-function GroupCollection(::EmptyInitializer,rank::Int)
+struct GroupCollection
+  domain_dim::Int
+  group_dim::Dict{Int,Int}
+  group_names::Dict{Int,String}
+  group_ids::Dict{String,Int}
+  group_faces::Dict{Int,Vector{Int32}}
+end
+
+function GroupCollection(::EmptyInitializer,dim::Integer)
   GroupCollection(
-    rank,
+    dim,
+    Dict{Int,Int}(),
     Dict{Int,String}(),
     Dict{String,Int}(),
-    Dict{Int,Vector{Vector{Int32}}}())
+    Dict{Int,Vector{Int32}}())
 end
 
-function add_group!(g::GroupCollection,name,id)
+function add_group!(g::GroupCollection,dim,name,id)
   haskey(g.group_names,id) && error("id $id already present in GroupCollection")
   haskey(g.group_ids,name) && error("Name $name alreade present in GroupCollection")
+  g.group_dim[id] = dim
   g.group_names[id] = name
   g.group_ids[name] = id
-  g.group_faces[id] = fill(Int32[],g.domain_dim+1)
+  g.group_faces[id] = Int32[]
 end
 
-function add_group!(g::GroupCollection,name)
+function add_group!(g::GroupCollection,dim,name)
   if length(g.group_ids) == 0
     id = 1
   else
-    id = maximum(g.group_ids) + 1
+    id = maximum(values(g.group_ids)) + 1
   end
-  add_group!(g,name,id)
+  add_group!(g,dim,name,id)
 end
 
+group_faces(g::GroupCollection,name) = g.group_faces[group_id(g,name)]
+group_faces!(g::GroupCollection,faces,name) = (g.group_faces[group_id(g,name)] = faces)
 domain_dim(g::GroupCollection) = g.domain_dim
+group_dim(g::GroupCollection,id) = g.group_dim[group_id(g,id)]
 group_id(g::GroupCollection,name::String) = g.group_ids[name]
 group_id(g::GroupCollection,id::Int) = id
 group_name(g::GroupCollection,name::String) = name
 group_name(g::GroupCollection,id::Int) = g.group_names[id]
 group_names(g::GroupCollection) = sort(collect(values(g.group_names)))
 group_ids(g::GroupCollection) = sort(collect(values(g.group_ids)))
-
-function group_faces(g::GroupCollection,name,rank)
-  id = group_id(g,name)
-  g.group_faces[id][rank+1]
+function group_names(g::GroupCollection,rank)
+  names = String[]
+  for (id,name) in g.group_names
+    dim = g.group_dim[id]
+    if dim == rank
+      push!(names,name)
+    end
+  end
+  sort(names)
 end
-
-function group_faces!(g::GroupCollection,faces,name,rank)
-  id = group_id(g,name)
-  g.group_faces[id][rank+1] = faces
-  faces
+function group_ids(g::GroupCollection,rank)
+  ids = Int[]
+  for (id,dim) in g.group_dim
+    if dim == rank
+      push!(ids,id)
+    end
+  end
+  sort(ids)
 end
 
 mutable struct SimpleFEMesh{T}
@@ -134,7 +149,7 @@ function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
     [ Any[] for i in 1:(rank+1)],
     (Int32[],Int32[]),
     (Int32[],JaggedArray(Vector{Int32}[])),
-    GroupCollection(void,rank))
+    GroupCollection(VOID,rank))
 end
 
 domain_dim(m::SimpleFEMesh) = m.domain_dim

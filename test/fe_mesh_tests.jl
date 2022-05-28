@@ -4,7 +4,7 @@ using GalerkinToolkit
 using StaticArrays
 using Test
 
-mesh = SimpleFEMesh{SVector{3,Float64}}(void,2)
+mesh = SimpleFEMesh{SVector{3,Float64}}(VOID,2)
 
 @test ambient_dim(mesh) == 3
 @test domain_dim(mesh) == 2
@@ -22,14 +22,19 @@ ref_faces(mesh,1)
 ref_faces(mesh,2)
 
 groups = physical_groups(mesh)
-add_group!(groups,"foo")
-group_faces(groups,"foo",0)
-group_faces(groups,"foo",1)
-group_faces(groups,"foo",2)
+add_group!(groups,2,"foo")
+add_group!(groups,0,"bar")
+group_faces(groups,"foo")
 @test group_id(groups,"foo") == 1
 @test group_name(groups,1) == "foo"
-@test group_names(groups) == ["foo"]
-@test group_ids(groups) == [1]
+@test group_names(groups) == ["bar","foo"]
+@test group_ids(groups) == [1,2]
+@test group_names(groups,1) == String[]
+@test group_names(groups,0) == ["bar"]
+@test group_names(groups,2) == ["foo"]
+@test group_ids(groups,1) == Int[]
+@test group_ids(groups,0) == [2]
+@test group_ids(groups,2) == [1]
 
 
 end
