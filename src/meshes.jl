@@ -205,6 +205,21 @@ function default_groups_cartesian_grid(fe_mesh)
   refcell = first(ref_faces(fe_mesh,D))
   nnodes = num_nodes(fe_mesh)
   d_to_ldface_to_lnodes = [ face_nodes(refcell,d) for d in 0:(D-1)]
+  groups, face_to_nodes = _default_groups_cartesian_grid(
+    D,
+    cell_to_nodes,
+    nnodes,
+    d_to_ldface_to_lnodes)
+  face_to_refid = [ ones(Int8,length(face_to_nodes[d+1]))  for d in 0:(D-1)]
+  refid_to_faces = [ ref_faces(refcell,d)  for d in 0:(D-1)]
+  groups, (face_to_nodes,face_to_refid,refid_to_faces)
+end
+
+function _default_groups_cartesian_grid(
+  D,
+  cell_to_nodes,
+  nnodes,
+  d_to_ldface_to_lnodes)
 
   node_to_n = zeros(Int32,nnodes)
   for nodes in cell_to_nodes
@@ -280,11 +295,7 @@ function default_groups_cartesian_grid(fe_mesh)
   add_group!(groups,D,"$(D)-face-1",ngroups)
   ncells = length(cell_to_nodes)
   group_faces!(groups,collect(Int32,1:ncells),ngroups)
-
-
-  face_to_refid = [ ones(Int8,length(face_to_nodes[d+1]))  for d in 0:(D-1)]
-  refid_to_faces = [ ref_faces(refcell,d)  for d in 0:(D-1)]
-  groups, (face_to_nodes,face_to_refid,refid_to_faces)
+  groups, face_to_nodes
 end
 
 
