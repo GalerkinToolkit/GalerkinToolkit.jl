@@ -1,4 +1,6 @@
 
+const INVALID = -1
+
 function domain_dim end
 function ambient_dim end
 function face_ref_id end
@@ -20,6 +22,7 @@ function node_vertex end
 function group_faces end
 function group_name end
 function group_dim end
+function group_dims end
 function group_names end
 function group_id end
 function group_ids end
@@ -64,6 +67,7 @@ struct EmptyInitializer end
 
 const VOID = EmptyInitializer()
 
+# Allow same ids in different dims?
 struct GroupCollection
   domain_dim::Int
   group_dim::Dict{Int,Int}
@@ -107,8 +111,31 @@ group_id(g::GroupCollection,name::String) = g.group_ids[name]
 group_id(g::GroupCollection,id::Int) = id
 group_name(g::GroupCollection,name::String) = name
 group_name(g::GroupCollection,id::Int) = g.group_names[id]
-group_names(g::GroupCollection) = sort(collect(values(g.group_names)))
-group_ids(g::GroupCollection) = sort(collect(values(g.group_ids)))
+function group_names(g::GroupCollection)
+  ids = group_ids(g)
+  [ g.group_names[i] for i in ids]
+end
+function group_ids(g::GroupCollection)
+  pairs = sort(collect(g.group_names))
+  map(first,pairs)
+end
+function group_dims(g::GroupCollection)
+  ids = group_ids(g)
+  [ g.group_dim[i] for i in ids]
+end
+function group_names(g::GroupCollection,d)
+  ids = group_ids(g,d)
+  [ g.group_names[i] for i in ids]
+end
+function group_ids(g::GroupCollection,d)
+  pairs = sort(collect(g.group_names))
+  ids = map(first,pairs)
+  filter(i->g.group_dim[i]==d,ids)
+end
+function group_dims(g::GroupCollection,d)
+  ids = group_ids(g,d)
+  [ g.group_dim[i] for i in ids]
+end
 function group_names(g::GroupCollection,rank)
   names = String[]
   for (id,name) in g.group_names
@@ -168,11 +195,6 @@ ref_faces!(m::SimpleFEMesh,rank,v) = (m.ref_faces[rank+1] = v)
 periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 hanging_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
-
-
-
-
-
 
 function fe_mesh end
 

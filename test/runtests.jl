@@ -9,4 +9,6 @@ using Test
 
 @time @testset "meshes" begin include("meshes_tests.jl") end
 
+@time @testset "gmsh" begin include("gmsh_tests.jl") end
+
 end # module

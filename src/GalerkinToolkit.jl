@@ -2,6 +2,7 @@ module GalerkinToolkit
 
 using StaticArrays
 import Meshes
+using Gmsh: gmsh
 
 export prefix!
 export rewind!
@@ -32,6 +33,8 @@ export group_faces!
 export group_faces
 export group_name
 export group_names
+export group_dim
+export group_dims
 export group_id
 export group_ids
 export GroupCollection
@@ -42,5 +45,9 @@ export fe_mesh
 include("fe_mesh.jl")
 
 include("meshes.jl")
+
+export msh_file
+export with_gmsh
+include("gmsh.jl")
 
 end
