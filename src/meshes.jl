@@ -183,11 +183,10 @@ node_coordinates(a::Meshes.Triangle) = collect(Meshes.coordinates.(Meshes.vertic
 
 function fe_mesh(
   mesh::Meshes.CartesianGrid;
-  is_periodic=fill(false,domain_dim(mesh)))
+  is_periodic=map(i->false,mesh.dims))
 
-  any(is_periodic) && error("Periodic BCs not yer implemented")
   fe_mesh = default_fe_mesh(mesh,periodic_nodes=default_periodic_nodes(mesh))
-  groups, faces = default_groups_cartesian_grid(fe_mesh)
+  groups, faces = _default_groups_cartesian_grid(fe_mesh)
   face_to_nodes, face_to_refid, refid_to_refface = faces
   physical_groups!(fe_mesh,groups)
   D = domain_dim(fe_mesh)
@@ -196,10 +195,12 @@ function fe_mesh(
     face_ref_id!(fe_mesh,d,face_to_refid[d+1])
     ref_faces!(fe_mesh,d,refid_to_refface[d+1])
   end
+  periodicnodes = _periodic_nodes_cartesian_grid(mesh.dims,is_periodic)
+  periodic_nodes!(fe_mesh,periodicnodes)
   fe_mesh
 end
 
-function default_groups_cartesian_grid(fe_mesh)
+function _default_groups_cartesian_grid(fe_mesh)
   D = domain_dim(fe_mesh)
   cell_to_nodes = face_nodes(fe_mesh,D)
   refcell = first(ref_faces(fe_mesh,D))
@@ -296,6 +297,60 @@ function _default_groups_cartesian_grid(
   ncells = length(cell_to_nodes)
   group_faces!(groups,collect(Int32,1:ncells),ngroups)
   groups, face_to_nodes
+end
+
+function _periodic_nodes_cartesian_grid(dim_ncells,is_periodic)
+  dim_nnodes = Tuple(dim_ncells) .+ 1
+  cis = CartesianIndices(dim_nnodes)
+  lis = LinearIndices(dim_nnodes)
+  D = length(dim_nnodes)
+  nperiodic = 0
+  node_touched = fill(false,axes(cis))
+  for d in 1:D
+    if is_periodic[d]
+      for ci in cis
+        if node_touched[ci]
+          continue
+        end
+        t = Tuple(ci)
+        td = t[d]
+        if td == 1
+          s = ntuple(i->(i==d ? dim_nnodes[i] : t[i]),Val{D}())
+          ci2 = CartesianIndex(s)
+          nperiodic += 1
+          node_touched[ci] = true
+          node_touched[ci2] = true
+        end
+      end
+    end
+  end
+  periodic_indep = zeros(Int32,nperiodic)
+  periodic_dep = zeros(Int32,nperiodic)
+  nperiodic = 0
+  fill!(node_touched,false)
+  for d in 1:D
+    if is_periodic[d]
+      for ci in cis
+        if node_touched[ci]
+          continue
+        end
+        t = Tuple(ci)
+        td = t[d]
+        if td == 1
+          s = ntuple(i->(i==d ? dim_nnodes[i] : t[i]),Val{D}())
+          ci2 = CartesianIndex(s)
+          nperiodic += 1
+          node_touched[ci] = true
+          node_touched[ci2] = true
+          li = lis[ci]
+          li2 = lis[ci2]
+          periodic_indep[nperiodic] = li
+          periodic_dep[nperiodic] = li2
+        end
+      end
+    end
+  end
+  periodic_indep, periodic_dep
 end
 
 

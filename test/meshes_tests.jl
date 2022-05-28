@@ -22,6 +22,19 @@ ref_faces(mesh,2)
 face_ref_id(mesh,0)
 face_ref_id(mesh,1)
 face_ref_id(mesh,2)
+@test is_periodic(mesh) == false
+@test is_hanging(mesh) == false
 
+mesh = fe_mesh(grid,is_periodic=(true,false))
+@test is_periodic(mesh) == true
+@test periodic_nodes(mesh) == ([1,5,9,13],[4,8,12,16])
+
+mesh = fe_mesh(grid,is_periodic=(false,true))
+@test is_periodic(mesh) == true
+@test periodic_nodes(mesh) == ([1,2,3,4],[13,14,15,16])
+
+mesh = fe_mesh(grid,is_periodic=(true,true))
+@test is_periodic(mesh) == true
+@test periodic_nodes(mesh) == ([1,5,9,13,2,3],[4,8,12,16,14,15])
 
 end # module
