@@ -40,6 +40,7 @@ export group_id
 export group_ids
 export GroupCollection
 export physical_groups
+export physical_groups!
 export VOID
 export SimpleFEMesh
 export fe_mesh

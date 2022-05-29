@@ -76,6 +76,7 @@ struct GroupCollection
   group_ids::Dict{String,Int}
   group_faces::Dict{Int,Vector{Int32}}
 end
+physical_groups(a::GroupCollection) = a
 
 function GroupCollection(::EmptyInitializer,dim::Integer)
   GroupCollection(
