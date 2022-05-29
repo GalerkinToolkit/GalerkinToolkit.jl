@@ -41,6 +41,8 @@ export group_ids
 export GroupCollection
 export physical_groups
 export physical_groups!
+export group_nodes
+export classify_nodes
 export VOID
 export SimpleFEMesh
 export fe_mesh

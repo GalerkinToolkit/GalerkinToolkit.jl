@@ -37,4 +37,8 @@ mesh = fe_mesh(grid,is_periodic=(true,true))
 @test is_periodic(mesh) == true
 @test periodic_nodes(mesh) == ([1,5,9,13,2,3],[4,8,12,16,14,15])
 
+i_to_groupid = [9,3,5,1]
+node_to_i = classify_nodes(mesh,i_to_groupid)
+@test i_to_groupid[node_to_i] == [1,5,5,5,9,9,9,9,9,9,9,9,9,9,9,3]
+
 end # module

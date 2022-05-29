@@ -139,6 +139,63 @@ function group_dims(g::GroupCollection,d)
   [ g.group_dim[i] for i in ids]
 end
 
+function classify_nodes(mesh,ids;boundary=fill(true,length(ids)))
+  D = ambient_dim(mesh)
+  groups = physical_groups(mesh)
+  i_to_id = ids
+  ni = length(i_to_id)
+  nnodes = num_nodes(mesh)
+  node_to_i = fill(Int32(INVALID),nnodes)
+  for d = D:-1:0
+    for i in 1:ni
+      id = i_to_id[i]
+      if group_dim(groups,id) != d
+        continue
+      end
+      nodes = group_nodes(mesh,id;boundary=boundary[i])
+      node_to_i[nodes] .= i
+    end
+  end
+  node_to_i
+end
+
+function group_nodes(mesh,id;boundary=true)
+  if boundary
+    group_nodes_with_boundary(mesh,id)
+  else
+    group_nodes_without_boundary(mesh,id)
+  end
+end
+
+function group_nodes_with_boundary(mesh,id)
+  function _barrier(nnodes,face_to_nodes,faces_in_group)
+    node_to_mask = fill(false,nnodes)
+    for face in faces_in_group
+      nodes = face_to_nodes[face]
+      for node in nodes
+        node_to_mask[node] = true
+      end
+    end
+    collect(Int32,findall(node_to_mask))
+  end
+  groups = physical_groups(mesh)
+  faces_in_group = group_faces(groups,id)
+  d = group_dim(groups,id)
+  face_to_nodes = face_nodes(mesh,d)
+  nnodes = num_nodes(mesh)
+  _barrier(nnodes,face_to_nodes,faces_in_group)
+end
+
+function group_nodes_without_boundary(mesh,id)
+  error("Not implemented.")
+  # 1. Compute nodes with boundary
+  # 2. Identify d-1 faces on the boundary of the group
+  # 3. Collect nodes from faces computed in 2.
+  # 4. Subtract from nodes computed in 1.
+  # Setp 2. would require to compute the polytopal complex
+  #polycom = polytopal_complex(mesh)
+end
+
 mutable struct SimpleFEMesh{T}
   domain_dim::Int
   node_coordinates::Vector{T}
