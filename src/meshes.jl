@@ -84,7 +84,9 @@ end
 face_nodes(a::Meshes.Point,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Point,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Point) = [Meshes.coordinates(a)]
-vtk_cell_type(a::Meshes.Point) = WriteVTK.VTKCellTypes.VTK_VERTEX
+function vtk_mesh_cell(a::Meshes.Point)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_VERTEX,nodes)
+end
 
 # Segment
 domain_dim(a::Meshes.Segment) = 1
@@ -113,7 +115,9 @@ end
 face_nodes(a::Meshes.Segment,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Segment,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Segment) = collect(Meshes.coordinates.(Meshes.vertices(a)))
-vtk_cell_type(a::Meshes.Segment) = WriteVTK.VTKCellTypes.VTK_LINE
+function vtk_mesh_cell(a::Meshes.Segment)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes)
+end
 
 # Quadrangle
 domain_dim(a::Meshes.Quadrangle) = 2
@@ -148,7 +152,9 @@ end
 face_nodes(a::Meshes.Quadrangle,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Quadrangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Quadrangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
-vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
+function vtk_mesh_cell(a::Meshes.Quadrangle)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes)
+end
 
 # Triangle
 domain_dim(a::Meshes.Triangle) = 2
@@ -184,6 +190,9 @@ face_nodes(a::Meshes.Triangle,d) = face_incidence(a,d,0)
 face_own_nodes(a::Meshes.Triangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Triangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
+function vtk_mesh_cell(a::Meshes.Triangle)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
+end
 
 function fe_mesh(
   mesh::Meshes.CartesianGrid;
