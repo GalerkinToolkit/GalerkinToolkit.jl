@@ -41,4 +41,11 @@ i_to_groupid = [9,3,5,1]
 node_to_i = classify_nodes(mesh,i_to_groupid)
 @test i_to_groupid[node_to_i] == [1,5,5,5,9,9,9,9,9,9,9,9,9,9,9,3]
 
+@test node_vertex(mesh) == [1,2,5,1,4,3,6,4,8,7,9,8,10,2,5,10]
+@test vertex_node(mesh) == [1,2,6,5,3,7,10,9,11,13]
+face_vertices(mesh,2)
+face_vertices(mesh,1)
+face_vertices(mesh,0)
+
+
 end # module

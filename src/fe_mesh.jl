@@ -6,6 +6,7 @@ function ambient_dim end
 function face_ref_id end
 function ref_faces end
 function face_incidence end
+function face_vertices end
 function face_nodes end
 function face_own_nodes end
 function node_coordinates end
@@ -196,6 +197,8 @@ function group_nodes_without_boundary(mesh,id)
   #polycom = polytopal_complex(mesh)
 end
 
+function fe_mesh end
+
 mutable struct SimpleFEMesh{T}
   domain_dim::Int
   node_coordinates::Vector{T}
@@ -205,7 +208,9 @@ mutable struct SimpleFEMesh{T}
   periodic_nodes::Tuple{Vector{Int32},Vector{Int32}}
   hanging_nodes::Tuple{Vector{Int32},JArray{Int32}}
   physical_groups::GroupCollection
+  buffer::Dict{Symbol,Any}
 end
+fe_mesh(a::SimpleFEMesh) = a
 
 function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
   SimpleFEMesh(
@@ -216,7 +221,9 @@ function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
     [ Any[] for i in 1:(rank+1)],
     (Int32[],Int32[]),
     (Int32[],JaggedArray(Vector{Int32}[])),
-    GroupCollection(VOID,rank))
+    GroupCollection(VOID,rank),
+    Dict{Symbol,Any}()
+   )
 end
 
 domain_dim(m::SimpleFEMesh) = m.domain_dim
@@ -236,6 +243,137 @@ periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 hanging_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
 
-function fe_mesh end
+function node_vertex(mesh::SimpleFEMesh)
+  if !haskey(mesh.buffer,:node_vertex)
+    _fe_mesh_setup_vertices!(mesh)
+  end
+  mesh.buffer[:node_vertex]
+end
 
+function vertex_node(mesh::SimpleFEMesh)
+  if !haskey(mesh.buffer,:vertex_node)
+    _fe_mesh_setup_vertices!(mesh)
+  end
+  mesh.buffer[:vertex_node]
+end
+
+function _fe_mesh_setup_vertices!(mesh)
+  D = domain_dim(mesh)
+  dep,indep = periodic_nodes(mesh)
+  node_to_periodic_node_id = fill(Int32(INVALID),num_nodes(mesh))
+  node_to_periodic_node_id[indep] .= dep
+  d_refid_to_refface = [ref_faces(mesh,d) for d in 0:D]
+  d_refid_to_lvertex_to_lnodes = [ref_face_nodes(mesh,d,0) for d in 0:D]
+  d_dface_to_refid = [ face_ref_id(mesh,d) for d in 0:D]
+  d_dface_to_nodes = [ face_nodes(mesh,d) for d in 0:D]
+  node_to_vertex, vertex_to_node = _fe_mesh_setup_vertices(
+    D,
+    node_to_periodic_node_id,
+    d_refid_to_refface,
+    d_refid_to_lvertex_to_lnodes,
+    d_dface_to_refid,
+    d_dface_to_nodes)
+  mesh.buffer[:node_vertex] = node_to_vertex
+  mesh.buffer[:vertex_node] = vertex_to_node
+end
+
+function _fe_mesh_setup_vertices(
+  D,
+  node_to_periodic_node_id,
+  d_refid_to_refface,
+  d_refid_to_lvertex_to_lnodes,
+  d_dface_to_refid,
+  d_dface_to_nodes)
+
+  nnodes = length(node_to_periodic_node_id)
+  node_to_vertex = fill(Int32(INVALID),nnodes)
+  vertex = Int32(0)
+  for d in D:-1:0
+    refid_to_refface = d_refid_to_refface[d+1]
+    refid_to_lvertex_to_lnodes = d_refid_to_lvertex_to_lnodes[d+1]
+    dface_to_refid = d_dface_to_refid[d+1]
+    dface_to_nodes = d_dface_to_nodes[d+1]
+    for dface in 1:length(dface_to_refid)
+      refid = dface_to_refid[dface]
+      nodes = dface_to_nodes[dface]
+      lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+      for lnodes in lvertex_to_lnodes
+        lnode = first(lnodes)
+        node = nodes[lnode]
+        periodic_node_id = node_to_periodic_node_id[node]
+        if periodic_node_id == INVALID && node_to_vertex[node] == INVALID
+          vertex += Int32(1)
+          node_to_vertex[node] = vertex
+        end
+      end
+    end
+  end
+  vertex_to_node = zeros(Int32,vertex)
+  for node in 1:length(node_to_vertex)
+    vertex = node_to_vertex[node]
+    if vertex != Int32(INVALID)
+      vertex_to_node[vertex] = node
+    end
+    if vertex == Int32(INVALID)
+      periodic_node_id = node_to_periodic_node_id[node]
+      node_to_vertex[node] = node_to_vertex[periodic_node_id]
+    end
+  end
+  node_to_vertex, vertex_to_node
+end
+
+function face_vertices(mesh::SimpleFEMesh,d)
+  if !haskey(mesh.buffer,:face_vertices)
+    J = typeof(JaggedArray(Vector{Int32}[]))
+    mesh.buffer[:face_vertices] = Vector{J}(undef,domain_dim(mesh)+1)
+  end
+  if !isassigned(mesh.buffer[:face_vertices],d+1)
+    _fe_mesh_setup_face_vertices!(mesh,d)
+  end
+  mesh.buffer[:face_vertices][d+1]
+end
+
+function _fe_mesh_setup_face_vertices!(mesh,d)
+  node_to_vertex = node_vertex(mesh)
+  refid_to_lvertex_to_lnodes = ref_face_nodes(mesh,d,0)
+  dface_to_refid = face_ref_id(mesh,d)
+  dface_to_nodes = face_nodes(mesh,d)
+  dface_to_vertices = _fe_mesh_setup_face_vertices(
+    node_to_vertex,
+    refid_to_lvertex_to_lnodes,
+    dface_to_refid,
+    dface_to_nodes)
+  mesh.buffer[:face_vertices][d+1] = dface_to_vertices
+end
+
+function _fe_mesh_setup_face_vertices(
+  node_to_vertex,
+  refid_to_lvertex_to_lnodes,
+  dface_to_refid,
+  dface_to_nodes)
+
+  ptrs = zeros(Int32,length(dface_to_refid)+1)
+  for dface in 1:length(dface_to_refid)
+    refid = dface_to_refid[dface]
+    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+    ptrs[dface+1] += length(lvertex_to_lnodes)
+  end
+  prefix!(ptrs)
+  ndata = ptrs[end]-1
+  data = zeros(Int32,ndata)
+  for dface in 1:length(dface_to_refid)
+    refid = dface_to_refid[dface]
+    nodes = dface_to_nodes[dface]
+    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+    p = ptrs[dface]-Int32(1)
+    for (lvertex,lnodes) in enumerate(lvertex_to_lnodes)
+      lnode = first(lnodes)
+      node = nodes[lnode]
+      vertex = node_to_vertex[node]
+      data[p+lvertex] = vertex
+    end
+  end
+  dface_to_vertices = JaggedArray(data,ptrs)
+  dface_to_vertices
+end
 
