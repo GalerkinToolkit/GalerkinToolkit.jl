@@ -24,13 +24,4 @@ vtk_grid(fn,vtk_args(mesh,2)...) do vtk
   vtk["group"] = ids[classify_nodes(mesh,ids)]
 end
 
-# To think about this
-@test_broken begin
-groups = physical_groups(mesh)
-vtk_grid(fn,vtk_args(mesh,1)...) do vtk
-  physical_groups!(vtk,groups,1)
-end
-true
-end
-
 end # module
