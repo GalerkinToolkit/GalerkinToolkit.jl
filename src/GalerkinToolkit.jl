@@ -49,6 +49,9 @@ export SimpleFEMesh
 export fe_mesh
 include("fe_mesh.jl")
 
+export polytopal_complex
+include("polytopal_complex.jl")
+
 include("meshes.jl")
 
 export msh_file
@@ -57,5 +60,6 @@ include("gmsh.jl")
 
 export vtk_args
 include("vtk.jl")
+
 
 end

@@ -7,6 +7,8 @@ using Test
 
 @time @testset "fe_mesh" begin include("fe_mesh_tests.jl") end
 
+@time @testset "polytopal_complex" begin include("polytopal_complex_tests.jl") end
+
 @time @testset "meshes" begin include("meshes_tests.jl") end
 
 @time @testset "gmsh" begin include("gmsh_tests.jl") end
