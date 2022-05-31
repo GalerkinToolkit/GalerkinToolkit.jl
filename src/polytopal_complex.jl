@@ -1,4 +1,9 @@
 
+
+function vertex_node end
+function node_vertex end
+function mesh_faces end
+function mesh_face_vertices end
 function polytopal_complex end
 
 polytopal_complex(mesh) = GenericPolyComplex(mesh)
@@ -29,9 +34,145 @@ is_hanging(m::GenericPolyComplex) = is_hanging(m.mesh)
 is_periodic(m::GenericPolyComplex) = is_periodic(m.mesh)
 is_simplex(m::GenericPolyComplex) = is_simplex(m.mesh)
 is_hypercube(m::GenericPolyComplex) = is_hypercube(m.mesh)
-node_vertex(m::GenericPolyComplex) = node_vertex(m.mesh)
-vertex_node(m::GenericPolyComplex) = vertex_node(m.mesh)
 face_vertices(m::GenericPolyComplex,rank) = face_incidence(m,rank,0)
+
+
+function node_vertex(mesh::GenericPolyComplex)
+  if !haskey(mesh.buffer,:node_vertex)
+    _setup_vertices!(mesh)
+  end
+  mesh.buffer[:node_vertex]
+end
+
+function vertex_node(mesh::GenericPolyComplex)
+  if !haskey(mesh.buffer,:vertex_node)
+    _setup_vertices!(mesh)
+  end
+  mesh.buffer[:vertex_node]
+end
+
+function _setup_vertices!(poly)
+  mesh = poly.mesh
+  D = domain_dim(mesh)
+  dep,indep = periodic_nodes(mesh)
+  node_to_periodic_node_id = fill(Int32(INVALID),num_nodes(mesh))
+  node_to_periodic_node_id[indep] .= dep
+  d_refid_to_refface = [ref_faces(mesh,d) for d in 0:D]
+  d_refid_to_lvertex_to_lnodes = [ref_face_nodes(mesh,d,0) for d in 0:D]
+  d_dface_to_refid = [ face_ref_id(mesh,d) for d in 0:D]
+  d_dface_to_nodes = [ face_nodes(mesh,d) for d in 0:D]
+  node_to_vertex, vertex_to_node = _setup_vertices(
+    D,
+    node_to_periodic_node_id,
+    d_refid_to_refface,
+    d_refid_to_lvertex_to_lnodes,
+    d_dface_to_refid,
+    d_dface_to_nodes)
+  poly.buffer[:node_vertex] = node_to_vertex
+  poly.buffer[:vertex_node] = vertex_to_node
+end
+
+function _setup_vertices(
+  D,
+  node_to_periodic_node_id,
+  d_refid_to_refface,
+  d_refid_to_lvertex_to_lnodes,
+  d_dface_to_refid,
+  d_dface_to_nodes)
+
+  nnodes = length(node_to_periodic_node_id)
+  node_to_vertex = fill(Int32(INVALID),nnodes)
+  vertex = Int32(0)
+  for d in D:-1:0
+    refid_to_refface = d_refid_to_refface[d+1]
+    refid_to_lvertex_to_lnodes = d_refid_to_lvertex_to_lnodes[d+1]
+    dface_to_refid = d_dface_to_refid[d+1]
+    dface_to_nodes = d_dface_to_nodes[d+1]
+    for dface in 1:length(dface_to_refid)
+      refid = dface_to_refid[dface]
+      nodes = dface_to_nodes[dface]
+      lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+      for lnodes in lvertex_to_lnodes
+        lnode = first(lnodes)
+        node = nodes[lnode]
+        periodic_node_id = node_to_periodic_node_id[node]
+        if periodic_node_id == INVALID && node_to_vertex[node] == INVALID
+          vertex += Int32(1)
+          node_to_vertex[node] = vertex
+        end
+      end
+    end
+  end
+  vertex_to_node = zeros(Int32,vertex)
+  for node in 1:length(node_to_vertex)
+    vertex = node_to_vertex[node]
+    if vertex != Int32(INVALID)
+      vertex_to_node[vertex] = node
+    end
+    if vertex == Int32(INVALID)
+      periodic_node_id = node_to_periodic_node_id[node]
+      node_to_vertex[node] = node_to_vertex[periodic_node_id]
+    end
+  end
+  node_to_vertex, vertex_to_node
+end
+
+function mesh_face_vertices(mesh::GenericPolyComplex,d)
+  if !haskey(mesh.buffer,:mesh_face_vertices)
+    J = typeof(JaggedArray(Vector{Int32}[]))
+    mesh.buffer[:mesh_face_vertices] = Vector{J}(undef,domain_dim(mesh)+1)
+  end
+  if !isassigned(mesh.buffer[:mesh_face_vertices],d+1)
+    _setup_mesh_face_vertices!(mesh,d)
+  end
+  mesh.buffer[:mesh_face_vertices][d+1]
+end
+
+function _setup_mesh_face_vertices!(poly,d)
+  mesh = poly.mesh
+  node_to_vertex = node_vertex(poly)
+  refid_to_lvertex_to_lnodes = ref_face_nodes(mesh,d,0)
+  dface_to_refid = face_ref_id(mesh,d)
+  dface_to_nodes = face_nodes(mesh,d)
+  dface_to_vertices = _setup_mesh_face_vertices(
+    node_to_vertex,
+    refid_to_lvertex_to_lnodes,
+    dface_to_refid,
+    dface_to_nodes)
+  poly.buffer[:mesh_face_vertices][d+1] = dface_to_vertices
+end
+
+function _setup_mesh_face_vertices(
+  node_to_vertex,
+  refid_to_lvertex_to_lnodes,
+  dface_to_refid,
+  dface_to_nodes)
+
+  ptrs = zeros(Int32,length(dface_to_refid)+1)
+  for dface in 1:length(dface_to_refid)
+    refid = dface_to_refid[dface]
+    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+    ptrs[dface+1] += length(lvertex_to_lnodes)
+  end
+  prefix!(ptrs)
+  ndata = ptrs[end]-1
+  data = zeros(Int32,ndata)
+  for dface in 1:length(dface_to_refid)
+    refid = dface_to_refid[dface]
+    nodes = dface_to_nodes[dface]
+    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+    p = ptrs[dface]-Int32(1)
+    for (lvertex,lnodes) in enumerate(lvertex_to_lnodes)
+      lnode = first(lnodes)
+      node = nodes[lnode]
+      vertex = node_to_vertex[node]
+      data[p+lvertex] = vertex
+    end
+  end
+  dface_to_vertices = JaggedArray(data,ptrs)
+  dface_to_vertices
+end
+
 
 function physical_groups(m::GenericPolyComplex)
   if !haskey(m.buffer,:physical_groups)
@@ -160,24 +301,24 @@ function face_incidence(a::GenericPolyComplex,m,n)
 
   if !isassigned(a.buffer[:face_incidence],m+1,n+1)
     if m==d && n==0
-      a.buffer[:face_incidence][m+1,n+1] = face_vertices(a.mesh,d)
+      a.buffer[:face_incidence][m+1,n+1] = mesh_face_vertices(a,d)
     elseif m==d && n==d
       a.buffer[:face_incidence][m+1,n+1] = _face_interior(num_faces(a.mesh,d))
     elseif n==d && m==0
-       cell_to_vertices = face_vertices(a.mesh,d)
-       nvertices = length(vertex_node(a.mesh))
+       cell_to_vertices = mesh_face_vertices(a,d)
+       nvertices = length(vertex_node(a))
        a.buffer[:face_incidence][m+1,n+1] = _face_coboundary(cell_to_vertices,nvertices)
     elseif n==0 && m==0
-       nvertices = length(vertex_node(a.mesh))
+       nvertices = length(vertex_node(a))
        a.buffer[:face_incidence][m+1,n+1] = _face_interior(nvertices)
     elseif m==d && n==(d-1)
-      _face_boundary!(a,a.mesh,m,n)
+      _face_boundary!(a,mesh_face_vertices(a,n),m,n)
     elseif n==0
       _face_vertices!(a,m)
     elseif m==n
       a.buffer[:face_incidence][m+1,n+1] = _face_interior(num_faces(a,n))
     elseif m>n
-      _face_boundary!(a,a,m,n)
+      _face_boundary!(a,face_vertices(a,n),m,n)
     else
        nface_to_mfaces = face_incidence(a,n,m)
        nmfaces = num_faces(a,m)
@@ -235,10 +376,9 @@ function _face_coboundary(nface_to_mfaces,nmfaces)
   mface_to_nfaces
 end
 
-function _face_boundary!(femesh,mesh,D,d)
+function _face_boundary!(femesh,dface_to_vertices,D,d)
   Dface_to_vertices = face_incidence(femesh,D,0)
   vertex_to_Dfaces = face_incidence(femesh,0,D)
-  dface_to_vertices = face_vertices(mesh,d)
   nvertices = length(vertex_to_Dfaces)
   vertex_to_dfaces = _face_coboundary(dface_to_vertices,nvertices)
   Dface_to_refid = face_ref_id(femesh,D)
@@ -414,7 +554,7 @@ end
 
 function _face_vertices!(femesh,d)
   D = d+1
-  dface_to_vertices = face_vertices(femesh.mesh,d)
+  dface_to_vertices = mesh_face_vertices(femesh,d)
   Dface_to_dfaces = face_incidence(femesh,D,d)
   Dface_to_vertices = face_incidence(femesh,D,0)
   Dface_to_refid = face_ref_id(femesh,D)
