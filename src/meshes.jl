@@ -418,14 +418,14 @@ function _default_groups_cartesian_grid(
       group = ngroups + ldface
       add_group!(groups,d,"$(d)-face-$ldface",group)
       faces_in_group = findall(g->g==group,dface_to_group)
-      group_faces!(groups,faces_in_group,group)
+      group_faces!(groups,faces_in_group,d,group)
     end
     ngroups += nldfaces
   end # d
   ngroups += 1
   add_group!(groups,D,"$(D)-face-1",ngroups)
   ncells = length(cell_to_nodes)
-  group_faces!(groups,collect(Int32,1:ncells),ngroups)
+  group_faces!(groups,collect(Int32,1:ncells),D,ngroups)
   groups, face_to_nodes
 end
 

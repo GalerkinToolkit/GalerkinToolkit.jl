@@ -37,7 +37,7 @@ face_to_mask = mappedarray(face_nodes(poly,2)) do nodes
 end
 groups = physical_groups(poly)
 add_group!(groups,2,"foo")
-group_faces!(groups,findall(face_to_mask),"foo")
+group_faces!(groups,findall(face_to_mask),2,"foo")
 
 vtk_grid(fn,vtk_args(poly,2)...) do vtk
   physical_groups!(vtk,poly,2)

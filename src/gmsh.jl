@@ -198,7 +198,7 @@ function fe_mesh_from_gmsh()
       end
       groupname = gmsh.model.getPhysicalName(dim,tag)
       add_group!(groups,d,groupname,tag)
-      group_faces!(groups,dfaces_in_group,Int(tag))
+      group_faces!(groups,dfaces_in_group,d,Int(tag))
     end
   end
 

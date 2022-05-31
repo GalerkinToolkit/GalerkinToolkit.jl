@@ -203,14 +203,16 @@ function physical_groups(m::GenericPolyComplex)
   if !haskey(m.buffer,:physical_groups)
     mesh_groups = physical_groups(m.mesh)
     groups = GroupCollection(VOID,domain_dim(m))
-    for id in group_ids(mesh_groups)
-      d = group_dim(mesh_groups,id)
-      name = group_name(mesh_groups,id)
-      add_group!(groups,d,name,id)
-      mesh_face_to_face = mesh_faces(m,d)
-      mesh_face_in_group = group_faces(mesh_groups,id)
-      face_in_group = mesh_face_to_face[mesh_face_in_group]
-      group_faces!(groups,face_in_group,id)
+    D = domain_dim(m)
+    for d in 0:D
+      for id in group_ids(mesh_groups,d)
+        name = group_name(mesh_groups,d,id)
+        add_group!(groups,d,name,id)
+        mesh_face_to_face = mesh_faces(m,d)
+        mesh_face_in_group = group_faces(mesh_groups,d,id)
+        face_in_group = mesh_face_to_face[mesh_face_in_group]
+        group_faces!(groups,face_in_group,d,id)
+      end
     end
     m.buffer[:physical_groups] = groups
   end

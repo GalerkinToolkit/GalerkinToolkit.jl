@@ -66,17 +66,13 @@ struct EmptyInitializer end
 
 const VOID = EmptyInitializer()
 
-# Allow same ids in different dims? (not possible in gmsh)
-# TO-think about the union of groups in different dims (not possible in gmsh)
-# Allow same name for groups in different dims? (possible in gmsh!)
 struct GroupCollection{Ti}
-  domain_dim::Int
-  group_dim::Dict{Int,Int}
-  group_names::Dict{Int,String}
-  group_ids::Dict{String,Int}
-  group_faces::Dict{Int,Vector{Ti}}
+  group_name::Vector{Dict{Int,String}}
+  group_id::Vector{Dict{String,Int}}
+  group_faces::Vector{Dict{Int,Vector{Ti}}}
 end
 physical_groups(a::GroupCollection) = a
+domain_dim(a::GroupCollection) = length(a.group_id)-1
 
 function GroupCollection(::EmptyInitializer,dim::Integer)
   GroupCollection{Int32}(VOID,dim)
@@ -84,67 +80,55 @@ end
 
 function GroupCollection{Ti}(::EmptyInitializer,dim::Integer) where Ti
   GroupCollection(
-    dim,
-    Dict{Int,Int}(),
-    Dict{Int,String}(),
-    Dict{String,Int}(),
-    Dict{Int,Vector{Ti}}())
+    [Dict{Int,String}() for d in 0:dim],
+    [Dict{String,Int}() for d in 0:dim],
+    [Dict{Int,Vector{Ti}}() for d in 0:dim])
 end
 
-function add_group!(g::GroupCollection,dim,name,id)
-  haskey(g.group_names,id) && error("id $id already present in GroupCollection")
-  haskey(g.group_ids,name) && error("Name $name already present in GroupCollection")
-  g.group_dim[id] = dim
-  g.group_names[id] = name
-  g.group_ids[name] = id
-  g.group_faces[id] = Int32[]
+group_faces(g::GroupCollection,d,name) = g.group_faces[d+1][group_id(g,d,name)]
+group_faces!(g::GroupCollection,faces,d,name) = (g.group_faces[d+1][group_id(g,d,name)] = faces)
+group_id(g::GroupCollection,d,name::AbstractString) = g.group_id[d+1][String(name)]
+group_name(g::GroupCollection,d,id::Integer) = g.group_name[d+1][Int(id)]
+has_group(g,d,name::String) = haskey(g.group_id[d+1],name)
+has_group(g,d,id::Int) = haskey(g.group_name[d+1],id)
+function group_id(g::GroupCollection,d,id::Integer)
+  @assert haskey(g.group_name[d+1],Int(id))
+  id
 end
-
-function add_group!(g::GroupCollection,dim,name)
-  if length(g.group_ids) == 0
-    id = 1
-  else
-    id = maximum(values(g.group_ids)) + 1
-  end
-  add_group!(g,dim,name,id)
-end
-
-group_faces(g::GroupCollection,name) = g.group_faces[group_id(g,name)]
-group_faces!(g::GroupCollection,faces,name) = (g.group_faces[group_id(g,name)] = faces)
-domain_dim(g::GroupCollection) = g.domain_dim
-group_dim(g::GroupCollection,id) = g.group_dim[group_id(g,id)]
-group_id(g::GroupCollection,name::String) = g.group_ids[name]
-group_id(g::GroupCollection,id::Int) = id
-group_name(g::GroupCollection,name::String) = name
-group_name(g::GroupCollection,id::Int) = g.group_names[id]
-function group_names(g::GroupCollection)
-  ids = group_ids(g)
-  [ g.group_names[i] for i in ids]
-end
-function group_ids(g::GroupCollection)
-  pairs = sort(collect(g.group_names))
-  map(first,pairs)
-end
-function group_dims(g::GroupCollection)
-  ids = group_ids(g)
-  [ g.group_dim[i] for i in ids]
+function group_name(g::GroupCollection,d,name::AbstractString)
+  @assert haskey(g.group_id[d+1],String(name))
+  name
 end
 function group_names(g::GroupCollection,d)
   ids = group_ids(g,d)
-  [ g.group_names[i] for i in ids]
+  [ g.group_name[d+1][i] for i in ids]
 end
 function group_ids(g::GroupCollection,d)
-  pairs = sort(collect(g.group_names))
-  ids = map(first,pairs)
-  filter(i->g.group_dim[i]==d,ids)
+  sort(collect(keys(g.group_name[d+1])))
 end
-function group_dims(g::GroupCollection,d)
-  ids = group_ids(g,d)
-  [ g.group_dim[i] for i in ids]
+
+function add_group!(g::GroupCollection,d,name,id)
+  haskey(g.group_name[d+1],id) && error("id $id already present in GroupCollection for dimension $d")
+  haskey(g.group_id[d+1],name) && error("Name $name already present in GroupCollection for dimension $d")
+  g.group_name[d+1][id] = name
+  g.group_id[d+1][name] = id
+  g.group_faces[d+1][id] = Int32[]
+end
+
+function add_group!(g::GroupCollection,dim,name)
+  function maxid(dict)
+    if length(dict) == 0
+      id = 0
+    else
+      id = maximum(values(dict))
+    end
+  end
+  id = maximum(map(maxid,g.group_id))+1
+  add_group!(g,dim,name,id)
 end
 
 function classify_nodes(mesh,ids;boundary=fill(true,length(ids)))
-  D = ambient_dim(mesh)
+  D = domain_dim(mesh)
   groups = physical_groups(mesh)
   i_to_id = ids
   ni = length(i_to_id)
@@ -153,25 +137,25 @@ function classify_nodes(mesh,ids;boundary=fill(true,length(ids)))
   for d = D:-1:0
     for i in 1:ni
       id = i_to_id[i]
-      if group_dim(groups,id) != d
+      if !has_group(groups,d,id)
         continue
       end
-      nodes = group_nodes(mesh,id;boundary=boundary[i])
+      nodes = group_nodes(mesh,d,id;boundary=boundary[i])
       node_to_i[nodes] .= i
     end
   end
   node_to_i
 end
 
-function group_nodes(mesh,id;boundary=true)
+function group_nodes(mesh,d,id;boundary=true)
   if boundary
-    group_nodes_with_boundary(mesh,id)
+    group_nodes_with_boundary(mesh,d,id)
   else
-    group_nodes_without_boundary(mesh,id)
+    group_nodes_without_boundary(mesh,d,id)
   end
 end
 
-function group_nodes_with_boundary(mesh,id)
+function group_nodes_with_boundary(mesh,d,id)
   function _barrier(nnodes,face_to_nodes,faces_in_group)
     node_to_mask = fill(false,nnodes)
     for face in faces_in_group
@@ -183,14 +167,13 @@ function group_nodes_with_boundary(mesh,id)
     collect(Int32,findall(node_to_mask))
   end
   groups = physical_groups(mesh)
-  faces_in_group = group_faces(groups,id)
-  d = group_dim(groups,id)
+  faces_in_group = group_faces(groups,d,id)
   face_to_nodes = face_nodes(mesh,d)
   nnodes = num_nodes(mesh)
   _barrier(nnodes,face_to_nodes,faces_in_group)
 end
 
-function group_nodes_without_boundary(mesh,id)
+function group_nodes_without_boundary(mesh,d,id)
   error("Not implemented.")
   # 1. Compute nodes with boundary
   # 2. Identify d-1 faces on the boundary of the group

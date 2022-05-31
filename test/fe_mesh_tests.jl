@@ -24,11 +24,9 @@ ref_faces(mesh,2)
 groups = physical_groups(mesh)
 add_group!(groups,2,"foo")
 add_group!(groups,0,"bar")
-group_faces(groups,"foo")
-@test group_id(groups,"foo") == 1
-@test group_name(groups,1) == "foo"
-@test group_names(groups) == ["foo","bar"]
-@test group_ids(groups) == [1,2]
+group_faces(groups,2,"foo")
+@test group_id(groups,2,"foo") == 1
+@test group_name(groups,2,1) == "foo"
 @test group_names(groups,1) == String[]
 @test group_names(groups,0) == ["bar"]
 @test group_names(groups,2) == ["foo"]
