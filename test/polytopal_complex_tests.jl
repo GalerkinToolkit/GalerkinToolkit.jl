@@ -9,6 +9,9 @@ mesh = fe_mesh(grid)
 poly = polytopal_complex(mesh)
 @test polytopal_complex(mesh) === poly
 
+grid = CartesianGrid(2,2)
+poly = polytopal_complex(grid)
+
 face_incidence(poly,0,0)
 face_incidence(poly,0,1)
 face_incidence(poly,0,2)

@@ -366,7 +366,8 @@ function _periodic_nodes_cartesian_grid(dim_ncells,is_periodic)
   periodic_indep, periodic_dep
 end
 
-
-
+function polytopal_complex(mesh::Meshes.Mesh)
+  polytopal_complex(fe_mesh(mesh))
+end
 
 
