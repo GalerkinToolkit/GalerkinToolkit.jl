@@ -47,5 +47,9 @@ grid = CartesianGrid(4,4,4)
 vtk_grid(fn,vtk_args(grid,3)...) do vtk
 end
 
+file = msh_file(@__DIR__,"gmsh","cube.msh")
+mesh = fe_mesh(file)
+groups = physical_groups(mesh)
+vtk_grid(fn,vtk_args(mesh,3)...) do vtk end
 
 end # module
