@@ -47,6 +47,7 @@ export classify_nodes
 export VOID
 export SimpleFEMesh
 export fe_mesh
+export mesh_face_vertices
 include("fe_mesh.jl")
 
 export polytopal_complex

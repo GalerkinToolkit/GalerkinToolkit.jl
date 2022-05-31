@@ -1,4 +1,33 @@
 
+function default_polytope_boundary(p)
+  x = node_coordinates(p)
+  T = eltype(x)
+  D = domain_dim(p)-1
+  mesh = SimpleFEMesh{T}(VOID,D)
+  node_coordinates!(mesh,x)
+  for d in 0:D
+    face_nodes!(mesh,d,face_nodes(p,d))
+    face_ref_id!(mesh,d,face_ref_id(p,d))
+    ref_faces!(mesh,d,ref_faces(p,d))
+  end
+  polytopal_complex(mesh)
+end
+
+polytope_boundary(p) = default_polytope_boundary(p)
+
+function polytope_face_incedence(a,d1,d2)
+  d = domain_dim(a)
+  if d==d1
+    nd2faces = num_faces(a,d2)
+    JaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
+  elseif d==d2
+    nd1faces = num_faces(a,d1)
+    JaggedArray([[ Int32(1)] for d1face in 1:nd1faces])
+  else
+    poly = polytope_boundary(a)
+    face_incidence(poly,d1,d2)
+  end
+end
 
 function vertex_node end
 function node_vertex end
@@ -246,7 +275,7 @@ function _ref_faces!(a,m)
   d = m+1
   nmfaces = num_faces(a,m)
   drefid_refdface = ref_faces(a,d)
-  drefid_lmface_refmface = map(i->ref_faces(i,m),drefid_refdface)
+  drefid_lmface_refmface = map(i->ref_faces(i,m)[face_ref_id(i,m)],drefid_refdface)
   dface_to_lmface_to_mface = face_incidence(a,d,m)
   dface_to_drefid = face_ref_id(a,d)
   mface_to_u, u_to_refmface = _ref_faces(
@@ -271,8 +300,8 @@ function _ref_faces(
   i_to_refmface = Any[]
   for (drefid,lmface_refmface) in enumerate(drefid_lmface_refmface)
     for (lmface,refmface) in enumerate(lmface_refmface)
-      push!(i_to_drefid,drefif)
-      push!(i_to_lmface,drefif)
+      push!(i_to_drefid,drefid)
+      push!(i_to_lmface,lmface)
       push!(i_to_refmface,refmface)
     end
   end
@@ -324,6 +353,8 @@ function face_incidence(a::GenericPolyComplex,m,n)
       _face_vertices!(a,m)
     elseif m==n
       a.buffer[:face_incidence][m+1,n+1] = _face_interior(num_faces(a,n))
+    elseif n+1==m
+      _face_boundary!(a,mesh_face_vertices(a,n),m,n)
     elseif m>n
       _face_boundary!(a,face_vertices(a,n),m,n)
     else

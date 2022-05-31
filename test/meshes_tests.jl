@@ -42,5 +42,4 @@ node_to_i = classify_nodes(mesh,i_to_groupid)
 @test i_to_groupid[node_to_i] == [1,5,5,5,9,9,9,9,9,9,9,9,9,9,9,3]
 
 
-
 end # module

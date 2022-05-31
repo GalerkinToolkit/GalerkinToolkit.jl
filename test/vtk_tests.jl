@@ -43,4 +43,9 @@ vtk_grid(fn,vtk_args(poly,2)...) do vtk
   physical_groups!(vtk,poly,2)
 end
 
+grid = CartesianGrid(4,4,4)
+vtk_grid(fn,vtk_args(grid,3)...) do vtk
+end
+
+
 end # module

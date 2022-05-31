@@ -91,6 +91,8 @@ function node_coordinates(a::Meshes.Mesh)
   collect(Meshes.coordinates.(Meshes.vertices(a)))
 end
 
+const _MESHES_BUFFER = Dict{Symbol,Any}()
+
 # Point
 domain_dim(a::Meshes.Point) = 0
 domain_dim(a::Type{<:Meshes.Point}) = 0
@@ -226,6 +228,88 @@ function vtk_mesh_cell(a::Meshes.Triangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
 end
 vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
+
+# Tetrahedron
+domain_dim(a::Meshes.Tetrahedron) = 3
+domain_dim(a::Type{<:Meshes.Tetrahedron}) = 3
+ambient_dim(a::Meshes.Tetrahedron) = Meshes.embeddim(a)
+is_simplex(a::Meshes.Tetrahedron) = true
+node_coordinates(a::Meshes.Tetrahedron) = collect(Meshes.coordinates.(Meshes.vertices(a)))
+function face_ref_id(a::Meshes.Tetrahedron,d)
+  d==0 && return fill(Int8(1),4)
+  d==1 && return fill(Int8(1),6)
+  d==2 && return fill(Int8(1),4)
+  d==3 && return fill(Int8(1),1)
+  throw(DomainError(d))
+end
+function ref_faces(::Type{<:Meshes.Tetrahedron},d)
+  d==0 && return [Meshes.Point(SVector{0,Float64}())]
+  d==1 && return [Meshes.Segment(Meshes.Point(0),Meshes.Point(1))]
+  d==2 && return [Meshes.Triangle(Meshes.Point.([(0,0),(1,0),(0,1)]))]
+  d==3 && return [Meshes.Tetrahedron(Meshes.Point.([(0,0,0),(1,0,0),(0,1,0),(0,0,1)]))]
+  throw(DomainError(d))
+end
+ref_faces(a::Meshes.Tetrahedron,d) = ref_faces(typeof(a),d)
+function face_nodes(a::Meshes.Tetrahedron,d)
+  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  d==1 && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,1],[1,4],[2,4],[3,4]])
+  d==2 && return JaggedArray(Vector{Int32}[[1,3,2],[1,2,4],[2,3,4],[3,1,4]])
+  d==3 && return JaggedArray(Vector{Int32}[[1,2,3,4]])
+  throw(DomainError(d))
+end
+_MESHES_BUFFER[:Tetrahedron] = Dict{Symbol,Any}()
+function polytope_boundary(a::Meshes.Tetrahedron)
+  if !haskey(_MESHES_BUFFER[:Tetrahedron],:polytope_boundary)
+    _MESHES_BUFFER[:Tetrahedron][:polytope_boundary] = default_polytope_boundary(a)
+  end
+  _MESHES_BUFFER[:Tetrahedron][:polytope_boundary]
+end
+face_incidence(a::Meshes.Tetrahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+function vtk_mesh_cell(a::Meshes.Tetrahedron)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TETRA,nodes)
+end
+vtk_cell_type(a::Meshes.Tetrahedron) = WriteVTK.VTKCellTypes.VTK_TERA
+
+# Hexahedron
+domain_dim(a::Meshes.Hexahedron) = 3
+domain_dim(a::Type{<:Meshes.Hexahedron}) = 3
+ambient_dim(a::Meshes.Hexahedron) = Meshes.embeddim(a)
+is_hypercube(a::Meshes.Hexahedron) = true
+node_coordinates(a::Meshes.Hexahedron) = collect(Meshes.coordinates.(Meshes.vertices(a)))
+function face_ref_id(a::Meshes.Hexahedron,d)
+  d==0 && return fill(Int8(1),8)
+  d==1 && return fill(Int8(1),12)
+  d==2 && return fill(Int8(1),6)
+  d==3 && return fill(Int8(1),1)
+  throw(DomainError(d))
+end
+function ref_faces(::Type{<:Meshes.Hexahedron},d)
+  d==0 && return [Meshes.Point(SVector{0,Float64}())]
+  d==1 && return [Meshes.Segment(Meshes.Point(0),Meshes.Point(1))]
+  d==2 && return [Meshes.Quadrangle(Meshes.Point.([(0,0),(1,0),(1,1),(0,1)]))]
+  d==3 && return [Meshes.Hexahedron(Meshes.Point.([(0,0,0),(1,0,0),(1,1,0),(0,1,0),(0,0,1),(1,0,1),(1,1,1),(0,1,1)]))]
+  throw(DomainError(d))
+end
+ref_faces(a::Meshes.Hexahedron,d) = ref_faces(typeof(a),d)
+function face_nodes(a::Meshes.Hexahedron,d)
+  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4],[5],[6],[7],[8]])
+  d==1 && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1],[5,6],[6,7],[7,8],[8,5],[1,5],[2,6],[3,7],[4,8]])
+  d==2 && return JaggedArray(Vector{Int32}[[1,4,3,2],[1,2,6,5],[2,3,7,6],[3,4,8,7],[4,1,5,8],[5,6,7,8]])
+  d==3 && return JaggedArray(Vector{Int32}[[1,2,3,4,5,6,7,8]])
+  throw(DomainError(d))
+end
+_MESHES_BUFFER[:Hexahedron] = Dict{Symbol,Any}()
+function polytope_boundary(a::Meshes.Hexahedron)
+  if !haskey(_MESHES_BUFFER[:Hexahedron],:polytope_boundary)
+    _MESHES_BUFFER[:Hexahedron][:polytope_boundary] = default_polytope_boundary(a)
+  end
+  _MESHES_BUFFER[:Hexahedron][:polytope_boundary]
+end
+face_incidence(a::Meshes.Hexahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+function vtk_mesh_cell(a::Meshes.Hexahedron)
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes)
+end
+vtk_cell_type(a::Meshes.Hexahedron) = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
 
 function fe_mesh(
   mesh::Meshes.CartesianGrid;
