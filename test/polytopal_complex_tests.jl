@@ -21,6 +21,8 @@ face_incidence(poly,2,2)
 
 groups = physical_groups(poly)
 
+@test node_vertex(poly) == 1:num_nodes(poly)
+@test vertex_node(poly) == 1:num_nodes(poly)
 
 
 

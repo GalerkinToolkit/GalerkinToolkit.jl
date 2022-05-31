@@ -47,16 +47,14 @@ end
 function _setup_vertices!(poly)
   mesh = poly.mesh
   D = domain_dim(mesh)
-  dep,indep = periodic_nodes(mesh)
-  node_to_periodic_node_id = fill(Int32(INVALID),num_nodes(mesh))
-  node_to_periodic_node_id[indep] .= dep
+  nnodes = num_nodes(mesh)
   d_refid_to_refface = [ref_faces(mesh,d) for d in 0:D]
   d_refid_to_lvertex_to_lnodes = [ref_face_nodes(mesh,d,0) for d in 0:D]
   d_dface_to_refid = [ face_ref_id(mesh,d) for d in 0:D]
   d_dface_to_nodes = [ face_nodes(mesh,d) for d in 0:D]
   node_to_vertex, vertex_to_node = _setup_vertices(
     D,
-    node_to_periodic_node_id,
+    nnodes,
     d_refid_to_refface,
     d_refid_to_lvertex_to_lnodes,
     d_dface_to_refid,
@@ -67,15 +65,13 @@ end
 
 function _setup_vertices(
   D,
-  node_to_periodic_node_id,
+  nnodes,
   d_refid_to_refface,
   d_refid_to_lvertex_to_lnodes,
   d_dface_to_refid,
   d_dface_to_nodes)
 
-  nnodes = length(node_to_periodic_node_id)
-  node_to_vertex = fill(Int32(INVALID),nnodes)
-  vertex = Int32(0)
+  node_to_touched = fill(false,nnodes)
   for d in D:-1:0
     refid_to_refface = d_refid_to_refface[d+1]
     refid_to_lvertex_to_lnodes = d_refid_to_lvertex_to_lnodes[d+1]
@@ -88,25 +84,14 @@ function _setup_vertices(
       for lnodes in lvertex_to_lnodes
         lnode = first(lnodes)
         node = nodes[lnode]
-        periodic_node_id = node_to_periodic_node_id[node]
-        if periodic_node_id == INVALID && node_to_vertex[node] == INVALID
-          vertex += Int32(1)
-          node_to_vertex[node] = vertex
-        end
+        node_to_touched[node] = true
       end
     end
   end
-  vertex_to_node = zeros(Int32,vertex)
-  for node in 1:length(node_to_vertex)
-    vertex = node_to_vertex[node]
-    if vertex != Int32(INVALID)
-      vertex_to_node[vertex] = node
-    end
-    if vertex == Int32(INVALID)
-      periodic_node_id = node_to_periodic_node_id[node]
-      node_to_vertex[node] = node_to_vertex[periodic_node_id]
-    end
-  end
+  vertex_to_node = collect(Int32,findall(node_to_touched))
+  nvertices = length(vertex_to_node)
+  node_to_vertex = fill(Int32(INVALID),nnodes)
+  node_to_vertex[vertex_to_node] .= Int32(1):Int32(nvertices)
   node_to_vertex, vertex_to_node
 end
 
