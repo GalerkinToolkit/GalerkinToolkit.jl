@@ -31,7 +31,7 @@ function add_group! end
 function group_faces! end
 
 function ref_face_incidence(mesh,rank,m,n)
-  refid_to_refface = ref_faces(mesh,ranl)
+  refid_to_refface = ref_faces(mesh,rank)
   map(rf->face_incidence(rf,m,n),refid_to_refface)
 end
 function ref_face_nodes(mesh,rank,m)
@@ -255,6 +255,14 @@ function vertex_node(mesh::SimpleFEMesh)
     _fe_mesh_setup_vertices!(mesh)
   end
   mesh.buffer[:vertex_node]
+end
+
+function node_vertex!(mesh::SimpleFEMesh,v)
+  mesh.buffer[:node_vertex] = v
+end
+
+function vertex_node!(mesh::SimpleFEMesh,v)
+  mesh.buffer[:vertex_node] = v
 end
 
 function _fe_mesh_setup_vertices!(mesh)

@@ -1,10 +1,10 @@
 
 function polytopal_complex end
 
-polytopal_complex(mesh) = SimplePolyComplex(mesh)
+polytopal_complex(mesh) = GenericPolyComplex(mesh)
 function polytopal_complex(m::SimpleFEMesh)
   if !haskey(m.buffer,:polytopal_complex)
-    polycomplex = SimplePolyComplex(m)
+    polycomplex = GenericPolyComplex(m)
     m.buffer[:polytopal_complex] = polycomplex
   end
   m.buffer[:polytopal_complex]
@@ -35,7 +35,7 @@ face_vertices(m::GenericPolyComplex,rank) = face_incidence(m,rank,0)
 
 function physical_groups(m::GenericPolyComplex)
   if !haskey(m.buffer,:physical_groups)
-    m.buffer[:physical_groups] = copy(physical_groups(m.mesh))
+    m.buffer[:physical_groups] = deepcopy(physical_groups(m.mesh))
   end
   m.buffer[:physical_groups]
 end
@@ -51,8 +51,11 @@ function num_faces(m::GenericPolyComplex,d)
   if m.buffer[:num_faces][d+1] == INVALID
     if d == domain_dim(m)
       m.buffer[:num_faces][d+1] = num_faces(m.mesh,d)
+    elseif d == 0
+      m.buffer[:num_faces][d+1] = length(vertex_node(m))
     else
       face_incidence(m,d+1,d)
+      @boundscheck @assert m.buffer[:num_faces][d+1] != INVALID
     end
   end
   m.buffer[:num_faces][d+1]
@@ -154,17 +157,18 @@ function face_incidence(a::GenericPolyComplex,m,n)
     J = typeof(JaggedArray(Vector{Int32}[]))
     a.buffer[:face_incidence] = Matrix{J}(undef,d+1,d+1)
   end
+
   if !isassigned(a.buffer[:face_incidence],m+1,n+1)
     if m==d && n==0
       a.buffer[:face_incidence][m+1,n+1] = face_vertices(a.mesh,d)
-    elseif m==d && n=d
+    elseif m==d && n==d
       a.buffer[:face_incidence][m+1,n+1] = _face_interior(num_faces(a.mesh,d))
     elseif n==d && m==0
-       cell_to_vertices = face_vertices(a.mesh,0,d)
-       nvertices = length(vertex_node(a.parent))
+       cell_to_vertices = face_vertices(a.mesh,d)
+       nvertices = length(vertex_node(a.mesh))
        a.buffer[:face_incidence][m+1,n+1] = _face_coboundary(cell_to_vertices,nvertices)
     elseif n==0 && m==0
-       nvertices = length(vertex_node(a.parent))
+       nvertices = length(vertex_node(a.mesh))
        a.buffer[:face_incidence][m+1,n+1] = _face_interior(nvertices)
     elseif m==d && n==(d-1)
       _face_boundary!(a,a.mesh,m,n)
@@ -175,8 +179,8 @@ function face_incidence(a::GenericPolyComplex,m,n)
     elseif m>n
       _face_boundary!(a,a,m,n)
     else
-       nface_to_mfaces = face_vertices(a,n,m)
-       nmfaces = length(num_faces(a,m))
+       nface_to_mfaces = face_incidence(a,n,m)
+       nmfaces = num_faces(a,m)
        a.buffer[:face_incidence][m+1,n+1] = _face_coboundary(nface_to_mfaces,nmfaces)
     end
   end
@@ -315,7 +319,7 @@ function _face_boundary(
         dfaces = vertex_to_dfaces[vertex]
         for dface1 in dfaces
           vertices1 = dface_to_vertices[dface1]
-          if _fe_mesh_contain_same_ids(vertices,vertices1)
+          if _contain_same_ids(vertices,vertices1)
             dface2 = dface1
             break
           end
@@ -338,7 +342,7 @@ function _face_boundary(
         else
           copyto!(Dfaces2,Dfaces)
           nDfaces2 = length(Dfaces)
-          _fe_mesh_intersect_ids!(Dfaces1,nDfaces1,Dfaces2,nDfaces2)
+          _intersect_ids!(Dfaces1,nDfaces1,Dfaces2,nDfaces2)
         end
       end
       # Find their correspondent local d-face and set the d-face
@@ -350,7 +354,7 @@ function _face_boundary(
           ldface2 = Int32(INVALID)
           for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
             vertices1 = view(lvertex1_to_vertex1,lvertices1)
-            if _fe_mesh_contain_same_ids(vertices,vertices1)
+            if _contain_same_ids(vertices,vertices1)
               ldface2 = ldface1
               break
             end
@@ -408,15 +412,15 @@ function _contain_same_ids(a,b)
   return true
 end
 
-function _face_vertices!(a,d)
+function _face_vertices!(femesh,d)
   D = d+1
-  dface_to_vertices = face_vertices(a.mesh,d)
-  Dface_to_dfaces = face_incidence(a,D,d)
-  Dface_to_vertices = face_incidence(a,D,0)
+  dface_to_vertices = face_vertices(femesh.mesh,d)
+  Dface_to_dfaces = face_incidence(femesh,D,d)
+  Dface_to_vertices = face_incidence(femesh,D,0)
   Dface_to_refid = face_ref_id(femesh,D)
   Drefid_to_ldface_to_lvertices = ref_face_incidence(femesh,D,d,0)
   nnewdfaces = num_faces(femesh,d)
-  a.buffer[:face_incidence][d+1,0+1] = _face_vertices(
+  femesh.buffer[:face_incidence][d+1,0+1] = _face_vertices(
     nnewdfaces,
     dface_to_vertices,
     Dface_to_dfaces,
@@ -470,7 +474,7 @@ function _face_vertices(
   prefix!(ptrs)
   ndata = ptrs[end]-1
   data = zeros(Int32,ndata)
-  fill!(false,dface_to_touched)
+  fill!(dface_to_touched,false)
   for (dface,vertices) in enumerate(dface_to_vertices)
     p = ptrs[dface] - Int32(1)
     for (lvertex,vertex) in enumerate(vertices)
