@@ -69,22 +69,26 @@ const VOID = EmptyInitializer()
 # Allow same ids in different dims? (not possible in gmsh)
 # TO-think about the union of groups in different dims (not possible in gmsh)
 # Allow same name for groups in different dims? (possible in gmsh!)
-struct GroupCollection
+struct GroupCollection{Ti}
   domain_dim::Int
   group_dim::Dict{Int,Int}
   group_names::Dict{Int,String}
   group_ids::Dict{String,Int}
-  group_faces::Dict{Int,Vector{Int32}}
+  group_faces::Dict{Int,Vector{Ti}}
 end
 physical_groups(a::GroupCollection) = a
 
 function GroupCollection(::EmptyInitializer,dim::Integer)
+  GroupCollection{Int32}(VOID,dim)
+end
+
+function GroupCollection{Ti}(::EmptyInitializer,dim::Integer) where Ti
   GroupCollection(
     dim,
     Dict{Int,Int}(),
     Dict{Int,String}(),
     Dict{String,Int}(),
-    Dict{Int,Vector{Int32}}())
+    Dict{Int,Vector{Ti}}())
 end
 
 function add_group!(g::GroupCollection,dim,name,id)
@@ -198,28 +202,32 @@ end
 
 function fe_mesh end
 
-mutable struct SimpleFEMesh{T}
+mutable struct SimpleFEMesh{T,Ti,Tf}
   domain_dim::Int
   node_coordinates::Vector{T}
-  face_nodes::Vector{JArray{Int32}}
+  face_nodes::Vector{JArray{Ti}}
   face_ref_id::Vector{Vector{Int8}}
   ref_faces::Vector{Vector{Any}}
-  periodic_nodes::Tuple{Vector{Int32},Vector{Int32},Vector{Float64}}
-  hanging_nodes::Tuple{Vector{Int32},JArray{Int32},JArray{Float64}}
+  periodic_nodes::Tuple{Vector{Ti},Vector{Ti},Vector{Tf}}
+  hanging_nodes::Tuple{Vector{Ti},JArray{Ti},JArray{Tf}}
   physical_groups::GroupCollection
   buffer::Dict{Symbol,Any}
 end
 fe_mesh(a::SimpleFEMesh) = a
 
 function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
+  SimpleFEMesh{T,Int32,Float64}(VOID,rank)
+end
+
+function SimpleFEMesh{T,Ti,Tf}(::EmptyInitializer,rank) where {T,Ti,Tf}
   SimpleFEMesh(
     rank,
     zeros(T,0),
-    [ JaggedArray(Vector{Int32}[]) for i in 1:(rank+1)],
+    [ JaggedArray(Vector{Ti}[]) for i in 1:(rank+1)],
     [ Int8[] for i in 1:(rank+1)],
     [ Any[] for i in 1:(rank+1)],
-    (Int32[],Int32[],Float64[]),
-    (Int32[],JaggedArray(Vector{Int32}[]),JaggedArray(Vector{Float64}[])),
+    (Ti[],Ti[],Tf[]),
+    (Ti[],JaggedArray(Vector{Ti}[]),JaggedArray(Vector{Tf}[])),
     GroupCollection(VOID,rank),
     Dict{Symbol,Any}()
    )
