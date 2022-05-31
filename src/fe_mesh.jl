@@ -242,3 +242,10 @@ periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 hanging_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
 physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
 
+function polytopal_complex(m::SimpleFEMesh)
+  if !haskey(m.buffer,:polytopal_complex)
+    polycomplex = GenericPolyComplex(m)
+    m.buffer[:polytopal_complex] = polycomplex
+  end
+  m.buffer[:polytopal_complex]
+end

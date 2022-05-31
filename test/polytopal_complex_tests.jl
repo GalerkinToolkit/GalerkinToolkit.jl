@@ -19,6 +19,8 @@ face_incidence(poly,2,0)
 face_incidence(poly,2,1)
 face_incidence(poly,2,2)
 
+groups = physical_groups(poly)
+
 
 
 

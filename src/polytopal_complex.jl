@@ -7,13 +7,6 @@ function mesh_face_vertices end
 function polytopal_complex end
 
 polytopal_complex(mesh) = GenericPolyComplex(mesh)
-function polytopal_complex(m::SimpleFEMesh)
-  if !haskey(m.buffer,:polytopal_complex)
-    polycomplex = GenericPolyComplex(m)
-    m.buffer[:polytopal_complex] = polycomplex
-  end
-  m.buffer[:polytopal_complex]
-end
 
 struct GenericPolyComplex
   mesh::Any
@@ -173,10 +166,39 @@ function _setup_mesh_face_vertices(
   dface_to_vertices
 end
 
+function mesh_faces(mesh::GenericPolyComplex,d)
+  if !haskey(mesh.buffer,:mesh_faces)
+    mesh.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,domain_dim(mesh)+1)
+  end
+  if !isassigned(mesh.buffer[:mesh_faces],d+1)
+    _setup_mesh_faces!(mesh,d)
+  end
+  mesh.buffer[:mesh_faces][d+1]
+end
+
+function  _setup_mesh_faces!(poly,d)
+  mesh = poly.mesh
+  if d != 0
+    poly.buffer[:mesh_faces][d+1] = collect(Int32,1:num_faces(mesh,d))
+  else
+    poly.buffer[:mesh_faces][d+1] = map(first,mesh_face_vertices(poly,0))
+  end
+end
 
 function physical_groups(m::GenericPolyComplex)
   if !haskey(m.buffer,:physical_groups)
-    m.buffer[:physical_groups] = deepcopy(physical_groups(m.mesh))
+    mesh_groups = physical_groups(m.mesh)
+    groups = GroupCollection(VOID,domain_dim(m))
+    for id in group_ids(mesh_groups)
+      d = group_dim(mesh_groups,id)
+      name = group_name(mesh_groups,id)
+      add_group!(groups,d,name,id)
+      mesh_face_to_face = mesh_faces(m,d)
+      mesh_face_in_group = group_faces(mesh_groups,id)
+      face_in_group = mesh_face_to_face[mesh_face_in_group]
+      group_faces!(groups,face_in_group,id)
+    end
+    m.buffer[:physical_groups] = groups
   end
   m.buffer[:physical_groups]
 end
