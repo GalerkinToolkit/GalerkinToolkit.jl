@@ -44,9 +44,9 @@ end
 default_is_simplex(geo) = false
 default_is_hypercube(geo) = false
 default_is_hanging(geo) =  length(first(hanging_nodes(geo)))>0
-default_hanging_nodes(geo) = (Int32[],JaggedArray(Vector{Int32}[]))
+default_hanging_nodes(geo) = (Int32[],JaggedArray(Vector{Int32}[]),JaggedArray(Vector{Float64}[]))
 default_is_periodic(geo) = length(first(periodic_nodes(geo)))>0
-default_periodic_nodes(geo) = (Int32[],Int32[])
+default_periodic_nodes(geo) = (Int32[],Int32[],Float64[])
 default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
 default_num_nodes(geo) = length(node_coordinates(geo))
 default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
@@ -204,8 +204,8 @@ mutable struct SimpleFEMesh{T}
   face_nodes::Vector{JArray{Int32}}
   face_ref_id::Vector{Vector{Int8}}
   ref_faces::Vector{Vector{Any}}
-  periodic_nodes::Tuple{Vector{Int32},Vector{Int32}}
-  hanging_nodes::Tuple{Vector{Int32},JArray{Int32}}
+  periodic_nodes::Tuple{Vector{Int32},Vector{Int32},Vector{Float64}}
+  hanging_nodes::Tuple{Vector{Int32},JArray{Int32},JArray{Float64}}
   physical_groups::GroupCollection
   buffer::Dict{Symbol,Any}
 end
@@ -218,8 +218,8 @@ function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
     [ JaggedArray(Vector{Int32}[]) for i in 1:(rank+1)],
     [ Int8[] for i in 1:(rank+1)],
     [ Any[] for i in 1:(rank+1)],
-    (Int32[],Int32[]),
-    (Int32[],JaggedArray(Vector{Int32}[])),
+    (Int32[],Int32[],Float64[]),
+    (Int32[],JaggedArray(Vector{Int32}[]),JaggedArray(Vector{Float64}[])),
     GroupCollection(VOID,rank),
     Dict{Symbol,Any}()
    )

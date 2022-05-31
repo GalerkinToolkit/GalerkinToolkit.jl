@@ -163,7 +163,7 @@ function fe_mesh(f::MshFile)
     end
     periodic_dep = collect(Int32,findall(i->i!=INVALID,node_to_main_node))
     periodic_indep = node_to_main_node[periodic_dep]
-    periodic_nodes!(mesh,(periodic_dep,periodic_indep))
+    periodic_nodes!(mesh,(periodic_dep,periodic_indep,ones(length(periodic_indep))))
 
     # Setup physical groups
     groups = physical_groups(mesh)

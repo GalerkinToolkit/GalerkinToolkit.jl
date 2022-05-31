@@ -222,7 +222,6 @@ end
 face_nodes(a::Meshes.Triangle,d) = face_incidence(a,d,0)
 #face_own_nodes(a::Meshes.Triangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Triangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
-vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
 function vtk_mesh_cell(a::Meshes.Triangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
 end
@@ -397,7 +396,7 @@ function _periodic_nodes_cartesian_grid(dim_ncells,is_periodic)
       end
     end
   end
-  periodic_indep, periodic_dep
+  periodic_indep, periodic_dep, ones(length(periodic_dep))
 end
 
 function polytopal_complex(mesh::Meshes.Mesh)
