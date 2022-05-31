@@ -3,6 +3,8 @@ module PolytopalComplexTests
 using GalerkinToolkit
 using Meshes
 using Test
+using WriteVTK
+using MappedArrays
 
 grid = CartesianGrid(2,2)
 mesh = fe_mesh(grid)
@@ -26,8 +28,6 @@ groups = physical_groups(poly)
 
 @test node_vertex(poly) == 1:num_nodes(poly)
 @test vertex_node(poly) == 1:num_nodes(poly)
-
-
 
 
 

@@ -342,7 +342,11 @@ function face_nodes(a::GenericPolyComplex,m)
     a.buffer[:face_nodes] = Vector{J}(undef,d+1)
   end
   if !isassigned(a.buffer[:face_nodes],m+1)
-    _face_nodes!(a,m)
+    if m == d
+      a.buffer[:face_nodes][m+1] = face_nodes(a.mesh,d)
+    else
+      _face_nodes!(a,m)
+    end
   end
   a.buffer[:face_nodes][m+1]
 end

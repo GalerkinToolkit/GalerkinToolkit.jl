@@ -13,8 +13,9 @@ function default_fe_mesh(
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
     face_nodes!(fe_mesh,d,face_nodes(mesh,d))
-    face_ref_id!(fe_mesh,d,face_ref_id(mesh,d))
-    ref_faces!(fe_mesh,d,ref_faces(mesh,d))
+    face_to_refid, refid_to_refface = _meshes_setup_ref_faces(mesh,d)
+    face_ref_id!(fe_mesh,d,face_to_refid)
+    ref_faces!(fe_mesh,d,refid_to_refface)
   end
   if physical_groups !== nothing
     physical_groups!(fe_mesh,physical_groups)
@@ -28,6 +29,35 @@ function default_fe_mesh(
   fe_mesh
 end
 
+function _meshes_setup_ref_faces(mesh,d)
+  if isconcretetype(eltype(mesh))
+    face_ref_id(mesh,d), ref_faces(mesh,d)
+  else
+    if domain_dim(mesh) == d
+      # This is inefficient
+      i_to_rf = []
+      ct_to_i = Dict{WriteVTK.VTKCellTypes.VTKCellType,Int}()
+      iface_to_i = zeros(Int8,length(mesh))
+      i = 0
+      for (iface,face) in enumerate(mesh)
+        @boundscheck @assert domain_dim(face)==d "This case is not implemented"
+        rf = first(ref_faces(face,domain_dim(face)))
+        ct = vtk_cell_type(rf)
+        if !haskey(ct_to_i,ct)
+          i += 1
+          ct_to_i[ct] = i
+          push!(i_to_rf,rf)
+        end
+        iface_to_i[iface] = ct_to_i[ct]
+      end
+      iface_to_i, i_to_rf
+    else
+      fill(Int8(1),0), []
+    end
+  end
+end
+
+domain_dim(::Type{<:Meshes.Ngon}) = 2
 domain_dim(a::Meshes.Mesh) = domain_dim(eltype(a))
 ambient_dim(a::Meshes.Mesh) = Meshes.embeddim(a)
 function face_ref_id(a::Meshes.Mesh,d)
@@ -87,6 +117,7 @@ node_coordinates(a::Meshes.Point) = [Meshes.coordinates(a)]
 function vtk_mesh_cell(a::Meshes.Point)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_VERTEX,nodes)
 end
+vtk_cell_type(a::Meshes.Point) = WriteVTK.VTKCellTypes.VTK_VERTEX
 
 # Segment
 domain_dim(a::Meshes.Segment) = 1
@@ -118,6 +149,7 @@ node_coordinates(a::Meshes.Segment) = collect(Meshes.coordinates.(Meshes.vertice
 function vtk_mesh_cell(a::Meshes.Segment)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes)
 end
+vtk_cell_type(a::Meshes.Segment) = WriteVTK.VTKCellTypes.VTK_LINE
 
 # Quadrangle
 domain_dim(a::Meshes.Quadrangle) = 2
@@ -155,6 +187,7 @@ node_coordinates(a::Meshes.Quadrangle) = collect(Meshes.coordinates.(Meshes.vert
 function vtk_mesh_cell(a::Meshes.Quadrangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes)
 end
+vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
 
 # Triangle
 domain_dim(a::Meshes.Triangle) = 2
@@ -193,6 +226,7 @@ vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
 function vtk_mesh_cell(a::Meshes.Triangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
 end
+vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
 
 function fe_mesh(
   mesh::Meshes.CartesianGrid;

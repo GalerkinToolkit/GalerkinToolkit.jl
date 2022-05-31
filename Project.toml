@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
+MappedArrays = "dbb5928d-eab1-5f90-85c2-b9b0edb7c900"
 Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
