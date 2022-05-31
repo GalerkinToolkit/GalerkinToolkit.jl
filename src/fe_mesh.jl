@@ -93,7 +93,7 @@ end
 
 function add_group!(g::GroupCollection,dim,name,id)
   haskey(g.group_names,id) && error("id $id already present in GroupCollection")
-  haskey(g.group_ids,name) && error("Name $name alreade present in GroupCollection")
+  haskey(g.group_ids,name) && error("Name $name already present in GroupCollection")
   g.group_dim[id] = dim
   g.group_names[id] = name
   g.group_ids[name] = id
