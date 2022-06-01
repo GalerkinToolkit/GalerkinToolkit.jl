@@ -29,6 +29,7 @@ end
 msh_file(args...;kwargs...) = MshFile(joinpath(args...),kwargs)
 
 function fe_mesh(f::MshFile)
+  @assert ispath(f.path) "File not found: $(f.path)"
   with_gmsh(;f.kwargs...) do
     gmsh.open(f.path)
     fe_mesh_from_gmsh()
@@ -222,7 +223,108 @@ function ref_face_from_gmsh_eltype(eltype)
     Meshes.Hexahedron(Meshes.Point.([(0,0,0),(1,0,0),(1,1,0),(0,1,0),(0,0,1),(1,0,1),(1,1,1),(0,1,1)]))
   elseif eltype == 15
     Meshes.Point(SVector{0,Float64}())
+  elseif eltype == 8
+    linear = ref_face_from_gmsh_eltype(1)
+    order = 2
+    GmshHighOrderSimplex(linear,order)
+  elseif eltype == 9
+    linear = ref_face_from_gmsh_eltype(2)
+    order = 2
+    GmshHighOrderSimplex(linear,order)
   else
-    error("Unsupported element type. elemType: $etype")
+    #@show gmsh.model.mesh.getElementProperties(eltype)
+    en, = gmsh.model.mesh.getElementProperties(eltype)
+    error("Unsupported element type. elemType: $eltype ($en)")
   end
 end
+
+struct GmshHighOrderSimplex{A}
+  linear_polytope::A
+  order::Int
+end
+
+#function Base.isequal(a::GmshHighOrderSimplex,b::GmshHighOrderSimplex)
+#  isequal(linear_polytope(a),linear_polytope(b)) && a.order == b.order
+#end
+
+linear_polytope(a::GmshHighOrderSimplex) = a.linear_polytope
+domain_dim(a::GmshHighOrderSimplex) = domain_dim(linear_polytope(a))
+is_simplex(a::GmshHighOrderSimplex) = true
+
+function node_coordinates(a::GmshHighOrderSimplex)
+  linear = linear_polytope(a)
+  x = node_coordinates(linear)
+  D = domain_dim(a)
+  if D == 1
+    if a.order == 2
+      [1.0*x[1],1.0*x[2],0.5*(x[1]+x[2])]
+    else
+      error("Order not yet implemented")
+    end
+  elseif D == 2
+    if a.order == 2
+      [1.0*x[1],1.0*x[2],1.0*x[3],0.5*(x[1]+x[2]),0.5*(x[2]+x[3]),0.5*(x[3]+x[1])]
+    else
+      error("Order not yet implemented")
+    end
+  else
+    error("Dimension not yet implemented")
+  end
+end
+
+face_ref_id(a::GmshHighOrderSimplex,d) = face_ref_id(linear_polytope(a),d)
+face_incidence(a::GmshHighOrderSimplex,d1,d2) = face_incidence(linear_polytope(a),d1,d2)
+
+function ref_faces(a::GmshHighOrderSimplex,d)
+  order = a.order
+  map(ref_faces(linear_polytope(a),d)) do l
+    GmshHighOrderSimplex(l,order)
+  end
+end
+
+function face_nodes(a::GmshHighOrderSimplex,d)
+  D = domain_dim(a)
+  if D == 1
+    if a.order == 2
+      d==0 && return JaggedArray(Vector{Int32}[[1],[2]])
+      d==1 && return JaggedArray(Vector{Int32}[[1,2,3]])
+    else
+      error("Order not yet implemented")
+    end
+  elseif D == 2
+    if a.order == 2
+      d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3]])
+      d==1 && return JaggedArray(Vector{Int32}[[1,2,4],[2,3,5],[3,1,6]])
+      d==2 && return JaggedArray(Vector{Int32}[[1,2,3,4,5,6]])
+    else
+      error("Order not yet implemented")
+    end
+  else
+    error("Dimension not yet implemented")
+  end
+end
+
+function vtk_mesh_cell(a::GmshHighOrderSimplex)
+  nodes -> WriteVTK.MeshCell(vtk_cell_type(a),nodes)
+end
+
+function vtk_cell_type(a::GmshHighOrderSimplex)
+  D = domain_dim(a)
+  if D == 1
+    if a.order == 2
+      WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE
+    else
+      error("Order not yet implemented")
+    end
+  elseif D == 2
+    if a.order == 2
+      WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE
+    else
+      error("Order not yet implemented")
+    end
+  else
+    error("Dimension not yet implemented")
+  end
+end
+
+

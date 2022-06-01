@@ -59,4 +59,11 @@ vtk_grid(fn,vtk_args(mesh,d)...) do vtk
   physical_groups!(vtk,mesh,d)
 end
 
+file = msh_file(@__DIR__,"gmsh","higher_order_2D.msh")
+mesh = fe_mesh(file)
+d = 1
+vtk_grid(fn,vtk_args(mesh,d)...) do vtk
+  physical_groups!(vtk,mesh,d)
+end
+
 end # module

@@ -1,4 +1,10 @@
 
+
+function linear_polytope end
+
+default_linear_polytope(a) = a
+linear_polytope(a) = default_linear_polytope(a)
+
 function default_polytope_boundary(p)
   x = node_coordinates(p)
   T = eltype(x)
@@ -307,7 +313,7 @@ function _ref_faces(
       push!(i_to_refmface,refmface)
     end
   end
-  u_to_refmface = unique(i_to_refmface)
+  u_to_refmface = unique(Base.isequal,i_to_refmface)
   i_to_u = indexin(i_to_refmface,u_to_refmface)
   drefid_lmface_u = Vector{Int8}[]
   for (drefid,lmface_refmface) in enumerate(drefid_lmface_refmface)
