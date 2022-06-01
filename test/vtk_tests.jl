@@ -52,4 +52,11 @@ mesh = fe_mesh(file)
 groups = physical_groups(mesh)
 vtk_grid(fn,vtk_args(mesh,3)...) do vtk end
 
+file = msh_file(@__DIR__,"gmsh","demo.msh")
+mesh = fe_mesh(file)
+d = 1
+vtk_grid(fn,vtk_args(mesh,d)...) do vtk
+  physical_groups!(vtk,mesh,d)
+end
+
 end # module

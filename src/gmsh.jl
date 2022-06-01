@@ -35,6 +35,10 @@ function fe_mesh(f::MshFile)
   end
 end
 
+function polytopal_complex(f::MshFile)
+  polytopal_complex(fe_mesh(f))
+end
+
 function fe_mesh_from_gmsh()
   entities = gmsh.model.getEntities()
   nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
