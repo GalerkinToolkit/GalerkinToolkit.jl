@@ -4,6 +4,9 @@ using StaticArrays
 import Meshes
 using Gmsh: gmsh
 import WriteVTK
+import P4est
+import CBinding
+import MPI
 
 export prefix!
 export rewind!
@@ -61,6 +64,13 @@ include("gmsh.jl")
 
 export vtk_args
 include("vtk.jl")
+
+export p4est_amr
+export destroy!
+export refine!
+export coarsen!
+export balance!
+include("p4est.jl")
 
 
 end

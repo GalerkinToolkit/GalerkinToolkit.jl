@@ -222,7 +222,7 @@ face_nodes(m::SimpleFEMesh,rank) = m.face_nodes[rank+1]
 face_ref_id(m::SimpleFEMesh,rank) = m.face_ref_id[rank+1]
 ref_faces(m::SimpleFEMesh,rank) = m.ref_faces[rank+1]
 periodic_nodes(m::SimpleFEMesh) = m.periodic_nodes
-hanging_nodes(m::SimpleFEMesh) = m.periodic_nodes
+hanging_nodes(m::SimpleFEMesh) = m.hanging_nodes
 physical_groups(m::SimpleFEMesh) = m.physical_groups
 
 node_coordinates!(m::SimpleFEMesh,v) = (m.node_coordinates = v)
@@ -230,7 +230,7 @@ face_nodes!(m::SimpleFEMesh,rank,v) = (m.face_nodes[rank+1] = v)
 face_ref_id!(m::SimpleFEMesh,rank,v) = (m.face_ref_id[rank+1] = v)
 ref_faces!(m::SimpleFEMesh,rank,v) = (m.ref_faces[rank+1] = v)
 periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
-hanging_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
+hanging_nodes!(m::SimpleFEMesh,v) = (m.hanging_nodes = v)
 physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
 
 function polytopal_complex(m::SimpleFEMesh)

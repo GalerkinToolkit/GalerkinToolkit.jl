@@ -15,4 +15,6 @@ using Test
 
 @time @testset "vtk" begin include("vtk_tests.jl") end
 
+@time @testset "p4est" begin include("p4est_tests.jl") end
+
 end # module
