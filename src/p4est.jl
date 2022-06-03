@@ -82,100 +82,19 @@ function destroy!(a::P4estAMR)
   end
 end
 
-function _set_all_quadrants_data!(p4est_ptr)
-  p4est = unsafe_wrap(p4est_ptr)
-  trees_ptr = p4est.trees
-  trees = unsafe_wrap(trees_ptr)
-  ntrees = Int(trees.elem_count)
-  elem = 0
-  for itree in 1:ntrees
-    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
-    quadrants =  tree.quadrants
-    nquadrants = Int(quadrants.elem_count)
-    for iquadrant in 1:nquadrants
-      elem += 1
-      quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
-      elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-      unsafe_store!(elem_ptr,elem)
-    end
-  end
-end
-
-function _fine_to_coarse_after_refinement(p4est_ptr)
-  p4est = unsafe_wrap(p4est_ptr)
-  trees_ptr = p4est.trees
-  trees = unsafe_wrap(trees_ptr)
-  ntrees = Int(trees.elem_count)
-  elem = 0
-  for itree in 1:ntrees
-    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
-    quadrants =  tree.quadrants
-    nquadrants = Int(quadrants.elem_count)
-    elem += nquadrants
-  end
-  new_to_old = zeros(Int32,elem)
-  new = 0
-  old = 0
-  ichild = 0
-  for itree in 1:ntrees
-    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
-    quadrants =  tree.quadrants
-    nquadrants = Int(quadrants.elem_count)
-    for iquadrant in 1:nquadrants
-      new += 1
-      quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
-      elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-      elem = unsafe_load(elem_ptr)
-      if elem == INVALID
-        ichild +=1
-        if ichild == 1
-          old += 1
-        end
-      else
-        ichild = 0
-        old +=1
-      end
-      new_to_old[new] = old
-    end
-  end
-  new_to_old
-end
-
-function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
-  quadrant = unsafe_wrap(quadrant_ptr)
-  elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-  unsafe_store!(elem_ptr,INVALID)
-  Cvoid()
-end
-const init_fn_ptr = @cfunction(_init_fn,Cvoid,
-  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-
 function _refine_fn(p4est_ptr,which_tree,quadrant_ptr)
   p4est = unsafe_wrap(p4est_ptr)
   quadrant = unsafe_wrap(quadrant_ptr)
   flags_ptr = Base.unsafe_convert(Ptr{Bool},p4est.user_pointer)
   elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
   elem = unsafe_load(elem_ptr,1)
+  elem == INVALID && return Int32(1)
   flag = unsafe_load(flags_ptr,elem)
   i = flag ? 1 : 0
   Int32(i)
 end
 const refine_fn_ptr = @cfunction(_refine_fn,Cint,
-  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-
-function refine!(amr::P4estAMR,_flags)
-  flags = convert(Vector{Bool},_flags)
-  D = domain_dim(amr)
-  if D == 3
-    error("Not implemented yet")
-  end
-  p4est_ptr = amr.p4est_ptr
-  p4est = unsafe_wrap(p4est_ptr)
-  p4est.user_pointer = Base.unsafe_convert(Ptr{Nothing},flags)
-  _set_all_quadrants_data!(p4est_ptr)
-  P4est.p4est_refine(p4est_ptr,0,refine_fn_ptr,init_fn_ptr)
-  _fine_to_coarse_after_refinement(p4est_ptr)
-end
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
 
 function _coarsen_fn(p4est_ptr,which_tree,quadrants_ptr)
   p4est = unsafe_wrap(p4est_ptr)
@@ -186,15 +105,28 @@ function _coarsen_fn(p4est_ptr,which_tree,quadrants_ptr)
     quadrant = quadrants[i]
     elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
     elem = unsafe_load(elem_ptr,1)
-    flag = unsafe_load(flags_ptr,elem)
+    if elem == INVALID
+      flag = false
+    else
+      flag = unsafe_load(flags_ptr,elem)
+    end
     r = r && (!flag)
   end
   r ? Int32(1) : Int32(0)
 end
-const coarsen_fn_ptr = @cfunction(_coarsen_fn,Cint,
-    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{Ptr{P4est.p4est_quadrant_t}}))
+coarsen_fn_ptr = @cfunction(_coarsen_fn,Cint,
+  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{Ptr{P4est.p4est_quadrant_t}}))
 
-function coarsen!(amr::P4estAMR,_flags)
+function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
+  quadrant = unsafe_wrap(quadrant_ptr)
+  elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
+  unsafe_store!(elem_ptr,INVALID)
+  Cvoid()
+end
+const init_fn_ptr = @cfunction(_init_fn,Cvoid,
+  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
+
+function refine!(amr::P4estAMR,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
   D = domain_dim(amr)
   if D == 3
@@ -218,16 +150,47 @@ function coarsen!(amr::P4estAMR,_flags)
       unsafe_store!(elem_ptr,elem)
     end
   end
-  P4est.p4est_coarsen(p4est_ptr,0,coarsen_fn_ptr,C_NULL)
+  for i in 1:num_levels
+    P4est.p4est_refine(p4est_ptr,0,refine_fn_ptr,init_fn_ptr)
+  end
   amr
 end
 
 function balance!(amr)
   @assert domain_dim(amr) == 2 "Not yet implemented for 3d"
   p4est_ptr = amr.p4est_ptr
-  _set_all_quadrants_data!(p4est_ptr)
   P4est.p4est_balance(p4est_ptr,P4est.P4EST_CONNECT_CORNER,init_fn_ptr)
-  _fine_to_coarse_after_refinement(p4est_ptr)
+  amr
+end
+
+function coarsen!(amr::P4estAMR,_flags;num_levels=1)
+  flags = convert(Vector{Bool},_flags)
+  D = domain_dim(amr)
+  if D == 3
+    error("Not implemented yet")
+  end
+  p4est_ptr = amr.p4est_ptr
+  p4est = unsafe_wrap(p4est_ptr)
+  p4est.user_pointer = Base.unsafe_convert(Ptr{Nothing},flags)
+  trees_ptr = p4est.trees
+  trees = unsafe_wrap(trees_ptr)
+  ntrees = Int(trees.elem_count)
+  elem = 0
+  for itree in 1:ntrees
+    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
+    quadrants =  tree.quadrants
+    nquadrants = Int(quadrants.elem_count)
+    for iquadrant in 1:nquadrants
+      elem += 1
+      quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
+      elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
+      unsafe_store!(elem_ptr,elem)
+    end
+  end
+  for i in 1:num_levels
+    P4est.p4est_coarsen(p4est_ptr,0,coarsen_fn_ptr,init_fn_ptr)
+  end
+  amr
 end
 
 function _lnodes_decode!(hanging_corner,face_code::P4est.p4est_lnodes_code_t)

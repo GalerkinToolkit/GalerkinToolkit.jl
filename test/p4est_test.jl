@@ -10,39 +10,18 @@ amr = p4est_amr(grid,initial_level=1)
 D = domain_dim(grid)
 
 flags = [true,false,false,false]
-new_to_old = refine!(amr,flags)
-@show new_to_old
+refine!(amr,flags,num_levels=4)
+mesh = fe_mesh(amr)
+vtk_grid("tmp",vtk_args(mesh,2)...) do vtk end
+
+
 flags = fill(false,7)
 flags[4] = true
-
-f2c = refine!(amr,flags)
-@show f2c
-
-f2c = balance!(amr)
-@show f2c
-aaaaa
-
-new_to_old = new_to_old[]
+refine!(amr,flags)
 mesh = fe_mesh(amr)
-vtk_grid("tmp",vtk_args(mesh,2)...) do vtk
-  vtk["old"] = new_to_old
-end
-
-
-aaaaa
-flags = fill(false,7)
-flags[4] = true
-new_to_old = refine!(amr,flags)
-mesh = fe_mesh(amr)
-vtk_grid("tmp",vtk_args(mesh,2)...) do vtk
-  vtk["old"] = new_to_old
-end
-
-aaaa
-
+vtk_grid("tmp",vtk_args(mesh,2)...) do vtk end
 
 amr = p4est_amr(grid,initial_level=4)
-
 let mesh = fe_mesh(amr)
   for i in 1:5
     node_to_x = node_coordinates(mesh)
@@ -54,7 +33,7 @@ let mesh = fe_mesh(amr)
       norm(xm) < R
     end
     if i%2 == 0
-      coarsen!(amr,flags)
+      coarsen!(amr,flags,num_levels=2)
     else
       refine!(amr,flags)
     end
