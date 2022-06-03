@@ -44,7 +44,6 @@ function p4est_amr(geo;initial_level=0)
       vertices, tree_to_vertex,
       tree_to_tree, tree_to_face,
       C_NULL, coff, C_NULL, C_NULL);
-    conn_ptr = P4est.p4est_connectivity_new_unitsquare()
     min_quadrants = 0
     fill_uniform = 1
     p4est_ptr = P4est.p4est_new_ext(
