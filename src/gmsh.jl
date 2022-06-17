@@ -129,7 +129,7 @@ function fe_mesh_from_gmsh()
       end
       dface += length(elemTags[t])
     end
-    face_nodes!(mesh,d,JaggedArray(data,ptrs))
+    face_nodes!(mesh,JaggedArray(data,ptrs),d)
   end
   prefix!(offsets)
 
@@ -147,7 +147,7 @@ function fe_mesh_from_gmsh()
         dface_to_refid[dface] = refid
       end
     end
-    face_ref_id!(mesh,d,dface_to_refid)
+    face_ref_id!(mesh,dface_to_refid,d)
   end
 
   # Setup reference faces
@@ -158,7 +158,7 @@ function fe_mesh_from_gmsh()
       refface = ref_face_from_gmsh_eltype(elemTypes[t])
       push!(refdfaces,refface)
     end
-    ref_faces!(mesh,d,refdfaces)
+    ref_faces!(mesh,refdfaces,d)
   end
 
   # Setup periodic nodes

@@ -12,10 +12,10 @@ function default_fe_mesh(
   fe_mesh = SimpleFEMesh{T}(VOID,D)
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
-    face_nodes!(fe_mesh,d,face_nodes(mesh,d))
+    face_nodes!(fe_mesh,face_nodes(mesh,d),d)
     face_to_refid, refid_to_refface = _meshes_setup_ref_faces(mesh,d)
-    face_ref_id!(fe_mesh,d,face_to_refid)
-    ref_faces!(fe_mesh,d,refid_to_refface)
+    face_ref_id!(fe_mesh,face_to_refid,d)
+    ref_faces!(fe_mesh,refid_to_refface,d)
   end
   if physical_groups !== nothing
     physical_groups!(fe_mesh,physical_groups)
@@ -321,9 +321,9 @@ function fe_mesh(
   physical_groups!(fe_mesh,groups)
   D = domain_dim(fe_mesh)
   for d in 0:(D-1)
-    face_nodes!(fe_mesh,d,face_to_nodes[d+1])
-    face_ref_id!(fe_mesh,d,face_to_refid[d+1])
-    ref_faces!(fe_mesh,d,refid_to_refface[d+1])
+    face_nodes!(fe_mesh,face_to_nodes[d+1],d)
+    face_ref_id!(fe_mesh,face_to_refid[d+1],d)
+    ref_faces!(fe_mesh,refid_to_refface[d+1],d)
   end
   periodicnodes = _periodic_nodes_cartesian_grid(mesh.dims,is_periodic)
   periodic_nodes!(fe_mesh,periodicnodes)

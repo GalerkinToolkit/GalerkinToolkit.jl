@@ -12,9 +12,9 @@ function default_polytope_boundary(p)
   mesh = SimpleFEMesh{T}(VOID,D)
   node_coordinates!(mesh,x)
   for d in 0:D
-    face_nodes!(mesh,d,face_nodes(p,d))
-    face_ref_id!(mesh,d,face_ref_id(p,d))
-    ref_faces!(mesh,d,ref_faces(p,d))
+    face_nodes!(mesh,face_nodes(p,d),d)
+    face_ref_id!(mesh,face_ref_id(p,d),d)
+    ref_faces!(mesh,ref_faces(p,d),d)
   end
   polytopal_complex(mesh)
 end
