@@ -11,6 +11,8 @@ D = domain_dim(grid)
 
 flags = [true,false,false,false]
 refine!(amr,flags,num_levels=4)
+
+
 mesh = fe_mesh(amr)
 vtk_grid("tmp",vtk_args(mesh,2)...) do vtk end
 

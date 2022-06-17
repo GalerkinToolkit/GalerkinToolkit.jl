@@ -1,10 +1,48 @@
 
-_p4est_vertex_perm = [1,2,4,3]
-p4est_vertex_perm(q::Meshes.Quadrangle) = _p4est_vertex_perm
+
+p4est_quadrants(p4est_ptr) = QuadrantIterator(p4est_ptr)
+
+struct QuadrantIterator{T}
+  p4est_ptr::Ptr{T}
+end
+
+function Base.iterate(iter::QuadrantIterator)
+  p4est_ptr = iter.p4est_ptr
+  p4est = unsafe_wrap(p4est_ptr)
+  trees_ptr = p4est.trees
+  trees = unsafe_wrap(trees_ptr)
+  ntrees = Int(trees.elem_count)
+  ntrees == 0 && return nothing
+  itree = 1
+  iquadrant = 0
+  iterate(iter,(itree,iquadrant,trees))
+end
+
+function Base.iterate(iter::QuadrantIterator,state)
+  itree, iquadrant, trees = state
+  trees = unsafe_wrap(trees_ptr)
+  ntrees = Int(trees.elem_count)
+  @assert itrees <= ntrees
+  tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
+  quadrants =  tree.quadrants
+  nquadrants = Int(quadrants.elem_count)
+  iquadrant += 1
+  if nquadrants < iquadrant
+    itree += 1
+    ntrees < itree && return nothing
+    iquadrant = 0
+    return iterate(iter,(itree,iquadrant,trees))
+  end
+  quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
+  quadrant, (itree,iquadrant,trees)
+end
+
+P4EST_VERTEX_PERM_2D = [1,2,4,3]
+p4est_vertex_perm(q::Meshes.Quadrangle) = P4EST_VERTEX_PERM_2D
 
 struct P4estQuad end
 function vtk_mesh_cell(a::P4estQuad)
-  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[_p4est_vertex_perm])
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERM_2D])
 end
 
 mutable struct P4estAMR{A,B}
@@ -15,6 +53,24 @@ end
 
 domain_dim(a::P4estAMR) = domain_dim(a.coarse_mesh)
 ambient_dim(a::P4estAMR) = ambient_dim(a.coarse_mesh)
+
+function p4est_corner_neighbor(o,c)
+  T = Cint
+  l = o.l
+  h = 2^(P4est.P4EST_MAXLEVEL-o.l)
+  x = o.x + (2(T(c-1)&T(1))-1)*h
+  y = o.y + (1(T(c-1)&T(2))-1)*h
+  (;l,x,y)
+end
+
+function p4est_face_neighbor(o,f)
+  T = Cint
+  l = o.l
+  h = 2^(P4est.P4EST_MAXLEVEL-o.l)
+  x = o.x + ((f-1)==0 ? -1h : ((f-1)==1 ? 1h : 0h))
+  y = o.y + ((f-1)==2 ? -1h : ((f-1)==3 ? 1h : 0h))
+  (;l,x,y)
+end
 
 function p4est_amr(geo;initial_level=0)
   if !MPI.Initialized()
@@ -92,8 +148,6 @@ function _refine_fn(p4est_ptr,which_tree,quadrant_ptr)
   i = flag ? 1 : 0
   Int32(i)
 end
-const refine_fn_ptr = @cfunction(_refine_fn,Cint,
-    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
 
 function _coarsen_fn(p4est_ptr,which_tree,quadrants_ptr)
   p4est = unsafe_wrap(p4est_ptr)
@@ -113,8 +167,6 @@ function _coarsen_fn(p4est_ptr,which_tree,quadrants_ptr)
   end
   r ? Int32(1) : Int32(0)
 end
-coarsen_fn_ptr = @cfunction(_coarsen_fn,Cint,
-  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{Ptr{P4est.p4est_quadrant_t}}))
 
 function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
   quadrant = unsafe_wrap(quadrant_ptr)
@@ -122,8 +174,6 @@ function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
   unsafe_store!(elem_ptr,INVALID)
   Cvoid()
 end
-const init_fn_ptr = @cfunction(_init_fn,Cvoid,
-  (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
 
 function refine!(amr::P4estAMR,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
@@ -149,6 +199,10 @@ function refine!(amr::P4estAMR,_flags;num_levels=1)
       unsafe_store!(elem_ptr,elem)
     end
   end
+  refine_fn_ptr = @cfunction(_refine_fn,Cint,
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
+  init_fn_ptr = @cfunction(_init_fn,Cvoid,
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
   for i in 1:num_levels
     P4est.p4est_refine(p4est_ptr,0,refine_fn_ptr,init_fn_ptr)
   end
@@ -158,6 +212,8 @@ end
 function balance!(amr)
   @assert domain_dim(amr) == 2 "Not yet implemented for 3d"
   p4est_ptr = amr.p4est_ptr
+  init_fn_ptr = @cfunction(_init_fn,Cvoid,
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
   P4est.p4est_balance(p4est_ptr,P4est.P4EST_CONNECT_CORNER,init_fn_ptr)
   amr
 end
@@ -186,13 +242,17 @@ function coarsen!(amr::P4estAMR,_flags;num_levels=1)
       unsafe_store!(elem_ptr,elem)
     end
   end
+  coarsen_fn_ptr = @cfunction(_coarsen_fn,Cint,
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{Ptr{P4est.p4est_quadrant_t}}))
+  init_fn_ptr = @cfunction(_init_fn,Cvoid,
+    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
   for i in 1:num_levels
     P4est.p4est_coarsen(p4est_ptr,0,coarsen_fn_ptr,init_fn_ptr)
   end
   amr
 end
 
-function _lnodes_decode!(hanging_corner,face_code::P4est.p4est_lnodes_code_t)
+function p4est_lnodes_decode!(hanging_corner,face_code::P4est.p4est_lnodes_code_t)
   # This is for 2D
   # Copied from p4est_step4.c without understanding the logic
   fill!(hanging_corner,-1)
@@ -248,17 +308,19 @@ function fe_mesh(amr::P4estAMR)
   face_code = unsafe_wrap(Array,face_code_ptr,(nelems,))
   ihang = 0
   elem = 0
+  elem_to_tree = zeros(Int32,nelems)
   for itree in 1:ntrees
     tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
     quadrants =  tree.quadrants
     nquadrants = Int(quadrants.elem_count)
     for iquadrant in 1:nquadrants
       elem += 1
+      elem_to_tree[elem] = itree
       quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
       level = Int(quadrant.level)
       q0 = SVector(quadrant.x,quadrant.y)
       jvertex = 0
-      anyhang = _lnodes_decode!(hanging_corner,face_code[elem])
+      anyhang = p4est_lnodes_decode!(hanging_corner,face_code[elem])
       for icorner = 1:nchildren
         if anyhang && hanging_corner[icorner] != -1
           ihang += 1
@@ -282,7 +344,7 @@ function fe_mesh(amr::P4estAMR)
       level = Int(quadrant.level)
       q0 = SVector(quadrant.x,quadrant.y)
       jvertex = 0
-      anyhang = _lnodes_decode!(hanging_corner,face_code[elem])
+      anyhang = p4est_lnodes_decode!(hanging_corner,face_code[elem])
       for icorner = 1:nchildren
         if anyhang && hanging_corner[icorner] != -1
           indep1 = nodes[icorner]
@@ -333,7 +395,7 @@ function fe_mesh(amr::P4estAMR)
       level = Int(quadrant.level)
       q0 = SVector(quadrant.x,quadrant.y)
       jvertex = 0
-      anyhang = _lnodes_decode!(hanging_corner,face_code[elem])
+      anyhang = p4est_lnodes_decode!(hanging_corner,face_code[elem])
       for icorner = 1:nchildren
         if anyhang && hanging_corner[icorner] != -1
           if elem_touch[icorner,elem]
@@ -451,6 +513,133 @@ function fe_mesh(amr::P4estAMR)
   face_ref_id!(mesh,D,elem_to_refid)
   ref_faces!(mesh,D,refid_to_refelem)
   hanging_nodes!(mesh,(hanging_ids,hanging_indeps,hanging_coeffs))
+  cpoly = polytopal_complex(amr.coarse_mesh)
+  fpoly = polytopal_complex(mesh)
+  cgroups = physical_groups(amr.coarse_mesh)
+  fgroups = physical_groups(mesh)
+  fcell_to_ccell = elem_to_tree
+  max_coord = 2^P4est.P4EST_MAXLEVEL
+  min_coord = 0*max_coord
+  for d in 0:D
+    ncfaces = num_faces(cpoly,d)
+    nffaces = num_faces(fpoly,d)
+    fcell_to_ffaces = face_incidence(fpoly,D,d)
+    ccell_to_cfaces = face_incidence(cpoly,D,d)
+    @boundscheck @assert D == 2 "Not implemented for 3d yet"
+    if d==0
+      fface_to_cface = fill(Int32(INVALID),nffaces)
+      for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
+        for c in 1:4
+          neigh = p4est_corner_neighbor(quadrant,c)
+          if neigh.x < min_coord || neigh.x>=max_coord || neigh.y < min_coord || neigh.y>=max_coord
+            ccell = fcell_to_ccell[fcell]
+            cface = ccell_to_cfaces[ccell][c]
+            fface = fcell_to_ffaces[fcell][c]
+            fface_to_cface[fface] = cface
+          end
+        end
+      end
+    elseif d==1
+      fface_to_cface = fill(Int32(INVALID),nffaces)
+      for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
+        for f in 1:4
+          neigh = p4est_face_neighbor(quadrant,f)
+          if neigh.x < min_coord || neigh.x>=max_coord || neigh.y < min_coord || neigh.y>=max_coord
+            ccell = fcell_to_ccell[fcell]
+            cface = ccell_to_cfaces[ccell][f]
+            fface = fcell_to_ffaces[fcell][f]
+            fface_to_cface[fface] = cface
+          end
+        end
+      end
+    else
+      fface_to_cface = fcell_to_ccell
+    end
+    for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
+      if d == 0
+        for c in 1:4
+          neigh = p4est_corner_neighbor(quadrant,c)
+          if c.x < min_coord || c.x>=max_coord || c.y < min_coord || c.y>=max_coord
+            ccell = fcell_to_ccell[fcell]
+            cface = ccell_to_cfaces[ccell][c]
+            fface = fcell_to_ffaces[fcell][c]
+            fface_to_cface[fface] = cface
+          end
+        end
+      elseif d==1
+        for f in 1:4
+          neigh = p4est_face_neighbor(quadrant,f)
+          if c.x < min_coord || c.x>=max_coord || c.y < min_coord || c.y>=max_coord
+            ccell = fcell_to_ccell[fcell]
+            cface = ccell_to_cfaces[ccell][c]
+            fface = fcell_to_ffaces[fcell][c]
+            fface_to_cface[fface] = cface
+          end
+        end
+      end
+    end
+    mesh_cface_to_cface = mesh_faces(cpoly,d)
+    cface_to_mask = fill(false,ncfaces)
+    fface_to_mask = fill(false,nffaces)
+    if d!=D
+      for id in group_ids(cgroups,d)
+        mesh_cfaces_in_group = group_faces(cpoly,d,id)
+        for mesh_cface in mesh_cfaces_in_group
+          cface = mesh_cface_to_cface[mesh_cface]
+          cface_to_mask[cface] = true
+        end
+      end
+      for fface in 1:nffaces
+        cface = fface_to_cface[fface]
+        if cface != Int32(INVALID)
+          fface_to_mask[fface] = cface_to_mask[cface]
+        end
+      end
+      fface_to_nodes = face_nodes(fpoly,d)
+      mesh_fface_to_fface = collect(Int32,findall(fface_to_mask))
+      fface_to_mesh_fface = fill(Int32(INVALID),nffaces)
+      n_mesh_ffaces = length(mesh_fface_to_fface)
+      ptrs = zeros(Int32,n_mesh_ffaces+1)
+      for (mesh_fface,fface) in enumerate(mesh_fface_to_fface)
+        ptrs[mesh_fface+1] = length(fface_to_nodes[fface])
+        fface_to_mesh_fface[fface] = mesh_fface
+      end
+      prefix!(ptrs)
+      ndata = ptrs[end]-1
+      data = zeros(Int32,ndata)
+      for (mesh_fface,fface) in enumerate(mesh_fface_to_fface)
+        nodes = fface_to_nodes[fface]
+        p = ptrs[mesh_fface]-1
+        for (lnode,node) in enumerate(nodes)
+          data[p+lnode] = node
+        end
+      end
+      mesh_fface_to_nodes = JaggedArray(data,ptrs)
+      face_nodes!(mesh,d,mesh_fface_to_nodes)
+    else
+      mesh_fface_to_fface = collect(Int32,1:nffaces)
+      fface_to_mesh_fface = mesh_fface_to_fface
+    end
+    for id in group_ids(cgroups,d)
+      fill!(cface_to_mask,false)
+      mesh_cfaces_in_group = group_faces(cpoly,d,id)
+      for mesh_cface in mesh_cfaces_in_group
+        cface = mesh_cface_to_cface[mesh_cface]
+        cface_to_mask[cface] = true
+      end
+      fill!(fface_to_mask,false)
+      for fface in 1:nffaces
+        cface = fface_to_cface[fface]
+        if cface != Int32(INVALID)
+          fface_to_mask[fface] = cface_to_mask[cface]
+        end
+      end
+      ffaces_in_group = collect(Int32,findall(fface_to_mask))
+      mesh_ffaces_in_group = fface_to_mesh_fface[ffaces_in_group]
+      name = group_name(cgroups,d,id)
+      add_group!(fgroups,d,name,id)
+      group_faces!(fgroups,mesh_ffaces_in_group,d,id)
+    end
   mesh
 end
 
