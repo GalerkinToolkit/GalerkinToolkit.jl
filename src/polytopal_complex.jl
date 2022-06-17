@@ -64,6 +64,14 @@ is_simplex(m::GenericPolyComplex) = is_simplex(m.mesh)
 is_hypercube(m::GenericPolyComplex) = is_hypercube(m.mesh)
 face_vertices(m::GenericPolyComplex,rank) = face_incidence(m,rank,0)
 
+function mesh_faces!(m::GenericPolyComplex,f,d)
+  if ! haskey(m.buffer,:mesh_faces)
+    D = domain_dim(m)
+    m.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,D+1)
+  end
+  m.buffer[:mesh_faces][d+1] = f
+end
+
 
 function node_vertex(mesh::GenericPolyComplex)
   if !haskey(mesh.buffer,:node_vertex)
@@ -619,21 +627,21 @@ function _face_vertices!(femesh,d)
     Drefid_to_ldface_to_lvertices)
 end
 
-function _face_nodes!(a,d)
+function _face_nodes!(femesh,d)
   D = d+1
-  dface_to_vertices = face_nodes(a.mesh,d)
-  Dface_to_dfaces = face_incidence(a,D,d)
-  Dface_to_vertices = face_nodes(a,D)
+  dface_to_vertices = face_nodes(femesh.mesh,d)
+  Dface_to_dfaces = face_incidence(femesh,D,d)
+  Dface_to_vertices = face_nodes(femesh,D)
   Dface_to_refid = face_ref_id(femesh,D)
   Drefid_to_ldface_to_lnodes = ref_face_nodes(femesh,D,d)
   nnewdfaces = num_faces(femesh,d)
-  a.buffer[:face_nodes][d+1] = _face_vertices(
+  femesh.buffer[:face_nodes][d+1] = _face_vertices(
     nnewdfaces,
     dface_to_vertices,
     Dface_to_dfaces,
     Dface_to_vertices,
     Dface_to_refid,
-    Drefid_to_ldface_to_lvertices)
+    Drefid_to_ldface_to_lnodes)
 end
 
 function _face_vertices(

@@ -14,7 +14,20 @@ refine!(amr,flags,num_levels=4)
 
 
 mesh = fe_mesh(amr)
-vtk_grid("tmp",vtk_args(mesh,2)...) do vtk end
+
+vtk_grid("tmp1",vtk_args(mesh,1)...) do vtk
+  physical_groups!(vtk,mesh,1)
+end
+
+vtk_grid("tmp0",vtk_args(mesh,0)...) do vtk
+  physical_groups!(vtk,mesh,0)
+end
+
+aaaa
+
+
+
+
 
 flags = fill(false,7)
 flags[4] = true

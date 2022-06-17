@@ -20,9 +20,8 @@ end
 
 function Base.iterate(iter::QuadrantIterator,state)
   itree, iquadrant, trees = state
-  trees = unsafe_wrap(trees_ptr)
   ntrees = Int(trees.elem_count)
-  @assert itrees <= ntrees
+  @assert itree <= ntrees
   tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
   quadrants =  tree.quadrants
   nquadrants = Int(quadrants.elem_count)
@@ -37,12 +36,55 @@ function Base.iterate(iter::QuadrantIterator,state)
   quadrant, (itree,iquadrant,trees)
 end
 
-P4EST_VERTEX_PERM_2D = [1,2,4,3]
-p4est_vertex_perm(q::Meshes.Quadrangle) = P4EST_VERTEX_PERM_2D
+P4EST_VERTEX_PERMUTATION = [1,2,4,3]
+P4EST_EDGE_PERMUTATION = [4,2,1,3]
+p4est_vertex_permutation(q::Meshes.Quadrangle) = P4EST_VERTEX_PERMUTATION
+function p4est_face_permutation(q::Meshes.Quadrangle,d)
+  d==0 && return P4EST_VERTEX_PERMUTATION
+  d==1 && return P4EST_EDGE_PERMUTATION
+  d==2 && return [1]
+  throw(DomainError(d))
+end
 
-struct P4estQuad end
+struct P4estQuad{T}
+  node_coordinates::Vector{SVector{2,T}}
+end
+function P4estQuad{T}() where T
+  P4estQuad(SVector{2,T}[(0,0),(1,0),(0,1),(1,1)])
+end
+domain_dim(a::P4estQuad) = 2
+is_hypercube(a::P4estQuad) = true
+node_coordinates(a::P4estQuad) = a.node_coordinates
+function face_ref_id(a::P4estQuad,d)
+  d==0 && return fill(Int8(1),4)
+  d==1 && return fill(Int8(1),4)
+  d==2 && return fill(Int8(1),1)
+  throw(DomainError(d))
+end
+function ref_faces(::Type{<:P4estQuad},d)
+  d==0 && return [Meshes.Point(SVector{0,Float64}())]
+  d==1 && return [Meshes.Segment(Meshes.Point(0),Meshes.Point(1))]
+  d==2 && return [P4estQuad()]
+  throw(DomainError(d))
+end
+ref_faces(a::P4estQuad,d) = ref_faces(typeof(a),d)
+function face_nodes(a::P4estQuad,d)
+  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  d==1 && return JaggedArray(Vector{Int32}[[1,3],[2,4],[1,2],[3,4]])
+  d==2 && return JaggedArray(Vector{Int32}[[1,2,3,4]])
+  throw(DomainError(d))
+end
+const _P4EST_BUFFER = Dict{Symbol,Any}()
+_P4EST_BUFFER[:P4estQuad] = Dict{Symbol,Any}()
+function polytope_boundary(a::P4estQuad)
+  if !haskey(_P4EST_BUFFER[:P4estQuad],:polytope_boundary)
+    _P4EST_BUFFER[:P4estQuad][:polytope_boundary] = default_polytope_boundary(a)
+  end
+  _P4EST_BUFFER[:P4estQuad][:polytope_boundary]
+end
+face_incidence(a::P4estQuad,d1,d2) = polytope_face_incedence(a,d1,d2)
 function vtk_mesh_cell(a::P4estQuad)
-  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERM_2D])
+  nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
 end
 
 mutable struct P4estAMR{A,B}
@@ -56,20 +98,20 @@ ambient_dim(a::P4estAMR) = ambient_dim(a.coarse_mesh)
 
 function p4est_corner_neighbor(o,c)
   T = Cint
-  l = o.l
-  h = 2^(P4est.P4EST_MAXLEVEL-o.l)
+  level = o.level
+  h = 2^(P4est.P4EST_MAXLEVEL-o.level)
   x = o.x + (2(T(c-1)&T(1))-1)*h
   y = o.y + (1(T(c-1)&T(2))-1)*h
-  (;l,x,y)
+  (;level,x,y)
 end
 
 function p4est_face_neighbor(o,f)
   T = Cint
-  l = o.l
-  h = 2^(P4est.P4EST_MAXLEVEL-o.l)
+  level = o.level
+  h = 2^(P4est.P4EST_MAXLEVEL-o.level)
   x = o.x + ((f-1)==0 ? -1h : ((f-1)==1 ? 1h : 0h))
   y = o.y + ((f-1)==2 ? -1h : ((f-1)==3 ? 1h : 0h))
-  (;l,x,y)
+  (;level,x,y)
 end
 
 function p4est_amr(geo;initial_level=0)
@@ -80,7 +122,7 @@ function p4est_amr(geo;initial_level=0)
   D = domain_dim(mesh)
   @assert num_faces(mesh,D) == 1 "For the moment connectivity creation only for a single tree"
   refface = first(ref_faces(mesh,D))
-  perm = p4est_vertex_perm(refface)
+  perm = p4est_vertex_permutation(refface)
   ntrees = num_faces(mesh,D)
   nvertices = num_nodes(mesh)
   vertices = zeros(Cdouble,3,nvertices)
@@ -506,7 +548,7 @@ function fe_mesh(amr::P4estAMR)
   end
   P4est.p4est_lnodes_destroy(lnodes_ptr)
   elem_to_refid = fill(Int8(1),length(elem_to_nodes))
-  refid_to_refelem = [P4estQuad()]
+  refid_to_refelem = [P4estQuad{Float64}()]
   mesh = SimpleFEMesh{SVector{Da,Float64}}(VOID,D)
   node_coordinates!(mesh,node_to_coordinates)
   face_nodes!(mesh,D,elem_to_nodes)
@@ -515,26 +557,33 @@ function fe_mesh(amr::P4estAMR)
   hanging_nodes!(mesh,(hanging_ids,hanging_indeps,hanging_coeffs))
   cpoly = polytopal_complex(amr.coarse_mesh)
   fpoly = polytopal_complex(mesh)
-  cgroups = physical_groups(amr.coarse_mesh)
-  fgroups = physical_groups(mesh)
+  groups_cpoly = physical_groups(cpoly)
+  groups_fpoly = physical_groups(fpoly)
+  groups_mesh = physical_groups(mesh)
   fcell_to_ccell = elem_to_tree
   max_coord = 2^P4est.P4EST_MAXLEVEL
   min_coord = 0*max_coord
+  refcell = first(ref_faces(amr.coarse_mesh,D))
   for d in 0:D
     ncfaces = num_faces(cpoly,d)
     nffaces = num_faces(fpoly,d)
     fcell_to_ffaces = face_incidence(fpoly,D,d)
     ccell_to_cfaces = face_incidence(cpoly,D,d)
+    lfface_to_lcface = p4est_face_permutation(refcell,d)
     @boundscheck @assert D == 2 "Not implemented for 3d yet"
     if d==0
       fface_to_cface = fill(Int32(INVALID),nffaces)
       for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
-        for c in 1:4
-          neigh = p4est_corner_neighbor(quadrant,c)
-          if neigh.x < min_coord || neigh.x>=max_coord || neigh.y < min_coord || neigh.y>=max_coord
+        for lfface in 1:4
+          neigh = p4est_corner_neighbor(quadrant,lfface)
+          lcface = lfface_to_lcface[lfface]
+          if (neigh.x < min_coord && neigh.y < min_coord) ||
+            (neigh.x < min_coord && neigh.y >= max_coord) ||
+            (neigh.x >= max_coord && neigh.y < min_coord) ||
+            (neigh.x >= max_coord && neigh.y >= max_coord)
             ccell = fcell_to_ccell[fcell]
-            cface = ccell_to_cfaces[ccell][c]
-            fface = fcell_to_ffaces[fcell][c]
+            cface = ccell_to_cfaces[ccell][lcface]
+            fface = fcell_to_ffaces[fcell][lfface]
             fface_to_cface[fface] = cface
           end
         end
@@ -542,12 +591,13 @@ function fe_mesh(amr::P4estAMR)
     elseif d==1
       fface_to_cface = fill(Int32(INVALID),nffaces)
       for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
-        for f in 1:4
-          neigh = p4est_face_neighbor(quadrant,f)
+        for lfface in 1:4
+          neigh = p4est_face_neighbor(quadrant,lfface)
+          lcface = lfface_to_lcface[lfface]
           if neigh.x < min_coord || neigh.x>=max_coord || neigh.y < min_coord || neigh.y>=max_coord
             ccell = fcell_to_ccell[fcell]
-            cface = ccell_to_cfaces[ccell][f]
-            fface = fcell_to_ffaces[fcell][f]
+            cface = ccell_to_cfaces[ccell][lcface]
+            fface = fcell_to_ffaces[fcell][lfface]
             fface_to_cface[fface] = cface
           end
         end
@@ -555,44 +605,32 @@ function fe_mesh(amr::P4estAMR)
     else
       fface_to_cface = fcell_to_ccell
     end
-    for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
-      if d == 0
-        for c in 1:4
-          neigh = p4est_corner_neighbor(quadrant,c)
-          if c.x < min_coord || c.x>=max_coord || c.y < min_coord || c.y>=max_coord
-            ccell = fcell_to_ccell[fcell]
-            cface = ccell_to_cfaces[ccell][c]
-            fface = fcell_to_ffaces[fcell][c]
-            fface_to_cface[fface] = cface
-          end
-        end
-      elseif d==1
-        for f in 1:4
-          neigh = p4est_face_neighbor(quadrant,f)
-          if c.x < min_coord || c.x>=max_coord || c.y < min_coord || c.y>=max_coord
-            ccell = fcell_to_ccell[fcell]
-            cface = ccell_to_cfaces[ccell][c]
-            fface = fcell_to_ffaces[fcell][c]
-            fface_to_cface[fface] = cface
-          end
-        end
-      end
-    end
-    mesh_cface_to_cface = mesh_faces(cpoly,d)
     cface_to_mask = fill(false,ncfaces)
     fface_to_mask = fill(false,nffaces)
-    if d!=D
-      for id in group_ids(cgroups,d)
-        mesh_cfaces_in_group = group_faces(cpoly,d,id)
-        for mesh_cface in mesh_cfaces_in_group
-          cface = mesh_cface_to_cface[mesh_cface]
-          cface_to_mask[cface] = true
-        end
+    for id in group_ids(groups_cpoly,d)
+      fill!(cface_to_mask,false)
+      cfaces_in_group = group_faces(groups_cpoly,d,id)
+      for cface in cfaces_in_group
+        cface_to_mask[cface] = true
       end
+      fill!(fface_to_mask,false)
       for fface in 1:nffaces
         cface = fface_to_cface[fface]
         if cface != Int32(INVALID)
           fface_to_mask[fface] = cface_to_mask[cface]
+        end
+      end
+      ffaces_in_group = collect(Int32,findall(fface_to_mask))
+      name = group_name(groups_cpoly,d,id)
+      add_group!(groups_fpoly,d,name,id)
+      group_faces!(groups_fpoly,ffaces_in_group,d,id)
+    end
+    if d!=D
+      fill!(fface_to_mask,false)
+      for id in group_ids(groups_fpoly,d)
+        ffaces_in_group = group_faces(groups_fpoly,d,id)
+        for fface in ffaces_in_group
+          fface_to_mask[fface] = true
         end
       end
       fface_to_nodes = face_nodes(fpoly,d)
@@ -616,30 +654,28 @@ function fe_mesh(amr::P4estAMR)
       end
       mesh_fface_to_nodes = JaggedArray(data,ptrs)
       face_nodes!(mesh,d,mesh_fface_to_nodes)
+      face_ref_id!(mesh,d,fill(Int8(1),length(mesh_fface_to_nodes)))
+      ref_faces!(mesh,d,ref_faces(P4estQuad{Float64}(),d))
+      mesh_faces!(fpoly,mesh_fface_to_fface,d)
+      for id in group_ids(groups_fpoly,d)
+        ffaces_in_group = group_faces(groups_fpoly,d,id)
+        mesh_ffaces_in_group = fface_to_mesh_fface[ffaces_in_group]
+        name = group_name(groups_fpoly,d,id)
+        add_group!(groups_mesh,d,name,id)
+        group_faces!(groups_mesh,mesh_ffaces_in_group,d,id)
+      end
     else
       mesh_fface_to_fface = collect(Int32,1:nffaces)
-      fface_to_mesh_fface = mesh_fface_to_fface
-    end
-    for id in group_ids(cgroups,d)
-      fill!(cface_to_mask,false)
-      mesh_cfaces_in_group = group_faces(cpoly,d,id)
-      for mesh_cface in mesh_cfaces_in_group
-        cface = mesh_cface_to_cface[mesh_cface]
-        cface_to_mask[cface] = true
+      mesh_faces!(fpoly,mesh_fface_to_fface,d)
+      for id in group_ids(groups_fpoly,d)
+        ffaces_in_group = group_faces(groups_fpoly,d,id)
+        mesh_ffaces_in_group = ffaces_in_group
+        name = group_name(groups_fpoly,d,id)
+        add_group!(groups_mesh,d,name,id)
+        group_faces!(groups_mesh,mesh_ffaces_in_group,d,id)
       end
-      fill!(fface_to_mask,false)
-      for fface in 1:nffaces
-        cface = fface_to_cface[fface]
-        if cface != Int32(INVALID)
-          fface_to_mask[fface] = cface_to_mask[cface]
-        end
-      end
-      ffaces_in_group = collect(Int32,findall(fface_to_mask))
-      mesh_ffaces_in_group = fface_to_mesh_fface[ffaces_in_group]
-      name = group_name(cgroups,d,id)
-      add_group!(fgroups,d,name,id)
-      group_faces!(fgroups,mesh_ffaces_in_group,d,id)
     end
+  end
   mesh
 end
 
