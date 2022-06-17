@@ -315,6 +315,14 @@ function p4est_lnodes_decode!(hanging_corner,face_code::P4est.p4est_lnodes_code_
   end
 end
 
+# This is just a proof of concept implementation
+# Do not expect it to be efficient in its current state
+# Main missing points
+# - function barriers
+# - extension to 3d
+# - split long function
+# - creation of a polytopal complex directly without using an intermediate fe mesh
+#   by trying to take more advantadge of p4est queries.
 function fe_mesh(amr::P4estMeshRefiner)
   balance!(amr)
   p4est_ptr = amr.p4est_ptr
