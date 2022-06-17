@@ -235,7 +235,7 @@ physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
 
 function polytopal_complex(m::SimpleFEMesh)
   if !haskey(m.buffer,:polytopal_complex)
-    polycomplex = GenericPolyComplex(m)
+    polycomplex = PolyComplexFromFEMesh(m)
     m.buffer[:polytopal_complex] = polycomplex
   end
   m.buffer[:polytopal_complex]
