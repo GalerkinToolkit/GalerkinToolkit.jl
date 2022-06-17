@@ -65,7 +65,7 @@ include("gmsh.jl")
 export vtk_args
 include("vtk.jl")
 
-export p4est_amr
+export p4est_mesh_refiner
 export destroy!
 export refine!
 export coarsen!

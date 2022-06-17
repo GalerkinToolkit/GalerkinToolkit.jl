@@ -8,7 +8,7 @@ using LinearAlgebra
 dir = mkpath(joinpath(@__DIR__,"vtk"))
 
 grid = CartesianGrid(1,1)
-amr = p4est_amr(grid,initial_level=1)
+amr = p4est_mesh_refiner(grid,initial_level=1)
 D = domain_dim(grid)
 
 flags = [true,false,false,false]
@@ -35,7 +35,7 @@ refine!(amr,flags)
 mesh = fe_mesh(amr)
 vtk_grid("tmp",vtk_args(mesh,2)...) do vtk end
 
-amr = p4est_amr(grid,initial_level=4)
+amr = p4est_mesh_refiner(grid,initial_level=4)
 let mesh = fe_mesh(amr)
   for i in 1:5
     node_to_x = node_coordinates(mesh)
@@ -53,7 +53,7 @@ let mesh = fe_mesh(amr)
     end
     mesh = fe_mesh(amr)
   end
-  vtk_grid("tmp",vtk_args(mesh,D)...) do vtk end
+  vtk_grid(joinpath(dir,"p4est"),vtk_args(mesh,D)...) do vtk end
 end
 
 

@@ -87,14 +87,14 @@ function vtk_mesh_cell(a::P4estQuad)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
 end
 
-mutable struct P4estAMR{A,B}
+mutable struct P4estMeshRefiner{A,B}
   p4est_ptr::Ptr{A}
   coarse_mesh::B
   state::Symbol
 end
 
-domain_dim(a::P4estAMR) = domain_dim(a.coarse_mesh)
-ambient_dim(a::P4estAMR) = ambient_dim(a.coarse_mesh)
+domain_dim(a::P4estMeshRefiner) = domain_dim(a.coarse_mesh)
+ambient_dim(a::P4estMeshRefiner) = ambient_dim(a.coarse_mesh)
 
 function p4est_corner_neighbor(o,c)
   T = Cint
@@ -114,7 +114,7 @@ function p4est_face_neighbor(o,f)
   (;level,x,y)
 end
 
-function p4est_amr(geo;initial_level=0)
+function p4est_mesh_refiner(geo;initial_level=0)
   if !MPI.Initialized()
     MPI.Init()
   end
@@ -158,11 +158,11 @@ function p4est_amr(geo;initial_level=0)
   else
     error("P4est only for 2d and 3d")
   end
-  amr = P4estAMR(p4est_ptr,mesh,:usable)
+  amr = P4estMeshRefiner(p4est_ptr,mesh,:usable)
   finalizer(destroy!,amr)
 end
 
-function destroy!(a::P4estAMR)
+function destroy!(a::P4estMeshRefiner)
   if a.state === :usable
     p4est = unsafe_wrap(a.p4est_ptr)
     conn_ptr = p4est.connectivity
@@ -217,7 +217,7 @@ function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
   Cvoid()
 end
 
-function refine!(amr::P4estAMR,_flags;num_levels=1)
+function refine!(amr::P4estMeshRefiner,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
   D = domain_dim(amr)
   if D == 3
@@ -260,7 +260,7 @@ function balance!(amr)
   amr
 end
 
-function coarsen!(amr::P4estAMR,_flags;num_levels=1)
+function coarsen!(amr::P4estMeshRefiner,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
   D = domain_dim(amr)
   if D == 3
@@ -315,7 +315,7 @@ function p4est_lnodes_decode!(hanging_corner,face_code::P4est.p4est_lnodes_code_
   end
 end
 
-function fe_mesh(amr::P4estAMR)
+function fe_mesh(amr::P4estMeshRefiner)
   balance!(amr)
   p4est_ptr = amr.p4est_ptr
   D = domain_dim(amr)
