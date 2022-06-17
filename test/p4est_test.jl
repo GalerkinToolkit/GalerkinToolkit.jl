@@ -5,6 +5,8 @@ using Meshes
 using WriteVTK
 using LinearAlgebra
 
+dir = mkpath(joinpath(@__DIR__,"vtk"))
+
 grid = CartesianGrid(1,1)
 amr = p4est_amr(grid,initial_level=1)
 D = domain_dim(grid)
@@ -15,19 +17,17 @@ refine!(amr,flags,num_levels=4)
 
 mesh = fe_mesh(amr)
 
-vtk_grid("tmp1",vtk_args(mesh,1)...) do vtk
-  physical_groups!(vtk,mesh,1)
-end
-
-vtk_grid("tmp0",vtk_args(mesh,0)...) do vtk
+vtk_grid(joinpath(dir,"p4est0"),vtk_args(mesh,0)...) do vtk
   physical_groups!(vtk,mesh,0)
 end
 
-aaaa
+vtk_grid(joinpath(dir,"p4est1"),vtk_args(mesh,1)...) do vtk
+  physical_groups!(vtk,mesh,1)
+end
 
-
-
-
+vtk_grid(joinpath(dir,"p4est2"),vtk_args(mesh,2)...) do vtk
+  physical_groups!(vtk,mesh,2)
+end
 
 flags = fill(false,7)
 flags[4] = true
