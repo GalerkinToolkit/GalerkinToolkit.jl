@@ -6,6 +6,7 @@ version = "0.1.0"
 [deps]
 CBinding = "d43a6710-96b8-4a2d-833c-c424785e5374"
 Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 MappedArrays = "dbb5928d-eab1-5f90-85c2-b9b0edb7c900"
 Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
