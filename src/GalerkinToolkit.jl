@@ -72,5 +72,28 @@ export coarsen!
 export balance!
 include("p4est.jl")
 
+export call
+export evaluate
+export sample
+export inverse_map
+export scale
+export linear_combination
+export Monomial
+export NodalValue
+export AffineMap
+export Operator
+export FunctionSpace
+export basis_functions
+export Q_space
+export P_space
+export P̃_space
+export S̃_space
+export cartesian_product
+export direct_sum
+include("functions.jl")
+
+export MathTuple
+export math_tuple
+include("math_tuple.jl")
 
 end
