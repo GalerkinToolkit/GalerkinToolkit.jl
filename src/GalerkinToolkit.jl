@@ -82,12 +82,10 @@ export Monomial
 export NodalValue
 export AffineMap
 export Operator
-export FunctionSpace
-export basis_functions
-export Q_space
-export P_space
-export P̃_space
-export S̃_space
+export Q_basis
+export P_basis
+export P̃_basis
+export S̃_basis
 export cartesian_product
 export direct_sum
 include("functions.jl")

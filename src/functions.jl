@@ -84,31 +84,25 @@ function inverse_map(f::AffineMap)
   AffineMap(Ainv,-(Ainv*b))
 end
 
-struct FunctionSpace{T}
-  basis_functions::T
-end
-basis_functions(s::FunctionSpace) = s.basis_functions
-
-Q_space(k::Integer,::Val{d}) where d = Q_space(ntuple(i->k,Val(d)))
-Q_space(orders::Integer...) = Q_space(orders)
-function Q_space(orders::Tuple)
+Q_basis(k::Integer,::Val{d}) where d = Q_basis(ntuple(i->k,Val(d)))
+Q_basis(orders::Integer...) = Q_basis(orders)
+function Q_basis(orders::Tuple)
   cis = CartesianIndices(orders.+1)
   exps = [ Tuple(cis[i]).-1  for i in 1:length(cis) ]
-  m = map(Monomial,exps)
-  FunctionSpace(m)
+  map(Monomial,exps)
 end
 
-function P_space(k::Integer,::Val{d}) where d
-  m = basis_functions(Q_space(k,Val(d)))
-  FunctionSpace(filter(mi->sum(mi.exps)<=k,m))
+function P_basis(k::Integer,::Val{d}) where d
+  m = Q_basis(k,Val(d))
+  filter(mi->sum(mi.exps)<=k,m)
 end
 
-function P̃_space(k::Integer,::Val{d}) where d
-  m = basis_functions(P_space(k,Val(d)))
-  FunctionSpace(filter(i->sum(i.exps)>(k-1),m))
+function P̃_basis(k::Integer,::Val{d}) where d
+  m = P_basis(k,Val(d))
+  filter(i->sum(i.exps)>(k-1),m)
 end
 
-function S̃_space(k::Integer,::Val{2})
+function S̃_basis(k::Integer,::Val{2})
   e1 = SVector(1,0)
   e2 = SVector(0,1)
   function f(α)
@@ -116,10 +110,10 @@ function S̃_space(k::Integer,::Val{2})
     m2 = Monomial(α,k-α)
     linear_combination([-e1,e2],[m1,m2])
   end
-  FunctionSpace([ f(α) for α in 1:k ])
+  [ f(α) for α in 1:k ]
 end
 
-function S̃_space(k::Integer,::Val{3})
+function S̃_basis(k::Integer,::Val{3})
   e1 = SVector(1,0,0)
   e2 = SVector(0,1,0)
   e3 = SVector(0,0,1)
@@ -145,9 +139,8 @@ function S̃_space(k::Integer,::Val{3})
       push!(m,b(α,β))
     end
   end
-  FunctionSpace(m)
+  m
 end
-
 
 function cartesian_product(
   args...;
@@ -159,12 +152,12 @@ function cartesian_product(
     coeff = inner(ntuple(k-> (k==i ? 1 : 0),Val(d)))
     map(si->scale(*,coeff,si),basis(s))
   end
-  FunctionSpace(outer(ms))
+  outer(ms)
 end
 
-function direct_sum(a::FunctionSpace,b::FunctionSpace)
+function direct_sum(a...)
   # TODO improve type stability of this one
-  FunctionSpace(vcat(basis_functions(a),basis_functions(b)))
+  vcat(args...)
 end
 
 
