@@ -7,6 +7,7 @@ import WriteVTK
 import P4est
 import CBinding
 import MPI
+import BlockArrays
 
 export prefix!
 export rewind!
@@ -82,13 +83,18 @@ export Monomial
 export NodalValue
 export AffineMap
 export Operator
-export Q_basis
-export P_basis
-export P̃_basis
-export S̃_basis
 export cartesian_product
+export vector_valued_basis
 export direct_sum
 include("functions.jl")
+
+export q_monomial_basis
+export p_monomial_basis
+export p̃_monomial_basis
+export s̃_basis
+export q_equispaced_nodes
+export p_equispaced_nodes
+include("polynomial_bases.jl")
 
 export MathTuple
 export math_tuple

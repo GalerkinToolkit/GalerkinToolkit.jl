@@ -17,4 +17,8 @@ using Test
 
 @time @testset "p4est" begin include("p4est_tests.jl") end
 
+@time @testset "functions" begin include("functions_tests.jl") end
+
+@time @testset "polynomial_bases" begin include("polynomial_bases_tests.jl") end
+
 end # module

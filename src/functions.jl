@@ -84,73 +84,15 @@ function inverse_map(f::AffineMap)
   AffineMap(Ainv,-(Ainv*b))
 end
 
-Q_basis(k::Integer,::Val{d}) where d = Q_basis(ntuple(i->k,Val(d)))
-Q_basis(orders::Integer...) = Q_basis(orders)
-function Q_basis(orders::Tuple)
-  cis = CartesianIndices(orders.+1)
-  exps = [ Tuple(cis[i]).-1  for i in 1:length(cis) ]
-  map(Monomial,exps)
-end
-
-function P_basis(k::Integer,::Val{d}) where d
-  m = Q_basis(k,Val(d))
-  filter(mi->sum(mi.exps)<=k,m)
-end
-
-function P̃_basis(k::Integer,::Val{d}) where d
-  m = P_basis(k,Val(d))
-  filter(i->sum(i.exps)>(k-1),m)
-end
-
-function S̃_basis(k::Integer,::Val{2})
-  e1 = SVector(1,0)
-  e2 = SVector(0,1)
-  function f(α)
-    m1 = Monomial(α-1,k-α+1)
-    m2 = Monomial(α,k-α)
-    linear_combination([-e1,e2],[m1,m2])
-  end
-  [ f(α) for α in 1:k ]
-end
-
-function S̃_basis(k::Integer,::Val{3})
-  e1 = SVector(1,0,0)
-  e2 = SVector(0,1,0)
-  e3 = SVector(0,0,1)
-  function a(α,β)
-    m1 = Monomial(α-1,k-α-β-2,β-1)
-    m2 = Monomial(α,k-α-β-1,β-1)
-    linear_combination([-e1,e2],[m1,m2])
-  end
-  function b(α,β)
-    m1 = Monomial(k-α-β+1,β-1,α)
-    m3 = Monomial(k-α-β+2,β-1,α-1)
-    linear_combination([-e1,e3],[m1,m3])
-  end
-  function c(α)
-    m2 = Monomial(0,α-1,k-α+1)
-    m3 = Monomial(0,α,k-α)
-    linear_combination([-e2,e3],[m2,m3])
-  end
-  m = [ c(α) for α in 1:k]
-  for β in 1:k
-    for α in 1:(k+1-β)
-      push!(m,a(α,β))
-      push!(m,b(α,β))
-    end
-  end
-  m
-end
-
 function cartesian_product(
   args...;
-  inner=SVector,
-  outer=ms->vcat(ms...))
+  inner=MathTuple,
+  outer=ms->BlockArrays.mortar(collect(ms)))
 
   d = length(args)
   ms = map(args,ntuple(z->z,Val(d))) do s,i
     coeff = inner(ntuple(k-> (k==i ? 1 : 0),Val(d)))
-    map(si->scale(*,coeff,si),basis(s))
+    map(si->scale(*,coeff,si),s)
   end
   outer(ms)
 end
@@ -158,6 +100,11 @@ end
 function direct_sum(a...)
   # TODO improve type stability of this one
   vcat(args...)
+end
+
+function vector_valued_basis(basis,::Val{d}) where d
+  args = ntuple(i->basis,Val(d))
+  cartesian_product(args...,inner=SVector,outer=ms->vcat(ms...))
 end
 
 
