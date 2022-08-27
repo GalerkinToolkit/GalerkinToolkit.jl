@@ -3,7 +3,7 @@ fe_mesh(args...;kwargs...) = default_fe_mesh(args...;kwargs...)
 
 function default_fe_mesh(
   mesh::Meshes.Mesh;
-  physical_groups=nothing,
+  group_collection=nothing,
   hanging_nodes=nothing,
   periodic_nodes=nothing)
 
@@ -17,8 +17,8 @@ function default_fe_mesh(
     face_ref_id!(fe_mesh,face_to_refid,d)
     ref_faces!(fe_mesh,refid_to_refface,d)
   end
-  if physical_groups !== nothing
-    physical_groups!(fe_mesh,physical_groups)
+  if group_collection !== nothing
+    group_collection!(fe_mesh,group_collection)
   end
   if hanging_nodes !== nothing
     hanging_nodes!(fe_mesh,hanging_nodes)
@@ -318,7 +318,7 @@ function fe_mesh(
   fe_mesh = default_fe_mesh(mesh,periodic_nodes=default_periodic_nodes(mesh))
   groups, faces = _default_groups_cartesian_grid(fe_mesh)
   face_to_nodes, face_to_refid, refid_to_refface = faces
-  physical_groups!(fe_mesh,groups)
+  group_collection!(fe_mesh,groups)
   D = domain_dim(fe_mesh)
   for d in 0:(D-1)
     face_nodes!(fe_mesh,face_to_nodes[d+1],d)

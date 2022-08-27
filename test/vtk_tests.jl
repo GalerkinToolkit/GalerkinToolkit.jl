@@ -17,7 +17,7 @@ vtk_grid(fn,vtk_args(mesh,1)...) do vtk end
 vtk_grid(fn,vtk_args(mesh,0)...) do vtk end
 
 vtk_grid(fn,vtk_args(mesh,1)...) do vtk
-  physical_groups!(vtk,mesh,1)
+  group_collection!(vtk,mesh,1)
 end
 
 vtk_grid(fn,vtk_args(mesh,2)...) do vtk
@@ -35,12 +35,12 @@ face_to_mask = mappedarray(face_nodes(poly,2)) do nodes
   xm = sum(xn)/length(xn)
   xm[1]+xm[2]<0.7
 end
-groups = physical_groups(poly)
+groups = group_collection(poly)
 add_group!(groups,2,"foo")
 group_faces!(groups,findall(face_to_mask),2,"foo")
 
 vtk_grid(fn,vtk_args(poly,2)...) do vtk
-  physical_groups!(vtk,poly,2)
+  group_collection!(vtk,poly,2)
 end
 
 grid = CartesianGrid(4,4,4)
@@ -49,21 +49,21 @@ end
 
 file = msh_file(@__DIR__,"gmsh","cube.msh")
 mesh = fe_mesh(file)
-groups = physical_groups(mesh)
+groups = group_collection(mesh)
 vtk_grid(fn,vtk_args(mesh,3)...) do vtk end
 
 file = msh_file(@__DIR__,"gmsh","demo.msh")
 mesh = fe_mesh(file)
 d = 1
 vtk_grid(fn,vtk_args(mesh,d)...) do vtk
-  physical_groups!(vtk,mesh,d)
+  group_collection!(vtk,mesh,d)
 end
 
 file = msh_file(@__DIR__,"gmsh","higher_order_2D.msh")
 mesh = fe_mesh(file)
 d = 1
 vtk_grid(fn,vtk_args(mesh,d)...) do vtk
-  physical_groups!(vtk,mesh,d)
+  group_collection!(vtk,mesh,d)
 end
 
 end # module

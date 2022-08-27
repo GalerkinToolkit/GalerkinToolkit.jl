@@ -44,8 +44,8 @@ export group_dims
 export group_id
 export group_ids
 export GroupCollection
-export physical_groups
-export physical_groups!
+export group_collection
+export group_collection!
 export group_nodes
 export classify_nodes
 export VOID

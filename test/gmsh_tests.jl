@@ -15,7 +15,7 @@ mesh = fe_mesh(file)
 file = msh_file(@__DIR__,"gmsh","periodic.msh")
 mesh = fe_mesh(file)
 
-groups = physical_groups(mesh)
+groups = group_collection(mesh)
 @test group_names(groups,0) == ["PL", "PR"]
 @test group_ids(groups,0) == [1, 2]
 @test group_faces(groups,0,1) == [1,4]

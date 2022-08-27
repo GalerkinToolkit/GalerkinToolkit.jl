@@ -21,7 +21,7 @@ ref_faces(mesh,0)
 ref_faces(mesh,1)
 ref_faces(mesh,2)
 
-groups = physical_groups(mesh)
+groups = group_collection(mesh)
 add_group!(groups,2,"foo")
 add_group!(groups,0,"bar")
 group_faces(groups,2,"foo")

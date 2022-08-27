@@ -176,7 +176,7 @@ function fe_mesh_from_gmsh()
   periodic_nodes!(mesh,(periodic_dep,periodic_indep,ones(length(periodic_indep))))
 
   # Setup physical groups
-  groups = physical_groups(mesh)
+  groups = group_collection(mesh)
   for d in 0:D
     offset = Int32(offsets[d+1]-1)
     dimTags = gmsh.model.getPhysicalGroups(d)

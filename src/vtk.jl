@@ -33,8 +33,8 @@ function vtk_args(mesh,d)
     refid_mesh_cell)
 end
 
-function physical_groups!(vtk::WriteVTK.DatasetFile,mesh,d)
-  groups = physical_groups(mesh)
+function group_collection!(vtk::WriteVTK.DatasetFile,mesh,d)
+  groups = group_collection(mesh)
   ndfaces = num_faces(mesh,d)
   ids = group_ids(groups,d)
   for id in ids

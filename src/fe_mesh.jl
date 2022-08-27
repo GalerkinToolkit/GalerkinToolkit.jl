@@ -50,7 +50,7 @@ default_periodic_nodes(geo) = (Int32[],Int32[],Float64[])
 default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
 default_num_nodes(geo) = length(node_coordinates(geo))
 default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
-default_physical_groups(geo) = GroupCollection(VOID,domain_dim(geo))
+default_group_collection(geo) = GroupCollection(VOID,domain_dim(geo))
 
 is_simplex(geo) = default_is_simplex(geo)
 is_hypercube(geo) = default_is_hypercube(geo)
@@ -71,7 +71,7 @@ struct GroupCollection{Ti}
   group_id::Vector{Dict{String,Int}}
   group_faces::Vector{Dict{Int,Vector{Ti}}}
 end
-physical_groups(a::GroupCollection) = a
+group_collection(a::GroupCollection) = a
 domain_dim(a::GroupCollection) = length(a.group_id)-1
 
 function GroupCollection(::EmptyInitializer,dim::Integer)
@@ -129,7 +129,7 @@ end
 
 function classify_nodes(mesh,ids;boundary=fill(true,length(ids)))
   D = domain_dim(mesh)
-  groups = physical_groups(mesh)
+  groups = group_collection(mesh)
   i_to_id = ids
   ni = length(i_to_id)
   nnodes = num_nodes(mesh)
@@ -166,7 +166,7 @@ function group_nodes_with_boundary(mesh,d,id)
     end
     collect(Int32,findall(node_to_mask))
   end
-  groups = physical_groups(mesh)
+  groups = group_collection(mesh)
   faces_in_group = group_faces(groups,d,id)
   face_to_nodes = face_nodes(mesh,d)
   nnodes = num_nodes(mesh)
@@ -193,7 +193,7 @@ mutable struct GenericFEMesh{T,Ti,Tf}
   ref_faces::Vector{Vector{Any}}
   periodic_nodes::Tuple{Vector{Ti},Vector{Ti},Vector{Tf}}
   hanging_nodes::Tuple{Vector{Ti},JArray{Ti},JArray{Tf}}
-  physical_groups::GroupCollection
+  group_collection::GroupCollection
   buffer::Dict{Symbol,Any}
 end
 fe_mesh(a::GenericFEMesh) = a
@@ -223,7 +223,7 @@ face_ref_id(m::GenericFEMesh,rank) = m.face_ref_id[rank+1]
 ref_faces(m::GenericFEMesh,rank) = m.ref_faces[rank+1]
 periodic_nodes(m::GenericFEMesh) = m.periodic_nodes
 hanging_nodes(m::GenericFEMesh) = m.hanging_nodes
-physical_groups(m::GenericFEMesh) = m.physical_groups
+group_collection(m::GenericFEMesh) = m.group_collection
 
 node_coordinates!(m::GenericFEMesh,v) = (m.node_coordinates = v)
 face_nodes!(m::GenericFEMesh,v,rank) = (m.face_nodes[rank+1] = v)
@@ -231,7 +231,7 @@ face_ref_id!(m::GenericFEMesh,v,rank) = (m.face_ref_id[rank+1] = v)
 ref_faces!(m::GenericFEMesh,v,rank) = (m.ref_faces[rank+1] = v)
 periodic_nodes!(m::GenericFEMesh,v) = (m.periodic_nodes = v)
 hanging_nodes!(m::GenericFEMesh,v) = (m.hanging_nodes = v)
-physical_groups!(m::GenericFEMesh,v) = (m.physical_groups = v)
+group_collection!(m::GenericFEMesh,v) = (m.group_collection = v)
 
 function polytopal_complex(m::GenericFEMesh)
   if !haskey(m.buffer,:polytopal_complex)

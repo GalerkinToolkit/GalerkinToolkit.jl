@@ -565,9 +565,9 @@ function fe_mesh(amr::P4estMeshRefiner)
   hanging_nodes!(mesh,(hanging_ids,hanging_indeps,hanging_coeffs))
   cpoly = polytopal_complex(amr.coarse_mesh)
   fpoly = polytopal_complex(mesh)
-  groups_cpoly = physical_groups(cpoly)
-  groups_fpoly = physical_groups(fpoly)
-  groups_mesh = physical_groups(mesh)
+  groups_cpoly = group_collection(cpoly)
+  groups_fpoly = group_collection(fpoly)
+  groups_mesh = group_collection(mesh)
   fcell_to_ccell = elem_to_tree
   max_coord = 2^P4est.P4EST_MAXLEVEL
   min_coord = 0*max_coord

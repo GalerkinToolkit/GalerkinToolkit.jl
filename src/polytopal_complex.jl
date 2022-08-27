@@ -213,9 +213,9 @@ function  _setup_mesh_faces!(poly,d)
   end
 end
 
-function physical_groups(m::PolyComplexFromFEMesh)
-  if !haskey(m.buffer,:physical_groups)
-    mesh_groups = physical_groups(m.mesh)
+function group_collection(m::PolyComplexFromFEMesh)
+  if !haskey(m.buffer,:group_collection)
+    mesh_groups = group_collection(m.mesh)
     groups = GroupCollection(VOID,domain_dim(m))
     D = domain_dim(m)
     for d in 0:D
@@ -228,12 +228,12 @@ function physical_groups(m::PolyComplexFromFEMesh)
         group_faces!(groups,face_in_group,d,id)
       end
     end
-    m.buffer[:physical_groups] = groups
+    m.buffer[:group_collection] = groups
   end
-  m.buffer[:physical_groups]
+  m.buffer[:group_collection]
 end
-function physical_groups!(m::PolyComplexFromFEMesh,groups)
-  m.buffer[:physical_groups] = groups
+function group_collection!(m::PolyComplexFromFEMesh,groups)
+  m.buffer[:group_collection] = groups
 end
 
 function num_faces(m::PolyComplexFromFEMesh,d)

@@ -8,7 +8,7 @@ grid = CartesianGrid(3,3)
 
 mesh = fe_mesh(grid)
 
-groups = physical_groups(mesh)
+groups = group_collection(mesh)
 @test group_faces(groups,0,3) == [4]
 @test group_faces(groups,1,5) == [1,3,4]
 @test face_nodes(mesh,0) == [[1],[4],[13],[16]]
