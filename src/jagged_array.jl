@@ -145,12 +145,11 @@ function Base.getindex(a::Union{JaggedArray,GenericJaggedArray},i::Integer)
   view(a.data,pini:pend)
 end
 function Base.convert(::Type{J},vv) where J<:GenericJaggedArray
-  a = jagged_array(vv)
+  a = JaggedArray(vv)
   J(a.data,a.ptrs)
 end
 function Base.convert(::Type{J},vv) where J<:JaggedArray
-  a = jagged_array(vv)
-  J(a.data,a.ptrs)
+  J(vv)
 end
 
 """
