@@ -11,8 +11,9 @@ import BlockArrays
 
 export prefix!
 export rewind!
+export jagged_array
+export GenericJaggedArray
 export JaggedArray
-export JArray
 include("jagged_array.jl")
 
 export domain_dim

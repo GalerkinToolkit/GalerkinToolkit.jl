@@ -25,10 +25,10 @@ function polytope_face_incedence(a,d1,d2)
   d = domain_dim(a)
   if d==d1
     nd2faces = num_faces(a,d2)
-    JaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
+    GenericJaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
   elseif d==d2
     nd1faces = num_faces(a,d1)
-    JaggedArray([[ Int32(1)] for d1face in 1:nd1faces])
+    GenericJaggedArray([[ Int32(1)] for d1face in 1:nd1faces])
   else
     poly = polytope_boundary(a)
     face_incidence(poly,d1,d2)
@@ -140,7 +140,7 @@ end
 
 function mesh_face_vertices(mesh::PolyComplexFromFEMesh,d)
   if !haskey(mesh.buffer,:mesh_face_vertices)
-    J = typeof(JaggedArray(Vector{Int32}[]))
+    J = typeof(GenericJaggedArray(Vector{Int32}[]))
     mesh.buffer[:mesh_face_vertices] = Vector{J}(undef,domain_dim(mesh)+1)
   end
   if !isassigned(mesh.buffer[:mesh_face_vertices],d+1)
@@ -190,7 +190,7 @@ function _setup_mesh_face_vertices(
       data[p+lvertex] = vertex
     end
   end
-  dface_to_vertices = JaggedArray(data,ptrs)
+  dface_to_vertices = GenericJaggedArray(data,ptrs)
   dface_to_vertices
 end
 
@@ -347,7 +347,7 @@ end
 function face_incidence(a::PolyComplexFromFEMesh,m,n)
   d = domain_dim(a)
   if !haskey(a.buffer,:face_incidence)
-    J = typeof(JaggedArray(Vector{Int32}[]))
+    J = typeof(GenericJaggedArray(Vector{Int32}[]))
     a.buffer[:face_incidence] = Matrix{J}(undef,d+1,d+1)
   end
 
@@ -385,7 +385,7 @@ end
 function face_nodes(a::PolyComplexFromFEMesh,m)
   d = domain_dim(a)
   if !haskey(a.buffer,:face_nodes)
-    J = typeof(JaggedArray(Vector{Int32}[]))
+    J = typeof(GenericJaggedArray(Vector{Int32}[]))
     a.buffer[:face_nodes] = Vector{J}(undef,d+1)
   end
   if !isassigned(a.buffer[:face_nodes],m+1)
@@ -405,7 +405,7 @@ function _face_interior(nmfaces)
   end
   prefix!(ptrs)
   data = collect(Int32,1:nmfaces)
-  mface_to_mfaces = JaggedArray(data,ptrs)
+  mface_to_mfaces = GenericJaggedArray(data,ptrs)
   mface_to_mfaces
 end
 
@@ -430,7 +430,7 @@ function _face_coboundary(nface_to_mfaces,nmfaces)
     end
   end
   rewind!(ptrs)
-  mface_to_nfaces = JaggedArray(data,ptrs)
+  mface_to_nfaces = GenericJaggedArray(data,ptrs)
   mface_to_nfaces
 end
 
@@ -486,7 +486,7 @@ function _face_boundary(
   prefix!(ptrs)
   ndata = ptrs[end]-1
   data = fill(Int32(INVALID),ndata)
-  Dface_to_dfaces = JaggedArray(data,ptrs)
+  Dface_to_dfaces = GenericJaggedArray(data,ptrs)
   # Main loop
   Dfaces1 = fill(Int32(INVALID),maxDfaces)
   Dfaces2 = fill(Int32(INVALID),maxDfaces)
@@ -695,6 +695,6 @@ function _face_vertices(
       end
     end
   end
-  JaggedArray(data,ptrs)
+  GenericJaggedArray(data,ptrs)
 end
 

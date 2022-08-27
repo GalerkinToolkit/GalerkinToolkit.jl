@@ -69,9 +69,9 @@ function ref_faces(::Type{<:P4estQuad},d)
 end
 ref_faces(a::P4estQuad,d) = ref_faces(typeof(a),d)
 function face_nodes(a::P4estQuad,d)
-  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
-  d==1 && return JaggedArray(Vector{Int32}[[1,3],[2,4],[1,2],[3,4]])
-  d==2 && return JaggedArray(Vector{Int32}[[1,2,3,4]])
+  d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  d==1 && return GenericJaggedArray(Vector{Int32}[[1,3],[2,4],[1,2],[3,4]])
+  d==2 && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
   throw(DomainError(d))
 end
 const _P4EST_BUFFER = Dict{Symbol,Any}()
@@ -347,7 +347,7 @@ function fe_mesh(amr::P4estMeshRefiner)
   for i in 1:length(elem_to_nodes_mat)
     data[i] = Int32(elem_to_nodes_mat[i])+Int32(1)
   end
-  elem_to_nodes = JaggedArray(data,ptrs)
+  elem_to_nodes = GenericJaggedArray(data,ptrs)
   nnodes = lnodes.num_local_nodes
   p4est = unsafe_wrap(p4est_ptr)
   trees_ptr = p4est.trees
@@ -429,7 +429,7 @@ function fe_mesh(amr::P4estMeshRefiner)
     end
   end
   rewind!(ptrs)
-  indep_to_hang = JaggedArray(data,ptrs)
+  indep_to_hang = GenericJaggedArray(data,ptrs)
   jhang = nnodes
   elem = 0
   elem_touch = fill(false,(nchildren,nelems))
@@ -502,9 +502,9 @@ function fe_mesh(amr::P4estMeshRefiner)
       end
     end
   end
-  hanging_indeps = JaggedArray(data,ptrs)
+  hanging_indeps = GenericJaggedArray(data,ptrs)
   data2 = fill(0.5,ndata)
-  hanging_coeffs = JaggedArray(data2,ptrs)
+  hanging_coeffs = GenericJaggedArray(data2,ptrs)
   conn_ptr = p4est.connectivity
   conn = unsafe_wrap(conn_ptr)
   nvertices = Int(conn.num_vertices)
@@ -660,7 +660,7 @@ function fe_mesh(amr::P4estMeshRefiner)
           data[p+lnode] = node
         end
       end
-      mesh_fface_to_nodes = JaggedArray(data,ptrs)
+      mesh_fface_to_nodes = GenericJaggedArray(data,ptrs)
       face_nodes!(mesh,mesh_fface_to_nodes,d)
       face_ref_id!(mesh,fill(Int8(1),length(mesh_fface_to_nodes)),d)
       ref_faces!(mesh,ref_faces(P4estQuad{Float64}(),d),d)

@@ -44,7 +44,7 @@ end
 default_is_simplex(geo) = false
 default_is_hypercube(geo) = false
 default_is_hanging(geo) =  length(first(hanging_nodes(geo)))>0
-default_hanging_nodes(geo) = (Int32[],JaggedArray(Vector{Int32}[]),JaggedArray(Vector{Float64}[]))
+default_hanging_nodes(geo) = (Int32[],GenericJaggedArray(Vector{Int32}[]),GenericJaggedArray(Vector{Float64}[]))
 default_is_periodic(geo) = length(first(periodic_nodes(geo)))>0
 default_periodic_nodes(geo) = (Int32[],Int32[],Float64[])
 default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
@@ -188,11 +188,11 @@ function fe_mesh end
 mutable struct GenericFEMesh{T,Ti,Tf}
   domain_dim::Int
   node_coordinates::Vector{T}
-  face_nodes::Vector{JArray{Ti}}
+  face_nodes::Vector{JaggedArray{Ti}}
   face_ref_id::Vector{Vector{Int8}}
   ref_faces::Vector{Vector{Any}}
   periodic_nodes::Tuple{Vector{Ti},Vector{Ti},Vector{Tf}}
-  hanging_nodes::Tuple{Vector{Ti},JArray{Ti},JArray{Tf}}
+  hanging_nodes::Tuple{Vector{Ti},JaggedArray{Ti},JaggedArray{Tf}}
   group_collection::GroupCollection
   buffer::Dict{Symbol,Any}
 end
@@ -206,11 +206,11 @@ function GenericFEMesh{T,Ti,Tf}(::EmptyInitializer,rank) where {T,Ti,Tf}
   GenericFEMesh(
     rank,
     zeros(T,0),
-    [ JaggedArray(Vector{Ti}[]) for i in 1:(rank+1)],
+    [ GenericJaggedArray(Vector{Ti}[]) for i in 1:(rank+1)],
     [ Int8[] for i in 1:(rank+1)],
     [ Any[] for i in 1:(rank+1)],
     (Ti[],Ti[],Tf[]),
-    (Ti[],JaggedArray(Vector{Ti}[]),JaggedArray(Vector{Tf}[])),
+    (Ti[],GenericJaggedArray(Vector{Ti}[]),GenericJaggedArray(Vector{Tf}[])),
     GroupCollection(VOID,rank),
     Dict{Symbol,Any}()
    )

@@ -129,7 +129,7 @@ function fe_mesh_from_gmsh()
       end
       dface += length(elemTags[t])
     end
-    face_nodes!(mesh,JaggedArray(data,ptrs),d)
+    face_nodes!(mesh,GenericJaggedArray(data,ptrs),d)
   end
   prefix!(offsets)
 
@@ -286,16 +286,16 @@ function face_nodes(a::GmshHighOrderSimplex,d)
   D = domain_dim(a)
   if D == 1
     if a.order == 2
-      d==0 && return JaggedArray(Vector{Int32}[[1],[2]])
-      d==1 && return JaggedArray(Vector{Int32}[[1,2,3]])
+      d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2]])
+      d==1 && return GenericJaggedArray(Vector{Int32}[[1,2,3]])
     else
       error("Order not yet implemented")
     end
   elseif D == 2
     if a.order == 2
-      d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3]])
-      d==1 && return JaggedArray(Vector{Int32}[[1,2,4],[2,3,5],[3,1,6]])
-      d==2 && return JaggedArray(Vector{Int32}[[1,2,3,4,5,6]])
+      d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2],[3]])
+      d==1 && return GenericJaggedArray(Vector{Int32}[[1,2,4],[2,3,5],[3,1,6]])
+      d==2 && return GenericJaggedArray(Vector{Int32}[[1,2,3,4,5,6]])
     else
       error("Order not yet implemented")
     end
