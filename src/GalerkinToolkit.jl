@@ -49,7 +49,7 @@ export physical_groups!
 export group_nodes
 export classify_nodes
 export VOID
-export SimpleFEMesh
+export GenericFEMesh
 export fe_mesh
 export mesh_face_vertices
 include("fe_mesh.jl")

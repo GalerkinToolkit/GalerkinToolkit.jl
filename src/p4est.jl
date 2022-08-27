@@ -557,7 +557,7 @@ function fe_mesh(amr::P4estMeshRefiner)
   P4est.p4est_lnodes_destroy(lnodes_ptr)
   elem_to_refid = fill(Int8(1),length(elem_to_nodes))
   refid_to_refelem = [P4estQuad{Float64}()]
-  mesh = SimpleFEMesh{SVector{Da,Float64}}(VOID,D)
+  mesh = GenericFEMesh{SVector{Da,Float64}}(VOID,D)
   node_coordinates!(mesh,node_to_coordinates)
   face_nodes!(mesh,elem_to_nodes,D)
   face_ref_id!(mesh,elem_to_refid,D)

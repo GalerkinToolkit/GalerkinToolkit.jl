@@ -185,7 +185,7 @@ end
 
 function fe_mesh end
 
-mutable struct SimpleFEMesh{T,Ti,Tf}
+mutable struct GenericFEMesh{T,Ti,Tf}
   domain_dim::Int
   node_coordinates::Vector{T}
   face_nodes::Vector{JArray{Ti}}
@@ -196,14 +196,14 @@ mutable struct SimpleFEMesh{T,Ti,Tf}
   physical_groups::GroupCollection
   buffer::Dict{Symbol,Any}
 end
-fe_mesh(a::SimpleFEMesh) = a
+fe_mesh(a::GenericFEMesh) = a
 
-function SimpleFEMesh{T}(::EmptyInitializer,rank) where T
-  SimpleFEMesh{T,Int32,Float64}(VOID,rank)
+function GenericFEMesh{T}(::EmptyInitializer,rank) where T
+  GenericFEMesh{T,Int32,Float64}(VOID,rank)
 end
 
-function SimpleFEMesh{T,Ti,Tf}(::EmptyInitializer,rank) where {T,Ti,Tf}
-  SimpleFEMesh(
+function GenericFEMesh{T,Ti,Tf}(::EmptyInitializer,rank) where {T,Ti,Tf}
+  GenericFEMesh(
     rank,
     zeros(T,0),
     [ JaggedArray(Vector{Ti}[]) for i in 1:(rank+1)],
@@ -216,24 +216,24 @@ function SimpleFEMesh{T,Ti,Tf}(::EmptyInitializer,rank) where {T,Ti,Tf}
    )
 end
 
-domain_dim(m::SimpleFEMesh) = m.domain_dim
-node_coordinates(m::SimpleFEMesh) = m.node_coordinates
-face_nodes(m::SimpleFEMesh,rank) = m.face_nodes[rank+1]
-face_ref_id(m::SimpleFEMesh,rank) = m.face_ref_id[rank+1]
-ref_faces(m::SimpleFEMesh,rank) = m.ref_faces[rank+1]
-periodic_nodes(m::SimpleFEMesh) = m.periodic_nodes
-hanging_nodes(m::SimpleFEMesh) = m.hanging_nodes
-physical_groups(m::SimpleFEMesh) = m.physical_groups
+domain_dim(m::GenericFEMesh) = m.domain_dim
+node_coordinates(m::GenericFEMesh) = m.node_coordinates
+face_nodes(m::GenericFEMesh,rank) = m.face_nodes[rank+1]
+face_ref_id(m::GenericFEMesh,rank) = m.face_ref_id[rank+1]
+ref_faces(m::GenericFEMesh,rank) = m.ref_faces[rank+1]
+periodic_nodes(m::GenericFEMesh) = m.periodic_nodes
+hanging_nodes(m::GenericFEMesh) = m.hanging_nodes
+physical_groups(m::GenericFEMesh) = m.physical_groups
 
-node_coordinates!(m::SimpleFEMesh,v) = (m.node_coordinates = v)
-face_nodes!(m::SimpleFEMesh,v,rank) = (m.face_nodes[rank+1] = v)
-face_ref_id!(m::SimpleFEMesh,v,rank) = (m.face_ref_id[rank+1] = v)
-ref_faces!(m::SimpleFEMesh,v,rank) = (m.ref_faces[rank+1] = v)
-periodic_nodes!(m::SimpleFEMesh,v) = (m.periodic_nodes = v)
-hanging_nodes!(m::SimpleFEMesh,v) = (m.hanging_nodes = v)
-physical_groups!(m::SimpleFEMesh,v) = (m.physical_groups = v)
+node_coordinates!(m::GenericFEMesh,v) = (m.node_coordinates = v)
+face_nodes!(m::GenericFEMesh,v,rank) = (m.face_nodes[rank+1] = v)
+face_ref_id!(m::GenericFEMesh,v,rank) = (m.face_ref_id[rank+1] = v)
+ref_faces!(m::GenericFEMesh,v,rank) = (m.ref_faces[rank+1] = v)
+periodic_nodes!(m::GenericFEMesh,v) = (m.periodic_nodes = v)
+hanging_nodes!(m::GenericFEMesh,v) = (m.hanging_nodes = v)
+physical_groups!(m::GenericFEMesh,v) = (m.physical_groups = v)
 
-function polytopal_complex(m::SimpleFEMesh)
+function polytopal_complex(m::GenericFEMesh)
   if !haskey(m.buffer,:polytopal_complex)
     polycomplex = PolyComplexFromFEMesh(m)
     m.buffer[:polytopal_complex] = polycomplex

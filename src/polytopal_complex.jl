@@ -9,7 +9,7 @@ function default_polytope_boundary(p)
   x = node_coordinates(p)
   T = eltype(x)
   D = domain_dim(p)-1
-  mesh = SimpleFEMesh{T}(VOID,D)
+  mesh = GenericFEMesh{T}(VOID,D)
   node_coordinates!(mesh,x)
   for d in 0:D
     face_nodes!(mesh,face_nodes(p,d),d)

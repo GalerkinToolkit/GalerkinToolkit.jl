@@ -78,7 +78,7 @@ function fe_mesh_from_gmsh()
   end
 
   # Allocate an empty mesh
-  mesh = SimpleFEMesh{SVector{adim,Float64}}(VOID,D)
+  mesh = GenericFEMesh{SVector{adim,Float64}}(VOID,D)
 
   # Setup node coords
   nmin = minimum(nodeTags)

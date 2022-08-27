@@ -4,7 +4,7 @@ using GalerkinToolkit
 using StaticArrays
 using Test
 
-mesh = SimpleFEMesh{SVector{3,Float64}}(VOID,2)
+mesh = GenericFEMesh{SVector{3,Float64}}(VOID,2)
 
 @test ambient_dim(mesh) == 3
 @test domain_dim(mesh) == 2
