@@ -33,13 +33,13 @@ function vtk_args(mesh,d)
     refid_mesh_cell)
 end
 
-function group_collection!(vtk::WriteVTK.DatasetFile,mesh,d)
-  groups = group_collection(mesh)
+function physical_groups!(vtk::WriteVTK.DatasetFile,mesh,d)
+  groups = physical_groups(mesh)
   ndfaces = num_faces(mesh,d)
-  ids = group_ids(groups,d)
+  ids = physical_group_ids(groups,d)
   for id in ids
-    name = group_name(groups,d,id)
-    faces = group_faces(groups,d,id)
+    name = physical_group_name(groups,d,id)
+    faces = physical_group_faces(groups,d,id)
     face_mask = zeros(Int,ndfaces)
     face_mask[faces] .= id
     vtk[name,WriteVTK.VTKCellData()] = face_mask

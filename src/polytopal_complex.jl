@@ -9,7 +9,7 @@ function default_polytope_boundary(p)
   x = node_coordinates(p)
   T = eltype(x)
   D = domain_dim(p)-1
-  mesh = GenericFEMesh{T}(VOID,D)
+  mesh = FEMesh{T}(VOID,D)
   node_coordinates!(mesh,x)
   for d in 0:D
     face_nodes!(mesh,face_nodes(p,d),d)
@@ -133,7 +133,7 @@ function _setup_vertices(
   end
   vertex_to_node = collect(Int32,findall(node_to_touched))
   nvertices = length(vertex_to_node)
-  node_to_vertex = fill(Int32(INVALID),nnodes)
+  node_to_vertex = fill(Int32(INVALID_ID),nnodes)
   node_to_vertex[vertex_to_node] .= Int32(1):Int32(nvertices)
   node_to_vertex, vertex_to_node
 end
@@ -213,42 +213,42 @@ function  _setup_mesh_faces!(poly,d)
   end
 end
 
-function group_collection(m::PolyComplexFromFEMesh)
-  if !haskey(m.buffer,:group_collection)
-    mesh_groups = group_collection(m.mesh)
-    groups = GroupCollection(VOID,domain_dim(m))
+function physical_groups(m::PolyComplexFromFEMesh)
+  if !haskey(m.buffer,:physical_groups)
+    mesh_physical_groups = physical_groups(m.mesh)
+    groups = PhysicalGroupCollection(VOID,domain_dim(m))
     D = domain_dim(m)
     for d in 0:D
-      for id in group_ids(mesh_groups,d)
-        name = group_name(mesh_groups,d,id)
-        add_group!(groups,d,name,id)
+      for id in physical_group_ids(mesh_physical_groups,d)
+        name = physical_group_name(mesh_physical_groups,d,id)
+        new_physical_group!(groups,d,name,id)
         mesh_face_to_face = mesh_faces(m,d)
-        mesh_face_in_group = group_faces(mesh_groups,d,id)
-        face_in_group = mesh_face_to_face[mesh_face_in_group]
-        group_faces!(groups,face_in_group,d,id)
+        mesh_face_in_physical_group = physical_group_faces(mesh_physical_groups,d,id)
+        face_in_physical_group = mesh_face_to_face[mesh_face_in_physical_group]
+        physical_group_faces!(groups,face_in_physical_group,d,id)
       end
     end
-    m.buffer[:group_collection] = groups
+    m.buffer[:physical_groups] = groups
   end
-  m.buffer[:group_collection]
+  m.buffer[:physical_groups]
 end
-function group_collection!(m::PolyComplexFromFEMesh,groups)
-  m.buffer[:group_collection] = groups
+function physical_groups!(m::PolyComplexFromFEMesh,groups)
+  m.buffer[:physical_groups] = groups
 end
 
 function num_faces(m::PolyComplexFromFEMesh,d)
   @boundscheck @assert d <= domain_dim(m)
   if ! haskey(m.buffer,:num_faces)
-    m.buffer[:num_faces] = fill(INVALID,domain_dim(m)+1)
+    m.buffer[:num_faces] = fill(INVALID_ID,domain_dim(m)+1)
   end
-  if m.buffer[:num_faces][d+1] == INVALID
+  if m.buffer[:num_faces][d+1] == INVALID_ID
     if d == domain_dim(m)
       m.buffer[:num_faces][d+1] = num_faces(m.mesh,d)
     elseif d == 0
       m.buffer[:num_faces][d+1] = length(vertex_node(m))
     else
       face_incidence(m,d+1,d)
-      @boundscheck @assert m.buffer[:num_faces][d+1] != INVALID
+      @boundscheck @assert m.buffer[:num_faces][d+1] != INVALID_ID
     end
   end
   m.buffer[:num_faces][d+1]
@@ -449,7 +449,7 @@ function _face_boundary!(femesh,dface_to_vertices,D,d)
     Dface_to_refid,
     Drefid_to_ldface_to_lvertices)
   if !haskey(femesh.buffer,:num_faces)
-    femesh.buffer[:num_faces] = fill(INVALID,domain_dim(femesh)+1)
+    femesh.buffer[:num_faces] = fill(INVALID_ID,domain_dim(femesh)+1)
   end
   femesh.buffer[:num_faces][d+1] = nnewdface
   femesh.buffer[:face_incidence][D+1,d+1] = Dface_to_dfaces
@@ -485,12 +485,12 @@ function _face_boundary(
   end
   prefix!(ptrs)
   ndata = ptrs[end]-1
-  data = fill(Int32(INVALID),ndata)
+  data = fill(Int32(INVALID_ID),ndata)
   Dface_to_dfaces = GenericJaggedArray(data,ptrs)
   # Main loop
-  Dfaces1 = fill(Int32(INVALID),maxDfaces)
-  Dfaces2 = fill(Int32(INVALID),maxDfaces)
-  ldfaces1 = fill(Int32(INVALID),maxDfaces)
+  Dfaces1 = fill(Int32(INVALID_ID),maxDfaces)
+  Dfaces2 = fill(Int32(INVALID_ID),maxDfaces)
+  ldfaces1 = fill(Int32(INVALID_ID),maxDfaces)
   nDfaces1 = 0
   nDfaces2 = 0
   newdface = Int32(ndfaces)
@@ -502,15 +502,15 @@ function _face_boundary(
     for (ldface,lvertices) in enumerate(ldface_to_lvertices)
       # Do nothing if this local face has already been processed by
       # a neighbor
-      if ldface_to_dface[ldface] != Int32(INVALID)
+      if ldface_to_dface[ldface] != Int32(INVALID_ID)
         continue
       end
       # Find if there is already a global d-face for this local d-face
       # if yes, then use the global id of this d-face
       # if not, create a new one
-      dface2 = Int32(INVALID)
-      fill!(Dfaces1,Int32(INVALID))
-      fill!(Dfaces2,Int32(INVALID))
+      dface2 = Int32(INVALID_ID)
+      fill!(Dfaces1,Int32(INVALID_ID))
+      fill!(Dfaces2,Int32(INVALID_ID))
       vertices = view(lvertex_to_vertex,lvertices)
       for (i,lvertex) in enumerate(lvertices)
         vertex = lvertex_to_vertex[lvertex]
@@ -522,11 +522,11 @@ function _face_boundary(
             break
           end
         end
-        if dface2 != Int32(INVALID)
+        if dface2 != Int32(INVALID_ID)
           break
         end
       end
-      if dface2 == Int32(INVALID)
+      if dface2 == Int32(INVALID_ID)
         newdface += Int32(1)
         dface2 = newdface
       end
@@ -545,11 +545,11 @@ function _face_boundary(
       end
       # Find their correspondent local d-face and set the d-face
       for Dface1 in Dfaces1
-        if Dface1 != INVALID
+        if Dface1 != INVALID_ID
           Drefid1 = Dface_to_refid[Dface1]
           lvertex1_to_vertex1 = Dface_to_vertices[Dface1]
           ldface1_to_lvertices1 = Drefid_to_ldface_to_lvertices[Drefid1]
-          ldface2 = Int32(INVALID)
+          ldface2 = Int32(INVALID_ID)
           for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
             vertices1 = view(lvertex1_to_vertex1,lvertices1)
             if _contain_same_ids(vertices,vertices1)
@@ -572,11 +572,11 @@ function _intersect_ids!(a,na,b,nb)
         return
       end
     end
-    a[i] = INVALID
+    a[i] = INVALID_ID
     return
   end
   for i in 1:na
-    if a[i] == INVALID
+    if a[i] == INVALID_ID
       continue
     end
     findeq!(i,a,b,nb)
@@ -587,7 +587,7 @@ function _contain_same_ids(a,b)
   function is_subset(a,b)
     for i in 1:length(a)
       v = a[i]
-      if v == INVALID
+      if v == INVALID_ID
         continue
       end
       c = find_eq(v,b)

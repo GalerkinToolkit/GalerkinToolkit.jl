@@ -3,13 +3,13 @@ fe_mesh(args...;kwargs...) = default_fe_mesh(args...;kwargs...)
 
 function default_fe_mesh(
   mesh::Meshes.Mesh;
-  group_collection=nothing,
+  physical_groups=nothing,
   hanging_nodes=nothing,
   periodic_nodes=nothing)
 
   D = domain_dim(mesh)
   T = SVector{ambient_dim(mesh),Float64}
-  fe_mesh = GenericFEMesh{T}(VOID,D)
+  fe_mesh = FEMesh{T}(VOID,D)
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
     face_nodes!(fe_mesh,face_nodes(mesh,d),d)
@@ -17,8 +17,8 @@ function default_fe_mesh(
     face_ref_id!(fe_mesh,face_to_refid,d)
     ref_faces!(fe_mesh,refid_to_refface,d)
   end
-  if group_collection !== nothing
-    group_collection!(fe_mesh,group_collection)
+  if physical_groups !== nothing
+    physical_groups!(fe_mesh,physical_groups)
   end
   if hanging_nodes !== nothing
     hanging_nodes!(fe_mesh,hanging_nodes)
@@ -316,9 +316,9 @@ function fe_mesh(
   is_periodic=map(i->false,mesh.dims))
 
   fe_mesh = default_fe_mesh(mesh,periodic_nodes=default_periodic_nodes(mesh))
-  groups, faces = _default_groups_cartesian_grid(fe_mesh)
+  groups, faces = _default_physical_groups_cartesian_grid(fe_mesh)
   face_to_nodes, face_to_refid, refid_to_refface = faces
-  group_collection!(fe_mesh,groups)
+  physical_groups!(fe_mesh,groups)
   D = domain_dim(fe_mesh)
   for d in 0:(D-1)
     face_nodes!(fe_mesh,face_to_nodes[d+1],d)
@@ -330,13 +330,13 @@ function fe_mesh(
   fe_mesh
 end
 
-function _default_groups_cartesian_grid(fe_mesh)
+function _default_physical_groups_cartesian_grid(fe_mesh)
   D = domain_dim(fe_mesh)
   cell_to_nodes = face_nodes(fe_mesh,D)
   refcell = first(ref_faces(fe_mesh,D))
   nnodes = num_nodes(fe_mesh)
   d_to_ldface_to_lnodes = [ face_nodes(refcell,d) for d in 0:(D-1)]
-  groups, face_to_nodes = _default_groups_cartesian_grid(
+  groups, face_to_nodes = _default_physical_groups_cartesian_grid(
     D,
     cell_to_nodes,
     nnodes,
@@ -346,7 +346,7 @@ function _default_groups_cartesian_grid(fe_mesh)
   groups, (face_to_nodes,face_to_refid,refid_to_faces)
 end
 
-function _default_groups_cartesian_grid(
+function _default_physical_groups_cartesian_grid(
   D,
   cell_to_nodes,
   nnodes,
@@ -360,7 +360,7 @@ function _default_groups_cartesian_grid(
   end
   J = typeof(GenericJaggedArray(Vector{Int32}[]))
   face_to_nodes = Vector{J}(undef,D)
-  groups = GroupCollection(VOID,D)
+  groups = PhysicalGroupCollection(VOID,D)
   ngroups = 0
   for d in 0:(D-1)
     nmax = 2^d
@@ -388,7 +388,7 @@ function _default_groups_cartesian_grid(
     prefix!(ptrs)
     ndata = ptrs[end]-1
     data = zeros(Int32,ndata)
-    dface_to_group = zeros(Int32,ndfaces)
+    dface_to_physical_group = zeros(Int32,ndfaces)
     ndfaces = 0
     for nodes in cell_to_nodes
       for (ldface,lnodes) in enumerate(ldface_to_lnodes)
@@ -403,7 +403,7 @@ function _default_groups_cartesian_grid(
         if isboundary
           ndfaces += 1
           group = ngroups + ldface
-          dface_to_group[ndfaces] = group
+          dface_to_physical_group[ndfaces] = group
           p = ptrs[ndfaces]-Int32(1)
           for (i,lnode) in enumerate(lnodes)
             node = nodes[lnode]
@@ -416,16 +416,16 @@ function _default_groups_cartesian_grid(
     face_to_nodes[d+1] = GenericJaggedArray(data,ptrs)
     for ldface in 1:nldfaces
       group = ngroups + ldface
-      add_group!(groups,d,"$(d)-face-$ldface",group)
-      faces_in_group = findall(g->g==group,dface_to_group)
-      group_faces!(groups,faces_in_group,d,group)
+      add_physical_group!(groups,d,"$(d)-face-$ldface",group)
+      faces_in_physical_group = findall(g->g==group,dface_to_physical_group)
+      physical_group_faces!(groups,faces_in_physical_group,d,group)
     end
     ngroups += nldfaces
   end # d
   ngroups += 1
-  add_group!(groups,D,"$(D)-face-1",ngroups)
+  add_physical_group!(groups,D,"$(D)-face-1",ngroups)
   ncells = length(cell_to_nodes)
-  group_faces!(groups,collect(Int32,1:ncells),D,ngroups)
+  physical_group_faces!(groups,collect(Int32,1:ncells),D,ngroups)
   groups, face_to_nodes
 end
 

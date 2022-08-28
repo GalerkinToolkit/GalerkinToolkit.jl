@@ -2,7 +2,7 @@
 """
     prefix!(a)
 
-Sets `a[1]=1` and then `a[i+1]=a[i]` for `i in 1:length(a)`
+Sets `a[1]=1` and then `a[i+1]=a[i]` for `i in 1:length(a)`.
 """
 function prefix!(a)
   a[1] = one(eltype(a))
@@ -28,7 +28,7 @@ function rewind!(a)
 end
 
 """
-    struct GenericJaggedArray{T,A,B}
+    struct GenericJaggedArray{V,A,B}
 
 Generalization of `JaggedArray`, where the fields `data` and `ptrs` are allowed to be any array-like
 object.

@@ -78,7 +78,7 @@ function fe_mesh_from_gmsh()
   end
 
   # Allocate an empty mesh
-  mesh = GenericFEMesh{SVector{adim,Float64}}(VOID,D)
+  mesh = FEMesh{SVector{adim,Float64}}(VOID,D)
 
   # Setup node coords
   nmin = minimum(nodeTags)
@@ -162,7 +162,7 @@ function fe_mesh_from_gmsh()
   end
 
   # Setup periodic nodes
-  node_to_main_node = fill(Int32(INVALID),nnodes)
+  node_to_main_node = fill(Int32(INVALID_ID),nnodes)
   for (dim,tag) in entities
     tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
     for i in 1:length(nodeTags)
@@ -171,39 +171,39 @@ function fe_mesh_from_gmsh()
       node_to_main_node[node] = main_node
     end
   end
-  periodic_dep = collect(Int32,findall(i->i!=INVALID,node_to_main_node))
+  periodic_dep = collect(Int32,findall(i->i!=INVALID_ID,node_to_main_node))
   periodic_indep = node_to_main_node[periodic_dep]
   periodic_nodes!(mesh,(periodic_dep,periodic_indep,ones(length(periodic_indep))))
 
   # Setup physical groups
-  groups = group_collection(mesh)
+  groups = physical_groups(mesh)
   for d in 0:D
     offset = Int32(offsets[d+1]-1)
     dimTags = gmsh.model.getPhysicalGroups(d)
     for (dim,tag) in dimTags
       @boundscheck @assert dim == d
       g_entities = gmsh.model.getEntitiesForPhysicalGroup(dim,tag)
-      ndfaces_in_group = 0
+      ndfaces_in_physical_group = 0
       for entity in g_entities
         elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(dim,entity)
         for t in 1:length(elemTypes)
-          ndfaces_in_group += length(elemTags[t])
+          ndfaces_in_physical_group += length(elemTags[t])
         end
       end
-      dfaces_in_group = zeros(Int32,ndfaces_in_group)
-      ndfaces_in_group = 0
+      dfaces_in_physical_group = zeros(Int32,ndfaces_in_physical_group)
+      ndfaces_in_physical_group = 0
       for entity in g_entities
         elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(dim,entity)
         for t in 1:length(elemTypes)
           for etag in elemTags[t]
-            ndfaces_in_group += 1
-            dfaces_in_group[ndfaces_in_group] = Int32(etag)-offset
+            ndfaces_in_physical_group += 1
+            dfaces_in_physical_group[ndfaces_in_physical_group] = Int32(etag)-offset
           end
         end
       end
       groupname = gmsh.model.getPhysicalName(dim,tag)
-      add_group!(groups,d,groupname,tag)
-      group_faces!(groups,dfaces_in_group,d,Int(tag))
+      new_physical_group!(groups,d,groupname,tag)
+      physical_group_faces!(groups,dfaces_in_physical_group,d,Int(tag))
     end
   end
 

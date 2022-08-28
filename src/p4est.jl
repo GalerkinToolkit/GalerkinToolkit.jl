@@ -185,7 +185,7 @@ function _refine_fn(p4est_ptr,which_tree,quadrant_ptr)
   flags_ptr = Base.unsafe_convert(Ptr{Bool},p4est.user_pointer)
   elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
   elem = unsafe_load(elem_ptr,1)
-  elem == INVALID && return Int32(1)
+  elem == INVALID_ID && return Int32(1)
   flag = unsafe_load(flags_ptr,elem)
   i = flag ? 1 : 0
   Int32(i)
@@ -200,7 +200,7 @@ function _coarsen_fn(p4est_ptr,which_tree,quadrants_ptr)
     quadrant = quadrants[i]
     elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
     elem = unsafe_load(elem_ptr,1)
-    if elem == INVALID
+    if elem == INVALID_ID
       flag = false
     else
       flag = unsafe_load(flags_ptr,elem)
@@ -213,7 +213,7 @@ end
 function _init_fn(p4est_ptr,which_tree,quadrant_ptr)
   quadrant = unsafe_wrap(quadrant_ptr)
   elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-  unsafe_store!(elem_ptr,INVALID)
+  unsafe_store!(elem_ptr,INVALID_ID)
   Cvoid()
 end
 
@@ -379,7 +379,7 @@ function fe_mesh(amr::P4estMeshRefiner)
     end
   end
   maxindeps = 2
-  hang_to_indeps = fill(Int32(INVALID),maxindeps,ihang)
+  hang_to_indeps = fill(Int32(INVALID_ID),maxindeps,ihang)
   hang_to_corner_and_elem = zeros(Int32,2,ihang)
   ihang = 0
   elem = 0
@@ -415,8 +415,8 @@ function fe_mesh(amr::P4estMeshRefiner)
     end
   end
   maxhang = maximum(view(ptrs,2:length(ptrs)))
-  hangs1 = fill(Int32(INVALID),maxhang)
-  hangs2 = fill(Int32(INVALID),maxhang)
+  hangs1 = fill(Int32(INVALID_ID),maxhang)
+  hangs2 = fill(Int32(INVALID_ID),maxhang)
   prefix!(ptrs)
   ndata = ptrs[end]-1
   data = zeros(Int32,ndata)
@@ -433,7 +433,7 @@ function fe_mesh(amr::P4estMeshRefiner)
   jhang = nnodes
   elem = 0
   elem_touch = fill(false,(nchildren,nelems))
-  hang_to_finalhang = fill(Int32(INVALID),ihang)
+  hang_to_finalhang = fill(Int32(INVALID_ID),ihang)
   for itree in 1:ntrees
     tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
     quadrants =  tree.quadrants
@@ -454,21 +454,21 @@ function fe_mesh(amr::P4estMeshRefiner)
           indep1 = nodes[icorner]
           indep2 = nodes[hanging_corner[icorner]]
           jhang += 1
-          fill!(hangs1,Int32(INVALID))
-          fill!(hangs2,Int32(INVALID))
+          fill!(hangs1,Int32(INVALID_ID))
+          fill!(hangs2,Int32(INVALID_ID))
           copyto!(hangs1,indep_to_hang[indep1])
           nhangs1 = length(indep_to_hang[indep1])
           copyto!(hangs2,indep_to_hang[indep2])
           nhangs2 = length(indep_to_hang[indep2])
           _intersect_ids!(hangs1,nhangs1,hangs2,nhangs2)
           for ihang in hangs1
-            if ihang != Int32(INVALID)
+            if ihang != Int32(INVALID_ID)
               hang_to_finalhang[ihang] = jhang
               break
             end
           end
           for ihang in hangs1
-            if ihang != Int32(INVALID)
+            if ihang != Int32(INVALID_ID)
               jcorner = hang_to_corner_and_elem[1,ihang]
               jelem = hang_to_corner_and_elem[2,ihang]
               elem_touch[jcorner,jelem] = true
@@ -479,13 +479,13 @@ function fe_mesh(amr::P4estMeshRefiner)
       end
     end
   end
-  ids = findall(i->i!=Int32(INVALID),hang_to_finalhang)
+  ids = findall(i->i!=Int32(INVALID_ID),hang_to_finalhang)
   hanging_ids = hang_to_finalhang[ids]
   ptrs = zeros(Int32,length(hanging_ids)+1)
   for (i,id) in enumerate(hanging_ids)
     for j in 1:maxindeps
       indep = hang_to_indeps[j,ids[i]]
-      if indep != Int32(INVALID)
+      if indep != Int32(INVALID_ID)
         ptrs[i+1] += Int32(1)
       end
     end
@@ -497,7 +497,7 @@ function fe_mesh(amr::P4estMeshRefiner)
     p = ptrs[i]-Int32(1)
     for j in 1:maxindeps
       indep = hang_to_indeps[j,ids[i]]
-      if indep != Int32(INVALID)
+      if indep != Int32(INVALID_ID)
         data[p+j] = indep
       end
     end
@@ -557,7 +557,7 @@ function fe_mesh(amr::P4estMeshRefiner)
   P4est.p4est_lnodes_destroy(lnodes_ptr)
   elem_to_refid = fill(Int8(1),length(elem_to_nodes))
   refid_to_refelem = [P4estQuad{Float64}()]
-  mesh = GenericFEMesh{SVector{Da,Float64}}(VOID,D)
+  mesh = FEMesh{SVector{Da,Float64}}(VOID,D)
   node_coordinates!(mesh,node_to_coordinates)
   face_nodes!(mesh,elem_to_nodes,D)
   face_ref_id!(mesh,elem_to_refid,D)
@@ -565,9 +565,9 @@ function fe_mesh(amr::P4estMeshRefiner)
   hanging_nodes!(mesh,(hanging_ids,hanging_indeps,hanging_coeffs))
   cpoly = polytopal_complex(amr.coarse_mesh)
   fpoly = polytopal_complex(mesh)
-  groups_cpoly = group_collection(cpoly)
-  groups_fpoly = group_collection(fpoly)
-  groups_mesh = group_collection(mesh)
+  groups_cpoly = physical_groups(cpoly)
+  groups_fpoly = physical_groups(fpoly)
+  groups_mesh = physical_groups(mesh)
   fcell_to_ccell = elem_to_tree
   max_coord = 2^P4est.P4EST_MAXLEVEL
   min_coord = 0*max_coord
@@ -580,7 +580,7 @@ function fe_mesh(amr::P4estMeshRefiner)
     lfface_to_lcface = p4est_face_permutation(refcell,d)
     @boundscheck @assert D == 2 "Not implemented for 3d yet"
     if d==0
-      fface_to_cface = fill(Int32(INVALID),nffaces)
+      fface_to_cface = fill(Int32(INVALID_ID),nffaces)
       for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
         for lfface in 1:4
           neigh = p4est_corner_neighbor(quadrant,lfface)
@@ -597,7 +597,7 @@ function fe_mesh(amr::P4estMeshRefiner)
         end
       end
     elseif d==1
-      fface_to_cface = fill(Int32(INVALID),nffaces)
+      fface_to_cface = fill(Int32(INVALID_ID),nffaces)
       for (fcell,quadrant) in enumerate(p4est_quadrants(p4est_ptr))
         for lfface in 1:4
           neigh = p4est_face_neighbor(quadrant,lfface)
@@ -615,35 +615,35 @@ function fe_mesh(amr::P4estMeshRefiner)
     end
     cface_to_mask = fill(false,ncfaces)
     fface_to_mask = fill(false,nffaces)
-    for id in group_ids(groups_cpoly,d)
+    for id in physical_group_ids(groups_cpoly,d)
       fill!(cface_to_mask,false)
-      cfaces_in_group = group_faces(groups_cpoly,d,id)
-      for cface in cfaces_in_group
+      cfaces_in_physical_group = physical_group_faces(groups_cpoly,d,id)
+      for cface in cfaces_in_physical_group
         cface_to_mask[cface] = true
       end
       fill!(fface_to_mask,false)
       for fface in 1:nffaces
         cface = fface_to_cface[fface]
-        if cface != Int32(INVALID)
+        if cface != Int32(INVALID_ID)
           fface_to_mask[fface] = cface_to_mask[cface]
         end
       end
-      ffaces_in_group = collect(Int32,findall(fface_to_mask))
-      name = group_name(groups_cpoly,d,id)
-      add_group!(groups_fpoly,d,name,id)
-      group_faces!(groups_fpoly,ffaces_in_group,d,id)
+      ffaces_in_physical_group = collect(Int32,findall(fface_to_mask))
+      name = physical_group_name(groups_cpoly,d,id)
+      new_physical_group!(groups_fpoly,d,name,id)
+      physical_group_faces!(groups_fpoly,ffaces_in_physical_group,d,id)
     end
     if d!=D
       fill!(fface_to_mask,false)
-      for id in group_ids(groups_fpoly,d)
-        ffaces_in_group = group_faces(groups_fpoly,d,id)
-        for fface in ffaces_in_group
+      for id in physical_group_ids(groups_fpoly,d)
+        ffaces_in_physical_group = physical_group_faces(groups_fpoly,d,id)
+        for fface in ffaces_in_physical_group
           fface_to_mask[fface] = true
         end
       end
       fface_to_nodes = face_nodes(fpoly,d)
       mesh_fface_to_fface = collect(Int32,findall(fface_to_mask))
-      fface_to_mesh_fface = fill(Int32(INVALID),nffaces)
+      fface_to_mesh_fface = fill(Int32(INVALID_ID),nffaces)
       n_mesh_ffaces = length(mesh_fface_to_fface)
       ptrs = zeros(Int32,n_mesh_ffaces+1)
       for (mesh_fface,fface) in enumerate(mesh_fface_to_fface)
@@ -665,22 +665,22 @@ function fe_mesh(amr::P4estMeshRefiner)
       face_ref_id!(mesh,fill(Int8(1),length(mesh_fface_to_nodes)),d)
       ref_faces!(mesh,ref_faces(P4estQuad{Float64}(),d),d)
       mesh_faces!(fpoly,mesh_fface_to_fface,d)
-      for id in group_ids(groups_fpoly,d)
-        ffaces_in_group = group_faces(groups_fpoly,d,id)
-        mesh_ffaces_in_group = fface_to_mesh_fface[ffaces_in_group]
-        name = group_name(groups_fpoly,d,id)
-        add_group!(groups_mesh,d,name,id)
-        group_faces!(groups_mesh,mesh_ffaces_in_group,d,id)
+      for id in physical_group_ids(groups_fpoly,d)
+        ffaces_in_physical_group = physical_group_faces(groups_fpoly,d,id)
+        mesh_ffaces_in_physical_group = fface_to_mesh_fface[ffaces_in_physical_group]
+        name = physical_group_name(groups_fpoly,d,id)
+        new_physical_group!(groups_mesh,d,name,id)
+        physical_group_faces!(groups_mesh,mesh_ffaces_in_physical_group,d,id)
       end
     else
       mesh_fface_to_fface = collect(Int32,1:nffaces)
       mesh_faces!(fpoly,mesh_fface_to_fface,d)
-      for id in group_ids(groups_fpoly,d)
-        ffaces_in_group = group_faces(groups_fpoly,d,id)
-        mesh_ffaces_in_group = ffaces_in_group
-        name = group_name(groups_fpoly,d,id)
-        add_group!(groups_mesh,d,name,id)
-        group_faces!(groups_mesh,mesh_ffaces_in_group,d,id)
+      for id in physical_group_ids(groups_fpoly,d)
+        ffaces_in_physical_group = physical_group_faces(groups_fpoly,d,id)
+        mesh_ffaces_in_physical_group = ffaces_in_physical_group
+        name = physical_group_name(groups_fpoly,d,id)
+        new_physical_group!(groups_mesh,d,name,id)
+        physical_group_faces!(groups_mesh,mesh_ffaces_in_physical_group,d,id)
       end
     end
   end

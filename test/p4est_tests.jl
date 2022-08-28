@@ -18,15 +18,15 @@ refine!(amr,flags,num_levels=4)
 mesh = fe_mesh(amr)
 
 vtk_grid(joinpath(dir,"p4est0"),vtk_args(mesh,0)...) do vtk
-  group_collection!(vtk,mesh,0)
+  physical_groups!(vtk,mesh,0)
 end
 
 vtk_grid(joinpath(dir,"p4est1"),vtk_args(mesh,1)...) do vtk
-  group_collection!(vtk,mesh,1)
+  physical_groups!(vtk,mesh,1)
 end
 
 vtk_grid(joinpath(dir,"p4est2"),vtk_args(mesh,2)...) do vtk
-  group_collection!(vtk,mesh,2)
+  physical_groups!(vtk,mesh,2)
 end
 
 flags = fill(false,7)

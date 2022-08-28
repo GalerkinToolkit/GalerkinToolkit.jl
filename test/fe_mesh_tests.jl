@@ -4,7 +4,7 @@ using GalerkinToolkit
 using StaticArrays
 using Test
 
-mesh = GenericFEMesh{SVector{3,Float64}}(VOID,2)
+mesh = FEMesh{SVector{3,Float64}}(VOID,2)
 
 @test ambient_dim(mesh) == 3
 @test domain_dim(mesh) == 2
@@ -21,18 +21,18 @@ ref_faces(mesh,0)
 ref_faces(mesh,1)
 ref_faces(mesh,2)
 
-groups = group_collection(mesh)
-add_group!(groups,2,"foo")
-add_group!(groups,0,"bar")
-group_faces(groups,2,"foo")
-@test group_id(groups,2,"foo") == 1
-@test group_name(groups,2,1) == "foo"
-@test group_names(groups,1) == String[]
-@test group_names(groups,0) == ["bar"]
-@test group_names(groups,2) == ["foo"]
-@test group_ids(groups,1) == Int[]
-@test group_ids(groups,0) == [2]
-@test group_ids(groups,2) == [1]
+groups = physical_groups(mesh)
+add_physical_group!(groups,2,"foo")
+add_physical_group!(groups,0,"bar")
+physical_group_faces(groups,2,"foo")
+@test physical_group_id(groups,2,"foo") == 1
+@test physical_group_name(groups,2,1) == "foo"
+@test physical_group_names(groups,1) == String[]
+@test physical_group_names(groups,0) == ["bar"]
+@test physical_group_names(groups,2) == ["foo"]
+@test physical_group_ids(groups,1) == Int[]
+@test physical_group_ids(groups,0) == [2]
+@test physical_group_ids(groups,2) == [1]
 
 
 end
