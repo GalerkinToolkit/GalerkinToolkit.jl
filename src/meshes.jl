@@ -1,15 +1,16 @@
 
-fe_mesh(args...;kwargs...) = default_fe_mesh(args...;kwargs...)
+function fe_mesh(mesh::Meshes.Mesh;kwargs...)
+  _fe_mesh_from_mesh(mesh;kwargs...)
+end
 
-function default_fe_mesh(
+function _fe_mesh_from_mesh(
   mesh::Meshes.Mesh;
   physical_groups=nothing,
   hanging_nodes=nothing,
   periodic_nodes=nothing)
 
   D = domain_dim(mesh)
-  T = SVector{ambient_dim(mesh),Float64}
-  fe_mesh = FEMesh{T}(VOID,D)
+  fe_mesh = FEMesh{ambient_dim(mesh)}(D)
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
     face_nodes!(fe_mesh,face_nodes(mesh,d),d)
@@ -82,9 +83,9 @@ function face_nodes(a::Meshes.Mesh,d)
     j = map(vs) do v
       convert(SVector{length(v.indices),Int32}, v.indices)
     end
-    GenericJaggedArray(j)
+    JaggedArray(j)
   else
-    GenericJaggedArray(Vector{Int32}[])
+    JaggedArray(Vector{Int32}[])
   end
 end
 function node_coordinates(a::Meshes.Mesh)
@@ -111,7 +112,7 @@ ref_faces(a::Meshes.Point,d) = ref_faces(typeof(a),d)
 function face_faces(a::Meshes.Point,d1,d2)
   d1!=0 && throw(DomainError(d1))
   d2!=0 && throw(DomainError(d2))
-  GenericJaggedArray([[Int32(1)]])
+  JaggedArray([[Int32(1)]])
 end
 face_nodes(a::Meshes.Point,d) = face_faces(a,d,0)
 #face_own_nodes(a::Meshes.Point,d) = face_nodes(a,d)
@@ -139,10 +140,10 @@ function ref_faces(::Type{<:Meshes.Segment},d)
 end
 ref_faces(a::Meshes.Segment,d) = ref_faces(typeof(a),d)
 function face_faces(a::Meshes.Segment,d1,d2)
-  (d1==0 && d2==0) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
-  (d1==1 && d2==0) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
-  (d1==0 && d2==1) && return GenericJaggedArray([[Int32(1)],[Int32(1)]])
-  (d1==1 && d2==1) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
+  (d1==0 && d2==0) && return JaggedArray([[Int32(1)],[Int32(2)]])
+  (d1==1 && d2==0) && return JaggedArray([[Int32(1)],[Int32(2)]])
+  (d1==0 && d2==1) && return JaggedArray([[Int32(1)],[Int32(1)]])
+  (d1==1 && d2==1) && return JaggedArray([[Int32(1)],[Int32(2)]])
   throw(DomainError((d1,d2)))
 end
 face_nodes(a::Meshes.Segment,d) = face_faces(a,d,0)
@@ -172,15 +173,15 @@ function ref_faces(::Type{<:Meshes.Quadrangle},d)
 end
 ref_faces(a::Meshes.Quadrangle,d) = ref_faces(typeof(a),d)
 function face_faces(a::Meshes.Quadrangle,d1,d2)
-  (d1==0 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
-  (d1==1 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1]])
-  (d1==2 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
-  (d1==0 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1,4],[1,2],[2,3],[3,4]])
-  (d1==1 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
-  (d1==2 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
-  (d1==0 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1],[1],[1],[1]])
-  (d1==1 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1],[1],[1],[1]])
-  (d1==2 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1]])
+  (d1==0 && d2==0) && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  (d1==1 && d2==0) && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1]])
+  (d1==2 && d2==0) && return JaggedArray(Vector{Int32}[[1,2,3,4]])
+  (d1==0 && d2==1) && return JaggedArray(Vector{Int32}[[1,4],[1,2],[2,3],[3,4]])
+  (d1==1 && d2==1) && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  (d1==2 && d2==1) && return JaggedArray(Vector{Int32}[[1,2,3,4]])
+  (d1==0 && d2==2) && return JaggedArray(Vector{Int32}[[1],[1],[1],[1]])
+  (d1==1 && d2==2) && return JaggedArray(Vector{Int32}[[1],[1],[1],[1]])
+  (d1==2 && d2==2) && return JaggedArray(Vector{Int32}[[1]])
   throw(DomainError((d1,d2)))
 end
 face_nodes(a::Meshes.Quadrangle,d) = face_faces(a,d,0)
@@ -210,15 +211,15 @@ function ref_faces(::Type{<:Meshes.Triangle},d)
 end
 ref_faces(a::Meshes.Triangle,d) = ref_faces(typeof(a),d)
 function face_faces(a::Meshes.Triangle,d1,d2)
-  (d1==0 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3]])
-  (d1==1 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,1]])
-  (d1==2 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2,3]])
-  (d1==0 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1,3],[1,2],[2,3]])
-  (d1==1 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3]])
-  (d1==2 && d2==1) && return GenericJaggedArray(Vector{Int32}[[1,2,3]])
-  (d1==0 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1],[1],[1]])
-  (d1==1 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1],[1],[1]])
-  (d1==2 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1]])
+  (d1==0 && d2==0) && return JaggedArray(Vector{Int32}[[1],[2],[3]])
+  (d1==1 && d2==0) && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,1]])
+  (d1==2 && d2==0) && return JaggedArray(Vector{Int32}[[1,2,3]])
+  (d1==0 && d2==1) && return JaggedArray(Vector{Int32}[[1,3],[1,2],[2,3]])
+  (d1==1 && d2==1) && return JaggedArray(Vector{Int32}[[1],[2],[3]])
+  (d1==2 && d2==1) && return JaggedArray(Vector{Int32}[[1,2,3]])
+  (d1==0 && d2==2) && return JaggedArray(Vector{Int32}[[1],[1],[1]])
+  (d1==1 && d2==2) && return JaggedArray(Vector{Int32}[[1],[1],[1]])
+  (d1==2 && d2==2) && return JaggedArray(Vector{Int32}[[1]])
   throw(DomainError((d1,d2)))
 end
 face_nodes(a::Meshes.Triangle,d) = face_faces(a,d,0)
@@ -251,10 +252,10 @@ function ref_faces(::Type{<:Meshes.Tetrahedron},d)
 end
 ref_faces(a::Meshes.Tetrahedron,d) = ref_faces(typeof(a),d)
 function face_nodes(a::Meshes.Tetrahedron,d)
-  d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
-  d==1 && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,1],[1,4],[2,4],[3,4]])
-  d==2 && return GenericJaggedArray(Vector{Int32}[[1,3,2],[1,2,4],[2,3,4],[3,1,4]])
-  d==3 && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
+  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+  d==1 && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,1],[1,4],[2,4],[3,4]])
+  d==2 && return JaggedArray(Vector{Int32}[[1,3,2],[1,2,4],[2,3,4],[3,1,4]])
+  d==3 && return JaggedArray(Vector{Int32}[[1,2,3,4]])
   throw(DomainError(d))
 end
 _MESHES_BUFFER[:Tetrahedron] = Dict{Symbol,Any}()
@@ -264,7 +265,7 @@ function polytope_boundary(a::Meshes.Tetrahedron)
   end
   _MESHES_BUFFER[:Tetrahedron][:polytope_boundary]
 end
-face_faces(a::Meshes.Tetrahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::Meshes.Tetrahedron,d1,d2) = default_polytope_face_faces(a,d1,d2)
 function vtk_mesh_cell(a::Meshes.Tetrahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TETRA,nodes)
 end
@@ -292,10 +293,10 @@ function ref_faces(::Type{<:Meshes.Hexahedron},d)
 end
 ref_faces(a::Meshes.Hexahedron,d) = ref_faces(typeof(a),d)
 function face_nodes(a::Meshes.Hexahedron,d)
-  d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4],[5],[6],[7],[8]])
-  d==1 && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1],[5,6],[6,7],[7,8],[8,5],[1,5],[2,6],[3,7],[4,8]])
-  d==2 && return GenericJaggedArray(Vector{Int32}[[1,4,3,2],[1,2,6,5],[2,3,7,6],[3,4,8,7],[4,1,5,8],[5,6,7,8]])
-  d==3 && return GenericJaggedArray(Vector{Int32}[[1,2,3,4,5,6,7,8]])
+  d==0 && return JaggedArray(Vector{Int32}[[1],[2],[3],[4],[5],[6],[7],[8]])
+  d==1 && return JaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1],[5,6],[6,7],[7,8],[8,5],[1,5],[2,6],[3,7],[4,8]])
+  d==2 && return JaggedArray(Vector{Int32}[[1,4,3,2],[1,2,6,5],[2,3,7,6],[3,4,8,7],[4,1,5,8],[5,6,7,8]])
+  d==3 && return JaggedArray(Vector{Int32}[[1,2,3,4,5,6,7,8]])
   throw(DomainError(d))
 end
 _MESHES_BUFFER[:Hexahedron] = Dict{Symbol,Any}()
@@ -305,7 +306,7 @@ function polytope_boundary(a::Meshes.Hexahedron)
   end
   _MESHES_BUFFER[:Hexahedron][:polytope_boundary]
 end
-face_faces(a::Meshes.Hexahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::Meshes.Hexahedron,d1,d2) = default_polytope_face_faces(a,d1,d2)
 function vtk_mesh_cell(a::Meshes.Hexahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes)
 end
@@ -315,7 +316,7 @@ function fe_mesh(
   mesh::Meshes.CartesianGrid;
   is_periodic=map(i->false,mesh.dims))
 
-  fe_mesh = default_fe_mesh(mesh,periodic_nodes=default_periodic_nodes(mesh))
+  fe_mesh = _fe_mesh_from_mesh(mesh)
   groups, faces = _default_physical_groups_cartesian_grid(fe_mesh)
   face_to_nodes, face_to_refid, refid_to_refface = faces
   physical_groups!(fe_mesh,groups)
@@ -358,9 +359,9 @@ function _default_physical_groups_cartesian_grid(
       node_to_n[node] += Int32(1)
     end
   end
-  J = typeof(GenericJaggedArray(Vector{Int32}[]))
+  J = typeof(JaggedArray(Vector{Int32}[]))
   face_to_nodes = Vector{J}(undef,D)
-  groups = PhysicalGroupCollection(VOID,D)
+  groups = PhysicalGroupCollection(D)
   ngroups = 0
   for d in 0:(D-1)
     nmax = 2^d
@@ -413,17 +414,17 @@ function _default_physical_groups_cartesian_grid(
       end
     end
     nldfaces = length(ldface_to_lnodes)
-    face_to_nodes[d+1] = GenericJaggedArray(data,ptrs)
+    face_to_nodes[d+1] = JaggedArray(data,ptrs)
     for ldface in 1:nldfaces
       group = ngroups + ldface
-      add_physical_group!(groups,d,"$(d)-face-$ldface",group)
+      physical_group!(groups,d,"$(d)-face-$ldface",group)
       faces_in_physical_group = findall(g->g==group,dface_to_physical_group)
       physical_group_faces!(groups,faces_in_physical_group,d,group)
     end
     ngroups += nldfaces
   end # d
   ngroups += 1
-  add_physical_group!(groups,D,"$(D)-face-1",ngroups)
+  physical_group!(groups,D,"$(D)-face-1",ngroups)
   ncells = length(cell_to_nodes)
   physical_group_faces!(groups,collect(Int32,1:ncells),D,ngroups)
   groups, face_to_nodes
@@ -480,7 +481,7 @@ function _periodic_nodes_cartesian_grid(dim_ncells,is_periodic)
       end
     end
   end
-  periodic_indep, periodic_dep, ones(length(periodic_dep))
+  PeriodicNodeCollection(periodic_dep, periodic_indep, ones(length(periodic_dep)))
 end
 
 function polytopal_complex(mesh::Meshes.Mesh)

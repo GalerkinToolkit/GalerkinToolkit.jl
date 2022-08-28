@@ -16,44 +16,54 @@ export GenericJaggedArray
 export JaggedArray
 include("jagged_array.jl")
 
+export INVALID_ID
 export domain_dim
 export ambient_dim
-export face_ref_id
-export ref_faces
+export num_faces
+export face_nodes
+export face_nodes!
+export face_own_nodes
+export face_own_nodes!
 export face_faces
 export face_vertices
-export face_nodes
-export face_own_nodes
+export ref_faces
+export ref_faces!
+export face_ref_id
+export face_ref_id!
+export ref_face_faces
+export ref_face_nodes
+export ref_face_own_nodes
+export num_nodes
 export node_coordinates
 export periodic_nodes
+export periodic_nodes!
+export has_periodic_nodes
+export num_periodic_nodes
+export PeriodicNodeCollection
 export hanging_nodes
-export is_hanging
-export is_periodic
-export num_faces
-export num_nodes
+export hanging_nodes!
+export has_hanging_nodes
+export num_periodic_nodes
+export HangingNodeCollection
 export is_simplex
 export is_hypercube
-export vertex_node
-export node_vertex
-export add_physical_group!
+export physical_groups
+export physical_groups!
+export physical_group!
 export physical_group_faces!
 export physical_group_faces
 export physical_group_name
 export physical_group_names
-export physical_group_dim
-export physical_group_dims
 export physical_group_id
+export new_physical_group_id
 export physical_group_ids
 export PhysicalGroupCollection
-export physical_groups
-export physical_groups!
-export physical_group_nodes
-export classify_nodes
 export FEMesh
 export fe_mesh
-export mesh_face_vertices
 include("fe_mesh.jl")
 
+export vertex_node
+export node_vertex
 export polytopal_complex
 include("polytopal_complex.jl")
 

@@ -20,24 +20,33 @@ ref_faces(mesh,2)
 face_ref_id(mesh,0)
 face_ref_id(mesh,1)
 face_ref_id(mesh,2)
-@test is_periodic(mesh) == false
-@test is_hanging(mesh) == false
+@test has_periodic_nodes(mesh) == false
+@test has_hanging_nodes(mesh) == false
 
 mesh = fe_mesh(grid,is_periodic=(true,false))
-@test is_periodic(mesh) == true
-@test periodic_nodes(mesh) == ([1,5,9,13],[4,8,12,16],[1,1,1,1])
+@test has_periodic_nodes(mesh) == true
+info = periodic_nodes(mesh)
+@test info.periodic == [4,8,12,16]
+@test info.master == [1,5,9,13]
+@test info.coeff == [1,1,1,1]
 
 mesh = fe_mesh(grid,is_periodic=(false,true))
-@test is_periodic(mesh) == true
-@test periodic_nodes(mesh) == ([1,2,3,4],[13,14,15,16],[1,1,1,1])
+@test has_periodic_nodes(mesh) == true
+info = periodic_nodes(mesh)
+@test info.periodic == [13,14,15,16]
+@test info.master == [1,2,3,4]
+@test info.coeff == [1,1,1,1]
 
 mesh = fe_mesh(grid,is_periodic=(true,true))
-@test is_periodic(mesh) == true
-@test periodic_nodes(mesh) == ([1,5,9,13,2,3],[4,8,12,16,14,15],[1,1,1,1,1,1])
+@test has_periodic_nodes(mesh) == true
+info = periodic_nodes(mesh)
+@test info.periodic == [4,8,12,16,14,15]
+@test info.master == [1,5,9,13,2,3]
+@test info.coeff == [1,1,1,1,1,1]
 
-i_to_physical_groupid = [9,3,5,1]
-node_to_i = classify_nodes(mesh,i_to_physical_groupid)
-@test i_to_physical_groupid[node_to_i] == [1,5,5,5,9,9,9,9,9,9,9,9,9,9,9,3]
+#i_to_physical_groupid = [9,3,5,1]
+#node_to_i = classify_nodes(mesh,i_to_physical_groupid)
+#@test i_to_physical_groupid[node_to_i] == [1,5,5,5,9,9,9,9,9,9,9,9,9,9,9,3]
 
 
 end # module

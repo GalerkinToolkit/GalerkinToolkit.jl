@@ -82,7 +82,7 @@ function polytope_boundary(a::P4estQuad)
   end
   _P4EST_BUFFER[:P4estQuad][:polytope_boundary]
 end
-face_faces(a::P4estQuad,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::P4estQuad,d1,d2) = default_polytope_face_faces(a,d1,d2)
 function vtk_mesh_cell(a::P4estQuad)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
 end

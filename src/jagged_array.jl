@@ -151,6 +151,12 @@ end
 function Base.convert(::Type{J},vv) where J<:JaggedArray
   J(vv)
 end
+function Base.convert(::Type{J},vv::J) where J<:GenericJaggedArray
+  vv
+end
+function Base.convert(::Type{J},vv::J) where J<:JaggedArray
+  vv
+end
 
 """
     jagged_array(data,ptrs)

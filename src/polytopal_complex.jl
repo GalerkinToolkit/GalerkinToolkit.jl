@@ -1,15 +1,23 @@
 
 
+"""
+   linear_polytope(poly)
+Return the linear version of polytope `poly`.
+"""
 function linear_polytope end
 
-default_linear_polytope(a) = a
-linear_polytope(a) = default_linear_polytope(a)
-
+"""
+    polytope_boundary(poly)
+Return a polytopal complex representing the boundary
+of polytope `poly`.
+"""
+function polytope_boundary end
+polytope_boundary(p) = default_polytope_boundary(p)
 function default_polytope_boundary(p)
   x = node_coordinates(p)
   T = eltype(x)
   D = domain_dim(p)-1
-  mesh = FEMesh{T}(VOID,D)
+  mesh = FEMesh{T}(D)
   node_coordinates!(mesh,x)
   for d in 0:D
     face_nodes!(mesh,face_nodes(p,d),d)
@@ -18,53 +26,63 @@ function default_polytope_boundary(p)
   end
   polytopal_complex(mesh)
 end
-
-polytope_boundary(p) = default_polytope_boundary(p)
-
-function polytope_face_incedence(a,d1,d2)
-  d = domain_dim(a)
-  if d==d1
-    nd2faces = num_faces(a,d2)
-    GenericJaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
-  elseif d==d2
-    nd1faces = num_faces(a,d1)
-    GenericJaggedArray([[ Int32(1)] for d1face in 1:nd1faces])
+function default_polytope_face_faces(poly,dim_from,dim_to)
+  d = domain_dim(poly)
+  if d==dim_from
+    nd2faces = num_faces(poly,dim_to)
+    JaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
+  elseif d==dim_to
+    nd1faces = num_faces(poly,d1dim_from)
+    JaggedArray([[ Int32(1)] for d1face in 1:nd1faces])
   else
-    poly = polytope_boundary(a)
-    face_faces(poly,d1,d2)
+    poly = polytope_boundary(poly)
+    face_faces(poly,dim_from,dim_to)
   end
 end
 
-function vertex_node end
-function node_vertex end
+"""
+    mesh_faces(complex,dim)
+Return the face mapping between the faces in the mesh `fe_mesh(complex)`
+and the faces in the polytopal complex `complex`.
+"""
 function mesh_faces end
-function mesh_face_vertices end
+
+"""
+    mesh_faces!(complex,meshfaces,dim)
+Sets the face mapping between the faces in the mesh `fe_mesh(complex)`
+and the faces in the polytopal complex `complex`.
+"""
+function mesh_faces! end
+
+"""
+    polytopal_complex(geo)
+Return the polytopal complex associated with `geo`.
+"""
 function polytopal_complex end
 
-polytopal_complex(mesh) = PolyComplexFromFEMesh(mesh)
-
-struct PolyComplexFromFEMesh
-  mesh::Any
+struct PolytopalComplex{M}
+  fe_mesh::M
   buffer::Dict{Symbol,Any}
 end
 
-function PolyComplexFromFEMesh(mesh)
+fe_mesh(a::PolytopalComplex) = a.fe_mesh
+
+function PolytopalComplex(femesh)
   buffer = Dict{Symbol,Any}()
-  PolyComplexFromFEMesh(mesh,buffer)
+  PolytopalComplex(femesh,buffer)
 end
 
-domain_dim(m::PolyComplexFromFEMesh) = domain_dim(m.mesh)
-ambient_dim(m::PolyComplexFromFEMesh) = ambient_dim(m.mesh)
-node_coordinates(m::PolyComplexFromFEMesh) = node_coordinates(m.mesh)
-periodic_nodes(m::PolyComplexFromFEMesh) = periodic_nodes(m.mesh)
-hanging_nodes(m::PolyComplexFromFEMesh) = hanging_nodes(m.mesh)
-is_hanging(m::PolyComplexFromFEMesh) = is_hanging(m.mesh)
-is_periodic(m::PolyComplexFromFEMesh) = is_periodic(m.mesh)
-is_simplex(m::PolyComplexFromFEMesh) = is_simplex(m.mesh)
-is_hypercube(m::PolyComplexFromFEMesh) = is_hypercube(m.mesh)
-face_vertices(m::PolyComplexFromFEMesh,rank) = face_faces(m,rank,0)
+domain_dim(m::PolytopalComplex) = domain_dim(m.fe_mesh)
+ambient_dim(m::PolytopalComplex) = ambient_dim(m.fe_mesh)
+node_coordinates(m::PolytopalComplex) = node_coordinates(m.fe_mesh)
+periodic_nodes(m::PolytopalComplex) = periodic_nodes(m.fe_mesh)
+hanging_nodes(m::PolytopalComplex) = hanging_nodes(m.fe_mesh)
+is_simplex(m::PolytopalComplex) = is_simplex(m.fe_mesh)
+is_hypercube(m::PolytopalComplex) = is_hypercube(m.fe_mesh)
+node_vertex(m::PolytopalComplex) = node_vertex(m.fe_mesh)
+vertex_node(m::PolytopalComplex) = vertex_node(m.fe_mesh)
 
-function mesh_faces!(m::PolyComplexFromFEMesh,f,d)
+function mesh_faces!(m::PolytopalComplex,f,d)
   if ! haskey(m.buffer,:mesh_faces)
     D = domain_dim(m)
     m.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,D+1)
@@ -72,129 +90,7 @@ function mesh_faces!(m::PolyComplexFromFEMesh,f,d)
   m.buffer[:mesh_faces][d+1] = f
 end
 
-
-function node_vertex(mesh::PolyComplexFromFEMesh)
-  if !haskey(mesh.buffer,:node_vertex)
-    _setup_vertices!(mesh)
-  end
-  mesh.buffer[:node_vertex]
-end
-
-function vertex_node(mesh::PolyComplexFromFEMesh)
-  if !haskey(mesh.buffer,:vertex_node)
-    _setup_vertices!(mesh)
-  end
-  mesh.buffer[:vertex_node]
-end
-
-function _setup_vertices!(poly)
-  mesh = poly.mesh
-  D = domain_dim(mesh)
-  nnodes = num_nodes(mesh)
-  d_refid_to_refface = [ref_faces(mesh,d) for d in 0:D]
-  d_refid_to_lvertex_to_lnodes = [ref_face_nodes(mesh,d,0) for d in 0:D]
-  d_dface_to_refid = [ face_ref_id(mesh,d) for d in 0:D]
-  d_dface_to_nodes = [ face_nodes(mesh,d) for d in 0:D]
-  node_to_vertex, vertex_to_node = _setup_vertices(
-    D,
-    nnodes,
-    d_refid_to_refface,
-    d_refid_to_lvertex_to_lnodes,
-    d_dface_to_refid,
-    d_dface_to_nodes)
-  poly.buffer[:node_vertex] = node_to_vertex
-  poly.buffer[:vertex_node] = vertex_to_node
-end
-
-function _setup_vertices(
-  D,
-  nnodes,
-  d_refid_to_refface,
-  d_refid_to_lvertex_to_lnodes,
-  d_dface_to_refid,
-  d_dface_to_nodes)
-
-  node_to_touched = fill(false,nnodes)
-  for d in D:-1:0
-    refid_to_refface = d_refid_to_refface[d+1]
-    refid_to_lvertex_to_lnodes = d_refid_to_lvertex_to_lnodes[d+1]
-    dface_to_refid = d_dface_to_refid[d+1]
-    dface_to_nodes = d_dface_to_nodes[d+1]
-    for dface in 1:length(dface_to_refid)
-      refid = dface_to_refid[dface]
-      nodes = dface_to_nodes[dface]
-      lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
-      for lnodes in lvertex_to_lnodes
-        lnode = first(lnodes)
-        node = nodes[lnode]
-        node_to_touched[node] = true
-      end
-    end
-  end
-  vertex_to_node = collect(Int32,findall(node_to_touched))
-  nvertices = length(vertex_to_node)
-  node_to_vertex = fill(Int32(INVALID_ID),nnodes)
-  node_to_vertex[vertex_to_node] .= Int32(1):Int32(nvertices)
-  node_to_vertex, vertex_to_node
-end
-
-function mesh_face_vertices(mesh::PolyComplexFromFEMesh,d)
-  if !haskey(mesh.buffer,:mesh_face_vertices)
-    J = typeof(GenericJaggedArray(Vector{Int32}[]))
-    mesh.buffer[:mesh_face_vertices] = Vector{J}(undef,domain_dim(mesh)+1)
-  end
-  if !isassigned(mesh.buffer[:mesh_face_vertices],d+1)
-    _setup_mesh_face_vertices!(mesh,d)
-  end
-  mesh.buffer[:mesh_face_vertices][d+1]
-end
-
-function _setup_mesh_face_vertices!(poly,d)
-  mesh = poly.mesh
-  node_to_vertex = node_vertex(poly)
-  refid_to_lvertex_to_lnodes = ref_face_nodes(mesh,d,0)
-  dface_to_refid = face_ref_id(mesh,d)
-  dface_to_nodes = face_nodes(mesh,d)
-  dface_to_vertices = _setup_mesh_face_vertices(
-    node_to_vertex,
-    refid_to_lvertex_to_lnodes,
-    dface_to_refid,
-    dface_to_nodes)
-  poly.buffer[:mesh_face_vertices][d+1] = dface_to_vertices
-end
-
-function _setup_mesh_face_vertices(
-  node_to_vertex,
-  refid_to_lvertex_to_lnodes,
-  dface_to_refid,
-  dface_to_nodes)
-
-  ptrs = zeros(Int32,length(dface_to_refid)+1)
-  for dface in 1:length(dface_to_refid)
-    refid = dface_to_refid[dface]
-    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
-    ptrs[dface+1] += length(lvertex_to_lnodes)
-  end
-  prefix!(ptrs)
-  ndata = ptrs[end]-1
-  data = zeros(Int32,ndata)
-  for dface in 1:length(dface_to_refid)
-    refid = dface_to_refid[dface]
-    nodes = dface_to_nodes[dface]
-    lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
-    p = ptrs[dface]-Int32(1)
-    for (lvertex,lnodes) in enumerate(lvertex_to_lnodes)
-      lnode = first(lnodes)
-      node = nodes[lnode]
-      vertex = node_to_vertex[node]
-      data[p+lvertex] = vertex
-    end
-  end
-  dface_to_vertices = GenericJaggedArray(data,ptrs)
-  dface_to_vertices
-end
-
-function mesh_faces(mesh::PolyComplexFromFEMesh,d)
+function mesh_faces(mesh::PolytopalComplex,d)
   if !haskey(mesh.buffer,:mesh_faces)
     mesh.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,domain_dim(mesh)+1)
   end
@@ -209,11 +105,11 @@ function  _setup_mesh_faces!(poly,d)
   if d != 0
     poly.buffer[:mesh_faces][d+1] = collect(Int32,1:num_faces(mesh,d))
   else
-    poly.buffer[:mesh_faces][d+1] = map(first,mesh_face_vertices(poly,0))
+    poly.buffer[:mesh_faces][d+1] = map(first,face_vertices(mesh,0))
   end
 end
 
-function physical_groups(m::PolyComplexFromFEMesh)
+function physical_groups(m::PolytopalComplex)
   if !haskey(m.buffer,:physical_groups)
     mesh_physical_groups = physical_groups(m.mesh)
     groups = PhysicalGroupCollection(VOID,domain_dim(m))
@@ -232,11 +128,11 @@ function physical_groups(m::PolyComplexFromFEMesh)
   end
   m.buffer[:physical_groups]
 end
-function physical_groups!(m::PolyComplexFromFEMesh,groups)
+function physical_groups!(m::PolytopalComplex,groups)
   m.buffer[:physical_groups] = groups
 end
 
-function num_faces(m::PolyComplexFromFEMesh,d)
+function num_faces(m::PolytopalComplex,d)
   @boundscheck @assert d <= domain_dim(m)
   if ! haskey(m.buffer,:num_faces)
     m.buffer[:num_faces] = fill(INVALID_ID,domain_dim(m)+1)
@@ -254,7 +150,7 @@ function num_faces(m::PolyComplexFromFEMesh,d)
   m.buffer[:num_faces][d+1]
 end
 
-function face_ref_id(a::PolyComplexFromFEMesh,m)
+function face_ref_id(a::PolytopalComplex,m)
   d = domain_dim(a)
   if !haskey(a.buffer,:face_ref_id)
     a.buffer[:face_ref_id] = Vector{Vector{Int8}}(undef,d+1)
@@ -270,7 +166,7 @@ function face_ref_id(a::PolyComplexFromFEMesh,m)
   a.buffer[:face_ref_id][m+1]
 end
 
-function ref_faces(a::PolyComplexFromFEMesh,m)
+function ref_faces(a::PolytopalComplex,m)
   d = domain_dim(a)
   if !haskey(a.buffer,:ref_faces)
     a.buffer[:face_ref_id] = Vector{Vector{Int8}}(undef,d+1)
@@ -344,7 +240,7 @@ function _ref_faces(
   mface_to_u, u_to_refmface
 end
 
-function face_faces(a::PolyComplexFromFEMesh,m,n)
+function face_faces(a::PolytopalComplex,m,n)
   d = domain_dim(a)
   if !haskey(a.buffer,:face_faces)
     J = typeof(GenericJaggedArray(Vector{Int32}[]))
@@ -353,24 +249,24 @@ function face_faces(a::PolyComplexFromFEMesh,m,n)
 
   if !isassigned(a.buffer[:face_faces],m+1,n+1)
     if m==d && n==0
-      a.buffer[:face_faces][m+1,n+1] = mesh_face_vertices(a,d)
+      a.buffer[:face_faces][m+1,n+1] = face_vertices(a.fe_mesh,d)
     elseif m==d && n==d
       a.buffer[:face_faces][m+1,n+1] = _face_interior(num_faces(a.mesh,d))
     elseif n==d && m==0
-       cell_to_vertices = mesh_face_vertices(a,d)
+       cell_to_vertices = face_vertices(a.fe_mesh,d)
        nvertices = length(vertex_node(a))
        a.buffer[:face_faces][m+1,n+1] = _face_coboundary(cell_to_vertices,nvertices)
     elseif n==0 && m==0
        nvertices = length(vertex_node(a))
        a.buffer[:face_faces][m+1,n+1] = _face_interior(nvertices)
     elseif m==d && n==(d-1)
-      _face_boundary!(a,mesh_face_vertices(a,n),m,n)
+      _face_boundary!(a,face_vertices(a.fe_mesh,n),m,n)
     elseif n==0
       _face_vertices!(a,m)
     elseif m==n
       a.buffer[:face_faces][m+1,n+1] = _face_interior(num_faces(a,n))
     elseif n+1==m
-      _face_boundary!(a,mesh_face_vertices(a,n),m,n)
+      _face_boundary!(a,face_vertices(a.fe_mesh,n),m,n)
     elseif m>n
       _face_boundary!(a,face_vertices(a,n),m,n)
     else
@@ -382,7 +278,7 @@ function face_faces(a::PolyComplexFromFEMesh,m,n)
   a.buffer[:face_faces][m+1,n+1]
 end
 
-function face_nodes(a::PolyComplexFromFEMesh,m)
+function face_nodes(a::PolytopalComplex,m)
   d = domain_dim(a)
   if !haskey(a.buffer,:face_nodes)
     J = typeof(GenericJaggedArray(Vector{Int32}[]))
@@ -612,7 +508,7 @@ end
 
 function _face_vertices!(femesh,d)
   D = d+1
-  dface_to_vertices = mesh_face_vertices(femesh,d)
+  dface_to_vertices =face_vertices(femesh.fe_mesh,d)
   Dface_to_dfaces = face_faces(femesh,D,d)
   Dface_to_vertices = face_faces(femesh,D,0)
   Dface_to_refid = face_ref_id(femesh,D)
