@@ -16,6 +16,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [compat]
+BlockArrays = "0.16"
 Meshes = "0.24"
 julia = "1"
 
