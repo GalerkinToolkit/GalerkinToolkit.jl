@@ -20,7 +20,7 @@ export domain_dim
 export ambient_dim
 export face_ref_id
 export ref_faces
-export face_incidence
+export face_faces
 export face_vertices
 export face_nodes
 export face_own_nodes

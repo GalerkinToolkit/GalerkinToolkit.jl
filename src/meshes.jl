@@ -108,12 +108,12 @@ function ref_faces(::Type{<:Meshes.Point},d)
   [Meshes.Point(SVector{0,Float64}())]
 end
 ref_faces(a::Meshes.Point,d) = ref_faces(typeof(a),d)
-function face_incidence(a::Meshes.Point,d1,d2)
+function face_faces(a::Meshes.Point,d1,d2)
   d1!=0 && throw(DomainError(d1))
   d2!=0 && throw(DomainError(d2))
   GenericJaggedArray([[Int32(1)]])
 end
-face_nodes(a::Meshes.Point,d) = face_incidence(a,d,0)
+face_nodes(a::Meshes.Point,d) = face_faces(a,d,0)
 #face_own_nodes(a::Meshes.Point,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Point) = [Meshes.coordinates(a)]
 function vtk_mesh_cell(a::Meshes.Point)
@@ -138,14 +138,14 @@ function ref_faces(::Type{<:Meshes.Segment},d)
   throw(DomainError(d))
 end
 ref_faces(a::Meshes.Segment,d) = ref_faces(typeof(a),d)
-function face_incidence(a::Meshes.Segment,d1,d2)
+function face_faces(a::Meshes.Segment,d1,d2)
   (d1==0 && d2==0) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
   (d1==1 && d2==0) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
   (d1==0 && d2==1) && return GenericJaggedArray([[Int32(1)],[Int32(1)]])
   (d1==1 && d2==1) && return GenericJaggedArray([[Int32(1)],[Int32(2)]])
   throw(DomainError((d1,d2)))
 end
-face_nodes(a::Meshes.Segment,d) = face_incidence(a,d,0)
+face_nodes(a::Meshes.Segment,d) = face_faces(a,d,0)
 #face_own_nodes(a::Meshes.Segment,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Segment) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 function vtk_mesh_cell(a::Meshes.Segment)
@@ -171,7 +171,7 @@ function ref_faces(::Type{<:Meshes.Quadrangle},d)
   throw(DomainError(d))
 end
 ref_faces(a::Meshes.Quadrangle,d) = ref_faces(typeof(a),d)
-function face_incidence(a::Meshes.Quadrangle,d1,d2)
+function face_faces(a::Meshes.Quadrangle,d1,d2)
   (d1==0 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
   (d1==1 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,4],[4,1]])
   (d1==2 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
@@ -183,7 +183,7 @@ function face_incidence(a::Meshes.Quadrangle,d1,d2)
   (d1==2 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1]])
   throw(DomainError((d1,d2)))
 end
-face_nodes(a::Meshes.Quadrangle,d) = face_incidence(a,d,0)
+face_nodes(a::Meshes.Quadrangle,d) = face_faces(a,d,0)
 #face_own_nodes(a::Meshes.Quadrangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Quadrangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 function vtk_mesh_cell(a::Meshes.Quadrangle)
@@ -209,7 +209,7 @@ function ref_faces(::Type{<:Meshes.Triangle},d)
   throw(DomainError(d))
 end
 ref_faces(a::Meshes.Triangle,d) = ref_faces(typeof(a),d)
-function face_incidence(a::Meshes.Triangle,d1,d2)
+function face_faces(a::Meshes.Triangle,d1,d2)
   (d1==0 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1],[2],[3]])
   (d1==1 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2],[2,3],[3,1]])
   (d1==2 && d2==0) && return GenericJaggedArray(Vector{Int32}[[1,2,3]])
@@ -221,7 +221,7 @@ function face_incidence(a::Meshes.Triangle,d1,d2)
   (d1==2 && d2==2) && return GenericJaggedArray(Vector{Int32}[[1]])
   throw(DomainError((d1,d2)))
 end
-face_nodes(a::Meshes.Triangle,d) = face_incidence(a,d,0)
+face_nodes(a::Meshes.Triangle,d) = face_faces(a,d,0)
 #face_own_nodes(a::Meshes.Triangle,d) = face_nodes(a,d)
 node_coordinates(a::Meshes.Triangle) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 function vtk_mesh_cell(a::Meshes.Triangle)
@@ -264,7 +264,7 @@ function polytope_boundary(a::Meshes.Tetrahedron)
   end
   _MESHES_BUFFER[:Tetrahedron][:polytope_boundary]
 end
-face_incidence(a::Meshes.Tetrahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::Meshes.Tetrahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
 function vtk_mesh_cell(a::Meshes.Tetrahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TETRA,nodes)
 end
@@ -305,7 +305,7 @@ function polytope_boundary(a::Meshes.Hexahedron)
   end
   _MESHES_BUFFER[:Hexahedron][:polytope_boundary]
 end
-face_incidence(a::Meshes.Hexahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::Meshes.Hexahedron,d1,d2) = polytope_face_incedence(a,d1,d2)
 function vtk_mesh_cell(a::Meshes.Hexahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes)
 end

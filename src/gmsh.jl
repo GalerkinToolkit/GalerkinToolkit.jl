@@ -273,7 +273,7 @@ function node_coordinates(a::GmshHighOrderSimplex)
 end
 
 face_ref_id(a::GmshHighOrderSimplex,d) = face_ref_id(linear_polytope(a),d)
-face_incidence(a::GmshHighOrderSimplex,d1,d2) = face_incidence(linear_polytope(a),d1,d2)
+face_faces(a::GmshHighOrderSimplex,d1,d2) = face_faces(linear_polytope(a),d1,d2)
 
 function ref_faces(a::GmshHighOrderSimplex,d)
   order = a.order

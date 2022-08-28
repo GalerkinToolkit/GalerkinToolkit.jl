@@ -82,7 +82,7 @@ function polytope_boundary(a::P4estQuad)
   end
   _P4EST_BUFFER[:P4estQuad][:polytope_boundary]
 end
-face_incidence(a::P4estQuad,d1,d2) = polytope_face_incedence(a,d1,d2)
+face_faces(a::P4estQuad,d1,d2) = polytope_face_incedence(a,d1,d2)
 function vtk_mesh_cell(a::P4estQuad)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
 end
@@ -575,8 +575,8 @@ function fe_mesh(amr::P4estMeshRefiner)
   for d in 0:D
     ncfaces = num_faces(cpoly,d)
     nffaces = num_faces(fpoly,d)
-    fcell_to_ffaces = face_incidence(fpoly,D,d)
-    ccell_to_cfaces = face_incidence(cpoly,D,d)
+    fcell_to_ffaces = face_faces(fpoly,D,d)
+    ccell_to_cfaces = face_faces(cpoly,D,d)
     lfface_to_lcface = p4est_face_permutation(refcell,d)
     @boundscheck @assert D == 2 "Not implemented for 3d yet"
     if d==0

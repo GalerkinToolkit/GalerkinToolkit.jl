@@ -20,105 +20,176 @@ Return the number of dimensions of the ambient space,
 where the geometrical object `geo` is embedded.
 """
 function ambient_dim end
+ambient_dim(geo) = default_ambient_dim(geo)
+default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
 
 """
-    ref_faces(geo,rank)
+    num_faces(geo,dim)
+Number of faces of dimension `dim` in `geo`.
+"""
+function num_faces end
+num_faces(geo,rank) = default_num_faces(geo,rank)
+default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
 
-Return a vector with the reference faces of rank `rank`
+"""
+    face_nodes(geo,dim)
+Return the face node connectivity for faces of dimension `dim` in `geo`.
+The result is a vector of vectors of outer length `num_faces(geo,dim)`
+that can be indexed with a face id, returning the node ids of the
+nodes on the *closure* of this face.
+"""
+function face_nodes end
+
+"""
+    face_own_nodes(geo,dim)
+Like `face_nodes(geo,dim)`, but it returns node ids in the *interior*
+of the faces in `geo`.
+"""
+function face_own_nodes end
+
+"""
+    face_faces(geo,dim_from,dim_to)
+Return the face-to-face connectivity of faces of dimension `dim_from`
+against faces of dimension `dim_to` in `geo`.
+This is represented with a vector of vectors
+of outer length `num_faces(geo,dim_from) `. For `dim_from > dim_to`,
+the inner vectors contain the face ids of faces of dimension `dim_to` on
+the *boundary* of the corresponding face of dimension `dim_from`.
+For `dim_from > dim_to`, the results is for the *co-boundary* instead
+of the boundary.
+For `dim_from == dim_to`, the result is the identity.
+"""
+function face_faces end
+
+"""
+    face_vertices(geo,dim)
+Return the face vertex connectivity for faces of dimension
+`dim` in `geo`. The result is a vector of vectors
+of outer length `num_faces(geo,dim)`
+that can be indexed with a face id, returning the node ids of the nodes
+on the *closure* of this face.
+"""
+function face_vertices end
+
+"""
+    num_nodes(geo)
+Number of nodes in `geo`.
+"""
+function num_nodes end
+num_nodes(geo) = default_num_nodes(geo)
+default_num_nodes(geo) = length(node_coordinates(geo))
+
+"""
+    node_coordinates(geo)
+Return a vector of length `num_nodes(geo)` with the nodal coordinates
+of the nodes in `geo`.
+"""
+function node_coordinates end
+
+"""
+    ref_faces(geo,dim)
+
+Return a vector with the reference faces of dimension `dim`
 associated with the geometrical object `geo`.
 """
 function ref_faces end
 
 """
-    face_ref_id(geo,rank)
+    face_ref_id(geo,dim)
 Return a vector of integer ids, indicating which is the reference face
-for each face of rank `rank` in the geometrical object `geo`. I.e.,
+for each face of dimension `dim` in the geometrical object `geo`. I.e.,
 
-    id_to_ref_face = ref_faces(geo,rank)
-    face_to_id = face_ref_id(geo,rank)
+    id_to_ref_face = ref_faces(geo,dim)
+    face_to_id = face_ref_id(geo,dim)
     ref_face = id_to_ref_face[face_to_id[face]]
 
-`ref_face` is the reference face associated with face number `face` of rank `rank` in `geo`.
+`ref_face` is the reference face associated with face number `face`
+of dimension `dim` in `geo`.
 """
 function face_ref_id end
 
 """
-    face_nodes(geo,rank)
-Return the face connectivities for faces of rank `rank` in `geo`. The result is a vector of vectors
-that can be indexed with a face id, returning the node ids of the nodes on the *closure* of this face.
+    ref_face_faces(geo,dim,m,n)
+Collect the `m`-face to `n`-face connectivity for all reference faces
+of dimension `dim` in `geo`.
 """
-function face_nodes end
+function ref_face_faces(mesh,rank,m,n)
+  refid_to_refface = ref_faces(mesh,rank)
+  map(rf->face_faces(rf,m,n),refid_to_refface)
+end
 
 """
-    face_own_nodes(geo,rank)
-Like `face_nodes(geo,rank)`, but it returns node ids in the *interior* of the faces in `geo`.
+    ref_face_nodes(geo,dim,n)
+Collect the `n`-face node connectivity for all reference faces
+of dimension `dim` in `geo`.
 """
-function face_own_nodes end
+function ref_face_nodes(mesh,rank,m)
+  refid_to_refface = ref_faces(mesh,rank)
+  map(rf->face_nodes(rf,m),refid_to_refface)
+end
 
 """
-    node_coordinates(geo)
-Return a vector with the nodal coordinates of the nodes in `geo`.
+    ref_face_own_nodes(geo,dim,n)
+Collect the `n`-face own node connectivity for all reference faces
+of dimension `dim` in `geo`.
 """
-function node_coordinates end
+function ref_face_own_nodes(mesh,rank,m)
+  refid_to_refface = ref_faces(mesh,rank)
+  map(rf->face_own_nodes(rf,m),refid_to_refface)
+end
 
 """
     info = periodic_nodes(geo)
 Returns information about periodic nodes in `geo`.
 - `info.periodic` is a vector with the node ids of periodic nodes.
 - `info.master` is a vector containing the corresponding master ids.
-- `info.coff` is a vector containing the scaling between a master node and is periodic node (usually a vector of `1.0`).
+- `info.coeff` is a vector containing the scaling a master node over
+its periodic node (usually a vector of `1.0`).
 """
 function periodic_nodes end
-
-
-function hanging_nodes end
-function is_hanging end
-function is_periodic end
-function num_faces end
-function num_nodes end
-function is_simplex end
-function is_hypercube end
-function physical_group_faces end
-function physical_group_name end
-function physical_group_dim end
-function physical_group_dims end
-function physical_group_names end
-function physical_group_id end
-function physical_group_ids end
-function new_physical_group! end
-function physical_group_faces! end
-function face_incidence end
-function face_vertices end
-
-function ref_face_incidence(mesh,rank,m,n)
-  refid_to_refface = ref_faces(mesh,rank)
-  map(rf->face_incidence(rf,m,n),refid_to_refface)
-end
-function ref_face_nodes(mesh,rank,m)
-  refid_to_refface = ref_faces(mesh,rank)
-  map(rf->face_nodes(rf,m),refid_to_refface)
-end
-function ref_face_own_nodes(mesh,rank,m)
-  refid_to_refface = ref_faces(mesh,rank)
-  map(rf->face_own_nodes(rf,m),refid_to_refface)
-end
-
+periodic_nodes(geo) = default_periodic_nodes(geo)
+default_periodic_nodes(geo) = PeriodicNodeCollection{Int32,Float64}()
 struct PeriodicNodeCollection{Ti,T}
   periodic::Vector{Ti}
   master::Vector{Ti}
   coeff::Vector{T}
 end
-
 function PeriodicNodeCollection{Ti,T}() where {Ti,T}
   PeriodicNodeCollection(Ti[],Ti[],T[])
 end
 
+"""
+    num_periodic_nodes(geo)
+Number of periodic nodes in `geo`.
+"""
+function num_periodic_nodes end
+
+"""
+    has_periodic_nodes(geo)
+`true` if `num_periodic_nodes(geo)>0`, `false` otherwise.
+"""
+function has_periodic_nodes end
+has_periodic_nodes(geo) = default_has_periodic_nodes(geo)
+default_has_periodic_nodes(geo) = length(periodic_nodes(geo).periodic)>0
+
+"""
+    info = hanging_nodes(geo)
+Returns information about hanging nodes in `geo`.
+- `info.hanging` is a vector with the node ids of hanging nodes.
+- `info.masters` is a vector containing the corresponding master ids.
+- `info.coeffs` is a vector containing the coefficients to compute
+the value at a hanging node from its corresponding masters.
+
+These vectors are of length `num_hanging_nodes(geo)`.
+"""
+function hanging_nodes end
+hanging_nodes(geo) = default_hanging_nodes(geo)
+default_hanging_nodes(geo) = HangingNodeCollection{Int32,Float64}()
 struct HangingNodeCollection{Ti,T}
   hanging::Vector{Ti}
   masters::JaggedArray{Ti,Int32}
   coeffs::JaggedArray{Ti,Int32}
 end
-
 function HangingNodeCollection{Ti,T}() where {Ti,T}
   HangingNodeCollection(
     Ti[],
@@ -126,68 +197,163 @@ function HangingNodeCollection{Ti,T}() where {Ti,T}
     JaggedArray([T[]]))
 end
 
-default_is_simplex(geo) = false
-default_is_hypercube(geo) = false
-default_is_hanging(geo) =  length(first(hanging_nodes(geo)))>0
-default_hanging_nodes(geo) = HangingNodeCollection{Int32,Float64}()
-default_is_periodic(geo) = length(first(periodic_nodes(geo)))>0
-default_periodic_nodes(geo) = PeriodicNodeCollection{Int32,Float64}()
-default_num_faces(geo,rank) = length(face_ref_id(geo,rank))
-default_num_nodes(geo) = length(node_coordinates(geo))
-default_ambient_dim(geo) = length(eltype(node_coordinates(geo)))
-default_physical_groups(geo) = PhysicalGroupCollection(domain_dim(geo))
+"""
+    num_hanging_nodes(geo)
+Number of hanging nodes in `geo`.
+"""
+function num_hanging_nodes end
 
+"""
+    has_hanging_nodes(geo)
+`true` if `num_hanging_nodes(geo)>0`, `false` otherwise.
+"""
+function has_hanging_nodes end
+has_hanging_nodes(geo) = default_has_hanging_nodes(geo)
+default_has_hanging_nodes(geo) =  length(hanging_nodes(geo).hanging)>0
+
+"""
+    is_simplex(geo)
+`true` if `geo` represents a simplex, `false` otherwise.
+"""
+function is_simplex end
 is_simplex(geo) = default_is_simplex(geo)
-is_hypercube(geo) = default_is_hypercube(geo)
-is_hanging(geo) = default_is_hanging(geo)
-hanging_nodes(geo) = default_hanging_nodes(geo)
-is_periodic(geo) = default_is_periodic(geo)
-periodic_nodes(geo) = default_periodic_nodes(geo)
-num_faces(geo,rank) = default_num_faces(geo,rank)
-num_nodes(geo) = default_num_nodes(geo)
-ambient_dim(geo) = default_ambient_dim(geo)
+default_is_simplex(geo) = false
 
+"""
+    is_hypercube(geo)
+`true` if `geo` represents a hypercube, `false` otherwise.
+"""
+function is_hypercube end
+is_hypercube(geo) = default_is_hypercube(geo)
+default_is_hypercube(geo) = false
+
+"""
+    groups = physical_groups(geo)
+Get a handle to the physical groups in `geo`.
+"""
+function physical_groups end
+physical_groups(geo) = default_physical_groups(geo)
+default_physical_groups(geo) = PhysicalGroupCollection(domain_dim(geo))
 struct PhysicalGroupCollection{Ti}
   physical_group_name::Vector{Dict{Int,String}}
   physical_group_id::Vector{Dict{String,Int}}
   physical_group_faces::Vector{Dict{Int,Vector{Ti}}}
 end
-physical_groups(a::PhysicalGroupCollection) = a
-domain_dim(a::PhysicalGroupCollection) = length(a.physical_group_id)-1
-
 function PhysicalGroupCollection(dim::Integer)
   PhysicalGroupCollection{Int32}(dim)
 end
-
 function PhysicalGroupCollection{Ti}(dim::Integer) where Ti
   PhysicalGroupCollection(
     [Dict{Int,String}() for d in 0:dim],
     [Dict{String,Int}() for d in 0:dim],
     [Dict{Int,Vector{Ti}}() for d in 0:dim])
 end
+physical_groups(a::PhysicalGroupCollection) = a
+domain_dim(a::PhysicalGroupCollection) = length(a.physical_group_id)-1
 
-physical_group_faces(g::PhysicalGroupCollection,d,name) = g.physical_group_faces[d+1][physical_group_id(g,d,name)]
-physical_group_faces!(g::PhysicalGroupCollection,faces,d,name) = (g.physical_group_faces[d+1][physical_group_id(g,d,name)] = faces)
-physical_group_id(g::PhysicalGroupCollection,d,name::AbstractString) = g.physical_group_id[d+1][String(name)]
-physical_group_name(g::PhysicalGroupCollection,d,id::Integer) = g.physical_group_name[d+1][Int(id)]
-has_physical_group(g,d,name::String) = haskey(g.physical_group_id[d+1],name)
-has_physical_group(g,d,id::Int) = haskey(g.physical_group_name[d+1],id)
-function physical_group_id(g::PhysicalGroupCollection,d,id::Integer)
-  @assert haskey(g.physical_group_name[d+1],Int(id))
-  id
-end
-function physical_group_name(g::PhysicalGroupCollection,d,name::AbstractString)
-  @assert haskey(g.physical_group_id[d+1],String(name))
+"""
+    physical_group_faces(groups,dim,label)
+
+Return the face ids for faces of dimension `dim` with label `label`
+in the physical groups `groups`.
+The label can be either an integer group id or a string with the group name.
+"""
+function physical_group_faces end
+physical_group_faces(g::PhysicalGroupCollection,dim,label) =
+  g.physical_group_faces[dim+1][physical_group_id(g,dim,label)]
+
+"""
+    physical_group_faces!(groups,faces,dim,label)
+
+Set the face ids `faces` for faces of dimension `dim` with label `label`
+in the physical groups `groups`.
+The label can be either an integer group id or a string with the group name.
+"""
+function physical_group_faces! end
+physical_group_faces!(g::PhysicalGroupCollection,faces,dim,label) =
+  (g.physical_group_faces[dim+1][physical_group_id(g,dim,label)] = faces)
+
+"""
+    has_physical_group(groups,dim,label)
+`true` if there is a group of dimension `dim` with label `label` in `groups`.
+"""
+function has_physical_group end
+has_physical_group(g::PhysicalGroupCollection,dim,name::AbstractString) =
+  haskey(g.physical_group_id[dim+1],name)
+has_physical_group(g::PhysicalGroupCollection,dim,id::Integer) =
+  haskey(g.physical_group_name[dim+1],id)
+
+"""
+    physical_group_name(groups,dim,label)
+Return the name of the physical group of dimension `dim` and label `label`.
+The label can be either an integer group id or a string with the group name.
+In the latter case, this function will raise an exception if the given group
+name is not found.
+"""
+function physical_group_name end
+physical_group_name(g::PhysicalGroupCollection,dim,id::Integer) =
+  g.physical_group_name[dim+1][Int(id)]
+function physical_group_name(g::PhysicalGroupCollection,dim,name::AbstractString)
+  @assert has_physical_group(g,dim,name)
   name
 end
-function physical_group_names(g::PhysicalGroupCollection,d)
-  ids = physical_group_ids(g,d)
-  [ g.physical_group_name[d+1][i] for i in ids]
-end
-function physical_group_ids(g::PhysicalGroupCollection,d)
-  sort(collect(keys(g.physical_group_name[d+1])))
+
+"""
+    physical_group_id(groups,dim,label)
+Return the id of the physical group of dimension `dim` and label `label`.
+The label can be either an integer group id or a string with the group name.
+In the former case, this function will raise an exception if the given group
+id is not found.
+"""
+function physical_group_id end
+physical_group_id(g::PhysicalGroupCollection,dim,name::AbstractString) =
+  g.physical_group_id[dim+1][String(name)]
+function physical_group_id(g::PhysicalGroupCollection,dim,id::Integer)
+  @assert has_physical_group(g,dim,id)
+  id
 end
 
+"""
+    physical_group_names(groups,dim)
+Return a vector with the names of physical groups in `groups` of dimension `dim`.
+"""
+function physical_group_names end
+function physical_group_names(g::PhysicalGroupCollection,dim)
+  ids = physical_group_ids(g,dim)
+  [ g.physical_group_name[dim+1][i] for i in ids]
+end
+
+"""
+    physical_group_ids(groups,dim)
+Return a vector with the ids of physical groups in `groups` of dimension `dim`.
+"""
+function physical_group_ids end
+function physical_group_ids(g::PhysicalGroupCollection,dim)
+  sort(collect(keys(g.physical_group_name[dim+1])))
+end
+
+"""
+    physical_group!(groups,dim,name[,id])
+Add a new empty physical group to `groups` of dimension
+`dim` name `name`  and id `id`. If `id` is not provided, an id will be chosen
+automatically using `new_physical_group_id(groups)`.
+"""
+function physical_group! end
+function physical_group!(g::PhysicalGroupCollection,dim,name,id=new_physical_group_id(g))
+  haskey(g.physical_group_name[dim+1],id) && error(
+    "id $id already present in PhysicalGroupCollection for dimension $dim")
+  haskey(g.physical_group_id[dim+1],name) && error(
+    "Name $name already present in PhysicalGroupCollection for dimension $dim")
+  g.physical_group_name[dim+1][id] = name
+  g.physical_group_id[dim+1][name] = id
+  g.physical_group_faces[dim+1][id] = Int32[]
+end
+
+"""
+    new_physical_group_id(groups)
+Find a new available id in `groups`.
+"""
+function new_physical_group_id end
 function new_physical_group_id(g::PhysicalGroupCollection)
   function maxid(dict)
     if length(dict) == 0
@@ -200,13 +366,17 @@ function new_physical_group_id(g::PhysicalGroupCollection)
   id
 end
 
-function new_physical_group!(g::PhysicalGroupCollection,d,name,id=new_physical_group_id(g))
-  haskey(g.physical_group_name[d+1],id) && error("id $id already present in PhysicalGroupCollection for dimension $d")
-  haskey(g.physical_group_id[d+1],name) && error("Name $name already present in PhysicalGroupCollection for dimension $d")
-  g.physical_group_name[d+1][id] = name
-  g.physical_group_id[d+1][name] = id
-  g.physical_group_faces[d+1][id] = Int32[]
-end
+
+
+
+
+
+
+
+
+
+
+
 
 function classify_nodes(mesh,ids;boundary=fill(true,length(ids)))
   D = domain_dim(mesh)
