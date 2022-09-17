@@ -30,8 +30,8 @@ end
 """
     struct GenericJaggedArray{V,A,B}
 
-Generalization of `JaggedArray`, where the fields `data` and `ptrs` are allowed to be any array-like
-object.
+Generalization of `JaggedArray`, where the fields `data` and `ptrs`
+are allowed to be any array-like object.
 
 # Properties
     data::A
@@ -41,7 +41,8 @@ object.
 
     GenericJaggedArray{V,A,B} <: AbstractVector{V}
 
-Given `a::GenericJaggedArray`, `V` is `typeof(view(a.data,a.ptrs[i]:(a.ptrs[i+1]-1)))`.
+Given `a::GenericJaggedArray`, 
+`V` is `typeof(view(a.data,a.ptrs[i]:(a.ptrs[i+1]-1)))`.
 """
 struct GenericJaggedArray{T,A,B} <: AbstractVector{T}
   data::A
@@ -67,16 +68,19 @@ end
 """
     struct JaggedArray{T,Ti}
 
-Efficient implementation of a vector of vectors. The inner vectors are stored one after the other
-in consecutive memory locations using an auxiliary vector `data`. The range of indices corresponding
+Efficient implementation of a vector of vectors.
+The inner vectors are stored one after the other
+in consecutive memory locations using an auxiliary vector `data`.
+The range of indices corresponding
 to each inner vector are encoded using a vector of integers `ptrs`.
 
 # Properties
     data::Vector{T}
     ptrs::Vector{Ti}
 
-Given `a::JaggedArray`, `a.data` contains the inner vectors. The `i`-th inner vector is stored in the
-range `a.ptrs[i]:(a.ptrs[i+1]-1)`. The number of inner vectors (i.e. `length(a)`) is `length(a.ptrs)-1`.
+Given `a::JaggedArray`, `a.data` contains the inner vectors.
+The `i`-th inner vector is stored in the range `a.ptrs[i]:(a.ptrs[i+1]-1)`.
+The number of inner vectors (i.e. `length(a)`) is `length(a.ptrs)-1`.
 `a[i]` returns a view of `a.data` restricted to the range `a.ptrs[i]:(a.ptrs[i+1]-1)`.
 
 # Supertype hierarchy
@@ -106,7 +110,8 @@ end
 """
     JaggedArray(a)
 
-Create a `JaggedArray` object from the vector of vectors `a`. If `a::JaggedArray`, then `a` is returned.
+Create a `JaggedArray` object from the vector of vectors `a`.
+If `a::JaggedArray`, then `a` is returned.
 Otherwise, the contents of `a` are copied.
 """
 JaggedArray(a::AbstractArray{<:AbstractArray{T}}) where T = JaggedArray{T,Int32}(a)
@@ -161,7 +166,8 @@ end
 """
     jagged_array(data,ptrs)
 
-Create a `JaggedArray` or a `GenericJaggedArray` object depending on the type of `data` and `ptrs`.
+Create a `JaggedArray` or a `GenericJaggedArray` object depending
+on the type of `data` and `ptrs`.
 The returned object stores references to the given inputs.
 """
 jagged_array(data,ptrs) = GenericJaggedArray(data,ptrs)
