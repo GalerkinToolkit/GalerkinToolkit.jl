@@ -52,7 +52,7 @@ end
 function P4estQuad{T}() where T
   P4estQuad(SVector{2,T}[(0,0),(1,0),(0,1),(1,1)])
 end
-domain_dim(a::P4estQuad) = 2
+num_dims(a::P4estQuad) = 2
 is_hypercube(a::P4estQuad) = true
 node_coordinates(a::P4estQuad) = a.node_coordinates
 function face_ref_id(a::P4estQuad,d)
@@ -93,8 +93,8 @@ mutable struct P4estMeshRefiner{A,B}
   state::Symbol
 end
 
-domain_dim(a::P4estMeshRefiner) = domain_dim(a.coarse_mesh)
-ambient_dim(a::P4estMeshRefiner) = ambient_dim(a.coarse_mesh)
+num_dims(a::P4estMeshRefiner) = num_dims(a.coarse_mesh)
+num_ambient_dims(a::P4estMeshRefiner) = num_ambient_dims(a.coarse_mesh)
 
 function p4est_corner_neighbor(o,c)
   T = Cint
@@ -119,7 +119,7 @@ function p4est_mesh_refiner(geo;initial_level=0)
     MPI.Init()
   end
   mesh = fe_mesh(geo)
-  D = domain_dim(mesh)
+  D = num_dims(mesh)
   @assert num_faces(mesh,D) == 1 "For the moment connectivity creation only for a single tree"
   refface = first(ref_faces(mesh,D))
   perm = p4est_vertex_permutation(refface)
@@ -166,10 +166,10 @@ function destroy!(a::P4estMeshRefiner)
   if a.state === :usable
     p4est = unsafe_wrap(a.p4est_ptr)
     conn_ptr = p4est.connectivity
-    if domain_dim(a) == 2
+    if num_dims(a) == 2
       P4est.p4est_connectivity_destroy(conn_ptr)
       P4est.p4est_destroy(a.p4est_ptr)
-    elseif domain_dim(a) == 3
+    elseif num_dims(a) == 3
       P4est.p8est_connectivity_destroy(conn_ptr)
       P4est.p8est_destroy(a.p4est_ptr)
     else
@@ -219,7 +219,7 @@ end
 
 function refine!(amr::P4estMeshRefiner,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
-  D = domain_dim(amr)
+  D = num_dims(amr)
   if D == 3
     error("Not implemented yet")
   end
@@ -252,7 +252,7 @@ function refine!(amr::P4estMeshRefiner,_flags;num_levels=1)
 end
 
 function balance!(amr)
-  @assert domain_dim(amr) == 2 "Not yet implemented for 3d"
+  @assert num_dims(amr) == 2 "Not yet implemented for 3d"
   p4est_ptr = amr.p4est_ptr
   init_fn_ptr = @cfunction(_init_fn,Cvoid,
     (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
@@ -262,7 +262,7 @@ end
 
 function coarsen!(amr::P4estMeshRefiner,_flags;num_levels=1)
   flags = convert(Vector{Bool},_flags)
-  D = domain_dim(amr)
+  D = num_dims(amr)
   if D == 3
     error("Not implemented yet")
   end
@@ -326,9 +326,9 @@ end
 function fe_mesh(amr::P4estMeshRefiner)
   balance!(amr)
   p4est_ptr = amr.p4est_ptr
-  D = domain_dim(amr)
+  D = num_dims(amr)
   @assert D == 2 "Only implemented for 2d"
-  Da = ambient_dim(amr)
+  Da = num_ambient_dims(amr)
   order = 1
   nchildren = Int(P4est.P4EST_CHILDREN)
   ghost_ptr = P4est.p4est_ghost_new(p4est_ptr,P4est.P4EST_CONNECT_FULL)

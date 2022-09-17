@@ -9,7 +9,7 @@ dir = mkpath(joinpath(@__DIR__,"vtk"))
 
 grid = CartesianGrid(1,1)
 amr = p4est_mesh_refiner(grid,initial_level=1)
-D = domain_dim(grid)
+D = num_dims(grid)
 
 flags = [true,false,false,false]
 refine!(amr,flags,num_levels=4)

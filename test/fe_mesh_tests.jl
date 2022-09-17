@@ -6,8 +6,8 @@ using Test
 
 mesh = FEMesh{3}(2)
 
-@test ambient_dim(mesh) == 3
-@test domain_dim(mesh) == 2
+@test num_ambient_dims(mesh) == 3
+@test num_dims(mesh) == 2
 @test num_faces(mesh,0) == 0
 @test num_faces(mesh,1) == 0
 @test num_faces(mesh,2) == 0

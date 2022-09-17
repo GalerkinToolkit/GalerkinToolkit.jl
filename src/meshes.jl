@@ -9,8 +9,8 @@ function _fe_mesh_from_mesh(
   hanging_nodes=nothing,
   periodic_nodes=nothing)
 
-  D = domain_dim(mesh)
-  fe_mesh = FEMesh{ambient_dim(mesh)}(D)
+  D = num_dims(mesh)
+  fe_mesh = FEMesh{num_ambient_dims(mesh)}(D)
   node_coordinates!(fe_mesh,node_coordinates(mesh))
   for d in 0:D
     face_nodes!(fe_mesh,face_nodes(mesh,d),d)
@@ -34,15 +34,15 @@ function _meshes_setup_ref_faces(mesh,d)
   if isconcretetype(eltype(mesh))
     face_ref_id(mesh,d), ref_faces(mesh,d)
   else
-    if domain_dim(mesh) == d
+    if num_dims(mesh) == d
       # This is inefficient
       i_to_rf = []
       ct_to_i = Dict{WriteVTK.VTKCellTypes.VTKCellType,Int}()
       iface_to_i = zeros(Int8,length(mesh))
       i = 0
       for (iface,face) in enumerate(mesh)
-        @boundscheck @assert domain_dim(face)==d "This case is not implemented"
-        rf = first(ref_faces(face,domain_dim(face)))
+        @boundscheck @assert num_dims(face)==d "This case is not implemented"
+        rf = first(ref_faces(face,num_dims(face)))
         ct = vtk_cell_type(rf)
         if !haskey(ct_to_i,ct)
           i += 1
@@ -58,12 +58,12 @@ function _meshes_setup_ref_faces(mesh,d)
   end
 end
 
-domain_dim(::Type{<:Meshes.Ngon}) = 2
-domain_dim(a::Meshes.Mesh) = domain_dim(eltype(a))
-ambient_dim(a::Meshes.Mesh) = Meshes.embeddim(a)
+num_dims(::Type{<:Meshes.Ngon}) = 2
+num_dims(a::Meshes.Mesh) = num_dims(eltype(a))
+num_ambient_dims(a::Meshes.Mesh) = Meshes.embeddim(a)
 function face_ref_id(a::Meshes.Mesh,d)
   @assert isconcretetype(eltype(a))
-  if d == domain_dim(a)
+  if d == num_dims(a)
     fill(Int8(1),length(a))
   else
     fill(Int8(1),0)
@@ -71,14 +71,14 @@ function face_ref_id(a::Meshes.Mesh,d)
 end
 function ref_faces(a::Meshes.Mesh,d)
   @assert isconcretetype(eltype(a))
-  if d == domain_dim(a)
+  if d == num_dims(a)
     ref_faces(eltype(a),d)
   else
     []
   end
 end
 function face_nodes(a::Meshes.Mesh,d)
-  if d == domain_dim(a)
+  if d == num_dims(a)
     vs = convert(Meshes.FullTopology,Meshes.topology(a)).connec
     j = map(vs) do v
       convert(SVector{length(v.indices),Int32}, v.indices)
@@ -95,9 +95,9 @@ end
 const _MESHES_BUFFER = Dict{Symbol,Any}()
 
 # Point
-domain_dim(a::Meshes.Point) = 0
-domain_dim(a::Type{<:Meshes.Point}) = 0
-ambient_dim(a::Meshes.Point) = Meshes.embeddim(a)
+num_dims(a::Meshes.Point) = 0
+num_dims(a::Type{<:Meshes.Point}) = 0
+num_ambient_dims(a::Meshes.Point) = Meshes.embeddim(a)
 is_simplex(a::Meshes.Point) = true
 is_hypercube(a::Meshes.Point) = true
 function face_ref_id(a::Meshes.Point,d)
@@ -123,9 +123,9 @@ end
 vtk_cell_type(a::Meshes.Point) = WriteVTK.VTKCellTypes.VTK_VERTEX
 
 # Segment
-domain_dim(a::Meshes.Segment) = 1
-domain_dim(a::Type{<:Meshes.Segment}) = 1
-ambient_dim(a::Meshes.Segment) = Meshes.embeddim(a)
+num_dims(a::Meshes.Segment) = 1
+num_dims(a::Type{<:Meshes.Segment}) = 1
+num_ambient_dims(a::Meshes.Segment) = Meshes.embeddim(a)
 is_simplex(a::Meshes.Segment) = true
 is_hypercube(a::Meshes.Segment) = true
 function face_ref_id(a::Meshes.Segment,d)
@@ -155,9 +155,9 @@ end
 vtk_cell_type(a::Meshes.Segment) = WriteVTK.VTKCellTypes.VTK_LINE
 
 # Quadrangle
-domain_dim(a::Meshes.Quadrangle) = 2
-domain_dim(a::Type{<:Meshes.Quadrangle}) = 2
-ambient_dim(a::Meshes.Quadrangle) = Meshes.embeddim(a)
+num_dims(a::Meshes.Quadrangle) = 2
+num_dims(a::Type{<:Meshes.Quadrangle}) = 2
+num_ambient_dims(a::Meshes.Quadrangle) = Meshes.embeddim(a)
 is_hypercube(a::Meshes.Quadrangle) = true
 function face_ref_id(a::Meshes.Quadrangle,d)
   d==0 && return fill(Int8(1),4)
@@ -193,9 +193,9 @@ end
 vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
 
 # Triangle
-domain_dim(a::Meshes.Triangle) = 2
-domain_dim(a::Type{<:Meshes.Triangle}) = 2
-ambient_dim(a::Meshes.Triangle) = Meshes.embeddim(a)
+num_dims(a::Meshes.Triangle) = 2
+num_dims(a::Type{<:Meshes.Triangle}) = 2
+num_ambient_dims(a::Meshes.Triangle) = Meshes.embeddim(a)
 is_simplex(a::Meshes.Triangle) = true
 function face_ref_id(a::Meshes.Triangle,d)
   d==0 && return fill(Int8(1),3)
@@ -231,9 +231,9 @@ end
 vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
 
 # Tetrahedron
-domain_dim(a::Meshes.Tetrahedron) = 3
-domain_dim(a::Type{<:Meshes.Tetrahedron}) = 3
-ambient_dim(a::Meshes.Tetrahedron) = Meshes.embeddim(a)
+num_dims(a::Meshes.Tetrahedron) = 3
+num_dims(a::Type{<:Meshes.Tetrahedron}) = 3
+num_ambient_dims(a::Meshes.Tetrahedron) = Meshes.embeddim(a)
 is_simplex(a::Meshes.Tetrahedron) = true
 node_coordinates(a::Meshes.Tetrahedron) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 function face_ref_id(a::Meshes.Tetrahedron,d)
@@ -272,9 +272,9 @@ end
 vtk_cell_type(a::Meshes.Tetrahedron) = WriteVTK.VTKCellTypes.VTK_TERA
 
 # Hexahedron
-domain_dim(a::Meshes.Hexahedron) = 3
-domain_dim(a::Type{<:Meshes.Hexahedron}) = 3
-ambient_dim(a::Meshes.Hexahedron) = Meshes.embeddim(a)
+num_dims(a::Meshes.Hexahedron) = 3
+num_dims(a::Type{<:Meshes.Hexahedron}) = 3
+num_ambient_dims(a::Meshes.Hexahedron) = Meshes.embeddim(a)
 is_hypercube(a::Meshes.Hexahedron) = true
 node_coordinates(a::Meshes.Hexahedron) = collect(Meshes.coordinates.(Meshes.vertices(a)))
 function face_ref_id(a::Meshes.Hexahedron,d)
@@ -320,7 +320,7 @@ function fe_mesh(
   groups, faces = _default_physical_groups_cartesian_grid(fe_mesh)
   face_to_nodes, face_to_refid, refid_to_refface = faces
   physical_groups!(fe_mesh,groups)
-  D = domain_dim(fe_mesh)
+  D = num_dims(fe_mesh)
   for d in 0:(D-1)
     face_nodes!(fe_mesh,face_to_nodes[d+1],d)
     face_ref_id!(fe_mesh,face_to_refid[d+1],d)
@@ -332,7 +332,7 @@ function fe_mesh(
 end
 
 function _default_physical_groups_cartesian_grid(fe_mesh)
-  D = domain_dim(fe_mesh)
+  D = num_dims(fe_mesh)
   cell_to_nodes = face_nodes(fe_mesh,D)
   refcell = first(ref_faces(fe_mesh,D))
   nnodes = num_nodes(fe_mesh)
@@ -481,7 +481,7 @@ function _periodic_nodes_cartesian_grid(dim_ncells,is_periodic)
       end
     end
   end
-  PeriodicNodeCollection(periodic_dep, periodic_indep, ones(length(periodic_dep)))
+  PeriodicNodeVector(periodic_dep, periodic_indep, ones(length(periodic_dep)))
 end
 
 function polytopal_complex(mesh::Meshes.Mesh)

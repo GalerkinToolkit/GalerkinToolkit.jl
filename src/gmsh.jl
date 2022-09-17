@@ -44,7 +44,7 @@ function fe_mesh_from_gmsh()
   entities = gmsh.model.getEntities()
   nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
 
-  # find domain_dim
+  # find num_dims
   ddim = -1
   for e in entities
     ddim = max(ddim,e[1])
@@ -54,7 +54,7 @@ function fe_mesh_from_gmsh()
   end
   D = ddim
 
-  # find ambient_dim
+  # find num_ambient_dims
   dtouched = [false,false,false]
   for node in nodeTags
     if !(coord[(node-1)*3+1] + 1 ≈ 1)
@@ -248,13 +248,13 @@ end
 #end
 
 linear_polytope(a::GmshHighOrderSimplex) = a.linear_polytope
-domain_dim(a::GmshHighOrderSimplex) = domain_dim(linear_polytope(a))
+num_dims(a::GmshHighOrderSimplex) = num_dims(linear_polytope(a))
 is_simplex(a::GmshHighOrderSimplex) = true
 
 function node_coordinates(a::GmshHighOrderSimplex)
   linear = linear_polytope(a)
   x = node_coordinates(linear)
-  D = domain_dim(a)
+  D = num_dims(a)
   if D == 1
     if a.order == 2
       [1.0*x[1],1.0*x[2],0.5*(x[1]+x[2])]
@@ -283,7 +283,7 @@ function ref_faces(a::GmshHighOrderSimplex,d)
 end
 
 function face_nodes(a::GmshHighOrderSimplex,d)
-  D = domain_dim(a)
+  D = num_dims(a)
   if D == 1
     if a.order == 2
       d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2]])
@@ -309,7 +309,7 @@ function vtk_mesh_cell(a::GmshHighOrderSimplex)
 end
 
 function vtk_cell_type(a::GmshHighOrderSimplex)
-  D = domain_dim(a)
+  D = num_dims(a)
   if D == 1
     if a.order == 2
       WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE

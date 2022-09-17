@@ -17,9 +17,11 @@ export JaggedArray
 include("jagged_array.jl")
 
 export INVALID_ID
-export domain_dim
-export ambient_dim
+export num_dims
+export num_ambient_dims
 export num_faces
+export num_edges
+export num_vertices
 export face_nodes
 export face_nodes!
 export face_own_nodes
@@ -39,75 +41,74 @@ export periodic_nodes
 export periodic_nodes!
 export has_periodic_nodes
 export num_periodic_nodes
-export PeriodicNodeCollection
+export PeriodicNode
 export hanging_nodes
 export hanging_nodes!
 export has_hanging_nodes
 export num_periodic_nodes
-export HangingNodeCollection
+export HangingNode
 export is_simplex
 export is_hypercube
 export physical_groups
 export physical_groups!
-export physical_group!
-export physical_group_faces!
-export physical_group_faces
-export physical_group_name
-export physical_group_names
-export physical_group_id
-export new_physical_group_id
-export physical_group_ids
-export PhysicalGroupCollection
-export FEMesh
-export fe_mesh
-include("fe_mesh.jl")
-
+export PhysicalGroup
 export vertex_node
 export node_vertex
-export polytopal_complex
-include("polytopal_complex.jl")
+include("mesh_interface.jl")
 
-include("meshes.jl")
 
-export msh_file
-export with_gmsh
-include("gmsh.jl")
 
-export vtk_args
-include("vtk.jl")
+#export FEMesh
+#export fe_mesh
+#include("fe_mesh.jl")
 
-export p4est_mesh_refiner
-export destroy!
-export refine!
-export coarsen!
-export balance!
-include("p4est.jl")
 
-export call
-export evaluate
-export sample
-export inverse_map
-export scale
-export linear_combination
-export Monomial
-export NodalValue
-export AffineMap
-export Operator
-export cartesian_product
-export vector_valued_basis
-export direct_sum
-include("functions.jl")
-
-export q_monomial_basis
-export p_monomial_basis
-export p̃_monomial_basis
-export s̃_basis
-export q_equispaced_nodes
-export p_equispaced_nodes
-include("polynomial_bases.jl")
-
-export MathTuple
-export math_tuple
-include("math_tuple.jl")
+#export vertex_node
+#export node_vertex
+#export polytopal_complex
+#include("polytopal_complex.jl")
+#
+#include("meshes.jl")
+#
+#export msh_file
+#export with_gmsh
+#include("gmsh.jl")
+#
+#export vtk_args
+#include("vtk.jl")
+#
+#export p4est_mesh_refiner
+#export destroy!
+#export refine!
+#export coarsen!
+#export balance!
+#include("p4est.jl")
+#
+#export call
+#export evaluate
+#export sample
+#export inverse_map
+#export scale
+#export linear_combination
+#export Monomial
+#export NodalValue
+#export AffineMap
+#export Operator
+#export cartesian_product
+#export vector_valued_basis
+#export direct_sum
+#include("functions.jl")
+#
+#export q_monomial_basis
+#export p_monomial_basis
+#export p̃_monomial_basis
+#export s̃_basis
+#export q_equispaced_nodes
+#export p_equispaced_nodes
+#include("polynomial_bases.jl")
+#
+#export MathTuple
+#export math_tuple
+#include("math_tuple.jl")
 
 end

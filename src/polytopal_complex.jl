@@ -16,7 +16,7 @@ polytope_boundary(p) = default_polytope_boundary(p)
 function default_polytope_boundary(p)
   x = node_coordinates(p)
   T = eltype(x)
-  D = domain_dim(p)-1
+  D = num_dims(p)-1
   mesh = FEMesh{T}(D)
   node_coordinates!(mesh,x)
   for d in 0:D
@@ -27,7 +27,7 @@ function default_polytope_boundary(p)
   polytopal_complex(mesh)
 end
 function default_polytope_face_faces(poly,dim_from,dim_to)
-  d = domain_dim(poly)
+  d = num_dims(poly)
   if d==dim_from
     nd2faces = num_faces(poly,dim_to)
     JaggedArray([[ Int32(d2face) for d2face in 1:nd2faces]])
@@ -72,8 +72,8 @@ function PolytopalComplex(femesh)
   PolytopalComplex(femesh,buffer)
 end
 
-domain_dim(m::PolytopalComplex) = domain_dim(m.fe_mesh)
-ambient_dim(m::PolytopalComplex) = ambient_dim(m.fe_mesh)
+num_dims(m::PolytopalComplex) = num_dims(m.fe_mesh)
+num_ambient_dims(m::PolytopalComplex) = num_ambient_dims(m.fe_mesh)
 node_coordinates(m::PolytopalComplex) = node_coordinates(m.fe_mesh)
 periodic_nodes(m::PolytopalComplex) = periodic_nodes(m.fe_mesh)
 hanging_nodes(m::PolytopalComplex) = hanging_nodes(m.fe_mesh)
@@ -84,7 +84,7 @@ vertex_node(m::PolytopalComplex) = vertex_node(m.fe_mesh)
 
 function mesh_faces!(m::PolytopalComplex,f,d)
   if ! haskey(m.buffer,:mesh_faces)
-    D = domain_dim(m)
+    D = num_dims(m)
     m.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,D+1)
   end
   m.buffer[:mesh_faces][d+1] = f
@@ -92,7 +92,7 @@ end
 
 function mesh_faces(mesh::PolytopalComplex,d)
   if !haskey(mesh.buffer,:mesh_faces)
-    mesh.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,domain_dim(mesh)+1)
+    mesh.buffer[:mesh_faces] = Vector{Vector{Int32}}(undef,num_dims(mesh)+1)
   end
   if !isassigned(mesh.buffer[:mesh_faces],d+1)
     _setup_mesh_faces!(mesh,d)
@@ -112,8 +112,8 @@ end
 function physical_groups(m::PolytopalComplex)
   if !haskey(m.buffer,:physical_groups)
     mesh_physical_groups = physical_groups(m.mesh)
-    groups = PhysicalGroupCollection(VOID,domain_dim(m))
-    D = domain_dim(m)
+    groups = PhysicalGroupCollection(VOID,num_dims(m))
+    D = num_dims(m)
     for d in 0:D
       for id in physical_group_ids(mesh_physical_groups,d)
         name = physical_group_name(mesh_physical_groups,d,id)
@@ -133,12 +133,12 @@ function physical_groups!(m::PolytopalComplex,groups)
 end
 
 function num_faces(m::PolytopalComplex,d)
-  @boundscheck @assert d <= domain_dim(m)
+  @boundscheck @assert d <= num_dims(m)
   if ! haskey(m.buffer,:num_faces)
-    m.buffer[:num_faces] = fill(INVALID_ID,domain_dim(m)+1)
+    m.buffer[:num_faces] = fill(INVALID_ID,num_dims(m)+1)
   end
   if m.buffer[:num_faces][d+1] == INVALID_ID
-    if d == domain_dim(m)
+    if d == num_dims(m)
       m.buffer[:num_faces][d+1] = num_faces(m.mesh,d)
     elseif d == 0
       m.buffer[:num_faces][d+1] = length(vertex_node(m))
@@ -151,7 +151,7 @@ function num_faces(m::PolytopalComplex,d)
 end
 
 function face_ref_id(a::PolytopalComplex,m)
-  d = domain_dim(a)
+  d = num_dims(a)
   if !haskey(a.buffer,:face_ref_id)
     a.buffer[:face_ref_id] = Vector{Vector{Int8}}(undef,d+1)
     a.buffer[:ref_faces] = Vector{Vector{Any}}(undef,d+1)
@@ -167,7 +167,7 @@ function face_ref_id(a::PolytopalComplex,m)
 end
 
 function ref_faces(a::PolytopalComplex,m)
-  d = domain_dim(a)
+  d = num_dims(a)
   if !haskey(a.buffer,:ref_faces)
     a.buffer[:face_ref_id] = Vector{Vector{Int8}}(undef,d+1)
     a.buffer[:ref_faces] = Vector{Vector{Any}}(undef,d+1)
@@ -183,7 +183,7 @@ function ref_faces(a::PolytopalComplex,m)
 end
 
 function _ref_faces!(a,m)
-  @assert m<domain_dim(a)
+  @assert m<num_dims(a)
   d = m+1
   nmfaces = num_faces(a,m)
   drefid_refdface = ref_faces(a,d)
@@ -241,7 +241,7 @@ function _ref_faces(
 end
 
 function face_faces(a::PolytopalComplex,m,n)
-  d = domain_dim(a)
+  d = num_dims(a)
   if !haskey(a.buffer,:face_faces)
     J = typeof(GenericJaggedArray(Vector{Int32}[]))
     a.buffer[:face_faces] = Matrix{J}(undef,d+1,d+1)
@@ -279,7 +279,7 @@ function face_faces(a::PolytopalComplex,m,n)
 end
 
 function face_nodes(a::PolytopalComplex,m)
-  d = domain_dim(a)
+  d = num_dims(a)
   if !haskey(a.buffer,:face_nodes)
     J = typeof(GenericJaggedArray(Vector{Int32}[]))
     a.buffer[:face_nodes] = Vector{J}(undef,d+1)
@@ -345,7 +345,7 @@ function _face_boundary!(femesh,dface_to_vertices,D,d)
     Dface_to_refid,
     Drefid_to_ldface_to_lvertices)
   if !haskey(femesh.buffer,:num_faces)
-    femesh.buffer[:num_faces] = fill(INVALID_ID,domain_dim(femesh)+1)
+    femesh.buffer[:num_faces] = fill(INVALID_ID,num_dims(femesh)+1)
   end
   femesh.buffer[:num_faces][d+1] = nnewdface
   femesh.buffer[:face_faces][D+1,d+1] = Dface_to_dfaces
