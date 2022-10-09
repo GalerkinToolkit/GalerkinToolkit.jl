@@ -8,6 +8,7 @@ import P4est
 import CBinding
 import MPI
 import BlockArrays
+using Memoize
 
 export prefix!
 export rewind!
@@ -51,12 +52,18 @@ export is_simplex
 export is_hypercube
 export physical_groups
 export physical_groups!
+export num_physical_groups
 export PhysicalGroup
 export vertex_node
 export node_vertex
+export polytopal_complex
 include("mesh_interface.jl")
 
+export vtk_args
+include("vtk.jl")
 
+
+include("meshes.jl")
 
 #export FEMesh
 #export fe_mesh
@@ -74,8 +81,6 @@ include("mesh_interface.jl")
 #export with_gmsh
 #include("gmsh.jl")
 #
-#export vtk_args
-#include("vtk.jl")
 #
 #export p4est_mesh_refiner
 #export destroy!

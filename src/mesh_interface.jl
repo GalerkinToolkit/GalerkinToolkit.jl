@@ -316,10 +316,13 @@ is_hypercube(geo) = false
 
 """
     groups = physical_groups(geo)
-Get an array of all physical groups in `geo`.
+Get the array of all physical groups in `geo`.
 Each item in the array is an instance of `PhysicalGroup`.
+It returns an empty array by default.
+The resulting object `groups` takes ownership of the groups stored internally in `geo`.
 """
 function physical_groups end
+@memoize physical_groups(a) = PhysicalGroup[]
 
 """
     struct PhysicalGroup
@@ -331,7 +334,6 @@ Data defining a physical group.
 - `faces::Vector{Int32}` Ids of the faces defining the physical group.
 - `dim::Int` Dimension of the physical group.
 - `name::String` Name of the physical group.
-- `id::Int32` Id (i.e., the numeric name) of the physical group.
 
 # Supertype hierarchy
 
@@ -342,14 +344,13 @@ struct PhysicalGroup
     faces::Vector{Int32}
     dim::Int
     name::String
-    id::Int32
 end
 
 """
     groups = physical_groups(geo,dim)
 Get an array of all physical groups in `geo` of dimension `dim`.
 """
-function physical_groups(geo,dim)
+function physical_groups(geo,dim::Integer)
     groups = physical_groups(geo)
     filter(group->group.dim == dim,groups)
 end
@@ -359,6 +360,13 @@ end
 Sets the array of physical groups in `geo`.
 """
 function physical_groups! end
+
+"""
+    num_physical_groups(geo)
+Return number of physical groups in `geo`.
+"""
+function num_physical_groups end
+num_physical_groups(geo) = length(physical_groups(geo))
 
 """
     vertex_node(geo)
@@ -373,3 +381,9 @@ Node to vertex mapping for `geo`.
 The returned vector is of length `num_nodes(geo)`.
 """
 function node_vertex end
+
+"""
+    polytopal_complex(geo)
+Return the polytopal complex associated with `geo`.
+"""
+function polytopal_complex end
