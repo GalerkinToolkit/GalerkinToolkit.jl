@@ -140,6 +140,7 @@ function JaggedArray{T,Ti}(a::AbstractArray{<:AbstractArray}) where {T,Ti}
   end
   JaggedArray(data,ptrs)
 end
+JaggedArray{T,Ti}() where {T,Ti} = JaggedArray{T,Ti}(Vector{T}[])
 
 
 Base.size(a::Union{JaggedArray,GenericJaggedArray}) = (length(a.ptrs)-1,)

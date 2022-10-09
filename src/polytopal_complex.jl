@@ -111,6 +111,7 @@ of the nodes in `geo`.
 function node_coordinates end
 
 """
+    ref_faces(geo,Val(dim))
     ref_faces(geo,dim)
 
 Return a vector with the reference faces of dimension `dim`
@@ -224,6 +225,13 @@ function Base.getindex(a::PeriodicNodeVector,i::Integer)
     PeriodicNode(a.dependent[i],a.free[i],a.coeff[i])
 end
 
+function PeriodicNodeVector{Ti,T}()
+    PeriodicNodeVector(
+        Ti[],
+        Ti[],
+        T[])
+end
+
 """
     num_periodic_nodes(geo)
 Number of periodic nodes in `geo`.
@@ -275,6 +283,13 @@ struct HangingNodeVector{Ti,T} <: AbstractVector{HangingNode{Ti,T}}
   coeff::JaggedArray{T,Int32}
 end
 
+function HangingNodeVector{Ti,T}()
+    HangingNodeVector(
+        Ti[],
+        JaggedArray{Ti,Int32}(),
+        JaggedArray{T,Int32}())
+end
+
 Base.size(a::HangingNodeVector) = (length(a.dependent),)
 function Base.getindex(a::HangingNodeVector,i::Integer)
     HangingNode(a.dependent[i],a.free[i],a.coeff[i])
@@ -322,26 +337,26 @@ It returns an empty array by default.
 The resulting object `groups` takes ownership of the groups stored internally in `geo`.
 """
 function physical_groups end
-@memoize physical_groups(a) = PhysicalGroup[]
+#@memoize physical_groups(a) = PhysicalGroup[]
 
 """
-    struct PhysicalGroup
+    struct PhysicalGroup{T}
 
 Data defining a physical group.
 
 # Properties
 
-- `faces::Vector{Int32}` Ids of the faces defining the physical group.
+- `faces::Vector{T}` Ids of the faces defining the physical group.
 - `dim::Int` Dimension of the physical group.
 - `name::String` Name of the physical group.
 
 # Supertype hierarchy
 
-    PhysicalGroup <: Any
+    PhysicalGroup{T} <: Any
 
 """
-struct PhysicalGroup
-    faces::Vector{Int32}
+struct PhysicalGroup{T}
+    faces::Vector{T}
     dim::Int
     name::String
 end
@@ -387,3 +402,177 @@ function node_vertex end
 Return the polytopal complex associated with `geo`.
 """
 function polytopal_complex end
+
+struct MeshMetaData{Ti,T}
+    physical_groups::Vector{PhysicalGroup{Ti}}
+end
+
+struct NodeInfo{D,T,Ti}
+    node_coordinates::Vector{SVector{D,T}}
+    hanging_nodes::HangingNodeVector{Ti,T}
+    periodic_nodes::PeriodicNodeVector{Ti,T}
+end
+
+struct FaceInfo{Ti,A}
+    face_nodes::Vector{JaggedArray{Ti,Int32}}
+    face_faces::Matrix{JaggedArray{Ti,Int32}}
+    face_ref_id::Vector{Vector{Ti}}
+    ref_faces::A
+end
+
+struct SimpleMesh{D,T,Ti,A}
+    node_coordinates::Vector{SVector{D,T}}
+    cell_nodes::JaggedArray{Ti,Int32}
+    cell_ref_id::{Vector{Ti}}
+    ref_cell::A
+    metadata::MeshMetaData{Ti,T}
+    polytopal_complex::Ref{T}
+end
+
+struct FEMesh{D,T,Ti,A}
+    nodes::NodeInfo
+    faces::
+end
+
+struct PolytopalComplex
+    node_coordinates::Vector{SVector{D,T}}
+    face_nodes::Vector{JaggedArray{Ti,Int32}}
+    face_faces::Matrix{JaggedArray{Ti,Int32}}
+    face_ref_id::Vector{Vector{Ti}}
+    ref_faces::A
+    metadata::MeshMetaData{Ti,T}
+    face_faces::Matrix{JaggedArray{Ti,Int32}}
+end
+
+femesh
+
+femesh = generate_faces(femesh,1)
+
+
+
+struct PolytopalComplex{D,T,Ti,A}
+    node_coordinates::Vector{SVector{D,T}}
+    face_nodes::Vector{JaggedArray{Ti,Int32}}
+    face_faces::Matrix{JaggedArray{Ti,Int32}}
+    face_ref_id::Vector{Vector{Ti}}
+    ref_faces::A
+    hanging_nodes::HangingNodeVector{Ti,T}
+    periodic_nodes::PeriodicNodeVector{Ti,T}
+    physical_groups::Vector{PhysicalGroup{Ti}}
+end
+
+function PolytopalComplex{D,T,Ti}(ref_faces) where {D,T,Ti}
+    node_coordinates::Vector{SVector{D,T}}
+    face_nodes::Vector{JaggedArray{Ti,Int32}}
+    face_faces::Matrix{JaggedArray{Ti,Int32}}
+    face_ref_id::Vector{Vector{Ti}}
+    ref_faces::A
+    hanging_nodes::HangingNodeVector{Ti,T}
+    periodic_nodes::PeriodicNodeVector{Ti,T}
+    physical_groups::Vector{PhysicalGroup{Ti}}
+
+end
+
+
+polytopal_complex(a::PolytopalComplex) = a
+num_dims(a::PolytopalComplex) = length(a.face_to_id)-1
+face_nodes(a::PolytopalComplex,dim) = a.face_nodes[dim+1]
+face_faces(a::PolytopalComplex,m,n) = a.face_faces[m+1,n+1]
+node_coordinates(a::PolytopalComplex) = a.node_coordinates
+ref_faces(a::PolytopalComplex,::Val{dim}) = a.ref_faces[dim+1]
+ref_faces(a::PolytopalComplex,dim) = a.ref_faces[dim+1]
+face_ref_id(a::PolytopalComplex,dim) = a.face_ref_id[dim+1]
+periodic_nodes(a::PolytopalComplex) = a.periodic_nodes
+hanging_nodes(a::PolytopalComplex) = a.hanging_nodes
+is_simplex(a::PolytopalComplex) = num_dims(a)+1 == num_vertices(a)
+is_hypercube(a::PolytopalComplex) = 2^num_dims(a) == num_vertices(a)
+physical_groups(a::PolytopalComplex) = a.physical_groups
+
+function vtk_mesh_cell(a::PolytopalComplex)
+    t = if num_dims(a) == 0
+       WriteVTK.VTKCellTypes.VTK_VERTEX
+    elseif num_dims(a) == 1
+        if num_nodes(a) == 2
+            WriteVTK.VTKCellTypes.VTK_LINE
+        else
+            error("Case not implemented")
+        end
+    elseif num_dims(a) == 2
+        if num_nodes(a) == 3
+            WriteVTK.VTKCellTypes.VTK_TRIANGLE
+        else
+            error("Case not implemented")
+        end
+    elseif num_dims(a) == 3
+        if num_nodes(a) == 4
+            WriteVTK.VTKCellTypes.VTK_TETRA
+        else
+            error("Case not implemented")
+        end
+    else
+        error("Case not implemented")
+    end
+    nodes -> WriteVTK.MeshCell(t,nodes)
+end
+
+
+struct Polytope{B}
+    boundary::B
+end
+
+polytopal_complex(a::Polytope) = a
+num_dims(a::Polytope) = num_dims(a.boundary)+1
+function face_nodes(a::Polytope,dim)
+    if dim == num_dims(a)
+        
+    else
+    end
+end
+face_faces(a::Polytope,m,n) = a.face_faces[m+1,n+1]
+node_coordinates(a::Polytope) = a.node_coordinates
+ref_faces(a::Polytope,::Val{dim}) = a.ref_faces[dim+1]
+ref_faces(a::Polytope,dim) = a.ref_faces[dim+1]
+face_ref_id(a::Polytope,dim) = a.face_ref_id[dim+1]
+periodic_nodes(a::Polytope) = a.periodic_nodes
+hanging_nodes(a::Polytope) = a.hanging_nodes
+is_simplex(a::Polytope) = num_dims(a)+1 == num_vertices(a)
+is_hypercube(a::Polytope) = 2^num_dims(a) == num_vertices(a)
+physical_groups(a::Polytope) = a.physical_groups
+
+#ref_point = Point()
+#
+#ref_line_boundary = fe_mesh(
+#   node_coordinates=[(0),(1)],
+#   cell_nodes=[[1],[2]]
+#   ref_cell=ref_point)
+#
+#ref_line = Polytope(ref_line_boundary)
+#
+#ref_triangle_boundary = fe_mesh(
+#    node_coordinates=[(0,0),(1,0),(0,1)],
+#    face_nodes=[ [[1],[2],[3]], [[1,2],[2,3],[3,1]] ]
+#    face_ref_id=[[1,1,1],[1,1,1]]
+#    ref_faces=([ref_point],[ref_line]))
+#
+#ref_triangle = Polytope(ref_triangle_boundary)
+#
+#mesh = fe_mesh(
+#  node_coordinates=[(0,0),(1,0),(0,1),(1,1)],
+#  face_nodes=[ Vector{Int}[], [[1,2],[2,4]], [[1,2,3],[2,3,4]] ]
+#  face_ref_id=[ Int[], [1,1],[1,1]],
+#  ref_faces=( [],[ref_line],[ref_triangle]),
+#  generate_faces = true)
+#
+#mesh, newids = generate_faces(mesh,1)
+#mesh, newids = generate_faces(mesh,0)
+
+
+#grid = CartesianGrid(3,3)
+#mesh = fe_mesh(grid)
+#mesh = fe_mesh(grid,isperiodic=(0,1))
+#mesh = fe_mesh(grid,generate_faces=false)
+
+
+
+
+
