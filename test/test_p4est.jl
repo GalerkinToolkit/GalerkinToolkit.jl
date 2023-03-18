@@ -8,7 +8,7 @@ using Test
 coarse_mesh = Quadrangle(Point.([(0,0),(2,0),(2,2),(0,2)]))
 
 initial_level = 1
-forest = new_forest(coarse_mesh,initial_level)
+forest = forest_from_mesh(coarse_mesh,initial_level)
 
 @show typeof(forest)
 
@@ -56,7 +56,7 @@ partition!(forest,allow_for_coarsening) do itree,leaf
     level(leaf)
 end
 
-ghosts = ghost_leafs(forest)
+ghosts = ghost_layer(forest)
 @test length(ghosts) == 0
 
 

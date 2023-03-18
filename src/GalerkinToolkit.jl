@@ -39,7 +39,7 @@ export hanging_nodes
 export hanging_to_masters
 export hanging_to_coeffs
 export gmsh_mesh
-export new_forest
+export forest_from_mesh
 export anchor
 export level
 export refine!
@@ -50,7 +50,7 @@ export node_coordinates!
 export CONNECT_CORNER
 export CONNECT_FACE
 export CONNECT_FULL
-export ghost_leafs
+export ghost_layer
 
 include("mesh_interface.jl")
 include("write_vtk.jl")
