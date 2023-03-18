@@ -50,7 +50,10 @@ export node_coordinates!
 export CONNECT_CORNER
 export CONNECT_FACE
 export CONNECT_FULL
-export ghost_layer
+export find_ghost_leafs
+export generate_nodes
+export leaf_nodes
+export leaf_constraints
 
 include("mesh_interface.jl")
 include("write_vtk.jl")

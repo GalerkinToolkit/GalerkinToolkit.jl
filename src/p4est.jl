@@ -9,6 +9,8 @@ pxest_topology(::P4est.p4est_connectivity_t) = Val(4)
 pxest_topology(::P4est.p8est_connectivity_t) = Val(8)
 pxest_topology(::Ptr{P4est.p4est_ghost_t}) = Val(4)
 pxest_topology(::Ptr{P4est.p8est_ghost_t}) = Val(8)
+pxest_topology(::P4est.p4est_lnodes_t) = Val(4)
+pxest_topology(::P4est.p8est_lnodes_t) = Val(8)
 pxest_quadrant_t(::Val{4}) = P4est.p4est_quadrant_t
 pxest_quadrant_t(::Val{8}) = P4est.p8est_quadrant_t
 pxest_tree_t(::Val{4}) = P4est.p4est_tree_t
@@ -146,6 +148,12 @@ function forest_from_mesh(coarse_mesh,initial_level=0)
         nothing
     end
 end
+
+"""
+    perm = pxest_node_permutation(elem)
+    nodeids_pxest_order = nodeids_elem_order[perm]
+"""
+function pxest_node_permutation end
 
 function pxest_find_topology(refcell)
     D = dimension(refcell)
@@ -371,30 +379,30 @@ function pxest_partition(callback,::Val{8},p4est_ptr,allow_for_coarsening)
     p8est_partition(p4est_ptr,allow_for_coarsening,callback_ptr)
 end
 
-mutable struct GhostLayer4 <: AbstractVector{Leaf4}
+mutable struct GhostLeafs4 <: AbstractVector{Leaf4}
     p4est_ghost_ptr::Ptr{P4est.p4est_ghost_t}
 end
 
-mutable struct GhostLayer8 <: AbstractVector{Leaf8}
+mutable struct GhostLeafs8 <: AbstractVector{Leaf8}
     p4est_ghost_ptr::Ptr{P4est.p8est_ghost_t}
 end
 
-const GhostLayer = Union{GhostLayer4,GhostLayer8}
-GhostLayer(p4est_ghost_ptr::Ptr{P4est.p4est_ghost_t}) = GhostLayer4(p4est_ghost_ptr)
-GhostLayer(p4est_ghost_ptr::Ptr{P4est.p8est_ghost_t}) = GhostLayer8(p4est_ghost_ptr)
+const GhostLeafs = Union{GhostLeafs4,GhostLeafs8}
+GhostLeafs(p4est_ghost_ptr::Ptr{P4est.p4est_ghost_t}) = GhostLeafs4(p4est_ghost_ptr)
+GhostLeafs(p4est_ghost_ptr::Ptr{P4est.p8est_ghost_t}) = GhostLeafs8(p4est_ghost_ptr)
 
-Base.IndexStyle(::Type{<:GhostLayer}) = IndexLinear()
+Base.IndexStyle(::Type{<:GhostLeafs}) = IndexLinear()
 
-function Base.size(ghost_layer::GhostLayer)
-    p4est_ghost_ptr = ghost_layer.p4est_ghost_ptr
+function Base.size(ghost_leafs::GhostLeafs)
+    p4est_ghost_ptr = ghost_leafs.p4est_ghost_ptr
     p4est_ghost = unsafe_load(p4est_ghost_ptr)
     ghosts = p4est_ghost.ghosts
     nghosts = Int(ghosts.elem_count)
     (nghosts,)
 end
 
-function Base.getindex(ghost_layer::GhostLayer,iquadrant::Int)
-    p4est_ghost_ptr = ghost_layer.p4est_ghost_ptr
+function Base.getindex(ghost_leafs::GhostLeafs,iquadrant::Int)
+    p4est_ghost_ptr = ghost_leafs.p4est_ghost_ptr
     p4est_ghost = unsafe_load(p4est_ghost_ptr)
     ghosts = p4est_ghost.ghosts
     T = pxest_topology(p4est_ghost_ptr)
@@ -402,11 +410,11 @@ function Base.getindex(ghost_layer::GhostLayer,iquadrant::Int)
     Leaf(p4est_quadrant)
 end
 
-function ghost_layer(forest::Forest,connection=CONNECT_FULL)
+function find_ghost_leafs(forest::Forest,connection=CONNECT_FULL)
     p4est_ptr = forest.p4est_ptr
     T = pxest_topology(p4est_ptr)
     p4est_ghost_ptr = pxest_ghost_new(T,p4est_ptr,connection)
-    ghost = GhostLayer(p4est_ghost_ptr)
+    ghost = GhostLeafs(p4est_ghost_ptr)
     finalizer(ghost) do ghost
         pxest_ghost_destroy(T,ghost.p4est_ghost_ptr)
     end
@@ -428,131 +436,219 @@ function pxest_ghost_destroy(::Val{8},p4est_ghost_ptr)
     P4est.p4est_ghost_destroy(p4est_ghost_ptr)
 end
 
+mutable struct ForestNodes4
+    p4est_lnodes_ptr::Ptr{P4est.p4est_lnodes_t}
+    order::Int
+end
+
+mutable struct ForestNodes8
+    p4est_lnodes_ptr::Ptr{P4est.p8est_lnodes_t}
+    order::Int
+end
+
+const ForestNodes = Union{ForestNodes4,ForestNodes8}
+ForestNodes(p4est_lnodes_ptr::Ptr{P4est.p4est_lnodes_t},order) = ForestNodes4(p4est_lnodes_ptr,order)
+ForestNodes(p4est_lnodes_ptr::Ptr{P4est.p8est_lnodes_t},order) = ForestNodes8(p4est_lnodes_ptr,order)
+
+function generate_nodes(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest))
+    @assert order == 1
+    p4est_ptr = forest.p4est_ptr
+    T = pxest_topology(p4est_ptr)
+    p4est_ghost_ptr = ghost_leafs.p4est_ghost_ptr
+    p4est_lnodes_ptr = pxest_lnodes_new(T,p4est_ptr,p4est_ghost_ptr,order)
+    nodes = ForestNodes(p4est_lnodes_ptr,order)
+    finalizer(nodes) do nodes
+        pxest_lnodes_destroy(T,nodes.p4est_lnodes_ptr)
+    end
+end
+
+function pxest_lnodes_new(::Val{4},p4est_ptr,ghost_ptr,order)
+    P4est.p4est_lnodes_new(p4est_ptr,ghost_ptr,order)
+end
+
+function pxest_lnodes_new(::Val{8},p4est_ptr,ghost_ptr,order)
+    P4est.p8est_lnodes_new(p4est_ptr,ghost_ptr,order)
+end
+
+function pxest_lnodes_destroy(::Val{4},lnodes_ptr)
+    P4est.p4est_lnodes_destroy(lnodes_ptr)
+end
+
+function pxest_lnodes_destroy(::Val{8},lnodes_ptr)
+    P4est.p8est_lnodes_destroy(lnodes_ptr)
+end
+
+function leaf_nodes(nodes::ForestNodes)
+    lnodes_ptr = nodes.p4est_lnodes_ptr
+    lnodes = unsafe_load(lnodes_ptr)
+    T = pxest_topology(lnodes)
+    n_cell_nodes = pxest_num_leaf_nodes(T,nodes.order)
+    n_cells = Int(lnodes.num_local_elements)
+    cell_to_nodes_ptrs = fill(Int32(n_cell_nodes),n_cells+1)
+    cell_to_nodes_ptrs[1] = 0
+    length_to_ptrs!(cell_to_nodes_ptrs)
+    cell_to_nodes_data = copy(unsafe_wrap(Array,lnodes.element_nodes,n_cells*n_cell_nodes))
+    cell_to_nodes_data .+= 1
+    cell_to_nodes = JaggedArray(cell_to_nodes_data,cell_to_nodes_ptrs)
+    cell_to_nodes
+end
+
+function pxest_num_leaf_nodes(::Val{4},order)
+    @assert order == 1
+    4
+end
+
+function pxest_num_leaf_nodes(::Val{8},order)
+    @assert order == 1
+    8
+end
+
+function leaf_constraints(nodes::ForestNodes)
+    lnodes_ptr = nodes.p4est_lnodes_ptr
+    lnodes = unsafe_load(lnodes_ptr)
+    T = pxest_topology(lnodes)
+    n_cells = Int(lnodes.num_local_elements)
+    cache = pxest_setup_face_code_tables_cache(T)
+    face_code_ptr = lnodes.face_code
+    face_code = unsafe_wrap(Array,face_code_ptr,(n_cells,))
+    code_hanging = Dict{Int32,Vector{Int32}}()
+    code_master = Dict{Int32,JaggedArray{Int32,Int32}}()
+    for cell in 1:n_cells
+        code = face_code[cell]
+        if !haskey(code_hanging,code)
+            hanging_elem_nodes, master_elem_nodes = pxest_setup_face_code_tables(T,code,cache)
+            code_hanging[code] = hanging_elem_nodes
+            code_master[code] = master_elem_nodes
+        end
+    end
+    leaf_to_hanging = LeafHaningNodes(face_code,code_hanging)
+    leaf_to_master = LeafMasterNodes(face_code,code_master)
+    leaf_to_hanging, leaf_to_master
+end
+
+struct LeafMasterNodes{A,T} <: AbstractVector{JaggedArray{T,T}}
+    face_code::Vector{A}
+    code_master::Dict{T,JaggedArray{T,T}}
+end
+Base.size(a::LeafMasterNodes) = size(a.face_code)
+Base.IndexStyle(::Type{<:LeafMasterNodes}) = IndexLinear()
+Base.getindex(a::LeafMasterNodes,i::Int) = a.code_master[a.face_code[i]]
+
+struct LeafHaningNodes{A,T} <: AbstractVector{Vector{T}}
+    face_code::Vector{A}
+    code_hanging::Dict{T,Vector{T}}
+end
+Base.size(a::LeafHaningNodes) = size(a.face_code)
+Base.IndexStyle(::Type{<:LeafHaningNodes}) = IndexLinear()
+Base.getindex(a::LeafHaningNodes,i::Int) = a.code_hanging[a.face_code[i]]
+
+pxest_corner_faces(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_corner_faces,P4est.LibP4est.libp4est),Cint),(2,4))))
+pxest_face_corners(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_face_corners,P4est.LibP4est.libp4est),Cint),(2,4))))
+pxest_corner_faces(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_corner_faces,P4est.LibP4est.libp4est),Cint),(3,8))))
+pxest_face_corners(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_face_corners,P4est.LibP4est.libp4est),Cint),(4,6))))
+pxest_corner_edges(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_corner_edges,P4est.LibP4est.libp4est),Cint),(3,8))))
+pxest_edge_corners(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_edge_corners,P4est.LibP4est.libp4est),Cint),(2,12))))
+
+function pxest_setup_face_code_tables_cache(::Val{4})
+    (;
+     corner_faces = pxest_corner_faces(Val(4)),
+     face_corners = pxest_face_corners(Val(4))
+    )
+end
+
+function pxest_setup_face_code_tables_cache(::Val{8})
+    (;
+     corner_faces = pxest_corner_faces(Val(8)),
+     face_corners = pxest_face_corners(Val(8)),
+     corner_edges = pxest_corner_edges(Val(8)),
+     edge_corners = pxest_edge_corners(Val(8)),
+    )
+end
+
+function pxest_setup_face_code_tables(::Val{4},face_code,cache)
+    p4est_corner_faces = cache.corner_faces
+    p4est_face_corners = cache.face_corners
+    p4est_half = div(P4est.P4EST_CHILDREN,2*one(P4est.P4EST_CHILDREN))
+    ones = Cint(P4est.P4EST_CHILDREN - 1)
+    c = Cint(face_code & ones)
+    c1 = c+one(c)
+    work = Cint(face_code >> P4est.P4EST_DIM)
+    hanging_elem_nodes = Int32[]
+    master_elem_nodes = Vector{Int32}[]
+    for i1 in one(P4est.P4EST_DIM):P4est.P4EST_DIM
+        if work & Cint(1) != Cint(0)
+            i = Cint(i1-one(i1))
+            ef = p4est_corner_faces[c1,i1];
+            ef1 = ef + one(ef)
+            hanging = xor(c,xor(ones,(Cint(1) << i)))
+            hanging1 = hanging + one(hanging)
+            my_masters = Int32[0,0]
+            for j1 in one(p4est_half):p4est_half
+                master = p4est_face_corners[ef1,j1]
+                master1 = master + one(master)
+                my_masters[j1] = master1
+            end
+            push!(hanging_elem_nodes,hanging1)
+            push!(master_elem_nodes,my_masters)
+        end
+        work = work >> Cint(1)
+    end
+    hanging_elem_nodes, master_elem_nodes
+end
+
+function pxest_setup_face_code_tables(::Val{8},face_code,cache)
+    p8est_corner_faces = cache.corner_faces
+    p8est_face_corners = cache.face_corners
+    p8est_half = div(P4est.P8EST_CHILDREN,2*one(P4est.P8EST_CHILDREN))
+    ones = Cint(P4est.P8EST_CHILDREN - 1)
+    c = Cint(face_code & ones)
+    c1 = c+one(c)
+    work = Cint(face_code >> P4est.P8EST_DIM)
+    hanging_elem_nodes = Int32[]
+    master_elem_nodes = Vector{Int32}[]
+    for i1 in one(P4est.P8EST_DIM):P4est.P8EST_DIM
+        if work & Cint(1) != Cint(0)
+            i = Cint(i1-one(i1))
+            ef = p8est_corner_faces[c1,i1];
+            ef1 = ef + one(ef)
+            hanging = xor(c,xor(ones,(Cint(1) << i)))
+            hanging1 = hanging + one(hanging)
+            my_masters = Int32[0,0,0,0]
+            for j1 in one(p8est_half):p8est_half
+                master = p8est_face_corners[ef1,j1]
+                master1 = master + one(master)
+                my_masters[j1] = master1
+            end
+            push!(hanging_elem_nodes,hanging1)
+            push!(master_elem_nodes,my_masters)
+        end
+        work = work >> Cint(1)
+    end
+    p8est_corner_edges = cache.corner_edges
+    p8est_edge_corners = cache.edge_corners
+    for i1 in one(P4est.P8EST_DIM):P4est.P8EST_DIM
+        if work & Cint(1) != Cint(0)
+            i = Cint(i1-one(i1))
+            ef = p8est_corner_edges[c1,i1];
+            ef1 = ef + one(ef)
+            hanging = xor(c,(Cint(1) << i))
+            hanging1 = hanging + one(hanging)
+            my_masters = Int32[0,0]
+            for k in 1:2
+                master = p8est_edge_corners[ef1,k]
+                master1 = master + one(master)
+                my_masters[k] = master1
+            end
+            push!(hanging_elem_nodes,hanging1)
+            push!(master_elem_nodes,my_masters)
+        end
+        work = work >> Cint(1)
+    end
+    hanging_elem_nodes, master_elem_nodes
+end
 
 
 
-
-#function pxest_refine_callback(p4est_ptr,which_tree,quadrant_ptr)
-#  p4est = unsafe_load(p4est_ptr)
-#  quadrant = unsafe_load(quadrant_ptr)
-#  flags_ptr = Base.unsafe_convert(Ptr{Bool},p4est.user_pointer)
-#  elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-#  elem = unsafe_load(elem_ptr,1)
-#  elem == INVALID_ID && return Int32(1)
-#  flag = unsafe_load(flags_ptr,elem)
-#  i = flag ? 1 : 0
-#  Int32(i)
-#end
-#
-#function pxest_coarsen_callback(p4est_ptr,which_tree,quadrants_ptr)
-#  p4est = unsafe_load(p4est_ptr)
-#  flags_ptr = Base.unsafe_convert(Ptr{Bool},p4est.user_pointer)
-#  quadrants = unsafe_load(Array,quadrants_ptr,4)
-#  r = true
-#  for i in 1:4
-#    quadrant = quadrants[i]
-#    elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-#    elem = unsafe_load(elem_ptr,1)
-#    if elem == INVALID_ID
-#      flag = false
-#    else
-#      flag = unsafe_load(flags_ptr,elem)
-#    end
-#    r = r && (!flag)
-#  end
-#  r ? Int32(1) : Int32(0)
-#end
-#
-#function pxest_init_callback(p4est_ptr,which_tree,quadrant_ptr)
-#  quadrant = unsafe_load(quadrant_ptr)
-#  elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-#  unsafe_store!(elem_ptr,INVALID_ID)
-#  Cvoid()
-#end
-#
-##function refine!(forest::Forest,_flags,num_levels=1)
-##  flags = convert(Vector{Bool},_flags)
-##  D = dimension(forest)
-##  if D == 3
-##    error("Not implemented yet")
-##  end
-##  p4est_ptr = forest.p4est_ptr
-##  p4est = unsafe_load(p4est_ptr)
-##  p4est.user_pointer = Base.unsafe_convert(Ptr{Nothing},flags)
-##  trees_ptr = p4est.trees
-##  trees = unsafe_load(trees_ptr)
-##  ntrees = Int(trees.elem_count)
-##  elem = 0
-##  for itree in 1:ntrees
-##    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
-##    quadrants =  tree.quadrants
-##    nquadrants = Int(quadrants.elem_count)
-##    for iquadrant in 1:nquadrants
-##      elem += 1
-##      quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
-##      elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-##      unsafe_store!(elem_ptr,elem)
-##    end
-##  end
-##  refine_fn_ptr = @cfunction(pxest_refine_callback,Cint,
-##    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-##  init_fn_ptr = @cfunction(pxest_init_callback,Cvoid,
-##    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-##  for i in 1:num_levels
-##    P4est.p4est_refine(p4est_ptr,0,refine_fn_ptr,init_fn_ptr)
-##  end
-##  forest
-##end
-#
-##function balance!(forest)
-##  @assert dimension(forest) == 2 "Not yet implemented for 3d"
-##  p4est_ptr = forest.p4est_ptr
-##  init_fn_ptr = @cfunction(pxest_init_callback,Cvoid,
-##    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-##  P4est.p4est_balance(p4est_ptr,P4est.P4EST_CONNECT_CORNER,init_fn_ptr)
-##  forest
-##end
-#
-##function coarsen!(forest::Forest,_flags,num_levels=1)
-##  flags = convert(Vector{Bool},_flags)
-##  D = dimension(forest)
-##  if D == 3
-##    error("Not implemented yet")
-##  end
-##  p4est_ptr = forest.p4est_ptr
-##  p4est = unsafe_load(p4est_ptr)
-##  p4est.user_pointer = Base.unsafe_convert(Ptr{Nothing},flags)
-##  trees_ptr = p4est.trees
-##  trees = unsafe_load(trees_ptr)
-##  ntrees = Int(trees.elem_count)
-##  elem = 0
-##  for itree in 1:ntrees
-##    tree = unsafe_load(Ptr{P4est.p4est_tree_t}(trees.array),itree)
-##    quadrants =  tree.quadrants
-##    nquadrants = Int(quadrants.elem_count)
-##    for iquadrant in 1:nquadrants
-##      elem += 1
-##      quadrant = unsafe_load(Ptr{P4est.p4est_quadrant_t}(quadrants.array),iquadrant)
-##      elem_ptr = Base.unsafe_convert(Ptr{Int},quadrant.p.user_data)
-##      unsafe_store!(elem_ptr,elem)
-##    end
-##  end
-##  coarsen_fn_ptr = @cfunction(pxest_coarsen_callback,Cint,
-##    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{Ptr{P4est.p4est_quadrant_t}}))
-##  init_fn_ptr = @cfunction(pxest_init_callback,Cvoid,
-##    (Ptr{P4est.p4est_t},P4est.p4est_topidx_t,Ptr{P4est.p4est_quadrant_t}))
-##  for i in 1:num_levels
-##    P4est.p4est_coarsen(p4est_ptr,0,coarsen_fn_ptr,init_fn_ptr)
-##  end
-##  forest
-##end
-#
-#"""
-#    perm = pxest_node_permutation(elem)
-#    nodeids_pxest_order = nodeids_elem_order[perm]
-#"""
-#function pxest_node_permutation end
-#
 #pxest_dimension(p4est::P4est.LibP4est.p4est) = 2
 #pxest_dimension(p4est::P4est.LibP4est.p8est) = 3
 #pxest_dimension(p4est::P4est.p4est_tree_t) = 2
@@ -563,114 +659,11 @@ end
 #pxest_tree_t(::Val{3}) = P4est.p8est_tree_t
 #pxest_quadrant_t(::Val{2}) = P4est.p4est_quadrant_t
 #pxest_quadrant_t(::Val{3}) = P4est.p8est_quadrant_t
-#pxest_corner_faces(::Val{2}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_corner_faces,P4est.LibP4est.libp4est),Cint),(2,4))))
-#pxest_face_corners(::Val{2}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_face_corners,P4est.LibP4est.libp4est),Cint),(2,4))))
-#pxest_corner_faces(::Val{3}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_corner_faces,P4est.LibP4est.libp4est),Cint),(3,8))))
-#pxest_face_corners(::Val{3}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_face_corners,P4est.LibP4est.libp4est),Cint),(4,6))))
-#pxest_corner_edges(::Val{3}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_corner_edges,P4est.LibP4est.libp4est),Cint),(3,8))))
-#pxest_edge_corners(::Val{3}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_edge_corners,P4est.LibP4est.libp4est),Cint),(2,12))))
 #
 #
 #
 #
 #
-#function pxest_setup_face_code_tables_cache(::Val{2})
-#    (;
-#     corner_faces = pxest_corner_faces(Val(2)),
-#     face_corners = pxest_face_corners(Val(2))
-#    )
-#end
-#
-#function pxest_setup_face_code_tables_cache(::Val{3})
-#    (;
-#     corner_faces = pxest_corner_faces(Val(3)),
-#     face_corners = pxest_face_corners(Val(3)),
-#     corner_edges = pxest_corner_edges(Val(3)),
-#     edge_corners = pxest_edge_corners(Val(3)),
-#    )
-#end
-#
-#function pxest_setup_face_code_tables(::Val{2},face_code,cache)
-#    p4est_corner_faces = cache.corner_faces
-#    p4est_face_corners = cache.face_corners
-#    p4est_half = div(P4est.P4EST_CHILDREN,2*one(P4est.P4EST_CHILDREN))
-#    ones = Cint(P4est.P4EST_CHILDREN - 1)
-#    c = Cint(face_code & ones)
-#    c1 = c+one(c)
-#    work = Cint(face_code >> P4est.P4EST_DIM)
-#    hanging_elem_nodes = Int32[]
-#    master_elem_nodes = Vector{Int32}[]
-#    for i1 in one(P4est.P4EST_DIM):P4est.P4EST_DIM
-#        if work & Cint(1) != Cint(0)
-#            i = Cint(i1-one(i1))
-#            ef = p4est_corner_faces[c1,i1];
-#            ef1 = ef + one(ef)
-#            hanging = xor(c,xor(ones,(Cint(1) << i)))
-#            hanging1 = hanging + one(hanging)
-#            my_masters = Int32[0,0]
-#            for j1 in one(p4est_half):p4est_half
-#                master = p4est_face_corners[ef1,j1]
-#                master1 = master + one(master)
-#                my_masters[j1] = master1
-#            end
-#            push!(hanging_elem_nodes,hanging1)
-#            push!(master_elem_nodes,my_masters)
-#        end
-#        work = work >> Cint(1)
-#    end
-#    hanging_elem_nodes, master_elem_nodes
-#end
-#
-#function pxest_setup_face_code_tables(::Val{3},face_code,cache)
-#    p8est_corner_faces = cache.corner_faces
-#    p8est_face_corners = cache.face_corners
-#    p8est_half = div(P4est.P8EST_CHILDREN,2*one(P4est.P8EST_CHILDREN))
-#    ones = Cint(P4est.P8EST_CHILDREN - 1)
-#    c = Cint(face_code & ones)
-#    c1 = c+one(c)
-#    work = Cint(face_code >> P4est.P8EST_DIM)
-#    hanging_elem_nodes = Int32[]
-#    master_elem_nodes = Vector{Int32}[]
-#    for i1 in one(P4est.P8EST_DIM):P4est.P8EST_DIM
-#        if work & Cint(1) != Cint(0)
-#            i = Cint(i1-one(i1))
-#            ef = p8est_corner_faces[c1,i1];
-#            ef1 = ef + one(ef)
-#            hanging = xor(c,xor(ones,(Cint(1) << i)))
-#            hanging1 = hanging + one(hanging)
-#            my_masters = Int32[0,0,0,0]
-#            for j1 in one(p8est_half):p8est_half
-#                master = p8est_face_corners[ef1,j1]
-#                master1 = master + one(master)
-#                my_masters[j1] = master1
-#            end
-#            push!(hanging_elem_nodes,hanging1)
-#            push!(master_elem_nodes,my_masters)
-#        end
-#        work = work >> Cint(1)
-#    end
-#    p8est_corner_edges = cache.corner_edges
-#    p8est_edge_corners = cache.edge_corners
-#    for i1 in one(P4est.P8EST_DIM):P4est.P8EST_DIM
-#        if work & Cint(1) != Cint(0)
-#            i = Cint(i1-one(i1))
-#            ef = p8est_corner_edges[c1,i1];
-#            ef1 = ef + one(ef)
-#            hanging = xor(c,(Cint(1) << i))
-#            hanging1 = hanging + one(hanging)
-#            my_masters = Int32[0,0]
-#            for k in 1:2
-#                master = p8est_edge_corners[ef1,k]
-#                master1 = master + one(master)
-#                my_masters[k] = master1
-#            end
-#            push!(hanging_elem_nodes,hanging1)
-#            push!(master_elem_nodes,my_masters)
-#        end
-#        work = work >> Cint(1)
-#    end
-#    hanging_elem_nodes, master_elem_nodes
-#end
 #
 #function pxest_setup_lnodes(p4est_ptr::Ptr{P4est.LibP4est.p4est})
 #    order = 1
