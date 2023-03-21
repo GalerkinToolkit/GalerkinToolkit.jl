@@ -1,3 +1,6 @@
+#TODO SimpleMesh
+# Val(d) also in other functions?
+# better way to represent hanging node constraints?
 
 # Nobody should overwrite these
 has_periodic_nodes(a) = has_periodic_nodes(typeof(a))
@@ -93,32 +96,6 @@ periodic_nodes(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_node
 periodic_to_master(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_master
 periodic_to_coeff(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_coeff
 
-struct HangingNodeConstraints{T,Ti}
-    n::Int
-    haning::Vector{Ti}
-    masters::JaggedArray{Ti,Ti}
-    coeffs::JaggedArray{T,Ti}
-end
-
-Base.size(a::HangingNodeConstraints) = (n,n)
-
-function LinearAlgebra.mul!(c::AbstractVector,a::HangingNodeConstraints,b::AbstractVector)
-    m,n = size(a)
-    @assert length(c) == m
-    @assert length(b) == n
-    copy!(c,b)
-    for (i,hanging) in enumerate(a.haning)
-        pini = a.masters.ptrs[i]
-        pend = a.masters.ptrs[i+1]
-        for p in pini:pend
-            master = a.masters.data[p]
-            coeff = a.coeffs.data[p]
-            c[haning] += coeff*b[master]
-        end
-    end
-    c
-end
-
 set_haning_node_constraints(mesh,constraints) = MeshWithHangingNodeConstraints(mesh,constraints)
 struct MeshWithHangingNodeConstraints{A,B} <: AbstractMeshWithData{A}
     mesh::A
@@ -129,4 +106,54 @@ function hanging_node_constraints(a::MeshWithHangingNodeConstraints,d)
     a.constraints[d+1]
 end
 
+struct HangingNodeConstraints{T,Ti} <: AbstractMatrix{T}
+    n::Int
+    hanging::Vector{Ti}
+    masters::JaggedArray{Ti,Ti}
+    coeffs::JaggedArray{T,Ti}
+end
+
+Base.size(a::HangingNodeConstraints) = (a.n,a.n)
+Base.IndexStyle(::Type{<:HangingNodeConstraints}) = IndexCartesian()
+function Base.getindex(a::HangingNodeConstraints,i::Int,j::Int)
+    T = eltype(a)
+    k = findfirst(p->p==i,a.hanging)
+    if k === nothing
+        i==j ? one(T) : zero(T)
+    else
+        masters = a.masters[k]
+        l = findfirst(p->p==j,masters)
+        if l === nothing
+            i==j ? one(T) : zero(T)
+        else
+            coeff = a.coeffs[k][l]
+            i==j ? one(T) + coeff : coeff
+        end
+    end
+end
+
+function LinearAlgebra.mul!(c::AbstractVector,a::HangingNodeConstraints,b::AbstractVector)
+    m,n = size(a)
+    @assert length(c) == m
+    @assert length(b) == n
+    copy!(c,b)
+    for (i,hanging) in enumerate(a.hanging)
+        pini = a.masters.ptrs[i]
+        pend = a.masters.ptrs[i+1]
+        for p in pini:pend
+            master = a.masters.data[p]
+            coeff = a.coeffs.data[p]
+            c[hanging] += coeff*b[master]
+        end
+    end
+    c
+end
+
+struct FaceHangingNodeConstraints{T,Ti} <: AbstractVector{Vector{T}}
+    face_code::Vector{Ti}
+    code_constraints::Dict{Ti,HangingNodeConstraints{T,Ti}}
+end
+Base.size(a::FaceHangingNodeConstraints) = size(a.face_code)
+Base.IndexStyle(::Type{<:FaceHangingNodeConstraints}) = IndexLinear()
+Base.getindex(a::FaceHangingNodeConstraints,i::Int) = a.code_constraints[a.face_code[i]]
 

@@ -4,6 +4,7 @@ using GalerkinToolkit
 using Meshes
 using StaticArrays
 using Test
+using WriteVTK
 
 coarse_mesh = Quadrangle(Point.([(0,0),(2,0),(2,2),(0,2)]))
 
@@ -58,17 +59,28 @@ end
 
 ghost_leafs = find_ghost_leafs(forest)
 @test length(ghost_leafs) == 0
-
 order = 1
-forest_nodes = generate_nodes(forest,order)
-forest_nodes = generate_nodes(forest,order,ghost_leafs)
+mesh = mesh_from_forest(forest,order,ghost_leafs)
 
-leaf_to_nodes = leaf_nodes(forest_nodes)
-display(leaf_to_nodes)
+initial_level = 1
+forest = forest_from_mesh(coarse_mesh,initial_level)
 
-leaf_to_constraints = leaf_constraints(forest_nodes)
+refine!(forest) do itree,leaf
+    anchor(leaf) == [0,0] ? 1 : 0
+end
 
-display(leaf_to_constraints)
+mesh = mesh_from_forest(forest,order)
+
+d = 2
+display(node_coordinates(mesh))
+display(face_nodes(mesh,d))
+display(face_reference_id(mesh,d))
+display(reference_faces(mesh,d))
+display(hanging_node_constraints(mesh,d))
+
+fn = "p4est_mesh"
+vtk_grid(fn,vtk_args(mesh,d)...) do vtk end
+
 
 
 end # module

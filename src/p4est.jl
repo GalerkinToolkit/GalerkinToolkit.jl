@@ -441,20 +441,21 @@ function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_gh
     T = pxest_topology(p4est_ptr)
     ghost_ptr = ghost_leafs.p4est_ghost_ptr
     lnodes_ptr = pxest_lnodes_new(T,p4est_ptr,ghost_ptr,order)
+    lnodes = unsafe_load(lnodes_ptr)
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
     leaf_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
     leaf_reference_id = Fill(1,length(leaf_to_nodes))
-    reference_leafs = (pxest_reference_leaf(T))
-    node_coordinates = pxest_node_coordinates(leaf_to_nodes,forest)
+    reference_leafs = (pxest_reference_leaf(T),)
     pxest_lnodes_destroy(T,lnodes_ptr)
     D = pxest_dimension(T)
     face_to_nodes = [JaggedArray{Int32,Int32}([Int32[]]) for d in 0:D]
-    face_nodes[end] = leaf_to_nodes
+    face_to_nodes[end] = leaf_to_nodes
     face_reference_id = [Fill(1,0) for d in 0:D]
     face_reference_id[end] = leaf_reference_id
     reference_faces = (ntuple(i->(),D)...,reference_leafs)
-    mesh = GenericMesh(node_coordinates,face_nodes,face_reference_id,reference_faces)
-    empty_constraints = LeafHangingNodeConstraints(fill(Int32(1),0),leaf_constraints.code_constraints)
+    node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_constraints,lnodes,order,forest)
+    mesh = GenericMesh(node_coordinates,face_to_nodes,face_reference_id,reference_faces)
+    empty_constraints = FaceHangingNodeConstraints(fill(Int32(1),0),leaf_to_constraints.code_constraints)
     face_constraints = [empty_constraints for d in 0:D]
     face_constraints[end] = leaf_to_constraints
     set_haning_node_constraints(mesh,face_constraints)
@@ -501,32 +502,6 @@ function vtk_mesh_cell(a::P4estQuad)
     nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
 end
 
-mutable struct ForestNodes4
-    p4est_lnodes_ptr::Ptr{P4est.p4est_lnodes_t}
-    order::Int
-end
-
-mutable struct ForestNodes8
-    p4est_lnodes_ptr::Ptr{P4est.p8est_lnodes_t}
-    order::Int
-end
-
-const ForestNodes = Union{ForestNodes4,ForestNodes8}
-ForestNodes(p4est_lnodes_ptr::Ptr{P4est.p4est_lnodes_t},order) = ForestNodes4(p4est_lnodes_ptr,order)
-ForestNodes(p4est_lnodes_ptr::Ptr{P4est.p8est_lnodes_t},order) = ForestNodes8(p4est_lnodes_ptr,order)
-
-function generate_nodes(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest))
-    @assert order == 1
-    p4est_ptr = forest.p4est_ptr
-    T = pxest_topology(p4est_ptr)
-    p4est_ghost_ptr = ghost_leafs.p4est_ghost_ptr
-    p4est_lnodes_ptr = pxest_lnodes_new(T,p4est_ptr,p4est_ghost_ptr,order)
-    nodes = ForestNodes(p4est_lnodes_ptr,order)
-    finalizer(nodes) do nodes
-        pxest_lnodes_destroy(T,nodes.p4est_lnodes_ptr)
-    end
-end
-
 function pxest_lnodes_new(::Val{4},p4est_ptr,ghost_ptr,order)
     P4est.p4est_lnodes_new(p4est_ptr,ghost_ptr,order)
 end
@@ -546,7 +521,7 @@ end
 function pxest_leaf_nodes(lnodes_ptr,order)
     lnodes = unsafe_load(lnodes_ptr)
     T = pxest_topology(lnodes)
-    n_cell_nodes = pxest_num_leaf_nodes(T,nodes.order)
+    n_cell_nodes = pxest_num_leaf_nodes(T,order)
     n_cells = Int(lnodes.num_local_elements)
     cell_to_nodes_ptrs = fill(Int32(n_cell_nodes),n_cells+1)
     cell_to_nodes_ptrs[1] = 0
@@ -567,6 +542,33 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
+function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_constraints,lnodes,order,forest) where t
+  T = Val(t)
+  nnodes = lnodes.num_local_nodes
+  D = pxest_dimension(T)
+  node_to_coords = zeros(SVector{D,Float64},nnodes)
+  ileaf = 0
+  x1 = similar(node_to_coords,pxest_num_leaf_nodes(T,order))
+  x2 = copy(x1)
+  for (itree,tree) in enumerate(forest)
+      for leaf in tree
+          ileaf += 1
+          nodes = leaf_to_nodes[ileaf]
+          R = leaf_to_constraints[ileaf]
+          @show R
+          P = transpose(R)
+          node_coordinates!(x1,forest,itree,leaf)
+          @show x1
+          mul!(x2,P,x1)
+          @show x2
+          for i in 1:length(x2)
+              node_to_coords[nodes[i]] = x2[i]
+          end
+      end
+  end
+  node_to_coords
+end
+
 function pxest_leaf_constraints(lnodes_ptr,order)
     @assert order == 1
     lnodes = unsafe_load(lnodes_ptr)
@@ -582,16 +584,8 @@ function pxest_leaf_constraints(lnodes_ptr,order)
             code_constraints[code] = pxest_setup_hanging_nodes(T,code,cache)
         end
     end
-    LeafHangingNodeConstraints(face_code,code_constraints)
+    FaceHangingNodeConstraints(face_code,code_constraints)
 end
-
-struct LeafHangingNodeConstraints{T,Ti} <: AbstractVector{Vector{T}}
-    face_code::Vector{Ti}
-    code_constraints::Dict{Ti,HangingNodeConstraints{T,Ti}}
-end
-Base.size(a::LeafHangingNodeConstraints) = size(a.face_code)
-Base.IndexStyle(::Type{<:LeafHangingNodeConstraints}) = IndexLinear()
-Base.getindex(a::LeafHangingNodeConstraints,i::Int) = a.code_constraints[a.face_code[i]]
 
 pxest_corner_faces(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_corner_faces,P4est.LibP4est.libp4est),Cint),(2,4))))
 pxest_face_corners(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_face_corners,P4est.LibP4est.libp4est),Cint),(2,4))))

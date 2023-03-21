@@ -8,6 +8,7 @@ using Gmsh
 using P4est
 using MPI
 using LinearAlgebra
+using FillArrays
 
 export dimension
 export embedded_dimension
@@ -29,6 +30,7 @@ export new_mesh
 export set_phyisical_groups
 export set_periodic_node_constraints
 export set_haning_node_constraints
+export hanging_node_constraints
 export physical_group
 export physical_groups
 export faces_in_group
@@ -52,9 +54,7 @@ export CONNECT_CORNER
 export CONNECT_FACE
 export CONNECT_FULL
 export find_ghost_leafs
-export generate_nodes
-export leaf_nodes
-export leaf_constraints
+export mesh_from_forest
 
 include("mesh_interface.jl")
 include("write_vtk.jl")
