@@ -7,6 +7,7 @@ using StaticArrays
 using Gmsh
 using P4est
 using MPI
+using LinearAlgebra
 
 export dimension
 export embedded_dimension

@@ -436,6 +436,71 @@ function pxest_ghost_destroy(::Val{8},p4est_ghost_ptr)
     P4est.p4est_ghost_destroy(p4est_ghost_ptr)
 end
 
+function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest))
+    p4est_ptr = forest.p4est_ptr
+    T = pxest_topology(p4est_ptr)
+    ghost_ptr = ghost_leafs.p4est_ghost_ptr
+    lnodes_ptr = pxest_lnodes_new(T,p4est_ptr,ghost_ptr,order)
+    leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
+    leaf_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
+    leaf_reference_id = Fill(1,length(leaf_to_nodes))
+    reference_leafs = (pxest_reference_leaf(T))
+    node_coordinates = pxest_node_coordinates(leaf_to_nodes,forest)
+    pxest_lnodes_destroy(T,lnodes_ptr)
+    D = pxest_dimension(T)
+    face_to_nodes = [JaggedArray{Int32,Int32}([Int32[]]) for d in 0:D]
+    face_nodes[end] = leaf_to_nodes
+    face_reference_id = [Fill(1,0) for d in 0:D]
+    face_reference_id[end] = leaf_reference_id
+    reference_faces = (ntuple(i->(),D)...,reference_leafs)
+    mesh = GenericMesh(node_coordinates,face_nodes,face_reference_id,reference_faces)
+    empty_constraints = LeafHangingNodeConstraints(fill(Int32(1),0),leaf_constraints.code_constraints)
+    face_constraints = [empty_constraints for d in 0:D]
+    face_constraints[end] = leaf_to_constraints
+    set_haning_node_constraints(mesh,face_constraints)
+end
+
+pxest_dimension(::Val{4}) = 2
+pxest_dimension(::Val{8}) = 3
+
+pxest_reference_leaf(::Val{4}) = P4estQuad{Float64}()
+
+struct P4estQuad{T}
+    node_coordinates::Vector{SVector{2,T}}
+end
+function P4estQuad{T}() where T
+    P4estQuad(SVector{2,T}[(0,0),(1,0),(0,1),(1,1)])
+end
+dimension(a::P4estQuad) = 2
+is_hypercube(a::P4estQuad) = true
+node_coordinates(a::P4estQuad) = a.node_coordinates
+function face_reference_id(a::P4estQuad,d)
+    d==0 && return fill(Int8(1),4)
+    d==1 && return fill(Int8(1),4)
+    d==2 && return fill(Int8(1),1)
+    throw(DomainError(d))
+end
+function reference_faces(::Type{<:P4estQuad},::Val{0})
+    [Meshes.Point(SVector{0,Float64}())]
+end
+function reference_faces(::Type{<:P4estQuad},::Val{1})
+    [Meshes.Segment(Meshes.Point(0),Meshes.Point(1))]
+end
+function reference_faces(::Type{<:P4estQuad},::Val{2})
+    [P4estQuad()]
+end
+reference_faces(a::P4estQuad,::Val{d}) where d = ref_faces(typeof(a),Val(d))
+function face_nodes(a::P4estQuad,d)
+    d==0 && return GenericJaggedArray(Vector{Int32}[[1],[2],[3],[4]])
+    d==1 && return GenericJaggedArray(Vector{Int32}[[1,3],[2,4],[1,2],[3,4]])
+    d==2 && return GenericJaggedArray(Vector{Int32}[[1,2,3,4]])
+    throw(DomainError(d))
+end
+const P4EST_VERTEX_PERMUTATION = [1,2,4,3]
+function vtk_mesh_cell(a::P4estQuad)
+    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[P4EST_VERTEX_PERMUTATION])
+end
+
 mutable struct ForestNodes4
     p4est_lnodes_ptr::Ptr{P4est.p4est_lnodes_t}
     order::Int
@@ -478,8 +543,7 @@ function pxest_lnodes_destroy(::Val{8},lnodes_ptr)
     P4est.p8est_lnodes_destroy(lnodes_ptr)
 end
 
-function leaf_nodes(nodes::ForestNodes)
-    lnodes_ptr = nodes.p4est_lnodes_ptr
+function pxest_leaf_nodes(lnodes_ptr,order)
     lnodes = unsafe_load(lnodes_ptr)
     T = pxest_topology(lnodes)
     n_cell_nodes = pxest_num_leaf_nodes(T,nodes.order)
@@ -503,44 +567,31 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
-function leaf_constraints(nodes::ForestNodes)
-    lnodes_ptr = nodes.p4est_lnodes_ptr
+function pxest_leaf_constraints(lnodes_ptr,order)
+    @assert order == 1
     lnodes = unsafe_load(lnodes_ptr)
     T = pxest_topology(lnodes)
     n_cells = Int(lnodes.num_local_elements)
-    cache = pxest_setup_face_code_tables_cache(T)
+    cache = pxest_setup_hanging_nodes_cache(T)
     face_code_ptr = lnodes.face_code
-    face_code = unsafe_wrap(Array,face_code_ptr,(n_cells,))
-    code_hanging = Dict{Int32,Vector{Int32}}()
-    code_master = Dict{Int32,JaggedArray{Int32,Int32}}()
+    face_code = collect(Int32,unsafe_wrap(Array,face_code_ptr,(n_cells,)))
+    code_constraints = Dict{Int32,HangingNodeConstraints{Float64,Int32}}()
     for cell in 1:n_cells
         code = face_code[cell]
-        if !haskey(code_hanging,code)
-            hanging_elem_nodes, master_elem_nodes = pxest_setup_face_code_tables(T,code,cache)
-            code_hanging[code] = hanging_elem_nodes
-            code_master[code] = master_elem_nodes
+        if !haskey(code_constraints,code)
+            code_constraints[code] = pxest_setup_hanging_nodes(T,code,cache)
         end
     end
-    leaf_to_hanging = LeafHaningNodes(face_code,code_hanging)
-    leaf_to_master = LeafMasterNodes(face_code,code_master)
-    leaf_to_hanging, leaf_to_master
+    LeafHangingNodeConstraints(face_code,code_constraints)
 end
 
-struct LeafMasterNodes{A,T} <: AbstractVector{JaggedArray{T,T}}
-    face_code::Vector{A}
-    code_master::Dict{T,JaggedArray{T,T}}
+struct LeafHangingNodeConstraints{T,Ti} <: AbstractVector{Vector{T}}
+    face_code::Vector{Ti}
+    code_constraints::Dict{Ti,HangingNodeConstraints{T,Ti}}
 end
-Base.size(a::LeafMasterNodes) = size(a.face_code)
-Base.IndexStyle(::Type{<:LeafMasterNodes}) = IndexLinear()
-Base.getindex(a::LeafMasterNodes,i::Int) = a.code_master[a.face_code[i]]
-
-struct LeafHaningNodes{A,T} <: AbstractVector{Vector{T}}
-    face_code::Vector{A}
-    code_hanging::Dict{T,Vector{T}}
-end
-Base.size(a::LeafHaningNodes) = size(a.face_code)
-Base.IndexStyle(::Type{<:LeafHaningNodes}) = IndexLinear()
-Base.getindex(a::LeafHaningNodes,i::Int) = a.code_hanging[a.face_code[i]]
+Base.size(a::LeafHangingNodeConstraints) = size(a.face_code)
+Base.IndexStyle(::Type{<:LeafHangingNodeConstraints}) = IndexLinear()
+Base.getindex(a::LeafHangingNodeConstraints,i::Int) = a.code_constraints[a.face_code[i]]
 
 pxest_corner_faces(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_corner_faces,P4est.LibP4est.libp4est),Cint),(2,4))))
 pxest_face_corners(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_face_corners,P4est.LibP4est.libp4est),Cint),(2,4))))
@@ -549,14 +600,14 @@ pxest_face_corners(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8e
 pxest_corner_edges(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_corner_edges,P4est.LibP4est.libp4est),Cint),(3,8))))
 pxest_edge_corners(::Val{8}) = collect(transpose(unsafe_wrap(Array,cglobal((:p8est_edge_corners,P4est.LibP4est.libp4est),Cint),(2,12))))
 
-function pxest_setup_face_code_tables_cache(::Val{4})
+function pxest_setup_hanging_nodes_cache(::Val{4})
     (;
      corner_faces = pxest_corner_faces(Val(4)),
      face_corners = pxest_face_corners(Val(4))
     )
 end
 
-function pxest_setup_face_code_tables_cache(::Val{8})
+function pxest_setup_hanging_nodes_cache(::Val{8})
     (;
      corner_faces = pxest_corner_faces(Val(8)),
      face_corners = pxest_face_corners(Val(8)),
@@ -565,7 +616,7 @@ function pxest_setup_face_code_tables_cache(::Val{8})
     )
 end
 
-function pxest_setup_face_code_tables(::Val{4},face_code,cache)
+function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
     p4est_corner_faces = cache.corner_faces
     p4est_face_corners = cache.face_corners
     p4est_half = div(P4est.P4EST_CHILDREN,2*one(P4est.P4EST_CHILDREN))
@@ -573,8 +624,9 @@ function pxest_setup_face_code_tables(::Val{4},face_code,cache)
     c = Cint(face_code & ones)
     c1 = c+one(c)
     work = Cint(face_code >> P4est.P4EST_DIM)
-    hanging_elem_nodes = Int32[]
-    master_elem_nodes = Vector{Int32}[]
+    hanging_nodes = Int32[]
+    master_nodes = Vector{Int32}[]
+    master_coeffs = Vector{Float64}[]
     for i1 in one(P4est.P4EST_DIM):P4est.P4EST_DIM
         if work & Cint(1) != Cint(0)
             i = Cint(i1-one(i1))
@@ -583,20 +635,30 @@ function pxest_setup_face_code_tables(::Val{4},face_code,cache)
             hanging = xor(c,xor(ones,(Cint(1) << i)))
             hanging1 = hanging + one(hanging)
             my_masters = Int32[0,0]
+            my_coeffs = Float64[0,0]
             for j1 in one(p4est_half):p4est_half
                 master = p4est_face_corners[ef1,j1]
                 master1 = master + one(master)
                 my_masters[j1] = master1
+                if master1 == hanging1
+                    my_coeffs[j1] = -0.5
+                else
+                    my_coeffs[j1] = 0.5
+                end
             end
-            push!(hanging_elem_nodes,hanging1)
-            push!(master_elem_nodes,my_masters)
+            push!(hanging_nodes,hanging1)
+            push!(master_nodes,my_masters)
+            push!(master_coeffs,my_coeffs)
         end
         work = work >> Cint(1)
     end
-    hanging_elem_nodes, master_elem_nodes
+    master_nodes_jagged = JaggedArray(master_nodes)
+    aux = JaggedArray(master_coeffs)
+    master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
+    HangingNodeConstraints(4,hanging_nodes,master_nodes_jagged,master_coeffs_jagged)
 end
 
-function pxest_setup_face_code_tables(::Val{8},face_code,cache)
+function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
     p8est_corner_faces = cache.corner_faces
     p8est_face_corners = cache.face_corners
     p8est_half = div(P4est.P8EST_CHILDREN,2*one(P4est.P8EST_CHILDREN))
@@ -604,8 +666,9 @@ function pxest_setup_face_code_tables(::Val{8},face_code,cache)
     c = Cint(face_code & ones)
     c1 = c+one(c)
     work = Cint(face_code >> P4est.P8EST_DIM)
-    hanging_elem_nodes = Int32[]
-    master_elem_nodes = Vector{Int32}[]
+    hanging_nodes = Int32[]
+    master_nodes = Vector{Int32}[]
+    master_coeffs = Vector{Float64}[]
     for i1 in one(P4est.P8EST_DIM):P4est.P8EST_DIM
         if work & Cint(1) != Cint(0)
             i = Cint(i1-one(i1))
@@ -614,13 +677,20 @@ function pxest_setup_face_code_tables(::Val{8},face_code,cache)
             hanging = xor(c,xor(ones,(Cint(1) << i)))
             hanging1 = hanging + one(hanging)
             my_masters = Int32[0,0,0,0]
+            my_coeffs = Float64[0,0]
             for j1 in one(p8est_half):p8est_half
                 master = p8est_face_corners[ef1,j1]
                 master1 = master + one(master)
                 my_masters[j1] = master1
+                if master1 == hanging1
+                    my_coeffs[j1] = -0.75
+                else
+                    my_coeffs[j1] = 0.25
+                end
             end
-            push!(hanging_elem_nodes,hanging1)
-            push!(master_elem_nodes,my_masters)
+            push!(hanging_nodes,hanging1)
+            push!(master_nodes,my_masters)
+            push!(master_coeffs,my_coeffs)
         end
         work = work >> Cint(1)
     end
@@ -634,17 +704,27 @@ function pxest_setup_face_code_tables(::Val{8},face_code,cache)
             hanging = xor(c,(Cint(1) << i))
             hanging1 = hanging + one(hanging)
             my_masters = Int32[0,0]
+            my_coeffs = Float64[0,0]
             for k in 1:2
                 master = p8est_edge_corners[ef1,k]
                 master1 = master + one(master)
                 my_masters[k] = master1
+                if master1 == hanging1
+                    my_coeffs[j1] = -0.5
+                else
+                    my_coeffs[j1] = 0.5
+                end
             end
-            push!(hanging_elem_nodes,hanging1)
-            push!(master_elem_nodes,my_masters)
+            push!(hanging_nodes,hanging1)
+            push!(master_nodes,my_masters)
+            push!(master_coeffs,my_coeffs)
         end
         work = work >> Cint(1)
     end
-    hanging_elem_nodes, master_elem_nodes
+    master_nodes_jagged = JaggedArray(master_nodes)
+    aux = JaggedArray(master_coeffs)
+    master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
+    HangingNodeConstraints(8,hanging_nodes,master_nodes_jagged,master_coeffs_jagged)
 end
 
 
@@ -698,11 +778,11 @@ end
 #    face_code_to_hanging_elem_nodes = Dict{Int32,Vector{Int32}}()
 #    face_code_to_master_elem_nodes = Dict{Int32,JaggedArray{Int32,Int32}}()
 #    n_pre_hanging = 0
-#    cache = pxest_setup_face_code_tables_cache(Val(D))
+#    cache = pxest_setup_hanging_nodes_cache(Val(D))
 #    for cell in 1:n_cells
 #        code = face_code[cell]
 #        if !haskey(face_code_to_hanging_elem_nodes,code)
-#            hanging_elem_nodes, master_elem_nodes = pxest_setup_face_code_tables(Val(D),code,cache)
+#            hanging_elem_nodes, master_elem_nodes = pxest_setup_hanging_nodes(Val(D),code,cache)
 #            face_code_to_hanging_elem_nodes[code] = hanging_elem_nodes
 #            face_code_to_master_elem_nodes[code] = master_elem_nodes
 #        end

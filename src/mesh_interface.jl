@@ -93,14 +93,40 @@ periodic_nodes(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_node
 periodic_to_master(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_master
 periodic_to_coeff(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_coeff
 
+struct HangingNodeConstraints{T,Ti}
+    n::Int
+    haning::Vector{Ti}
+    masters::JaggedArray{Ti,Ti}
+    coeffs::JaggedArray{T,Ti}
+end
+
+Base.size(a::HangingNodeConstraints) = (n,n)
+
+function LinearAlgebra.mul!(c::AbstractVector,a::HangingNodeConstraints,b::AbstractVector)
+    m,n = size(a)
+    @assert length(c) == m
+    @assert length(b) == n
+    copy!(c,b)
+    for (i,hanging) in enumerate(a.haning)
+        pini = a.masters.ptrs[i]
+        pend = a.masters.ptrs[i+1]
+        for p in pini:pend
+            master = a.masters.data[p]
+            coeff = a.coeffs.data[p]
+            c[haning] += coeff*b[master]
+        end
+    end
+    c
+end
+
 set_haning_node_constraints(mesh,constraints) = MeshWithHangingNodeConstraints(mesh,constraints)
 struct MeshWithHangingNodeConstraints{A,B} <: AbstractMeshWithData{A}
     mesh::A
     constraints::B
 end
 has_hanging_nodes(::Type{<:MeshWithHangingNodeConstraints{A,B}}) where {A,B} = has_hanging_nodes(B)
-hanging_nodes(a::MeshWithHangingNodeConstraints) = a.constraints.hanging_nodes
-hanging_to_master(a::MeshWithHangingNodeConstraints) = a.constraints.haning_to_masters
-hanging_to_coeff(a::MeshWithHangingNodeConstraints) = a.constraints.hanging_to_coeffs
+function hanging_node_constraints(a::MeshWithHangingNodeConstraints,d)
+    a.constraints[d+1]
+end
 
 

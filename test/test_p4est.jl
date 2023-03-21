@@ -66,10 +66,9 @@ forest_nodes = generate_nodes(forest,order,ghost_leafs)
 leaf_to_nodes = leaf_nodes(forest_nodes)
 display(leaf_to_nodes)
 
-leaf_to_hanging, leaf_to_master = leaf_constraints(forest_nodes)
+leaf_to_constraints = leaf_constraints(forest_nodes)
 
-display(leaf_to_master)
-display(leaf_to_hanging)
+display(leaf_to_constraints)
 
 
 end # module
