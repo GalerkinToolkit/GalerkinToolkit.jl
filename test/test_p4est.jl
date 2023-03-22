@@ -76,7 +76,7 @@ display(node_coordinates(mesh))
 display(face_nodes(mesh,d))
 display(face_reference_id(mesh,d))
 display(reference_faces(mesh,d))
-display(hanging_node_constraints(mesh,d))
+display(hanging_node_constraints(mesh))
 
 fn = "p4est_mesh"
 vtk_grid(fn,vtk_args(mesh,d)...) do vtk end

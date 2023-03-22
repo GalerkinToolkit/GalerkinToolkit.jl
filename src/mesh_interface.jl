@@ -78,14 +78,6 @@ struct GenericPeriodicNodeConstraints{A,B,C}
 end
 has_periodic_nodes(::Type{<:GenericPeriodicNodeConstraints}) = true
 
-hanging_node_constraints(args...) = GenericHangingNodeConstraints(args...)
-struct GenericHangingNodeConstraints{A,B,C}
-    hanging_nodes::A
-    hanging_to_masters::B
-    hanging_to_coeffs::C
-end
-has_hanging_nodes(::Type{<:GenericHangingNodeConstraints}) = true
-
 set_periodic_node_constraints(mesh,constraints) = MeshWithPeriodicNodeConstraints(mesh,constraints)
 struct MeshWithPeriodicNodeConstraints{A,B} <: AbstractMeshWithData{A}
     mesh::A
@@ -102,58 +94,60 @@ struct MeshWithHangingNodeConstraints{A,B} <: AbstractMeshWithData{A}
     constraints::B
 end
 has_hanging_nodes(::Type{<:MeshWithHangingNodeConstraints{A,B}}) where {A,B} = has_hanging_nodes(B)
-function hanging_node_constraints(a::MeshWithHangingNodeConstraints,d)
-    a.constraints[d+1]
+hanging_node_constraints(a::MeshWithHangingNodeConstraints) = a.constraints
+
+struct HangingNodeConstraints{A,B,C,D,T} <: AbstractMatrix{T}
+    ncols::Int
+    free_nodes::A
+    hanging_nodes::A
+    master_nodes::B
+    master_coeffs::C
+    permutation::D
+    function HangingNodeConstraints(ncols,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+        A = typeof(free_nodes)
+        B = typeof(master_nodes)
+        C = typeof(master_coeffs)
+        D = typeof(permutation)
+        T = eltype(eltype(master_coeffs))
+        new{A,B,C,D,T}(ncols,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+    end
 end
 
-struct HangingNodeConstraints{T,Ti} <: AbstractMatrix{T}
-    n::Int
-    hanging::Vector{Ti}
-    masters::JaggedArray{Ti,Ti}
-    coeffs::JaggedArray{T,Ti}
+free_nodes(a) = a.free_nodes
+hanging_nodes(a) = a.hanging_nodes
+master_nodes(a) = a.master_nodes
+master_coeffs(a) = a.master_coeffs
+permutation(a) = a.permutation
+
+function Base.size(a::HangingNodeConstraints)
+    m = length(a.free_nodes) + length(a.hanging_nodes)
+    n = a.ncols
+    (m,n)
 end
 
-Base.size(a::HangingNodeConstraints) = (a.n,a.n)
 Base.IndexStyle(::Type{<:HangingNodeConstraints}) = IndexCartesian()
+
 function Base.getindex(a::HangingNodeConstraints,i::Int,j::Int)
     T = eltype(a)
-    k = findfirst(p->p==i,a.hanging)
-    if k === nothing
-        i==j ? one(T) : zero(T)
-    else
-        masters = a.masters[k]
-        l = findfirst(p->p==j,masters)
-        if l === nothing
-            i==j ? one(T) : zero(T)
-        else
-            coeff = a.coeffs[k][l]
-            i==j ? one(T) + coeff : coeff
-        end
-    end
-end
-
-function LinearAlgebra.mul!(c::AbstractVector,a::HangingNodeConstraints,b::AbstractVector)
     m,n = size(a)
-    @assert length(c) == m
-    @assert length(b) == n
-    copy!(c,b)
-    for (i,hanging) in enumerate(a.hanging)
-        pini = a.masters.ptrs[i]
-        pend = a.masters.ptrs[i+1]
-        for p in pini:pend
-            master = a.masters.data[p]
-            coeff = a.coeffs.data[p]
-            c[hanging] += coeff*b[master]
+    @boundscheck @assert i in 1:m
+    @boundscheck @assert j in 1:n
+    p = a.permutation[i]
+    nfree = length(a.free_nodes)
+    if p > nfree
+        h = p-nfree
+        masters = a.master_nodes[h]
+        l = findfirst(k->k==j,masters)
+        if l === nothing
+            zero(T)
+        else
+            coeffs = a.master_coeffs[h]
+            coeffs[l]
         end
+    else
+        a.free_nodes[p]==j ? one(T) : zero(T)
     end
-    c
 end
 
-struct FaceHangingNodeConstraints{T,Ti} <: AbstractVector{Vector{T}}
-    face_code::Vector{Ti}
-    code_constraints::Dict{Ti,HangingNodeConstraints{T,Ti}}
-end
-Base.size(a::FaceHangingNodeConstraints) = size(a.face_code)
-Base.IndexStyle(::Type{<:FaceHangingNodeConstraints}) = IndexLinear()
-Base.getindex(a::FaceHangingNodeConstraints,i::Int) = a.code_constraints[a.face_code[i]]
+## TODO implement mul and also for its transpose
 

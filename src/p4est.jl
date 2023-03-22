@@ -443,7 +443,10 @@ function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_gh
     lnodes_ptr = pxest_lnodes_new(T,p4est_ptr,ghost_ptr,order)
     lnodes = unsafe_load(lnodes_ptr)
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
-    leaf_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
+    leaf_to_code, code_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
+    node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest)
+    nfree = lnodes.num_local_nodes
+    constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_code,code_to_constraints)
     leaf_reference_id = Fill(1,length(leaf_to_nodes))
     reference_leafs = (pxest_reference_leaf(T),)
     pxest_lnodes_destroy(T,lnodes_ptr)
@@ -453,12 +456,8 @@ function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_gh
     face_reference_id = [Fill(1,0) for d in 0:D]
     face_reference_id[end] = leaf_reference_id
     reference_faces = (ntuple(i->(),D)...,reference_leafs)
-    node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_constraints,lnodes,order,forest)
     mesh = GenericMesh(node_coordinates,face_to_nodes,face_reference_id,reference_faces)
-    empty_constraints = FaceHangingNodeConstraints(fill(Int32(1),0),leaf_to_constraints.code_constraints)
-    face_constraints = [empty_constraints for d in 0:D]
-    face_constraints[end] = leaf_to_constraints
-    set_haning_node_constraints(mesh,face_constraints)
+    set_haning_node_constraints(mesh,constraints)
 end
 
 pxest_dimension(::Val{4}) = 2
@@ -542,7 +541,7 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
-function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_constraints,lnodes,order,forest) where t
+function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest) where t
   T = Val(t)
   nnodes = lnodes.num_local_nodes
   D = pxest_dimension(T)
@@ -554,13 +553,11 @@ function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_constraints,lnode
       for leaf in tree
           ileaf += 1
           nodes = leaf_to_nodes[ileaf]
-          R = leaf_to_constraints[ileaf]
-          @show R
+          code = leaf_to_code[ileaf]
+          R = code_to_constraints[code]
           P = transpose(R)
           node_coordinates!(x1,forest,itree,leaf)
-          @show x1
           mul!(x2,P,x1)
-          @show x2
           for i in 1:length(x2)
               node_to_coords[nodes[i]] = x2[i]
           end
@@ -577,14 +574,20 @@ function pxest_leaf_constraints(lnodes_ptr,order)
     cache = pxest_setup_hanging_nodes_cache(T)
     face_code_ptr = lnodes.face_code
     face_code = collect(Int32,unsafe_wrap(Array,face_code_ptr,(n_cells,)))
-    code_constraints = Dict{Int32,HangingNodeConstraints{Float64,Int32}}()
+    free_nodes = Int32[]
+    hanging_nodes = Int[]
+    master_nodes = JaggedArray{Int32,Int32}([Int32[]])
+    master_coeffs = JaggedArray{Float64,Int32}([Int32[]])
+    permutation = Int32[]
+    A = typeof(HangingNodeConstraints(0,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation))
+    code_constraints = Dict{Int32,A}()
     for cell in 1:n_cells
         code = face_code[cell]
         if !haskey(code_constraints,code)
             code_constraints[code] = pxest_setup_hanging_nodes(T,code,cache)
         end
     end
-    FaceHangingNodeConstraints(face_code,code_constraints)
+    (face_code, code_constraints)
 end
 
 pxest_corner_faces(::Val{4}) = collect(transpose(unsafe_wrap(Array,cglobal((:p4est_corner_faces,P4est.LibP4est.libp4est),Cint),(2,4))))
@@ -634,11 +637,7 @@ function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
                 master = p4est_face_corners[ef1,j1]
                 master1 = master + one(master)
                 my_masters[j1] = master1
-                if master1 == hanging1
-                    my_coeffs[j1] = -0.5
-                else
-                    my_coeffs[j1] = 0.5
-                end
+                my_coeffs[j1] = 0.5
             end
             push!(hanging_nodes,hanging1)
             push!(master_nodes,my_masters)
@@ -646,10 +645,15 @@ function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
         end
         work = work >> Cint(1)
     end
+    permutation = fill(Int32(INVALID_ID),4)
+    nhanging = length(hanging_nodes)
+    permutation[hanging_nodes] = (1:nhanging) .+ (4-nhanging)
+    free_nodes = collect(Int32,findall(i->i==Int32(INVALID_ID),permutation))
+    permutation[free_nodes] = 1:length(free_nodes)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(4,hanging_nodes,master_nodes_jagged,master_coeffs_jagged)
+    HangingNodeConstraints(4,free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,permutation)
 end
 
 function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
@@ -676,11 +680,7 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
                 master = p8est_face_corners[ef1,j1]
                 master1 = master + one(master)
                 my_masters[j1] = master1
-                if master1 == hanging1
-                    my_coeffs[j1] = -0.75
-                else
-                    my_coeffs[j1] = 0.25
-                end
+                my_coeffs[j1] = 0.25
             end
             push!(hanging_nodes,hanging1)
             push!(master_nodes,my_masters)
@@ -703,11 +703,7 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
                 master = p8est_edge_corners[ef1,k]
                 master1 = master + one(master)
                 my_masters[k] = master1
-                if master1 == hanging1
-                    my_coeffs[j1] = -0.5
-                else
-                    my_coeffs[j1] = 0.5
-                end
+                my_coeffs[j1] = 0.5
             end
             push!(hanging_nodes,hanging1)
             push!(master_nodes,my_masters)
@@ -715,13 +711,150 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
         end
         work = work >> Cint(1)
     end
+    permutation = fill(Int32(INVALID_ID),8)
+    nhanging = length(hanging_nodes)
+    permutation[hanging_nodes] = (1:nhanging) .+ (8-nhanging)
+    free_nodes = collect(Int32,findall(i->i!=Int32(INVALID_ID),permutation))
+    permutation[free_nodes] = 1:length(free_nodes)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(8,hanging_nodes,master_nodes_jagged,master_coeffs_jagged)
+    HangingNodeConstraints(8,free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,permutation)
 end
 
+function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_to_constraints)
+    n_pre_hanging = 0
+    nleafs = length(leaf_to_nodes)
+    for leaf in 1:nleafs
+        code = leaf_to_code[leaf]
+        constraints = code_to_constraints[code]
+        n_pre_hanging += length(hanging_nodes(constraints))
+    end
+    pre_hanging_to_masters_ptrs = zeros(Int32,n_pre_hanging+1)
+    pre_hanging = 0
+    for leaf in 1:nleafs
+        code = leaf_to_code[leaf]
+        constraints = code_to_constraints[code]
+        for masters in master_nodes(constraints)
+            pre_hanging += 1
+            pre_hanging_to_masters_ptrs[pre_hanging+1] = length(masters)
+        end
+    end
+    length_to_ptrs!(pre_hanging_to_masters_ptrs)
+    pre_hanging_to_masters_data = zeros(Int32,pre_hanging_to_masters_ptrs[end]-1)
+    pre_hanging_to_masters = JaggedArray(pre_hanging_to_masters_data,pre_hanging_to_masters_ptrs)
+    pre_hanging = 0
+    for leaf in 1:nleafs
+        code = leaf_to_code[leaf]
+        constraints = code_to_constraints[code]
+        for masters in master_nodes(constraints)
+            pre_hanging += 1
+            mymasters = pre_hanging_to_masters[pre_hanging]
+            for (imaster,master) in enumerate(masters)
+                mymasters[imaster] = master
+            end
+        end
+    end
+    master_to_pre_hanging_ptrs = zeros(Int32,n_nodes+1)
+    for masters in pre_hanging_to_masters
+        for master in masters
+            master_to_pre_hanging_ptrs[1+master] += 1
+        end
+    end
+    max_hanging_per_master = maximum(view(master_to_pre_hanging_ptrs,2:n_nodes))
+    length_to_ptrs!(master_to_pre_hanging_ptrs)
+    master_to_pre_hanging_data = zeros(Int32,master_to_pre_hanging_ptrs[end]-1)
+    for (pre_hanging,masters) in enumerate(pre_hanging_to_masters)
+        for master in masters
+            p = master_to_pre_hanging_ptrs[master]
+            master_to_pre_hanging_data[p] = pre_hanging
+            master_to_pre_hanging_ptrs[master] += Int32(1)
+        end
+    end
+    rewind_ptrs!(master_to_pre_hanging_ptrs)
+    master_to_pre_hanging = JaggedArray(master_to_pre_hanging_data,master_to_pre_hanging_ptrs)
+    pre_hanging_to_hanging = fill(Int32(INVALID_ID),n_pre_hanging)
+    pre_hanging_set_1 = fill(Int32(INVALID_ID),max_hanging_per_master)
+    pre_hanging_set_2 = fill(Int32(INVALID_ID),max_hanging_per_master)
+    hanging = 0
+    for pre_hanging in 1:n_pre_hanging
+        if pre_hanging_to_hanging[pre_hanging] != Int32(INVALID_ID)
+            continue
+        end
+        hanging += 1
+        masters = pre_hanging_to_masters[pre_hanging]
+        fill!(pre_hanging_set_1,Int32(INVALID_ID))
+        fill!(pre_hanging_set_2,Int32(INVALID_ID))
+        master = first(masters)
+        pre_hangings_1 = master_to_pre_hanging[master]
+        n_pre_hanging_set_1 = length(pre_hangings_1)
+        copyto!(pre_hanging_set_1,pre_hangings_1)
+        for master in masters
+            pre_hangings_2 = master_to_pre_hanging[master]
+            n_pre_hanging_set_2 = length(pre_hangings_2)
+            copyto!(pre_hanging_set_2,pre_hangings_2)
+            intersection!(pre_hanging_set_1,pre_hanging_set_2,n_pre_hanging_set_1,n_pre_hanging_set_2)
+        end
+        for pre_hanging_1 in pre_hanging_set_1
+            if pre_hanging_1 != Int32(INVALID_ID)
+                pre_hanging_to_hanging[pre_hanging_1] = hanging
+            end
+        end
+    end
+    n_hanging = hanging
+    pre_hanging_to_hanging .+= n_nodes
+    pre_hanging = 0
+    for leaf in 1:nleafs
+        code = leaf_to_code[leaf]
+        constraints = code_to_constraints[code]
+        mynodes = leaf_to_nodes[leaf]
+        for myhaning in hanging_nodes(constraints)
+            pre_hanging += 1
+            mynodes[myhaning] = pre_hanging_to_hanging[pre_hanging]
+        end
+    end
+    hanging_to_masters_ptrs = zeros(Int32,n_hanging+1)
+    for pre_hanging in 1:n_pre_hanging
+        hanging = pre_hanging_to_hanging[pre_hanging] - n_nodes
+        masters = pre_hanging_to_masters[pre_hanging]
+        hanging_to_masters_ptrs[hanging+1] = length(masters)
+    end
+    length_to_ptrs!(hanging_to_masters_ptrs)
+    hanging_to_masters_data = zeros(Int32,hanging_to_masters_ptrs[end]-1)
+    hanging_to_coeffs_data = zeros(Float64,hanging_to_masters_ptrs[end]-1)
+    hanging_to_masters = JaggedArray(hanging_to_masters_data,hanging_to_masters_ptrs)
+    hanging_to_coeffs = JaggedArray(hanging_to_coeffs_data,hanging_to_masters_ptrs)
+    for pre_hanging in 1:n_pre_hanging
+        masters = pre_hanging_to_masters[pre_hanging]
+        hanging = pre_hanging_to_hanging[pre_hanging] - n_nodes
+        hanging_to_masters[hanging] .= masters
+        hanging_to_coeffs[hanging] .= 1 ./ length(masters)
+    end
+    my_hanging_nodes = (1:n_hanging) .+ n_nodes
+    my_free_nodes = 1:n_nodes
+    mypermutation = 1:(n_hanging+n_nodes)
+    HangingNodeConstraints(n_nodes,my_free_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs,mypermutation)
+end
 
+const INVALID_ID = 0
+
+function intersection!(a,b,na,nb)
+  function findeq!(i,a,b,nb)
+    for j in 1:nb
+      if a[i] == b[j]
+        return
+      end
+    end
+    a[i] = INVALID_ID
+    return
+  end
+  for i in 1:na
+    if a[i] == INVALID_ID
+      continue
+    end
+    findeq!(i,a,b,nb)
+  end
+end
 
 #pxest_dimension(p4est::P4est.LibP4est.p4est) = 2
 #pxest_dimension(p4est::P4est.LibP4est.p8est) = 3
