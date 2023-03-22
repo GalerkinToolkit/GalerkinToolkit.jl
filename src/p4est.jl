@@ -444,9 +444,9 @@ function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_gh
     lnodes = unsafe_load(lnodes_ptr)
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
     leaf_to_code, code_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
-    node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest)
     nfree = lnodes.num_local_nodes
     constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_code,code_to_constraints)
+    node_coordinates = pxest_node_coordinates(T,size(constraints,1),leaf_to_nodes,lnodes,order,forest)
     leaf_reference_id = Fill(1,length(leaf_to_nodes))
     reference_leafs = (pxest_reference_leaf(T),)
     pxest_lnodes_destroy(T,lnodes_ptr)
@@ -541,25 +541,19 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
-function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest) where t
+function pxest_node_coordinates(::Val{t},n,leaf_to_nodes,lnodes,order,forest) where t
   T = Val(t)
-  nnodes = lnodes.num_local_nodes
   D = pxest_dimension(T)
-  node_to_coords = zeros(SVector{D,Float64},nnodes)
+  node_to_coords = zeros(SVector{D,Float64},n)
   ileaf = 0
   x1 = similar(node_to_coords,pxest_num_leaf_nodes(T,order))
-  x2 = copy(x1)
   for (itree,tree) in enumerate(forest)
       for leaf in tree
           ileaf += 1
           nodes = leaf_to_nodes[ileaf]
-          code = leaf_to_code[ileaf]
-          R = code_to_constraints[code]
-          P = transpose(R)
           node_coordinates!(x1,forest,itree,leaf)
-          mul!(x2,P,x1)
-          for i in 1:length(x2)
-              node_to_coords[nodes[i]] = x2[i]
+          for i in 1:length(x1)
+              node_to_coords[nodes[i]] = x1[i]
           end
       end
   end
