@@ -436,7 +436,10 @@ function pxest_ghost_destroy(::Val{8},p4est_ghost_ptr)
     P4est.p4est_ghost_destroy(p4est_ghost_ptr)
 end
 
-function mesh_from_forest(forest::Forest,order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest))
+function mesh_from_forest(forest::Forest;order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest),balance=true)
+    if balance
+        balance!(forest)
+    end
     p4est_ptr = forest.p4est_ptr
     T = pxest_topology(p4est_ptr)
     ghost_ptr = ghost_leafs.p4est_ghost_ptr
@@ -552,6 +555,7 @@ function pxest_node_coordinates(::Val{t},n,leaf_to_nodes,lnodes,order,forest) wh
           ileaf += 1
           nodes = leaf_to_nodes[ileaf]
           node_coordinates!(x1,forest,itree,leaf)
+          @show x1
           for i in 1:length(x1)
               node_to_coords[nodes[i]] = x1[i]
           end
@@ -741,11 +745,12 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
     for leaf in 1:nleafs
         code = leaf_to_code[leaf]
         constraints = code_to_constraints[code]
+        mynodes = leaf_to_nodes[leaf]
         for masters in master_nodes(constraints)
             pre_hanging += 1
             mymasters = pre_hanging_to_masters[pre_hanging]
             for (imaster,master) in enumerate(masters)
-                mymasters[imaster] = master
+                mymasters[imaster] = mynodes[master]
             end
         end
     end

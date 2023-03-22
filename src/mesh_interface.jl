@@ -1,6 +1,15 @@
-#TODO SimpleMesh
-# Val(d) also in other functions?
-# better way to represent hanging node constraints?
+#TODO
+# SimpleMesh
+# remove new_mesh and use GenericMesh
+# Val(d) also in other functions? YES
+# better way to represent hanging node constraints? Solution: global constraints
+# follow the same approach for periodic
+# groups for faces and nodes
+# rename physical groups by groups
+# num_faces(a) by number_of_faces(a) ?
+# allow to use custom integer and Float precision in mesh_from_forest
+# HangingNodeConstraints to GenericHangingNodeconstraints
+# Create new structs to avoid burden of type parameters
 
 # Nobody should overwrite these
 has_periodic_nodes(a) = has_periodic_nodes(typeof(a))
@@ -97,19 +106,19 @@ has_hanging_nodes(::Type{<:MeshWithHangingNodeConstraints{A,B}}) where {A,B} = h
 hanging_node_constraints(a::MeshWithHangingNodeConstraints) = a.constraints
 
 struct HangingNodeConstraints{A,B,C,D,T} <: AbstractMatrix{T}
-    ncols::Int
+    maxid::Int
     free_nodes::A
     hanging_nodes::A
     master_nodes::B
     master_coeffs::C
     permutation::D
-    function HangingNodeConstraints(ncols,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+    function HangingNodeConstraints(maxid,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
         A = typeof(free_nodes)
         B = typeof(master_nodes)
         C = typeof(master_coeffs)
         D = typeof(permutation)
         T = eltype(eltype(master_coeffs))
-        new{A,B,C,D,T}(ncols,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+        new{A,B,C,D,T}(maxid,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
     end
 end
 
@@ -121,7 +130,7 @@ permutation(a) = a.permutation
 
 function Base.size(a::HangingNodeConstraints)
     m = length(a.free_nodes) + length(a.hanging_nodes)
-    n = a.ncols
+    n = a.maxid
     (m,n)
 end
 

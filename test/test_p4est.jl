@@ -60,16 +60,18 @@ end
 ghost_leafs = find_ghost_leafs(forest)
 @test length(ghost_leafs) == 0
 order = 1
-mesh = mesh_from_forest(forest,order,ghost_leafs)
+mesh = mesh_from_forest(forest;order,ghost_leafs)
 
-#initial_level = 1
-#forest = forest_from_mesh(coarse_mesh,initial_level)
+initial_level = 1
+forest = forest_from_mesh(coarse_mesh,initial_level)
+
+refine!(forest,true) do itree,leaf
+    anchor(leaf) == [0,0] && level(leaf) < 4
+end
+balance!(forest)
+
 #
-#refine!(forest) do itree,leaf
-#    anchor(leaf) == [0,0] ? 1 : 0
-#end
-#
-#mesh = mesh_from_forest(forest,order)
+mesh = mesh_from_forest(forest;order)
 
 d = 2
 display(node_coordinates(mesh))
