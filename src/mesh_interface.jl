@@ -4,12 +4,13 @@
 # Val(d) also in other functions? YES
 # better way to represent hanging node constraints? Solution: global constraints
 # follow the same approach for periodic
-# groups for faces and nodes
-# rename physical groups by groups
+# groups for faces and nodes: no. Node groups only make sense for for Lagrangian spaces of the same order of the mesh
+# rename physical groups by  physical_faces
 # num_faces(a) by number_of_faces(a) ?
 # allow to use custom integer and Float precision in mesh_from_forest
 # HangingNodeConstraints to GenericHangingNodeconstraints
 # Create new structs to avoid burden of type parameters
+# node coordinates in p4est: use the original node numeration and the transpose of the leaf constraints. then apply the global constraints to get the final coordinates
 
 # Nobody should overwrite these
 has_periodic_nodes(a) = has_periodic_nodes(typeof(a))
@@ -49,7 +50,6 @@ hanging_to_masters(a::AbstractMeshWithData) = hanging_to_masters(a.mesh)
 hanging_to_coeffs(a::AbstractMeshWithData) = hanging_to_coeffs(a.mesh)
 physical_groups(a::AbstractMeshWithData,d) = physical_groups(a.mesh,d)
 
-new_mesh(args...) = GenericMesh(args...)
 struct GenericMesh{A,B,C,D}
     node_coordinates::A
     face_nodes::Vector{B}
@@ -106,19 +106,25 @@ has_hanging_nodes(::Type{<:MeshWithHangingNodeConstraints{A,B}}) where {A,B} = h
 hanging_node_constraints(a::MeshWithHangingNodeConstraints) = a.constraints
 
 struct HangingNodeConstraints{A,B,C,D,T} <: AbstractMatrix{T}
-    maxid::Int
     free_nodes::A
     hanging_nodes::A
     master_nodes::B
     master_coeffs::C
+    maxid::Int
     permutation::D
-    function HangingNodeConstraints(maxid,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+    function HangingNodeConstraints(
+            free_nodes,
+            hanging_nodes,
+            master_nodes,
+            master_coeffs,
+            maxid=length(free_nodes),
+            permutation=1:(length(free_nodes)+length(hanging_nodes)))
         A = typeof(free_nodes)
         B = typeof(master_nodes)
         C = typeof(master_coeffs)
         D = typeof(permutation)
         T = eltype(eltype(master_coeffs))
-        new{A,B,C,D,T}(maxid,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation)
+        new{A,B,C,D,T}(free_nodes,hanging_nodes,master_nodes,master_coeffs,maxid,permutation)
     end
 end
 

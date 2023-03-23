@@ -19,7 +19,7 @@ mesh_face_nodes = [[Int[]],[Int[]],c]
 mesh_face_reference_id = [Int[],Int[],i]
 mesh_reference_faces = ((),(),r)
 
-mesh = new_mesh(
+mesh = GenericMesh(
                 mesh_node_coordinates,
                 mesh_face_nodes,
                 mesh_face_reference_id,

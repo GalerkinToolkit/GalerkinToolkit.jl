@@ -448,12 +448,14 @@ function mesh_from_forest(forest::Forest;order=1,ghost_leafs::GhostLeafs=find_gh
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
     leaf_to_code, code_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
     nfree = lnodes.num_local_nodes
+    free_node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest)
     constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_code,code_to_constraints)
-    node_coordinates = pxest_node_coordinates(T,size(constraints,1),leaf_to_nodes,lnodes,order,forest)
+    D = pxest_dimension(T)
+    node_coordinates = zeros(SVector{D,Float64},size(constraints,1))
+    mul!(node_coordinates,constraints,free_node_coordinates)
     leaf_reference_id = Fill(1,length(leaf_to_nodes))
     reference_leafs = (pxest_reference_leaf(T),)
     pxest_lnodes_destroy(T,lnodes_ptr)
-    D = pxest_dimension(T)
     face_to_nodes = [JaggedArray{Int32,Int32}([Int32[]]) for d in 0:D]
     face_to_nodes[end] = leaf_to_nodes
     face_reference_id = [Fill(1,0) for d in 0:D]
@@ -544,20 +546,25 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
-function pxest_node_coordinates(::Val{t},n,leaf_to_nodes,lnodes,order,forest) where t
+function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest) where t
   T = Val(t)
   D = pxest_dimension(T)
+  n = lnodes.num_local_nodes
   node_to_coords = zeros(SVector{D,Float64},n)
   ileaf = 0
   x1 = similar(node_to_coords,pxest_num_leaf_nodes(T,order))
+  x2 = copy(x1)
   for (itree,tree) in enumerate(forest)
       for leaf in tree
           ileaf += 1
           nodes = leaf_to_nodes[ileaf]
+          code = leaf_to_code[ileaf]
+          R = code_to_constraints[code]
+          P = transpose(R)
           node_coordinates!(x1,forest,itree,leaf)
-          @show x1
+          mul!(x2,P,x1)
           for i in 1:length(x1)
-              node_to_coords[nodes[i]] = x1[i]
+              node_to_coords[nodes[i]] = x2[i]
           end
       end
   end
@@ -577,7 +584,7 @@ function pxest_leaf_constraints(lnodes_ptr,order)
     master_nodes = JaggedArray{Int32,Int32}([Int32[]])
     master_coeffs = JaggedArray{Float64,Int32}([Int32[]])
     permutation = Int32[]
-    A = typeof(HangingNodeConstraints(0,free_nodes,hanging_nodes,master_nodes,master_coeffs,permutation))
+    A = typeof(HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes,master_coeffs,0,permutation))
     code_constraints = Dict{Int32,A}()
     for cell in 1:n_cells
         code = face_code[cell]
@@ -651,7 +658,7 @@ function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(4,free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,permutation)
+    HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,4,permutation)
 end
 
 function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
@@ -717,7 +724,7 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(8,free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,permutation)
+    HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,8,permutation)
 end
 
 function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_to_constraints)
@@ -831,8 +838,7 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
     end
     my_hanging_nodes = (1:n_hanging) .+ n_nodes
     my_free_nodes = 1:n_nodes
-    mypermutation = 1:(n_hanging+n_nodes)
-    HangingNodeConstraints(n_nodes,my_free_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs,mypermutation)
+    HangingNodeConstraints(my_free_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs)
 end
 
 const INVALID_ID = 0
