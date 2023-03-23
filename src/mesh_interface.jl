@@ -75,16 +75,68 @@ end
 has_physical_groups(::Type{<:MeshWithPhysicalGroups}) = true
 physical_groups(a::MeshWithPhysicalGroups,d) = a.physical_groups[d+1]
 
-struct GenericPeriodicNodeConstraints{A,B,C}
-    free_nodes::A
+struct GenericPeriodicNodeConstraints{A,B,C,T} <: AbstractMatrix{T}
+    nrows::Int
+    ncols::Int
     periodic_nodes::A
-    master_nodes::B
-    master_coeffs::C
+    master_nodes::A
+    master_coeffs::B
+    free_nodes::A
+    permutation::C
+    function GenericPeriodicNodeConstraints(
+            nrows,ncols,
+            periodic_nodes,
+            master_nodes,
+            master_coeffs,
+            free_nodes,
+            permutation)
+        A = typeof(free_nodes)
+        B = typeof(master_coeffs)
+        C = typeof(permutation)
+        T = eltype(eltype(master_coeffs))
+        @assert nrows == length(free_nodes) + length(periodic_nodes)
+        @assert nrows == length(permutation)
+        new{A,B,C,T}(nrows,ncols,periodic_nodes,master_nodes,master_coeffs,free_nodes,permutation)
+    end
 end
+
+function GenericPeriodicNodeConstraints(
+        nrows,ncols,
+        periodic_nodes,
+        master_nodes,
+        master_coeffs=fill(eltype(periodic_nodes),length(master_nodes)))
+    T = eltype(periodic_nodes)
+    permutation = fill(T(INVALID_ID),nrows)
+    nperiodic = length(periodic_nodes)
+    nfree = nrows - nperiodic
+    permutation[periodic_nodes] = (1:nperiodic) .+ nfree
+    free_nodes = collect(T,findall(i->i==INVALID_ID,permutation))
+    permutation[free_nodes] = 1:nfree
+    GenericPeriodicNodeConstraints(nrows,ncols,periodic_nodes,master_nodes,master_coeffs,free_nodes,permutation)
+end
+
 has_periodic_nodes(::Type{<:GenericPeriodicNodeConstraints}) = true
 periodic_nodes(a::GenericPeriodicNodeConstraints) = a.periodic_nodes
 master_nodes(a::GenericPeriodicNodeConstraints) = a.master_nodes
 master_coeffs(a::GenericPeriodicNodeConstraints) = a.master_coeffs
+
+Base.size(a::GenericPeriodicNodeConstraints) = (a.nrows,a.ncols)
+Base.IndexStyle(::Type{<:GenericPeriodicNodeConstraints}) = IndexCartesian()
+
+function Base.getindex(a::GenericPeriodicNodeConstraints,i::Int,j::Int)
+    T = eltype(a)
+    m,n = size(a)
+    @boundscheck @assert i in 1:m
+    @boundscheck @assert j in 1:n
+    p = a.permutation[i]
+    nfree = length(a.free_nodes)
+    if p > nfree
+        h = p-nfree
+        a.master_nodes[h] == j ? a.master_coeffs[h] : zero(T)
+    else
+        a.free_nodes[p] == j ? one(T) : zero(T)
+    end
+end
 
 set_periodic_node_constraints(mesh,constraints) = MeshWithPeriodicNodeConstraints(mesh,constraints)
 struct MeshWithPeriodicNodeConstraints{A,B} <: AbstractMeshWithData{A}
@@ -103,25 +155,28 @@ has_hanging_nodes(::Type{<:MeshWithHangingNodeConstraints{A,B}}) where {A,B} = h
 hanging_node_constraints(a::MeshWithHangingNodeConstraints) = a.constraints
 
 struct HangingNodeConstraints{A,B,C,D,T} <: AbstractMatrix{T}
-    free_nodes::A
+    nrows::Int
+    ncols::Int
     hanging_nodes::A
     master_nodes::B
     master_coeffs::C
-    maxid::Int
+    free_nodes::A
     permutation::D
     function HangingNodeConstraints(
-            free_nodes,
+            nrows,ncols,
             hanging_nodes,
             master_nodes,
             master_coeffs,
-            maxid=length(free_nodes),
-            permutation=1:(length(free_nodes)+length(hanging_nodes)))
+            free_nodes,
+            permutation)
         A = typeof(free_nodes)
         B = typeof(master_nodes)
         C = typeof(master_coeffs)
         D = typeof(permutation)
         T = eltype(eltype(master_coeffs))
-        new{A,B,C,D,T}(free_nodes,hanging_nodes,master_nodes,master_coeffs,maxid,permutation)
+        @assert nrows == length(free_nodes) + length(hanging_nodes)
+        @assert nrows == length(permutation)
+        new{A,B,C,D,T}(nrows,ncols,hanging_nodes,master_nodes,master_coeffs,free_nodes,permutation)
     end
 end
 
@@ -131,12 +186,7 @@ master_nodes(a::HangingNodeConstraints) = a.master_nodes
 master_coeffs(a::HangingNodeConstraints) = a.master_coeffs
 permutation(a::HangingNodeConstraints) = a.permutation
 
-function Base.size(a::HangingNodeConstraints)
-    m = length(a.free_nodes) + length(a.hanging_nodes)
-    n = a.maxid
-    (m,n)
-end
-
+Base.size(a::HangingNodeConstraints) = (a.nrows,a.ncols)
 Base.IndexStyle(::Type{<:HangingNodeConstraints}) = IndexCartesian()
 
 function Base.getindex(a::HangingNodeConstraints,i::Int,j::Int)

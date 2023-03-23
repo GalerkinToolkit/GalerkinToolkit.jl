@@ -584,7 +584,7 @@ function pxest_leaf_constraints(lnodes_ptr,order)
     master_nodes = JaggedArray{Int32,Int32}([Int32[]])
     master_coeffs = JaggedArray{Float64,Int32}([Int32[]])
     permutation = Int32[]
-    A = typeof(HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes,master_coeffs,0,permutation))
+    A = typeof(HangingNodeConstraints(0,0,hanging_nodes,master_nodes,master_coeffs,free_nodes,permutation))
     code_constraints = Dict{Int32,A}()
     for cell in 1:n_cells
         code = face_code[cell]
@@ -658,7 +658,7 @@ function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,4,permutation)
+    HangingNodeConstraints(4,4,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,free_nodes,permutation)
 end
 
 function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
@@ -724,7 +724,7 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(free_nodes,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,8,permutation)
+    HangingNodeConstraints(8,8,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,free_nodes,permutation)
 end
 
 function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_to_constraints)
@@ -836,9 +836,11 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
         hanging_to_masters[hanging] .= masters
         hanging_to_coeffs[hanging] .= 1 ./ length(masters)
     end
+    n_total = n_hanging + n_nodes
     my_hanging_nodes = (1:n_hanging) .+ n_nodes
     my_free_nodes = 1:n_nodes
-    HangingNodeConstraints(my_free_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs)
+    my_perm = 1:n_total
+    HangingNodeConstraints(n_total,n_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs,my_free_nodes,my_perm)
 end
 
 const INVALID_ID = 0

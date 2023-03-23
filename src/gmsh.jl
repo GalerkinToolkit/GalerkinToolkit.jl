@@ -209,7 +209,9 @@ function mesh_from_gmsh_module()
 
     mesh = GenericMesh(my_node_to_coords,my_face_nodes,my_face_reference_id,my_reference_faces)
     if length(my_periodic_nodes) != 0
-        constraints = GenericPeriodicNodeConstraints(my_free_nodes,my_periodic_nodes,my_periodic_to_master,my_periodic_to_master)
+        nperiodic = length(my_periodic_nodes)
+        nfree = nnodes - nperiodic
+        constraints = GenericPeriodicNodeConstraints(nnodes,nfree,my_periodic_nodes,my_periodic_to_master)
         mesh2 = set_periodic_node_constraints(mesh,constraints)
     else
         mesh2 = mesh
