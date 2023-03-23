@@ -25,7 +25,8 @@ write_mesh(mesh,"t1")
 
 file = joinpath(@__DIR__,"..","assets","periodic.msh")
 mesh = gmsh_mesh(file)
-@test length(periodic_nodes(mesh)) != 0
+constraints = periodic_node_constraints(mesh)
+@test length(periodic_nodes(constraints)) != 0
 write_mesh(mesh,"periodic")
 
 file = joinpath(@__DIR__,"..","assets","higher_order_2D.msh")

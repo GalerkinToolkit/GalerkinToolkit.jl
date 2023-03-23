@@ -42,12 +42,8 @@ face_nodes(a::AbstractMeshWithData,d) = face_nodes(a.mesh,d)
 face_reference_id(a::AbstractMeshWithData,d) = face_reference_id(a.mesh,d)
 reference_faces(a::AbstractMeshWithData,::Val{d}) where d = reference_faces(a.mesh,Val{d}())
 num_faces(a::AbstractMeshWithData) = num_faces(a.mesh)
-periodic_nodes(a::AbstractMeshWithData) = periodic_nodes(a.mesh)
-periodic_to_master(a::AbstractMeshWithData) = periodic_nodes(a.mesh)
-periodic_to_coeff(a::AbstractMeshWithData) = periodic_to_coeff(a.mesh)
-hanging_nodes(a::AbstractMeshWithData) = hanging_nodes(a.mesh)
-hanging_to_masters(a::AbstractMeshWithData) = hanging_to_masters(a.mesh)
-hanging_to_coeffs(a::AbstractMeshWithData) = hanging_to_coeffs(a.mesh)
+periodic_node_constraints(a::AbstractMeshWithData) = periodic_node_constraints(a.mesh)
+hanging_node_constraints(a::AbstractMeshWithData) = hanging_node_constraints(a.mesh)
 physical_groups(a::AbstractMeshWithData,d) = physical_groups(a.mesh,d)
 
 struct GenericMesh{A,B,C,D}
@@ -79,13 +75,16 @@ end
 has_physical_groups(::Type{<:MeshWithPhysicalGroups}) = true
 physical_groups(a::MeshWithPhysicalGroups,d) = a.physical_groups[d+1]
 
-periodic_node_constraints(args...) = GenericPeriodicNodeConstraints(args...)
 struct GenericPeriodicNodeConstraints{A,B,C}
+    free_nodes::A
     periodic_nodes::A
-    periodic_to_master::B
-    periodic_to_coeff::C
+    master_nodes::B
+    master_coeffs::C
 end
 has_periodic_nodes(::Type{<:GenericPeriodicNodeConstraints}) = true
+periodic_nodes(a::GenericPeriodicNodeConstraints) = a.periodic_nodes
+master_nodes(a::GenericPeriodicNodeConstraints) = a.master_nodes
+master_coeffs(a::GenericPeriodicNodeConstraints) = a.master_coeffs
 
 set_periodic_node_constraints(mesh,constraints) = MeshWithPeriodicNodeConstraints(mesh,constraints)
 struct MeshWithPeriodicNodeConstraints{A,B} <: AbstractMeshWithData{A}
@@ -93,9 +92,7 @@ struct MeshWithPeriodicNodeConstraints{A,B} <: AbstractMeshWithData{A}
     constraints::B
 end
 has_periodic_nodes(::Type{<:MeshWithPeriodicNodeConstraints{A,B}}) where {A,B} = has_periodic_nodes(B)
-periodic_nodes(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_nodes
-periodic_to_master(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_master
-periodic_to_coeff(a::MeshWithPeriodicNodeConstraints) = a.constraints.periodic_to_coeff
+periodic_node_constraints(a::MeshWithPeriodicNodeConstraints) = a.constraints
 
 set_haning_node_constraints(mesh,constraints) = MeshWithHangingNodeConstraints(mesh,constraints)
 struct MeshWithHangingNodeConstraints{A,B} <: AbstractMeshWithData{A}
@@ -128,11 +125,11 @@ struct HangingNodeConstraints{A,B,C,D,T} <: AbstractMatrix{T}
     end
 end
 
-free_nodes(a) = a.free_nodes
-hanging_nodes(a) = a.hanging_nodes
-master_nodes(a) = a.master_nodes
-master_coeffs(a) = a.master_coeffs
-permutation(a) = a.permutation
+free_nodes(a::HangingNodeConstraints) = a.free_nodes
+hanging_nodes(a::HangingNodeConstraints) = a.hanging_nodes
+master_nodes(a::HangingNodeConstraints) = a.master_nodes
+master_coeffs(a::HangingNodeConstraints) = a.master_coeffs
+permutation(a::HangingNodeConstraints) = a.permutation
 
 function Base.size(a::HangingNodeConstraints)
     m = length(a.free_nodes) + length(a.hanging_nodes)

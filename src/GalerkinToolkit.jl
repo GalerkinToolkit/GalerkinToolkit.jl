@@ -27,6 +27,7 @@ export is_simplex
 export is_hypercube
 export num_faces
 export GenericMesh
+export periodic_node_constraints
 export set_phyisical_groups
 export set_periodic_node_constraints
 export set_haning_node_constraints
