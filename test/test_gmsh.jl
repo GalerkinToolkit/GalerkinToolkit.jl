@@ -26,6 +26,7 @@ write_mesh(mesh,"t1")
 file = joinpath(@__DIR__,"..","assets","periodic.msh")
 mesh = gmsh_mesh(file)
 constraints = periodic_node_constraints(mesh)
+display(constraints)
 @test length(periodic_nodes(constraints)) != 0
 write_mesh(mesh,"periodic")
 

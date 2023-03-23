@@ -93,7 +93,7 @@ struct GenericPeriodicNodeConstraints{A,B,C,T} <: AbstractMatrix{T}
         A = typeof(free_nodes)
         B = typeof(master_coeffs)
         C = typeof(permutation)
-        T = eltype(eltype(master_coeffs))
+        T = eltype(master_coeffs)
         @assert nrows == length(free_nodes) + length(periodic_nodes)
         @assert nrows == length(permutation)
         new{A,B,C,T}(nrows,ncols,periodic_nodes,master_nodes,master_coeffs,free_nodes,permutation)
@@ -104,7 +104,7 @@ function GenericPeriodicNodeConstraints(
         nrows,ncols,
         periodic_nodes,
         master_nodes,
-        master_coeffs=fill(eltype(periodic_nodes),length(master_nodes)))
+        master_coeffs=fill(one(eltype(periodic_nodes)),length(master_nodes)))
     T = eltype(periodic_nodes)
     permutation = fill(T(INVALID_ID),nrows)
     nperiodic = length(periodic_nodes)
