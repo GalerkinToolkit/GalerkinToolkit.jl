@@ -58,9 +58,14 @@ partition!(forest,allow_for_coarsening) do itree,leaf
 end
 
 ghost_leafs = find_ghost_leafs(forest)
+
+dof_glue = dof_glue_from_forest(forest)
+dof_glue = dof_glue_from_forest(forest;ghost_leafs)
+
+
 @test length(ghost_leafs) == 0
 order = 1
-mesh = mesh_from_forest(forest;order,ghost_leafs)
+mesh = mesh_from_forest(forest;order,dof_glue)
 
 initial_level = 1
 forest = forest_from_mesh(coarse_mesh,initial_level)

@@ -58,8 +58,10 @@ export find_ghost_leafs
 export mesh_from_forest
 export TwoPartPartition
 export partition_from_mask
+export dof_glue_from_forest
 
 include("mesh_interface.jl")
+include("dof_glue.jl")
 include("write_vtk.jl")
 include("meshes.jl")
 include("gmsh.jl")

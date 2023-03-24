@@ -410,7 +410,10 @@ function Base.getindex(ghost_leafs::GhostLeafs,iquadrant::Int)
     Leaf(p4est_quadrant)
 end
 
-function find_ghost_leafs(forest::Forest,connection=CONNECT_FULL)
+function find_ghost_leafs(forest::Forest,connection=CONNECT_FULL;balance=true)
+    if balance
+        balance!(forest)
+    end
     p4est_ptr = forest.p4est_ptr
     T = pxest_topology(p4est_ptr)
     p4est_ghost_ptr = pxest_ghost_new(T,p4est_ptr,connection)
@@ -436,10 +439,7 @@ function pxest_ghost_destroy(::Val{8},p4est_ghost_ptr)
     P4est.p4est_ghost_destroy(p4est_ghost_ptr)
 end
 
-function mesh_from_forest(forest::Forest;order=1,ghost_leafs::GhostLeafs=find_ghost_leafs(forest),balance=true)
-    if balance
-        balance!(forest)
-    end
+function dof_glue_from_forest(forest::Forest;order=1,balance=true,ghost_leafs::GhostLeafs=find_ghost_leafs(forest;balance))
     p4est_ptr = forest.p4est_ptr
     T = pxest_topology(p4est_ptr)
     ghost_ptr = ghost_leafs.p4est_ghost_ptr
@@ -447,15 +447,32 @@ function mesh_from_forest(forest::Forest;order=1,ghost_leafs::GhostLeafs=find_gh
     lnodes = unsafe_load(lnodes_ptr)
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
     leaf_to_code, code_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
+    leaf_to_constraints = DictView(code_to_constraints,leaf_to_code)
     nfree = lnodes.num_local_nodes
-    free_node_coordinates = pxest_node_coordinates(T,leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest)
-    constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_code,code_to_constraints)
+    free_and_dirichlet = TwoPartPartition(1:nfree,1:0,1:nfree)
     D = pxest_dimension(T)
+    face_to_nodes = Vector{typeof(leaf_to_nodes)}(undef,D+1)
+    face_to_constraints = Vector{typeof(leaf_to_constraints)}(undef,D+1)
+    face_to_nodes[end] = leaf_to_nodes # TODO fill all the vector
+    face_to_constraints[end] = leaf_to_constraints # TODO fill all the vector
+    dof_glue = GenericDofGlue(face_to_nodes,face_to_constraints,free_and_dirichlet)
+    pxest_lnodes_destroy(T,lnodes_ptr)
+    dof_glue
+end
+
+function mesh_from_forest(forest::Forest;order=1,balance=true,dof_glue=dof_glue_from_forest(forest;order,balance))
+    p4est_ptr = forest.p4est_ptr
+    T = pxest_topology(p4est_ptr)
+    D = pxest_dimension(T)
+    leaf_to_nodes = face_dofs(dof_glue,D)
+    leaf_to_constraints = face_constraints(dof_glue,D)
+    nfree = length(first(free_and_dirichlet(dof_glue)))
+    free_node_coordinates = pxest_node_coordinates(T,nfree,leaf_to_nodes,leaf_to_constraints,order,forest)
+    constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_constraints)
     node_coordinates = zeros(SVector{D,Float64},size(constraints,1))
     mul!(node_coordinates,constraints,free_node_coordinates)
     leaf_reference_id = Fill(1,length(leaf_to_nodes))
     reference_leafs = (pxest_reference_leaf(T),)
-    pxest_lnodes_destroy(T,lnodes_ptr)
     face_to_nodes = [JaggedArray{Int32,Int32}([Int32[]]) for d in 0:D]
     face_to_nodes[end] = leaf_to_nodes
     face_reference_id = [Fill(1,0) for d in 0:D]
@@ -546,10 +563,9 @@ function pxest_num_leaf_nodes(::Val{8},order)
     8
 end
 
-function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_code,code_to_constraints,lnodes,order,forest) where t
+function pxest_node_coordinates(::Val{t},n,leaf_to_nodes,leaf_to_constraints,order,forest) where t
   T = Val(t)
   D = pxest_dimension(T)
-  n = lnodes.num_local_nodes
   node_to_coords = zeros(SVector{D,Float64},n)
   ileaf = 0
   x1 = similar(node_to_coords,pxest_num_leaf_nodes(T,order))
@@ -558,8 +574,7 @@ function pxest_node_coordinates(::Val{t},leaf_to_nodes,leaf_to_code,code_to_cons
       for leaf in tree
           ileaf += 1
           nodes = leaf_to_nodes[ileaf]
-          code = leaf_to_code[ileaf]
-          R = code_to_constraints[code]
+          R = leaf_to_constraints[ileaf]
           P = transpose(R)
           node_coordinates!(x1,forest,itree,leaf)
           mul!(x2,P,x1)
@@ -729,19 +744,17 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
     HangingNodeConstraints(8,8,master_nodes_jagged,master_coeffs_jagged,free_and_hanging_nodes)
 end
 
-function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_to_constraints)
+function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_constraints)
     n_pre_hanging = 0
     nleafs = length(leaf_to_nodes)
     for leaf in 1:nleafs
-        code = leaf_to_code[leaf]
-        constraints = code_to_constraints[code]
+        constraints = leaf_to_constraints[leaf]
         n_pre_hanging += length(hanging_nodes(constraints))
     end
     pre_hanging_to_masters_ptrs = zeros(Int32,n_pre_hanging+1)
     pre_hanging = 0
     for leaf in 1:nleafs
-        code = leaf_to_code[leaf]
-        constraints = code_to_constraints[code]
+        constraints = leaf_to_constraints[leaf]
         for masters in master_nodes(constraints)
             pre_hanging += 1
             pre_hanging_to_masters_ptrs[pre_hanging+1] = length(masters)
@@ -752,8 +765,7 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
     pre_hanging_to_masters = JaggedArray(pre_hanging_to_masters_data,pre_hanging_to_masters_ptrs)
     pre_hanging = 0
     for leaf in 1:nleafs
-        code = leaf_to_code[leaf]
-        constraints = code_to_constraints[code]
+        constraints = leaf_to_constraints[leaf]
         mynodes = leaf_to_nodes[leaf]
         for masters in master_nodes(constraints)
             pre_hanging += 1
@@ -813,8 +825,7 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
     pre_hanging_to_hanging .+= n_nodes
     pre_hanging = 0
     for leaf in 1:nleafs
-        code = leaf_to_code[leaf]
-        constraints = code_to_constraints[code]
+        constraints = leaf_to_constraints[leaf]
         mynodes = leaf_to_nodes[leaf]
         for myhaning in hanging_nodes(constraints)
             pre_hanging += 1
