@@ -56,6 +56,8 @@ export CONNECT_FACE
 export CONNECT_FULL
 export find_ghost_leafs
 export mesh_from_forest
+export TwoPartPartition
+export partition_from_mask
 
 include("mesh_interface.jl")
 include("write_vtk.jl")

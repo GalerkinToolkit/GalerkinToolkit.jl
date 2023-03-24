@@ -580,11 +580,12 @@ function pxest_leaf_constraints(lnodes_ptr,order)
     face_code_ptr = lnodes.face_code
     face_code = collect(Int32,unsafe_wrap(Array,face_code_ptr,(n_cells,)))
     free_nodes = Int32[]
-    hanging_nodes = Int[]
+    hanging_nodes = Int32[]
     master_nodes = JaggedArray{Int32,Int32}([Int32[]])
     master_coeffs = JaggedArray{Float64,Int32}([Int32[]])
     permutation = Int32[]
-    A = typeof(HangingNodeConstraints(0,0,hanging_nodes,master_nodes,master_coeffs,free_nodes,permutation))
+    free_and_hanging_nodes = TwoPartPartition(free_nodes,hanging_nodes,permutation)
+    A = typeof(HangingNodeConstraints(0,0,master_nodes,master_coeffs,free_and_hanging_nodes))
     code_constraints = Dict{Int32,A}()
     for cell in 1:n_cells
         code = face_code[cell]
@@ -658,7 +659,8 @@ function pxest_setup_hanging_nodes(::Val{4},face_code,cache)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
     master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(4,4,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,free_nodes,permutation)
+    free_and_hanging_nodes = TwoPartPartition(free_nodes,hanging_nodes,permutation)
+    HangingNodeConstraints(4,4,master_nodes_jagged,master_coeffs_jagged,free_and_hanging_nodes)
 end
 
 function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
@@ -723,8 +725,8 @@ function pxest_setup_hanging_nodes(::Val{8},face_code,cache)
     permutation[free_nodes] = 1:length(free_nodes)
     master_nodes_jagged = JaggedArray(master_nodes)
     aux = JaggedArray(master_coeffs)
-    master_coeffs_jagged = JaggedArray(aux.data,master_nodes_jagged.ptrs)
-    HangingNodeConstraints(8,8,hanging_nodes,master_nodes_jagged,master_coeffs_jagged,free_nodes,permutation)
+    free_and_hanging_nodes = TwoPartPartition(free_nodes,hanging_nodes,permutation)
+    HangingNodeConstraints(8,8,master_nodes_jagged,master_coeffs_jagged,free_and_hanging_nodes)
 end
 
 function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_to_constraints)
@@ -840,7 +842,8 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_code,code_t
     my_hanging_nodes = (1:n_hanging) .+ n_nodes
     my_free_nodes = 1:n_nodes
     my_perm = 1:n_total
-    HangingNodeConstraints(n_total,n_nodes,my_hanging_nodes,hanging_to_masters,hanging_to_coeffs,my_free_nodes,my_perm)
+    my_free_and_hanging_nodes = TwoPartPartition(my_free_nodes,my_hanging_nodes,my_perm)
+    HangingNodeConstraints(n_total,n_nodes,hanging_to_masters,hanging_to_coeffs,my_free_and_hanging_nodes)
 end
 
 const INVALID_ID = 0

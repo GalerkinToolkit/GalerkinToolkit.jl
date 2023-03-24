@@ -169,8 +169,8 @@ function mesh_from_gmsh_module()
             node_to_main_node[node] = main_node
         end
     end
-    my_free_nodes = collect(Int32,findall(i->i==INVALID,node_to_main_node))
-    my_periodic_nodes = collect(Int32,findall(i->i!=INVALID,node_to_main_node))
+    my_free_and_periodic_nodes = partition_from_mask(i->i==INVALID,node_to_main_node)
+    my_periodic_nodes = last(my_free_and_periodic_nodes)
     my_periodic_to_master = node_to_main_node[my_periodic_nodes]
     my_periodic_to_coeff = ones(length(my_periodic_to_master))
 
@@ -211,7 +211,7 @@ function mesh_from_gmsh_module()
     if length(my_periodic_nodes) != 0
         nperiodic = length(my_periodic_nodes)
         nfree = nnodes - nperiodic
-        constraints = GenericPeriodicNodeConstraints(nnodes,nfree,my_periodic_nodes,my_periodic_to_master)
+        constraints = GenericPeriodicNodeConstraints(nnodes,nfree,my_periodic_to_master,my_periodic_to_coeff,my_free_and_periodic_nodes)
         mesh2 = set_periodic_node_constraints(mesh,constraints)
     else
         mesh2 = mesh
