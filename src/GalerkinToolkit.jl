@@ -66,6 +66,7 @@ export classify_mesh_nodes
 export classify_mesh_nodes!
 export classify_mesh_faces
 export classify_mesh_faces!
+export restrict_face_dofs
 
 include("mesh_interface.jl")
 include("dof_glue.jl")

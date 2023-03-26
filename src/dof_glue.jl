@@ -65,6 +65,18 @@ function classify_mesh_nodes(mesh,tag_to_name,dmax)
     classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax)
 end
 
+function restrict_face_dofs(nnodes,cell_to_nodes,cells_in_domain)
+    node_to_touched = fill(false,nnodes)
+    for nodes in view(cell_to_nodes,cells_in_domain)
+        node_to_touched[nodes] .= true
+    end
+    dofs_and_nondofs = partition_from_mask(node_to_touched)
+    domain_cell_to_dofs = JaggedArray{Int32,Int32}(view(cell_to_nodes,cells_in_domain))
+    node_permutation = permutation(dofs_and_nondofs)
+    domain_cell_to_dofs.data[:] = view(node_permutation,domain_cell_to_dofs.data)
+    domain_cell_to_dofs, dofs_and_nondofs
+end
+
 struct DictView{A,B,T} <: AbstractVector{T}
     parent::A
     indices::B

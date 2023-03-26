@@ -21,70 +21,19 @@ dirichlet_tags = ["surface_2_c"]
 neumann_tags = String[]
 
 node_to_tag = classify_mesh_nodes(mesh,dirichlet_tags,D)
-
-#nnodes = num_nodes(mesh)
-#node_to_tag = zeros(Int32,nnodes)
-#for d in D:-1:0
-#    face_to_nodes = face_nodes(mesh,d)
-#    face_groups = physical_groups(mesh,d)
-#    for (tag,name) in enumerate(dirichlet_tags)
-#        for (name2,faces) in face_groups
-#            if name != name2
-#                continue
-#            end
-#            for face in faces
-#                nodes = face_to_nodes[face]
-#                node_to_tag[nodes] .= tag
-#            end
-#        end
-#    end
-#end
-
 cell_to_tag = classify_mesh_faces(mesh,domain_tags,D)
-
-#ncells = num_faces(mesh,D)
-#cell_to_tag = zeros(Int32,ncells)
-#cell_groups = physical_groups(mesh,D)
-#for (tag,name) in enumerate(domain_tags)
-#    for (name2,cells) in cell_groups
-#        if name != name2
-#            continue
-#        end
-#        cell_to_tag[cells] .= tag
-#    end
-#end
-
 face_to_tag = classify_mesh_faces(mesh,neumann_tags,D-1)
-
-#nfaces = num_faces(mesh,D-1)
-#face_to_tag = zeros(Int32,nfaces)
-#face_groups = physical_groups(mesh,D-1)
-#for (tag,name) in enumerate(neumann_tags)
-#    for (name2,faces) in face_groups
-#        if name != name2
-#            continue
-#        end
-#        face_to_tag[faces] .= tag
-#    end
-#end
 
 vtk_grid("solid_2",vtk_args(mesh,D-1)...) do vtk
     vtk_physical_groups!(vtk,mesh,D-1)
     vtk["neumann_tag",WriteVTK.VTKCellData()] = face_to_tag
 end
 
-cells_in_domain = collect(Int32,findall(i->i>0,cell_to_tag))
-cell_to_nodes = face_nodes(mesh,D)
 nnodes = num_nodes(mesh)
-node_to_touched = fill(false,nnodes)
-for nodes in view(cell_to_nodes,cells_in_domain)
-    node_to_touched[nodes] .= true
-end
+cell_to_nodes = face_nodes(mesh,D)
+cells_in_domain = collect(Int32,findall(i->i>0,cell_to_tag))
 
-dofs_and_nondofs = partition_from_mask(node_to_touched)
-domain_cell_to_dofs = JaggedArray{Int32,Int32}(view(cell_to_nodes,cells_in_domain))
-node_permutation = permutation(dofs_and_nondofs)
-domain_cell_to_dofs.data[:] = view(node_permutation,domain_cell_to_dofs.data)
+domain_cell_to_dofs, dofs_and_nondofs = restrict_face_dofs(nnodes,cell_to_nodes,cells_in_domain)
 
 faces_in_neumann = collect(Int32,findall(i->i>0,face_to_tag))
 
@@ -129,7 +78,5 @@ vtk_grid("solid_3",vtk_args(mesh,D)...) do vtk
     vtk["dirichlet_tag",WriteVTK.VTKPointData()] = node_to_tag
     vtk["values",WriteVTK.VTKPointData()] = node_values
 end
-
-
 
 end # module
