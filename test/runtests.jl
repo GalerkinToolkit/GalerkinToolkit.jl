@@ -4,11 +4,11 @@ using GalerkinToolkit
 using Test
 
 @testset "GalerkinToolkit" begin
-    @time @testset "meshes" begin include("test_meshes.jl") end
-    @time @testset "write_vtk" begin include("test_write_vtk.jl") end
-    @time @testset "mesh_interface" begin include("test_mesh_interface.jl") end
-    @time @testset "gmsh" begin include("test_gmsh.jl") end
-    @time @testset "p4est" begin include("test_p4est.jl") end
+    @time @testset "meshes" begin include("meshes_tests.jl") end
+    @time @testset "write_vtk" begin include("write_vtk_tests.jl") end
+    @time @testset "mesh_interface" begin include("mesh_interface_tests.jl") end
+    @time @testset "gmsh" begin include("gmsh_tests.jl") end
+    @time @testset "p4est" begin include("p4est_tests.jl") end
 end
 
 end # module
