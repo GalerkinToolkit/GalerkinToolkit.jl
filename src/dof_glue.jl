@@ -18,26 +18,51 @@ function dof_glue_from_mesh_nodes(mesh,node_to_id)
     GenericDofGlue(face_dofs,face_constraints,free_and_dirichlet)
 end
 
-function classify_mesh_nodes(mesh,names)
-    T = Int32
-    nnodes = num_nodes(mesh)
-    node_to_id = fill(T(INVALID_ID),nnodes)
-    has_physical_groups(mesh) || return node_to_id
-    D = dimension(mesh)
-    for d in D:-1:0
-        face_to_nodes = face_nodes(mesh,d)
-        for (name2,faces_in_group) in physical_groups(mesh,d)
-            id = findfirst(i->i===name2,names)
-            if id === nothing
+function classify_mesh_faces!(face_to_tag,mesh,tag_to_name,d)
+    has_physical_groups(mesh) || return face_to_tag
+    face_groups = physical_groups(mesh,d)
+    for (tag,name) in enumerate(tag_to_name)
+        for (name2,faces) in face_groups
+            if name != name2
                 continue
             end
-            for face in faces_in_group
-                nodes = face_to_nodes[face]
-                node_to_id[nodes] = id
+            face_to_tag[faces] .= tag
+        end
+    end
+    face_to_tag
+end
+
+function classify_mesh_faces(mesh,tag_to_name,d)
+    nfaces = num_faces(mesh,d)
+    face_to_tag = zeros(Int32,nfaces)
+    classify_mesh_faces!(face_to_tag,mesh,tag_to_name,d)
+end
+
+function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax)
+    has_physical_groups(mesh) || return node_to_tag
+    for d in dmax:-1:0
+        face_to_nodes = face_nodes(mesh,d)
+        face_groups = physical_groups(mesh,d)
+        for (tag,name) in enumerate(tag_to_name)
+            for (name2,faces) in face_groups
+                if name != name2
+                    continue
+                end
+                for face in faces
+                    nodes = face_to_nodes[face]
+                    node_to_tag[nodes] .= tag
+                end
             end
         end
     end
-    node_to_id
+    node_to_tag
+end
+
+function classify_mesh_nodes(mesh,tag_to_name,dmax)
+    T = Int32
+    nnodes = num_nodes(mesh)
+    node_to_tag = fill(T(INVALID_ID),nnodes)
+    classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax)
 end
 
 struct DictView{A,B,T} <: AbstractVector{T}

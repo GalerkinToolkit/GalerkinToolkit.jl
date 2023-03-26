@@ -10,6 +10,7 @@ using MPI
 using LinearAlgebra
 using FillArrays
 
+export JaggedArray
 export dimension
 export embedded_dimension
 export node_coordinates
@@ -25,6 +26,7 @@ export has_hanging_nodes
 export has_physical_groups
 export is_simplex
 export is_hypercube
+export num_nodes
 export num_faces
 export GenericMesh
 export periodic_node_constraints
@@ -59,6 +61,11 @@ export mesh_from_forest
 export TwoPartPartition
 export partition_from_mask
 export dof_glue_from_forest
+export permutation
+export classify_mesh_nodes
+export classify_mesh_nodes!
+export classify_mesh_faces
+export classify_mesh_faces!
 
 include("mesh_interface.jl")
 include("dof_glue.jl")

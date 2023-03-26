@@ -10,7 +10,7 @@ function write_mesh(mesh,filebase)
     for d in 0:dimension(mesh)
         fn = "$(filebase)_$(d)"
         vtk_grid(fn,vtk_args(mesh,d)...) do vtk
-            vtk_physical_groups!(vtk,d,mesh)
+            vtk_physical_groups!(vtk,mesh,d)
         end
     end
 end

@@ -37,7 +37,7 @@ mesh_with_groups = set_phyisical_groups(mesh,groups)
 
 d = dimension(mesh)
 vtk_grid("mesh",vtk_args(mesh_with_groups,d)...) do vtk
-    vtk_physical_groups!(vtk,d,mesh_with_groups)
+    vtk_physical_groups!(vtk,mesh_with_groups,d)
 end
 
 end # module

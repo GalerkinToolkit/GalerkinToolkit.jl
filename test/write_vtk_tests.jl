@@ -28,8 +28,12 @@ groups = [groups_0,groups_1,groups_2,groups_3]
 for d in 0:dimension(tet)
     fn = "tet_with_groups_$d"
     vtk_grid(fn,vtk_args(tet,d)...) do vtk
-        vtk_physical_groups!(vtk,d,tet,groups[d+1])
+        vtk_physical_groups!(vtk,tet,d,physical_groups=groups[d+1])
     end
+end
+
+vtk_grid("tet_with_groups",vtk_args(tet)...) do vtk
+    vtk_physical_groups!(vtk,tet,physical_groups=groups)
 end
 
 end # module

@@ -5,8 +5,10 @@
 # Groups as vector of pairs or dict of pairs? First more lightweight second more general
 # Goups as Dict{String,Vector{Int32}} ?
 # Groupname as Symbol or String?
+# Replace name by tag? in groups?
 # SimpleMesh
 # remove new_mesh and use GenericMesh
+# rename gmsh_mesh to mesh_from_gmsh
 # Val(d) also in other functions? YES
 # better way to represent hanging node constraints? Solution: global constraints
 # follow the same approach for periodic
@@ -34,6 +36,16 @@ has_physical_groups(::Type) = false
 is_simplex(a) = false
 is_hypercube(a) = false
 num_faces(a,d) = length(face_reference_id(a,d))
+num_faces(a) = map(d->num_faces(a,d),0:dimension(a))
+function face_offsets(a)
+    D = dimension(a)
+    offsets = zeros(Int,D+1)
+    for d in 1:D
+        offsets[d+1] = offsets[d] + num_faces(a,d-1)
+    end
+    offsets
+end
+num_nodes(a) = length(node_coordinates(a))
 embedded_dimension(a) = length(eltype(node_coordinates(a)))
 reference_faces(a,d) = reference_faces(a,Val(d))
 reference_faces(a,::Val{d}) where d = error("reference_faces($(typeof(a)),::Val{$d}) not implemented.")
@@ -74,7 +86,10 @@ struct MeshWithPhysicalGroups{A,B} <: AbstractMeshWithData{A}
     physical_groups::B
 end
 has_physical_groups(::Type{<:MeshWithPhysicalGroups}) = true
+physical_groups(a::MeshWithPhysicalGroups) = a.physical_groups
 physical_groups(a::MeshWithPhysicalGroups,d) = a.physical_groups[d+1]
+
+partition_from_mask(a) = partition_from_mask(identity,a)
 
 function partition_from_mask(f,node_to_mask)
     T = Vector{Int32}
