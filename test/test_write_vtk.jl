@@ -19,10 +19,10 @@ for d in 0:dimension(tet)
     vtk_grid(fn,vtk_args(tet,d)...) do vtk end
 end
 
-groups_0 = Dict(1=>physical_group([1,2,3],"myvertices"))
-groups_1 = Dict(1=>physical_group([2,6,5],"myedges"))
-groups_2 = Dict(1=>physical_group([2,1],"myfaces"))
-groups_3 = Dict(1=>physical_group([1],"myvolume"))
+groups_0 = ["myvertices"=>[1,2,3]]
+groups_1 = ["myedges"=>[2,6,5]]
+groups_2 = ["myfaces"=>[2,1]]
+groups_3 = ["myvolume"=>[1]]
 groups = [groups_0,groups_1,groups_2,groups_3]
 
 for d in 0:dimension(tet)

@@ -50,10 +50,11 @@ end
 
 function vtk_physical_groups!(vtk,d,geo,groups=physical_groups(geo,d))
     ndfaces = num_faces(geo,d)
-    for (i,group) in groups
+    for group in groups
+        name,faces = group
         face_mask = zeros(Int,ndfaces)
-        face_mask[faces_in_group(group)] .= i
-        vtk[group_name(group),WriteVTK.VTKCellData()] = face_mask
+        face_mask[faces] .= 1
+        vtk[name,WriteVTK.VTKCellData()] = face_mask
     end
     vtk
 end

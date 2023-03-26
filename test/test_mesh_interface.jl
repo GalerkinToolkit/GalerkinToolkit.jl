@@ -29,9 +29,9 @@ mesh = GenericMesh(
 @test dimension(mesh) == 2
 @test embedded_dimension(mesh) == 2
 
-groups_2 = Dict(1=>physical_group([3,1],"region"))
-groups_1 = typeof(groups_2)()
-groups_0 = typeof(groups_2)()
+groups_2 = ["region"=>[3,1]]
+groups_1 = eltype(groups_2)[]
+groups_0 = eltype(groups_2)[]
 groups = [groups_0,groups_1,groups_2]
 mesh_with_groups = set_phyisical_groups(mesh,groups)
 

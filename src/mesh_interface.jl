@@ -1,11 +1,17 @@
 #TODO
+# Physical groups as collection of Pairs
+# Visualize all dims in vtk_args if dim not provided
+# Remove Generic e.g GenericMesh -> Mesh and in the future: const Mesh = Union{MeshGeneric,MeshNative}
+# Groups as vector of pairs or dict of pairs? First more lightweight second more general
+# Goups as Dict{String,Vector{Int32}} ?
+# Groupname as Symbol or String?
 # SimpleMesh
 # remove new_mesh and use GenericMesh
 # Val(d) also in other functions? YES
 # better way to represent hanging node constraints? Solution: global constraints
 # follow the same approach for periodic
 # groups for faces and nodes: no. Node groups only make sense for for Lagrangian spaces of the same order of the mesh
-# rename physical groups by  physical_faces
+# rename physical groups by  physical_faces: NO.
 # num_faces(a) by number_of_faces(a) ?
 # allow to use custom integer and Float precision in mesh_from_forest
 # HangingNodeConstraints to GenericHangingNodeconstraints
@@ -62,19 +68,10 @@ face_nodes(a::GenericMesh,d) = a.face_nodes[d+1]
 face_reference_id(a::GenericMesh,d) = a.face_reference_id[d+1]
 reference_faces(a::GenericMesh,::Val{d}) where d = a.reference_faces[d+1]
 
-physical_group(args...) = GenericPhysicalGroup(args...)
-struct GenericPhysicalGroup{A}
-    faces_in_group::A
-    group_name::String
-end
-
-faces_in_group(a) = a.faces_in_group
-group_name(a) = a.group_name
-
 set_phyisical_groups(mesh,groups) = MeshWithPhysicalGroups(mesh,groups)
 struct MeshWithPhysicalGroups{A,B} <: AbstractMeshWithData{A}
     mesh::A
-    physical_groups::Vector{Dict{Int,B}}
+    physical_groups::B
 end
 has_physical_groups(::Type{<:MeshWithPhysicalGroups}) = true
 physical_groups(a::MeshWithPhysicalGroups,d) = a.physical_groups[d+1]
