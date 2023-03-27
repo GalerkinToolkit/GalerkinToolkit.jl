@@ -89,6 +89,14 @@ has_physical_groups(::Type{<:MeshWithPhysicalGroups}) = true
 physical_groups(a::MeshWithPhysicalGroups) = a.physical_groups
 physical_groups(a::MeshWithPhysicalGroups,d) = a.physical_groups[d+1]
 
+function add_trivial_physical_groups(a)
+    D = dimension(a)
+    groups = map(0:D) do d
+        ["$(d)face$(f)"=>[Int32(f)] for f in 1:num_faces(a,d)]
+    end
+    set_phyisical_groups(a,groups)
+end
+
 partition_from_mask(a) = partition_from_mask(identity,a)
 
 function partition_from_mask(f,node_to_mask)

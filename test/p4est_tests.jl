@@ -88,6 +88,26 @@ display(hanging_node_constraints(mesh))
 fn = "p4est_mesh"
 vtk_grid(fn,vtk_args(mesh,d)...) do vtk end
 
+dof_glue = dof_glue_from_forest(forest)
+
+coarse_mesh_with_groups = add_physical_groups_hypercube(coarse_mesh)
+
+vtk_grid("coarse_mesh",vtk_args(coarse_mesh_with_groups)...) do vtk
+    vtk_physical_groups!(vtk,coarse_mesh_with_groups)
+end
+
+initial_level = 1
+forest = forest_from_mesh(coarse_mesh_with_groups,initial_level)
+
+@test_broken begin
+    # TODO
+    leaf_to_tag = classify_forest_leafs(forest,domain_tags)
+    # TODO this one already needs topology
+    dof_to_tag = classify_forest_dofs(forest,dof_glue,dirichnet_tags)
+    false
+end
+
+
 
 
 end # module

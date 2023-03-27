@@ -1,22 +1,13 @@
 
-struct GenericDofGlue{A,B,C}
+struct GenericDofGlue{A,B}
+    num_dofs::Int
     face_dofs::A
     face_constraints::B
-    free_and_dirichlet::TwoPartPartition{C}
 end
 
-face_dofs(a::GenericDofGlue,d) = a.face_dofs[d+1]
-face_constraints(a::GenericDofGlue,d) = a.face_constraints[d+1]
-free_and_dirichlet(a::GenericDofGlue) = a.free_and_dirichlet
-
-function dof_glue_from_mesh_nodes(mesh,node_to_id)
-    @assert ! has_hanging_nodes(mesh)
-    @assert ! periodic_nodes(mesh)
-    face_dofs = face_nodes(mesh)
-    face_constraints = map(i->Fill(I,length(i))face_dofs)
-    free_and_dirichlet = partition_from_mask(i->i==0,node_to_id)
-    GenericDofGlue(face_dofs,face_constraints,free_and_dirichlet)
-end
+num_dofs(a::GenericDofGlue) = a.num_dofs
+face_dofs(a::GenericDofGlue) = a.face_dofs
+face_constraints(a::GenericDofGlue) = a.face_constraints
 
 function classify_mesh_faces!(face_to_tag,mesh,tag_to_name,d)
     has_physical_groups(mesh) || return face_to_tag

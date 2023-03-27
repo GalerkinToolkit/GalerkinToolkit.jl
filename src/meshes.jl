@@ -85,6 +85,9 @@ function vtk_mesh_cell(a::Meshes.Quadrangle)
 end
 vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
 pxest_node_permutation(a::Meshes.Quadrangle) = [1,2,4,3]
+function add_physical_groups_hypercube(a::Meshes.Quadrangle)
+    add_trivial_physical_groups(a)
+end
 
 # Triangle
 dimension(a::Meshes.Triangle) = 2

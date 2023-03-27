@@ -448,14 +448,9 @@ function dof_glue_from_forest(forest::Forest;order=1,balance=true,ghost_leafs::G
     leaf_to_nodes = pxest_leaf_nodes(lnodes_ptr,order)
     leaf_to_code, code_to_constraints = pxest_leaf_constraints(lnodes_ptr,order)
     leaf_to_constraints = DictView(code_to_constraints,leaf_to_code)
-    nfree = lnodes.num_local_nodes
+    nfree = Int(lnodes.num_local_nodes)
     free_and_dirichlet = TwoPartPartition(1:nfree,1:0,1:nfree)
-    D = pxest_dimension(T)
-    face_to_nodes = Vector{typeof(leaf_to_nodes)}(undef,D+1)
-    face_to_constraints = Vector{typeof(leaf_to_constraints)}(undef,D+1)
-    face_to_nodes[end] = leaf_to_nodes # TODO fill all the vector
-    face_to_constraints[end] = leaf_to_constraints # TODO fill all the vector
-    dof_glue = GenericDofGlue(face_to_nodes,face_to_constraints,free_and_dirichlet)
+    dof_glue = GenericDofGlue(nfree,leaf_to_nodes,leaf_to_constraints)
     pxest_lnodes_destroy(T,lnodes_ptr)
     dof_glue
 end
@@ -464,9 +459,9 @@ function mesh_from_forest(forest::Forest;order=1,balance=true,dof_glue=dof_glue_
     p4est_ptr = forest.p4est_ptr
     T = pxest_topology(p4est_ptr)
     D = pxest_dimension(T)
-    leaf_to_nodes = face_dofs(dof_glue,D)
-    leaf_to_constraints = face_constraints(dof_glue,D)
-    nfree = length(first(free_and_dirichlet(dof_glue)))
+    leaf_to_nodes = face_dofs(dof_glue)
+    leaf_to_constraints = face_constraints(dof_glue)
+    nfree = num_dofs(dof_glue)
     free_node_coordinates = pxest_node_coordinates(T,nfree,leaf_to_nodes,leaf_to_constraints,order,forest)
     constraints = pxest_numerate_hanging_nodes!(nfree,leaf_to_nodes,leaf_to_constraints)
     node_coordinates = zeros(SVector{D,Float64},size(constraints,1))
