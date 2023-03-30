@@ -22,6 +22,7 @@
 # Index groups by symbol and remove GenericPhysicalGroup
 # float_type
 # integer_type
+# no hard-coded int nor float types
 # TODO implement efficient mul!
 
 # Nobody should overwrite these
@@ -251,3 +252,316 @@ end
 
 ## TODO implement mul and also for its transpose
 
+# Node
+# Face aka mesh from Boundary
+# Mesh
+
+# NodeTopology
+# FaceTopology
+# MeshTopology
+
+struct NodeTopology end
+dimension(a::NodeTopology) = 0
+function face_incidence(a::NodeTopology,d1,d2)
+    @boundscheck @assert d1 == d2 == 0
+    [[Int32(1)]]
+end
+function face_reference_id(a::NodeTopology,d1)
+    @boundscheck @assert d1 == 0
+    [Int32(1)]
+end
+function reference_faces(a::NodeTopology,::Val{0})
+    (a,)
+end
+
+struct FaceTopology{A}
+    boundary::A
+end
+dimension(a::FaceTopology) = dimension(a.boundary) + 1
+function face_incidence(a::FaceTopology,d1,d2)
+    d = dimension(a)
+    @boundscheck @assert d1 <= d && d2 <= d
+    if d1 == d && d2 == d
+        [[Int32(1)]] 
+    elseif d1 == d && d2 < d
+        [collect(Int32,1:num_faces(a.boundary,d2))]
+    elseif d1 < d && d2 == d
+        [ [Int32(i)] for i in 1:num_faces(a.boundary,d1)]
+    else
+        face_incidence(a.boundary,d1,d2)
+    end
+end
+function face_reference_id(a::FaceTopology,d1)
+    d = dimension(a)
+    @boundscheck @assert d1 <= d 
+    if d1 == d
+        [Int32(1)]
+    else
+        a.face_reference_id[d1+1]
+    end
+end
+function reference_faces(a::FaceTopology,::Val{d1}) where d1
+    d = dimension(a)
+    @assert  d >= d1
+    if d1 == d
+        (a,)
+    else
+        reference_faces(a.boundary,Val(d1))
+    end
+end
+
+struct MeshTopology{A,B,C}
+    face_incidence::A
+    face_reference_id::B
+    reference_faces::C
+end
+dimension(a::MeshTopology) = length(a.face_reference_id)
+face_incidence(a::MeshTopology,d1,d2) = a.face_incidence[d1+1,d2+1]
+face_reference_id(a::MeshTopology,d1) = a.face_reference_id[d1+1]
+function reference_faces(a::MeshTopology,::Val{d}) where d
+    @assert dimension(a) >= d
+    a.reference_faces[d+1]
+end
+
+function face_boundary(a)
+    D = dimension(a)
+    my_coords = node_coordinates(a)
+    my_face_nodes = [face_nodes(a,d) for d in 0:(D-1)]
+    my_face_reference_id = [face_reference_id(a,d) for d in 0:(D-1)]
+    my_reference_faces = Tuple([reference_faces(a,d) for d in 0:(D-1)])
+    GenericMesh(my_coords,my_face_nodes,my_face_reference_id,my_reference_faces)
+end
+
+function face_topology(a)
+    if dimension(a) == 0
+        NodeTopology()
+    else
+        mesh = face_boundary(a)
+        topo = mesh_topology(mesh)
+        FaceTopology(topo)
+    end
+end
+
+function mesh_topology(a)
+    # Assumes that the input is a cell complex
+    T = JaggedArray{Int32,Int32}
+    D = dimension(a)
+    my_face_incidence = Matrix{T}(undef,D+1,D+1)
+    my_face_reference_id  = [ face_reference_id(a,d) for d in 0:D ]
+    my_reference_faces = Tuple([ map(face_topology,reference_faces(a,d)) for d in 0:D ])
+    topo = MeshTopology(my_face_incidence,my_face_reference_id,my_reference_faces)
+    for d in 0:D
+        fill_face_interior!(topo,a,d)
+    end
+    for d in 1:D
+        fill_face_vertices!(topo,a,d)
+        fill_face_coboundary!(topo,a,d,0)
+    end
+    for d in 1:(D-1)
+        for n in (D-d):-1:1
+            m = n+d
+            @show (m,n)
+            fill_face_boundary!(topo,a,m,n)
+            display(face_incidence(topo,m,n))
+            fill_face_coboundary!(topo,a,m,n)
+        end
+    end
+    topo
+end
+
+function fill_face_interior!(topo::MeshTopology,mesh,d)
+    n = num_faces(mesh,d)
+    ptrs = collect(Int32,1:(n+1))
+    data = collect(Int32,1:n)
+    topo.face_incidence[d+1,d+1] = JaggedArray(data,ptrs)
+end
+
+function fill_face_coboundary!(topo::MeshTopology,mesh,n,m)
+    function barrier(nface_to_mfaces,nmfaces)
+        ptrs = zeros(Int32,nmfaces+1)
+        nnfaces = length(nface_to_mfaces)
+        for nface in 1:nnfaces
+            mfaces = nface_to_mfaces[nface]
+            for mface in mfaces
+                ptrs[mface+1] += Int32(1)
+            end
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = zeros(Int32,ndata)
+        for nface in 1:nnfaces
+            mfaces = nface_to_mfaces[nface]
+            for mface in mfaces
+                p = ptrs[mface]
+                data[p] = nface
+                ptrs[mface] += Int32(1)
+            end
+        end
+        rewind_ptrs!(ptrs)
+        mface_to_nfaces = GenericJaggedArray(data,ptrs)
+        mface_to_nfaces
+    end
+    nmfaces = num_faces(mesh,m)
+    nface_to_mfaces = face_incidence(topo,n,m)
+    topo.face_incidence[m+1,n+1] = barrier(nface_to_mfaces,nmfaces)
+end
+
+function fill_face_vertices!(topo::MeshTopology,mesh,d)
+    function barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
+        vertex_to_node = JaggedArray(vertex_to_nodes).data
+        #if vertex_to_node == 1:nnodes
+        #    return dface_to_nodes
+        #end
+        node_to_vertex = zeros(Int32,nnodes)
+        nvertices = length(vertex_to_nodes)
+        node_to_vertex[vertex_to_node] = 1:nvertices
+        ndfaces = length(dface_to_nodes)
+        dface_to_vertices_ptrs = zeros(Int32,ndfaces+1)
+        for dface in 1:ndfaces
+            refid = dface_to_refid[dface]
+            nlvertices = length(refid_to_lvertex_to_lnodes[refid])
+            dface_to_vertices_ptrs[dface+1] = nlvertices
+        end
+        length_to_ptrs!(dface_to_vertices_ptrs)
+        ndata = dface_to_vertices_ptrs[end]-1
+        dface_to_vertices_data = zeros(Int32,ndata)
+        for dface in 1:ndfaces
+            refid = dface_to_refid[dface]
+            lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+            nlvertices = length(lvertex_to_lnodes)
+            lnode_to_node = dface_to_nodes[dface]
+            offset = dface_to_vertices_ptrs[dface]-1
+            for lvertex in 1:nlvertices
+                lnode = first(lvertex_to_lnodes[lvertex])
+                node = lnode_to_node[lnode]
+                vertex = node_to_vertex[node]
+                dface_to_vertices_data[offset+lvertex] = vertex
+            end
+        end
+        dface_to_vertices = JaggedArray(dface_to_vertices_data,dface_to_vertices_ptrs)
+    end
+    nnodes = num_nodes(mesh)
+    vertex_to_nodes = face_nodes(mesh,0)
+    dface_to_nodes = face_nodes(mesh,d)
+    dface_to_refid = face_reference_id(mesh,d)
+    refid_refface = reference_faces(mesh,d)
+    refid_to_lvertex_to_lnodes = map(refface->face_nodes(refface,0),refid_refface)
+    face_to_vertices = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
+    topo.face_incidence[d+1,0+1] = face_to_vertices
+end
+
+function fill_face_boundary!(topo::MeshTopology,mesh,D,d)
+    function barrier(
+            Dface_to_vertices,
+            vertex_to_Dfaces,
+            dface_to_vertices,
+            vertex_to_dfaces,
+            Dface_to_refid,
+            Drefid_to_ldface_to_lvertices)
+
+        # Count
+        ndfaces = length(dface_to_vertices)
+        nDfaces = length(Dface_to_vertices)
+        # Allocate output
+        ptrs = zeros(Int32,nDfaces+1)
+        for Dface in 1:nDfaces
+            Drefid = Dface_to_refid[Dface]
+            ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+            ptrs[Dface+1] = length(ldface_to_lvertices)
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = fill(Int32(INVALID_ID),ndata)
+        Dface_to_dfaces = JaggedArray(data,ptrs)
+        for Dface in 1:nDfaces
+            Drefid = Dface_to_refid[Dface]
+            ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+            lvertex_to_vertex = Dface_to_vertices[Dface]
+            ldface_to_dface = Dface_to_dfaces[Dface]
+            for (ldface,lvertices) in enumerate(ldface_to_lvertices)
+                # Find the global d-face for this local d-face
+                dface2 = Int32(INVALID_ID)
+                vertices = view(lvertex_to_vertex,lvertices)
+                for (i,lvertex) in enumerate(lvertices)
+                    vertex = lvertex_to_vertex[lvertex]
+                    dfaces = vertex_to_dfaces[vertex]
+                    for dface1 in dfaces
+                        vertices1 = dface_to_vertices[dface1]
+                        if same_valid_ids(vertices,vertices1)
+                            dface2 = dface1
+                            break
+                        end
+                    end
+                    if dface2 != Int32(INVALID_ID)
+                        break
+                    end
+                end
+                @boundscheck @assert dface2 != Int32(INVALID_ID)
+                ldface_to_dface[ldface] = dface2
+            end # (ldface,lvertices)
+        end # Dface
+        Dface_to_dfaces
+    end
+    Dface_to_vertices = face_incidence(topo,D,0)
+    vertex_to_Dfaces = face_incidence(topo,0,D)
+    dface_to_vertices = face_incidence(topo,d,0)
+    vertex_to_dfaces = face_incidence(topo,0,d)
+    Dface_to_refid = face_reference_id(topo,D)
+    refid_refface = reference_faces(topo,D)
+    Drefid_to_ldface_to_lvertices = map(refface->face_incidence(refface,d,0),refid_refface)
+    Dface_to_dfaces = barrier(
+            Dface_to_vertices,
+            vertex_to_Dfaces,
+            dface_to_vertices,
+            vertex_to_dfaces,
+            Dface_to_refid,
+            Drefid_to_ldface_to_lvertices)
+    topo.face_incidence[D+1,d+1] = Dface_to_dfaces
+end
+
+const INVALID_ID = 0
+
+function intersection!(a,b,na,nb)
+  function findeq!(i,a,b,nb)
+    for j in 1:nb
+      if a[i] == b[j]
+        return
+      end
+    end
+    a[i] = INVALID_ID
+    return
+  end
+  for i in 1:na
+    if a[i] == INVALID_ID
+      continue
+    end
+    findeq!(i,a,b,nb)
+  end
+end
+
+function same_valid_ids(a,b)
+  function is_subset(a,b)
+    for i in 1:length(a)
+      v = a[i]
+      if v == INVALID_ID
+        continue
+      end
+      c = find_eq(v,b)
+      if c == false; return false; end
+    end
+    return true
+  end
+  function find_eq(v,b)
+    for vs in b
+      if v == vs
+        return true
+      end
+    end
+    return false
+  end
+  c = is_subset(a,b)
+  if c == false; return false; end
+  c = is_subset(b,a)
+  if c == false; return false; end
+  return true
+end

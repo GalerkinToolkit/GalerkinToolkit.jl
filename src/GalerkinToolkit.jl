@@ -68,6 +68,9 @@ export classify_mesh_faces
 export classify_mesh_faces!
 export restrict_face_dofs
 export add_physical_groups_hypercube
+export mesh_topology
+export face_incidence
+export face_boundary
 
 include("mesh_interface.jl")
 include("dof_glue.jl")

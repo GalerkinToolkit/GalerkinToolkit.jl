@@ -22,6 +22,10 @@ function vtk_mesh_cell(a::Meshes.Point)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_VERTEX,nodes)
 end
 vtk_cell_type(a::Meshes.Point) = WriteVTK.VTKCellTypes.VTK_VERTEX
+own_nodes(a::Meshes.Point) = [Int32(1)]
+own_node_permutations(a::Meshes.Point) = [[Int32(1)]]
+face_topology(a::Meshes.Point) = NodeTopology()
+mesh_topology(a::Meshes.Point) = face_topology(a)
 
 # Segment
 dimension(a::Meshes.Segment) = 1
@@ -51,6 +55,9 @@ function vtk_mesh_cell(a::Meshes.Segment)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes)
 end
 vtk_cell_type(a::Meshes.Segment) = WriteVTK.VTKCellTypes.VTK_LINE
+own_nodes(a::Meshes.Segment) = Int32[]
+own_node_permutations(a::Meshes.Segment) = [Int32[]]
+mesh_topology(a::Meshes.Segment) = face_topology(a)
 
 # Quadrangle
 dimension(a::Meshes.Quadrangle) = 2
@@ -84,10 +91,13 @@ function vtk_mesh_cell(a::Meshes.Quadrangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes)
 end
 vtk_cell_type(a::Meshes.Quadrangle) = WriteVTK.VTKCellTypes.VTK_QUAD
-pxest_node_permutation(a::Meshes.Quadrangle) = [1,2,4,3]
+own_nodes(a::Meshes.Quadrangle) = Int32[]
+own_node_permutations(a::Meshes.Quadrangle) = [Int32[]]
 function add_physical_groups_hypercube(a::Meshes.Quadrangle)
     add_trivial_physical_groups(a)
 end
+mesh_topology(a::Meshes.Quadrangle) = face_topology(a)
+pxest_node_permutation(a::Meshes.Quadrangle) = [1,2,4,3]
 
 # Triangle
 dimension(a::Meshes.Triangle) = 2
@@ -121,6 +131,9 @@ function vtk_mesh_cell(a::Meshes.Triangle)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
 end
 vtk_cell_type(a::Meshes.Triangle) = WriteVTK.VTKCellTypes.VTK_TRIANGLE
+own_nodes(a::Meshes.Triangle) = Int32[]
+own_node_permutations(a::Meshes.Triangle) = [Int32[]]
+mesh_topology(a::Meshes.Triangle) = face_topology(a)
 
 # Tetrahedron
 dimension(a::Meshes.Tetrahedron) = 3
@@ -159,6 +172,9 @@ function vtk_mesh_cell(a::Meshes.Tetrahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TETRA,nodes)
 end
 vtk_cell_type(a::Meshes.Tetrahedron) = WriteVTK.VTKCellTypes.VTK_TERA
+own_nodes(a::Meshes.Tetrahedron) = Int32[]
+own_node_permutations(a::Meshes.Tetrahedron) = [Int32[]]
+mesh_topology(a::Meshes.Tetrahedron) = face_topology(a)
 
 # Hexahedron
 dimension(a::Meshes.Hexahedron) = 3
@@ -197,3 +213,8 @@ function vtk_mesh_cell(a::Meshes.Hexahedron)
   nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes)
 end
 vtk_cell_type(a::Meshes.Hexahedron) = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
+own_nodes(a::Meshes.Hexahedron) = Int32[]
+own_node_permutations(a::Meshes.Hexahedron) = [Int32[]]
+mesh_topology(a::Meshes.Hexahedron) = face_topology(a)
+
+

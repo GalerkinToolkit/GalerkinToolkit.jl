@@ -852,25 +852,6 @@ function pxest_numerate_hanging_nodes!(n_nodes,leaf_to_nodes,leaf_to_constraints
     HangingNodeConstraints(n_total,n_nodes,hanging_to_masters,hanging_to_coeffs,my_free_and_hanging_nodes)
 end
 
-const INVALID_ID = 0
-
-function intersection!(a,b,na,nb)
-  function findeq!(i,a,b,nb)
-    for j in 1:nb
-      if a[i] == b[j]
-        return
-      end
-    end
-    a[i] = INVALID_ID
-    return
-  end
-  for i in 1:na
-    if a[i] == INVALID_ID
-      continue
-    end
-    findeq!(i,a,b,nb)
-  end
-end
 
 #pxest_dimension(p4est::P4est.LibP4est.p4est) = 2
 #pxest_dimension(p4est::P4est.LibP4est.p8est) = 3
