@@ -285,6 +285,11 @@ function reference_faces(a::GmshHighOrderSimplex,::Val{d}) where d
     end
 end
 
+function reference_faces(a::GmshHighOrderSimplex,::Val{0})
+    order = a.order
+    reference_faces(linear_mesh(a),Val(0))
+end
+
 function face_nodes(a::GmshHighOrderSimplex,d)
     D = dimension(a)
     if D == 1

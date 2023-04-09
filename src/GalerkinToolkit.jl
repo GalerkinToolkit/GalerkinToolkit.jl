@@ -71,6 +71,7 @@ export add_physical_groups_hypercube
 export mesh_topology
 export face_incidence
 export face_boundary
+export face_complex
 
 include("mesh_interface.jl")
 include("dof_glue.jl")

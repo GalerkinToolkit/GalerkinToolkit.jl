@@ -14,8 +14,9 @@ function reference_faces(::Type{<:Meshes.Point},::Val{d}) where d
   [Meshes.Point(SVector{0,Float64}())]
 end
 reference_faces(a::Meshes.Point,::Val{d}) where d = reference_faces(typeof(a),Val(d))
-function face_nodes(a::Meshes.Point,::Val{0})
-  JaggedArray([[Int32(1)]])
+function face_nodes(a::Meshes.Point,d)
+  d==0 && return JaggedArray([[Int32(1)]])
+  throw(DomainError(d))
 end
 node_coordinates(a::Meshes.Point) = [Meshes.coordinates(a)]
 function vtk_mesh_cell(a::Meshes.Point)

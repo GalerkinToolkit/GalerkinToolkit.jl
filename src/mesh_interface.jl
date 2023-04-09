@@ -360,9 +360,7 @@ function mesh_topology(a)
     for d in 1:(D-1)
         for n in (D-d):-1:1
             m = n+d
-            @show (m,n)
             fill_face_boundary!(topo,a,m,n)
-            display(face_incidence(topo,m,n))
             fill_face_coboundary!(topo,a,m,n)
         end
     end
@@ -376,34 +374,35 @@ function fill_face_interior!(topo::MeshTopology,mesh,d)
     topo.face_incidence[d+1,d+1] = JaggedArray(data,ptrs)
 end
 
-function fill_face_coboundary!(topo::MeshTopology,mesh,n,m)
-    function barrier(nface_to_mfaces,nmfaces)
-        ptrs = zeros(Int32,nmfaces+1)
-        nnfaces = length(nface_to_mfaces)
-        for nface in 1:nnfaces
-            mfaces = nface_to_mfaces[nface]
-            for mface in mfaces
-                ptrs[mface+1] += Int32(1)
-            end
+function generate_face_coboundary(nface_to_mfaces,nmfaces)
+    ptrs = zeros(Int32,nmfaces+1)
+    nnfaces = length(nface_to_mfaces)
+    for nface in 1:nnfaces
+        mfaces = nface_to_mfaces[nface]
+        for mface in mfaces
+            ptrs[mface+1] += Int32(1)
         end
-        length_to_ptrs!(ptrs)
-        ndata = ptrs[end]-1
-        data = zeros(Int32,ndata)
-        for nface in 1:nnfaces
-            mfaces = nface_to_mfaces[nface]
-            for mface in mfaces
-                p = ptrs[mface]
-                data[p] = nface
-                ptrs[mface] += Int32(1)
-            end
-        end
-        rewind_ptrs!(ptrs)
-        mface_to_nfaces = GenericJaggedArray(data,ptrs)
-        mface_to_nfaces
     end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = zeros(Int32,ndata)
+    for nface in 1:nnfaces
+        mfaces = nface_to_mfaces[nface]
+        for mface in mfaces
+            p = ptrs[mface]
+            data[p] = nface
+            ptrs[mface] += Int32(1)
+        end
+    end
+    rewind_ptrs!(ptrs)
+    mface_to_nfaces = JaggedArray(data,ptrs)
+    mface_to_nfaces
+end
+
+function fill_face_coboundary!(topo::MeshTopology,mesh,n,m)
     nmfaces = num_faces(mesh,m)
     nface_to_mfaces = face_incidence(topo,n,m)
-    topo.face_incidence[m+1,n+1] = barrier(nface_to_mfaces,nmfaces)
+    topo.face_incidence[m+1,n+1] = generate_face_coboundary(nface_to_mfaces,nmfaces)
 end
 
 function fill_face_vertices!(topo::MeshTopology,mesh,d)
@@ -446,8 +445,7 @@ function fill_face_vertices!(topo::MeshTopology,mesh,d)
     dface_to_refid = face_reference_id(mesh,d)
     refid_refface = reference_faces(mesh,d)
     refid_to_lvertex_to_lnodes = map(refface->face_nodes(refface,0),refid_refface)
-    face_to_vertices = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
-    topo.face_incidence[d+1,0+1] = face_to_vertices
+    topo.face_incidence[d+1,0+1] = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
 end
 
 function fill_face_boundary!(topo::MeshTopology,mesh,D,d)
@@ -565,3 +563,406 @@ function same_valid_ids(a,b)
   if c == false; return false; end
   return true
 end
+
+function face_complex(mesh)
+    Ti = Int32
+    T = JaggedArray{Ti,Ti}
+    D = dimension(mesh)
+    oldface_to_newvertices = Vector{T}(undef,D+1)
+    newvertex_to_oldfaces = Vector{T}(undef,D+1)
+    newface_incidence = Matrix{T}(undef,D+1,D+1)
+    nnewfaces = zeros(Int,D+1)
+    newface_refid = Vector{Vector{Ti}}(undef,D+1)
+    newreffaces = Vector{Any}(undef,D+1)
+    newface_nodes = Vector{T}(undef,D+1)
+    old_to_new = Vector{Vector{Ti}}(undef,D+1)
+    node_to_newvertex, n_new_vertices = find_node_to_vertex(mesh) # Optimizable for linear meshes
+    for d in 0:D
+        oldface_to_newvertices[d+1] = fill_face_vertices(mesh,d,node_to_newvertex) # Optimizable for linear meshes
+        newvertex_to_oldfaces[d+1] = generate_face_coboundary(oldface_to_newvertices[d+1],n_new_vertices) # Optimizable for linear meshes
+    end
+    newface_incidence[D+1,0+1] = oldface_to_newvertices[D+1]
+    newface_incidence[0+1,D+1] = newvertex_to_oldfaces[D+1]
+    nnewfaces[D+1] = length(oldface_to_newvertices[D+1])
+    newface_refid[D+1] = face_reference_id(mesh,D)
+    newreffaces[D+1] = reference_faces(mesh,D)
+    newface_nodes[D+1] = face_nodes(mesh,D)
+    old_to_new[D+1] = collect(Ti,1:length(newface_nodes[D+1]))
+    # TODO optimize for d==0
+    for d in (D-1):-1:0
+        n = d+1
+        new_nface_to_new_vertices = newface_incidence[n+1,0+1]
+        new_vertex_to_new_nfaces = newface_incidence[0+1,n+1]
+        old_dface_to_new_vertices = oldface_to_newvertices[d+1]
+        new_vertex_to_old_dfaces = newvertex_to_oldfaces[d+1]
+        new_nface_to_nrefid = newface_refid[n+1]
+        old_dface_to_drefid = face_reference_id(mesh,d)
+        drefid_to_ref_dface = reference_faces(mesh,d)
+        old_dface_to_nodes = face_nodes(mesh,d)
+        new_nface_to_nodes = newface_nodes[n+1]
+        nrefid_to_ldface_to_lvertices = map(a->face_incidence(face_topology(a),d,0),newreffaces[n+1])
+        nrefid_to_ldface_to_lnodes = map(a->face_nodes(a,d),newreffaces[n+1])
+        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(a,d),newreffaces[n+1])
+        nrefid_to_drefrefid_to_ref_dface = map(a->reference_faces(a,d),newreffaces[n+1])
+        new_nface_to_new_dfaces, n_new_dfaces, old_dface_to_new_dface = generate_face_boundary(
+            new_nface_to_new_vertices,
+            new_vertex_to_new_nfaces,
+            old_dface_to_new_vertices,
+            new_vertex_to_old_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lvertices)
+        new_dface_to_new_vertices = generate_face_vertices(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_new_vertices,
+            new_nface_to_new_vertices,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lvertices)
+        new_vertex_to_new_dfaces = generate_face_coboundary(new_dface_to_new_vertices,n_new_vertices)
+        new_dface_to_nodes = generate_face_vertices(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_nodes,
+            new_nface_to_nodes,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lnodes)
+        new_dface_to_new_drefid, new_refid_to_ref_dface = generate_reference_faces(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_drefid,
+            drefid_to_ref_dface,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_drefrefid,
+            nrefid_to_drefrefid_to_ref_dface)
+        newface_incidence[n+1,d+1] = new_nface_to_new_dfaces
+        newface_incidence[d+1,0+1] = new_dface_to_new_vertices
+        newface_incidence[0+1,d+1] = new_vertex_to_new_dfaces
+        newface_refid[d+1] = new_dface_to_new_drefid
+        newreffaces[d+1] = new_refid_to_ref_dface
+        nnewfaces[d+1] = n_new_dfaces
+        newface_nodes[d+1] = new_dface_to_nodes
+        old_to_new[d+1] = old_dface_to_new_dface
+    end
+    node_to_coords = node_coordinates(mesh)
+    mesh = GenericMesh(node_to_coords,newface_nodes,newface_refid,Tuple(newreffaces))
+    mesh, old_to_new
+end
+
+function generate_face_vertices(
+    n_new_dfaces,
+    old_dface_to_new_dface,
+    old_dface_to_new_vertices,
+    new_nface_to_new_vertices,
+    new_nface_to_new_dfaces,
+    new_nface_to_nrefid,
+    nrefid_to_ldface_to_lvertices
+    )
+
+    Ti = eltype(eltype(old_dface_to_new_vertices))
+    new_dface_to_touched = fill(false,n_new_dfaces)
+    new_dface_to_new_vertices_ptrs = zeros(Ti,n_new_dfaces+1)
+    n_old_dfaces = length(old_dface_to_new_dface)
+    for old_dface in 1:n_old_dfaces
+        new_dface = old_dface_to_new_dface[old_dface]
+        new_vertices = old_dface_to_new_vertices[old_dface]
+        new_dface_to_new_vertices_ptrs[new_dface+1] = length(new_vertices)
+        new_dface_to_touched[new_dface] = true
+    end
+    n_new_nfaces = length(new_nface_to_new_vertices)
+    for new_nface in 1:n_new_nfaces
+        nrefid = new_nface_to_nrefid[new_nface]
+        ldface_to_lvertices = nrefid_to_ldface_to_lvertices[nrefid]
+        ldface_to_new_dface = new_nface_to_new_dfaces[new_nface]
+        n_ldfaces = length(ldface_to_new_dface)
+        for ldface in 1:n_ldfaces
+            new_dface = ldface_to_new_dface[ldface]
+            if new_dface_to_touched[new_dface]
+                continue
+            end
+            lvertices = ldface_to_lvertices[ldface]
+            new_dface_to_new_vertices_ptrs[new_dface+1] = length(lvertices)
+            new_dface_to_touched[new_dface] = true
+        end
+
+    end
+    length_to_ptrs!(new_dface_to_new_vertices_ptrs)
+    ndata = new_dface_to_new_vertices_ptrs[end]-1
+    new_dface_to_new_vertices_data = zeros(Ti,ndata)
+    new_dface_to_new_vertices = JaggedArray(new_dface_to_new_vertices_data,new_dface_to_new_vertices_ptrs)
+    fill!(new_dface_to_touched,false)
+    for old_dface in 1:n_old_dfaces
+        new_dface = old_dface_to_new_dface[old_dface]
+        new_vertices_in = old_dface_to_new_vertices[old_dface]
+        new_vertices_out = new_dface_to_new_vertices[new_dface]
+        for i in 1:length(new_vertices_in)
+            new_vertices_out[i] = new_vertices_in[i]
+        end
+        new_dface_to_touched[new_dface] = true
+    end
+    for new_nface in 1:n_new_nfaces
+        nrefid = new_nface_to_nrefid[new_nface]
+        ldface_to_lvertices = nrefid_to_ldface_to_lvertices[nrefid]
+        ldface_to_new_dface = new_nface_to_new_dfaces[new_nface]
+        n_ldfaces = length(ldface_to_new_dface)
+        new_vertices_in = new_nface_to_new_vertices[new_nface]
+        for ldface in 1:n_ldfaces
+            new_dface = ldface_to_new_dface[ldface]
+            if new_dface_to_touched[new_dface]
+                continue
+            end
+            new_vertices_out = new_dface_to_new_vertices[new_dface]
+            lvertices = ldface_to_lvertices[ldface]
+            for i in 1:length(lvertices)
+                new_vertices_out[i] = new_vertices_in[lvertices[i]]
+            end
+            new_dface_to_touched[new_dface] = true
+        end
+
+    end
+    new_dface_to_new_vertices
+end
+
+function generate_reference_faces(
+        n_new_dfaces,
+        old_dface_to_new_dface,
+        old_dface_to_drefid,
+        drefid_to_ref_dface,
+        new_nface_to_new_dfaces,
+        new_nface_to_nrefid,
+        nrefid_to_ldface_to_drefrefid,
+        nrefid_to_drefrefid_to_ref_dface)
+
+    i_to_ref_dface = collect(Any,drefid_to_ref_dface)
+    drefid_to_i = collect(1:length(drefid_to_ref_dface))
+    i = length(i_to_ref_dface)
+    Ti = Int32
+    nrefid_to_drefrefid_to_i = map(a->zeros(Ti,length(a)),nrefid_to_drefrefid_to_ref_dface)
+    for (nrefid,drefrefid_to_ref_dface) in enumerate(nrefid_to_drefrefid_to_ref_dface)
+        for (drefrefid, ref_dface) in enumerate(drefrefid_to_ref_dface)
+            push!(i_to_ref_dface,ref_dface)
+            i += 1
+            nrefid_to_drefrefid_to_i[nrefid][drefrefid] = i
+        end
+    end
+    u_to_ref_dface = unique(i_to_ref_dface)
+    i_to_u = indexin(i_to_ref_dface,u_to_ref_dface)
+    new_dface_to_u = zeros(Ti,n_new_dfaces)
+    new_dface_to_touched = fill(false,n_new_dfaces)
+    for (old_dface,new_dface) in enumerate(old_dface_to_new_dface)
+        drefid = old_dface_to_drefid[old_dface]
+        i = drefid_to_i[drefid]
+        u = i_to_u[i]
+        new_dface_to_u[new_dface] = u
+        new_dface_to_touched[new_dface] = true
+    end
+    for (new_nface,nrefid) in enumerate(new_nface_to_nrefid)
+        ldface_to_drefrefid = nrefid_to_ldface_to_drefrefid[nrefid]
+        ldface_to_new_dface = new_nface_to_new_dfaces[new_nface]
+        drefrefid_to_i = nrefid_to_drefrefid_to_i[nrefid]
+        for (ldface,new_dface) in enumerate(ldface_to_new_dface)
+            new_dface = ldface_to_new_dface[ldface]
+            if new_dface_to_touched[new_dface]
+                continue
+            end
+            drefrefid = ldface_to_drefrefid[ldface]
+            i = drefrefid_to_i[drefrefid]
+            u = i_to_u[i]
+            new_dface_to_u[new_dface] = u
+            new_dface_to_touched[new_dface] = true
+        end
+    end
+    new_dface_to_u, Tuple(u_to_ref_dface)
+end
+
+function generate_face_boundary(
+  Dface_to_vertices,
+  vertex_to_Dfaces,
+  dface_to_vertices,
+  vertex_to_dfaces,
+  Dface_to_refid,
+  Drefid_to_ldface_to_lvertices)
+
+  # Count
+  ndfaces = length(dface_to_vertices)
+  nDfaces = length(Dface_to_vertices)
+  nvertices = length(vertex_to_Dfaces)
+  maxldfaces = 0
+  for ldface_to_lvertices in Drefid_to_ldface_to_lvertices
+    maxldfaces = max(maxldfaces,length(ldface_to_lvertices))
+  end
+  maxDfaces = 0
+  for vertex in 1:length(vertex_to_Dfaces)
+    Dfaces = vertex_to_Dfaces[vertex]
+    maxDfaces = max(maxDfaces,length(Dfaces))
+  end
+  # Allocate output
+  ptrs = zeros(Int32,nDfaces+1)
+  for Dface in 1:nDfaces
+    Drefid = Dface_to_refid[Dface]
+    ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+    ptrs[Dface+1] = length(ldface_to_lvertices)
+  end
+  length_to_ptrs!(ptrs)
+  ndata = ptrs[end]-1
+  data = fill(Int32(INVALID_ID),ndata)
+  Dface_to_dfaces = GenericJaggedArray(data,ptrs)
+  # Main loop
+  Dfaces1 = fill(Int32(INVALID_ID),maxDfaces)
+  Dfaces2 = fill(Int32(INVALID_ID),maxDfaces)
+  ldfaces1 = fill(Int32(INVALID_ID),maxDfaces)
+  nDfaces1 = 0
+  nDfaces2 = 0
+  newdface = Int32(ndfaces)
+  old_to_new = collect(Int32,1:ndfaces)
+  for Dface in 1:nDfaces
+    Drefid = Dface_to_refid[Dface]
+    ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+    lvertex_to_vertex = Dface_to_vertices[Dface]
+    ldface_to_dface = Dface_to_dfaces[Dface]
+    for (ldface,lvertices) in enumerate(ldface_to_lvertices)
+      # Do nothing if this local face has already been processed by
+      # a neighbor
+      if ldface_to_dface[ldface] != Int32(INVALID_ID)
+        continue
+      end
+      # Find if there is already a global d-face for this local d-face
+      # if yes, then use the global id of this d-face
+      # if not, create a new one
+      dface2 = Int32(INVALID_ID)
+      fill!(Dfaces1,Int32(INVALID_ID))
+      fill!(Dfaces2,Int32(INVALID_ID))
+      vertices = view(lvertex_to_vertex,lvertices)
+      for (i,lvertex) in enumerate(lvertices)
+        vertex = lvertex_to_vertex[lvertex]
+        dfaces = vertex_to_dfaces[vertex]
+        for dface1 in dfaces
+          vertices1 = dface_to_vertices[dface1]
+          if same_valid_ids(vertices,vertices1)
+            dface2 = dface1
+            break
+          end
+        end
+        if dface2 != Int32(INVALID_ID)
+          break
+        end
+      end
+      if dface2 == Int32(INVALID_ID)
+        newdface += Int32(1)
+        dface2 = newdface
+      end
+      # Find all D-faces around this local d-face
+      for (i,lvertex) in enumerate(lvertices)
+        vertex = lvertex_to_vertex[lvertex]
+        Dfaces = vertex_to_Dfaces[vertex]
+        if i == 1
+          copyto!(Dfaces1,Dfaces)
+          nDfaces1 = length(Dfaces)
+        else
+          copyto!(Dfaces2,Dfaces)
+          nDfaces2 = length(Dfaces)
+          intersection!(Dfaces1,Dfaces2,nDfaces1,nDfaces2)
+        end
+      end
+      # Find their correspondent local d-face and set the d-face
+      for Dface1 in Dfaces1
+        if Dface1 != INVALID_ID
+          Drefid1 = Dface_to_refid[Dface1]
+          lvertex1_to_vertex1 = Dface_to_vertices[Dface1]
+          ldface1_to_lvertices1 = Drefid_to_ldface_to_lvertices[Drefid1]
+          ldface2 = Int32(INVALID_ID)
+          for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
+            vertices1 = view(lvertex1_to_vertex1,lvertices1)
+            if same_valid_ids(vertices,vertices1)
+              ldface2 = ldface1
+              break
+            end
+          end
+          @boundscheck @assert ldface2 != INVALID_ID
+          Dface_to_dfaces[Dface1][ldface2] = dface2
+        end
+      end
+    end # (ldface,lvertices)
+  end # Dface
+  Dface_to_dfaces, newdface, old_to_new
+end
+
+function fill_face_vertices(mesh,d,node_to_vertex)
+    function barrier(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
+        Ti = eltype(node_to_vertex)
+        nfaces = length(face_to_nodes)
+        face_to_vertices_ptrs = zeros(Ti,nfaces+1)
+        for face in 1:nfaces
+            nodes = face_to_nodes[face]
+            refid = face_to_refid[face]
+            lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+            nlvertices = length(lvertex_to_lnodes)
+            face_to_vertices_ptrs[face+1] = nlvertices
+        end
+        length_to_ptrs!(face_to_vertices_ptrs)
+        ndata = face_to_vertices_ptrs[end]-1
+        face_to_vertices_data = zeros(Ti,ndata)
+        face_to_vertices = JaggedArray(face_to_vertices_data,face_to_vertices_ptrs)
+        for face in 1:nfaces
+            vertices = face_to_vertices[face]
+            nodes = face_to_nodes[face]
+            refid = face_to_refid[face]
+            lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+            for (lvertex,lnodes) in enumerate(lvertex_to_lnodes)
+                lnode = first(lnodes)
+                vertex = node_to_vertex[nodes[lnode]]
+                @boundscheck @assert vertex != INVALID_ID
+                vertices[lvertex] = vertex
+            end
+        end
+        face_to_vertices
+    end
+    face_to_nodes = face_nodes(mesh,d)
+    face_to_refid = face_reference_id(mesh,d)
+    refid_to_lvertex_to_lnodes = map(a->face_nodes(a,0),reference_faces(mesh,d))
+    barrier(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
+end
+
+function find_node_to_vertex(mesh)
+    function barrier!(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
+        valid_id = one(eltype(node_to_vertex))
+        for face in eachindex(face_to_nodes)
+            nodes = face_to_nodes[face]
+            refid = face_to_refid[face]
+            lvertex_to_lnodes = refid_to_lvertex_to_lnodes[refid]
+            for lnodes in lvertex_to_lnodes
+                lnode = first(lnodes)
+                node = nodes[lnode]
+                node_to_vertex[node] = valid_id
+            end
+        end
+    end
+    Ti = Int32
+    nnodes = num_nodes(mesh)
+    node_to_vertex = zeros(Ti,nnodes)
+    fill!(node_to_vertex,Ti(INVALID_ID))
+    D = dimension(mesh)
+    for d in 0:D
+        face_to_nodes = face_nodes(mesh,d)
+        face_to_refid = face_reference_id(mesh,d)
+        refid_to_lvertex_to_lnodes = map(a->face_nodes(a,0),reference_faces(mesh,d))
+        barrier!(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
+    end
+    vertex = Ti(0)
+    for node in eachindex(node_to_vertex)
+        if node_to_vertex[node] != Ti(INVALID_ID)
+            vertex += Ti(1)
+            node_to_vertex[node] = vertex
+        end
+    end
+    node_to_vertex, vertex
+end
+
+
+
+
+
+
+

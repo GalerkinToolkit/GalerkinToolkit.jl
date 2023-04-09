@@ -34,6 +34,16 @@ file = joinpath(@__DIR__,"..","assets","higher_order_2D.msh")
 mesh = gmsh_mesh(file)
 write_mesh(mesh,"higher_order_2D")
 
+complex, new_faces = face_complex(mesh)
+vtk_grid("complex",vtk_args(complex)...) do vtk
+    #vtk_physical_groups!(vtk,complex)
+end
+
+vtk_grid("higher_order_2D",vtk_args(mesh)...) do vtk
+    vtk_physical_groups!(vtk,mesh)
+end
+
+
 file = joinpath(@__DIR__,"..","assets","solid.msh")
 mesh = gmsh_mesh(file)
 
