@@ -1,12 +1,13 @@
 module TMP
 
 using ForwardDiff
+using StaticArrays
+using LinearAlgebra
 
 struct Var end
 struct Call end
 struct Lambda end
-struct Expansion end
-struct Index end
+struct Expand end
 
 struct Term{A}
     head::A
@@ -19,22 +20,21 @@ call(f,args...) = Term(Call(),Any[f,args...])
 
 lambda(var,term) = Term(Lambda(),Any[var,term])
 
-expand(term,var,range) = Term(Expansion(),Any[term,var,range])
+expand(term,var,range) = Term(Expand(),Any[term,var,range])
 
-# We need the range to be able to "undo" an expand
-# Really? Think about this
-index(term,i,range) = Term(Index(),Any[term,i,range])
-
-function substitute(term::Term{Var},var::Term{Var},val)
-    term === var ? val : term
+function substitute(term::Term{Var},vars,vals)
+    for (var,val) in zip(vars,vals)
+        term === var && return val
+    end
+    term
 end
 
-function substitute(term::Term,var::Term{Var},val)
-    args = Any[ substitute(t,var,val) for t in term.args ]
+function substitute(term::Term,vars,vals)
+    args = Any[ substitute(t,vars,vals) for t in term.args ]
     Term(term.head,args)
 end
 
-function substitute(term,var::Term{Var},val)
+function substitute(term,vars,vals)
     term
 end
 
@@ -65,33 +65,24 @@ function materialize(term::Term{Lambda})
     # Convert to DAG
     # compute topological ordering
     # Generate code
-    x -> begin
+    (x...) -> begin
         substitute(term.args[2],term.args[1],x) |> materialize
     end
 end
 
 # TODO in-place version
-function materialize(term::Term{Expansion})
+function materialize(term::Term{Expand})
     #TODO This is not efficient
     # Convert to DAG
     # compute topological ordering
     # Generate code
+    @assert length(term.args[2]) == length(term.args[3])
     l = lambda(term.args[2],term.args[1])
     f = materialize(l)
-    r = materialize(term.args[3])
-    [f(i) for i in r]
-end
-
-function materialize(term::Term{Index})
-    #TODO This is not efficient
-    # Convert to DAG
-    # compute topological ordering
-    # Generate code
-    a = materialize(term.args[1])
-    i = materialize(term.args[2])
-    r = materialize(term.args[3])
-    @boundscheck @assert i in r
-    a[i]
+    r = map(materialize,term.args[3])
+    length(r) == 1 && return [f(i) for i in r[1]]
+    length(r) == 2 && return [f(i,j) for i in r[1], j in r[2]]
+    error("expand up to 2 dimensions")
 end
 
 x = variable()
@@ -99,33 +90,121 @@ y = 3
 t = call(+,x,y)
 dump(t)
 
-t = substitute(t,x,50.)
+t = substitute(t,[x],[50.])
 dump(t)
 
 @show materialize(t)
 
 t = call(+,x,y)
 
-t = lambda(x,t)
+t = lambda([x],t)
 
 f = materialize(t)
 @show f(50.)
 
 t = call(+,x,y)
-t = expand(t,x,1:4)
+t = expand(t,[x],[1:4])
 @show materialize(t)
 
-t = index(t,3,1:4)
-@show materialize(t)
+i = variable()
+j = variable()
+t = call(*,i,j)
+t = expand(t,[i,j],[1:4,1:6])
+@show materialize(t) |> size
 
 nldofs = 3
 npoints = 4
 ncells = 5
 
-sfuns = [ (x) -> sum(x.*i) for i in 1:nldofs ]
-nodes = [(0,0),(1,0),(0,1)]
-qp = [(1,1),(2,2),(3,3),(4,4)]
-coords = [ [ (rand(),rand()) for _ in 1:nldofs] for _ in 1:ncells]
+nodes = SVector{2,Float64}[(0,0),(1,0),(0,1)]
+points = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1)]
+cell_coords = [ rand(SVector{2,Float64},nldofs) for i in 1:ncells]
+monomials = [ (x) -> prod(x.^nodes[i]) for i in 1:nldofs ]
+q = SVector(2,3)
+monomials[1](q)
+ForwardDiff.gradient(monomials[2],q)
+
+k = variable()
+mk = call(getindex,monomials,k)
+m = expand(mk,[k],[1:nldofs])
+
+materialize(m)[1](q)
+ForwardDiff.gradient(materialize(m)[1],q)
+
+k = variable()
+f = variable()
+σ = expand(lambda([f],call(f,call(getindex,nodes,k))),[k],[1:nldofs])
+
+i = variable()
+j = variable()
+mi = call(getindex,m,i)
+σj = call(getindex,σ,j)
+Cij = call(σj,mi)
+
+C = expand(Cij,[i,j],[1:nldofs,1:nldofs])
+@show materialize(C)
+
+D = call(\,C,I)
+
+k = variable()
+q = variable()
+mqk = call(call(getindex,m,k),q)
+mq = expand(mqk,[k],[1:nldofs])
+
+sq = call(*,D,mq)
+k = variable()
+sqk = call(getindex,sq,k)
+sk = lambda([q],sqk)
+s = expand(sk,[k],[1:nldofs])
+
+e = variable()
+k = variable()
+q = variable()
+xek = call(getindex,call(getindex,cell_coords,e),k)
+sk = call(getindex,s,k)
+skq = call(sk,q)
+ϕeq = call(sum,lambda([k],call(*,xek,skq)),1:nldofs)
+ϕe = lambda([q],ϕeq)
+ϕ = expand(ϕe,[e],[1:ncells])
+
+display( materialize(ϕ)[1](SVector(0,0)))
+
+e = variable()
+q = variable()
+qx = call(getindex,points,q)
+ϕe = call(getindex,ϕ,e)
+∇ϕeq = call(ForwardDiff.jacobian,ϕe,qx)
+invJeq = call(inv,∇ϕeq)
+detJeq = call(det,∇ϕeq)
+
+j = variable()
+i = variable()
+ujq = call(call(getindex,s,j),qx)
+viq = call(call(getindex,s,i),qx)
+∇ujq = call(dot,ujq,invJeq)
+∇viq = call(dot,viq,invJeq)
+
+Keqij = call(*,call(⋅,∇ujq,∇viq),detJeq)
+Keij = call(sum,lambda([q],Keqij),1:npoints)
+
+Ke = expand(Keij,[i,j],[1:nldofs,1:nldofs])
+t = lambda([e],Ke)
+f = materialize(t)
+f(1)
+
+xxx
+#call(sum,lambda([k],,1)
+
+
+aaa
+
+
+
+sfuns = [ (x) -> sum(x*i) for i in 1:nldofs ]
+
+
+qp = SVector{2,Float64}[(1,1),(2,2),(3,3),(4,4)]
+coords = [ [ SVector{2,Float64}(rand(),rand()) for _ in 1:nldofs] for _ in 1:ncells]
 
 i = variable()
 q = variable()
@@ -134,34 +213,33 @@ c = variable()
 k = variable()
 x = variable()
 
-s = call(index(sfuns,i,1:nldofs),q)
+s = call(call(getindex,sfuns,i),q)
 t = lambda(q,expand(s,i,1:nldofs))
 f = materialize(t)
-@show f((1,2))
-@show f((2,4))
+@show f(SVector(1,2))
+@show f(SVector(2,4))
 
 f = variable()
 σ = lambda(f,call(f,call(getindex,nodes,k)))
 
 xck = call(getindex,call(getindex,coords,c),k)
-sk = index(expand(s,i,1:nldofs),k,1:nldofs)
+sk = call(getindex,expand(s,i,1:nldofs),k)
 ϕ = call(sum,lambda(k,call(*,xck,sk)),1:nldofs)
 
-c = 100
-t = index(ϕ,c,1:ncells)
+t = call(getindex,expand(ϕ,c,1:ncells),4)
 t = lambda(q,t)
 f = materialize(t)
-@show f((3,2))
+@show f(SVector(3,2))
 
 
-aaaaa
-
+function invmap end
 
 invϕ = call(call(invmap,lambda(q,ϕ)),x)
 
-a = variable()
-
-u = call(lambda(q,lambda(a,s)),invϕ)
+#a = variable()
+#u = call(lambda(q,call(getindex,expand(s,i,1:nldofs),a),invϕ)
+#b = variable()
+#v = call(lambda(q,call(getindex,expand(s,i,1:nldofs),v),invϕ)
 
 
 
