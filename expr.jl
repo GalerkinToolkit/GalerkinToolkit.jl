@@ -3,11 +3,13 @@ module TMP
 using ForwardDiff
 using StaticArrays
 using LinearAlgebra
+using SparseArrays
 
 struct Var end
 struct Call end
 struct Lambda end
 struct Expand end
+struct Assemble end
 
 struct Term{A}
     head::A
@@ -21,6 +23,8 @@ call(f,args...) = Term(Call(),Any[f,args...])
 lambda(var,term) = Term(Lambda(),Any[var,term])
 
 expand(term,var,range) = Term(Expand(),Any[term,var,range])
+
+assemble(mat,rows,cols,var,range) = Term(Assemble(),Any[mat,rows,cols,var,range])
 
 function substitute(term::Term{Var},vars,vals)
     for (var,val) in zip(vars,vals)
@@ -85,6 +89,28 @@ function materialize(term::Term{Expand})
     error("expand up to 2 dimensions")
 end
 
+function materialize!(A,term::Term{Assemble})
+    #TODO This is not efficient
+    # This the full assembly code needs to be generated
+    # We cannot call invokelatest at each cell
+    tmat = lambda(term.args[4],term.args[1])
+    trows = lambda(term.args[4],term.args[2])
+    tcols = lambda(term.args[4],term.args[3])
+    fmat = materialize(tmat)
+    frows = materialize(trows)
+    fcols = materialize(tcols)
+    r = map(materialize,term.args[5])
+    @assert length(r) == 1 # In the future it can be r>1, e.g. for HDG
+    LinearAlgebra.fillstored!(A,zero(eltype(A)))
+    for e in r[1]
+        mat = fmat(e) # TODO in-place
+        rows = frows(e) # TODO in-place
+        cols = fcols(e) # TODO in-place
+        A[rows,cols] .+= mat
+    end
+    A
+end
+
 x = variable()
 y = 3
 t = call(+,x,y)
@@ -119,6 +145,8 @@ ncells = 5
 nodes = SVector{2,Float64}[(0,0),(1,0),(0,1)]
 points = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1)]
 cell_coords = [ rand(SVector{2,Float64},nldofs) for i in 1:ncells]
+ngdofs = 7
+cell_dofs = [ rand(1:ngdofs,nldofs) for i in 1:ncells]
 monomials = [ (x) -> prod(x.^nodes[i]) for i in 1:nldofs ]
 q = SVector(2,3)
 monomials[1](q)
@@ -155,7 +183,10 @@ sq = call(*,D,mq)
 k = variable()
 sqk = call(getindex,sq,k)
 sk = lambda([q],sqk)
+∇sqk = call(ForwardDiff.gradient,sk,q)
 s = expand(sk,[k],[1:nldofs])
+∇sk = lambda([q],∇sqk)
+∇s = expand(∇sk,[k],[1:nldofs])
 
 e = variable()
 k = variable()
@@ -177,77 +208,36 @@ qx = call(getindex,points,q)
 invJeq = call(inv,∇ϕeq)
 detJeq = call(det,∇ϕeq)
 
+t = lambda([e,q],∇ϕeq)
+f = materialize(t)
+@show f(4,2)
+
 j = variable()
 i = variable()
-ujq = call(call(getindex,s,j),qx)
-viq = call(call(getindex,s,i),qx)
-∇ujq = call(dot,ujq,invJeq)
-∇viq = call(dot,viq,invJeq)
+∇ujq_ref = call(call(getindex,∇s,j),qx)
+∇viq_ref = call(call(getindex,∇s,i),qx)
+∇uejq = call(*,call(transpose,∇ujq_ref),invJeq)
+∇veiq = call(*,call(transpose,∇viq_ref),invJeq)
 
-Keqij = call(*,call(⋅,∇ujq,∇viq),detJeq)
+t = lambda([e,q,i],∇veiq)
+f = materialize(t)
+@show f(5,2,1)
+
+Keqij = call(*,call(⋅,∇uejq,∇veiq),detJeq)
 Keij = call(sum,lambda([q],Keqij),1:npoints)
 
 Ke = expand(Keij,[i,j],[1:nldofs,1:nldofs])
 t = lambda([e],Ke)
 f = materialize(t)
-f(1)
+display(f(5))
 
-xxx
-#call(sum,lambda([k],,1)
+dofse = call(getindex,cell_dofs,e)
+A = spzeros(ngdofs,ngdofs)
+t = assemble(Ke,dofse,dofse,[e],[1:ncells])
+dump(t)
+materialize!(A,t)
+display(A)
 
-
-aaa
-
-
-
-sfuns = [ (x) -> sum(x*i) for i in 1:nldofs ]
-
-
-qp = SVector{2,Float64}[(1,1),(2,2),(3,3),(4,4)]
-coords = [ [ SVector{2,Float64}(rand(),rand()) for _ in 1:nldofs] for _ in 1:ncells]
-
-i = variable()
-q = variable()
-j = variable()
-c = variable()
-k = variable()
-x = variable()
-
-s = call(call(getindex,sfuns,i),q)
-t = lambda(q,expand(s,i,1:nldofs))
-f = materialize(t)
-@show f(SVector(1,2))
-@show f(SVector(2,4))
-
-f = variable()
-σ = lambda(f,call(f,call(getindex,nodes,k)))
-
-xck = call(getindex,call(getindex,coords,c),k)
-sk = call(getindex,expand(s,i,1:nldofs),k)
-ϕ = call(sum,lambda(k,call(*,xck,sk)),1:nldofs)
-
-t = call(getindex,expand(ϕ,c,1:ncells),4)
-t = lambda(q,t)
-f = materialize(t)
-@show f(SVector(3,2))
-
-
-function invmap end
-
-invϕ = call(call(invmap,lambda(q,ϕ)),x)
-
-#a = variable()
-#u = call(lambda(q,call(getindex,expand(s,i,1:nldofs),a),invϕ)
-#b = variable()
-#v = call(lambda(q,call(getindex,expand(s,i,1:nldofs),v),invϕ)
-
-
-
-#∇ϕ = call(call(ForwardDiff.jacobian,lambda(q,ϕ)),q)
-
-
-dump(σ)
-dump(ϕ)
 
 
 
