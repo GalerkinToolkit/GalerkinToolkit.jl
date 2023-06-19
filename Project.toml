@@ -4,6 +4,7 @@ authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 version = "0.1.0"
 
 [deps]
+FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
 FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
