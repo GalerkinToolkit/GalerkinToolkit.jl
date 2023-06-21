@@ -3,6 +3,8 @@ module GalerkinToolkit
 using WriteVTK
 using FastGaussQuadrature
 using StaticArrays
+using LinearAlgebra
+using ForwardDiff
 
 export vtk_args
 
@@ -22,6 +24,10 @@ is_axis_aligned(a) = a.is_axis_aligned
 bounding_box(a) = a.bounding_box
 coordinates(a) = a.coordinates
 weights(a) = a.weights
+interpolation(a) = a.interpolation
+shape_functions(a) = a.shape_functions
+gradient!(a) = a.gradient!
+value!(a) = a.value!
 
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
@@ -39,6 +45,20 @@ function face_offsets(a)
     end
     offsets
 end
+
+function is_unit_n_cube(geom)
+    !(is_axis_aligned(geom) && is_n_cube(geom)) && return false
+    my_bounding_box = bounding_box(geom)
+    all(i->i==0,first(my_bounding_box)) && all(i->i==1,last(my_bounding_box))
+end
+
+function is_unit_simplex(geom)
+    !(is_axis_aligned(geom) && is_simplex(geom)) && return false
+    my_bounding_box = bounding_box(geom)
+    all(i->i==0,first(my_bounding_box)) && all(i->i==1,last(my_bounding_box))
+end
+
+evaluate(f,x) = f(x)
 
 function vtk_points(mesh)
     function barrirer(coords)
@@ -197,14 +217,14 @@ function tensor_product_quadrature(
         w .*= 0.5*(b-a)
         (;coordinates=x,weights=w)
     end
-    coords_per_dir = map(get_coordinates,quad_per_dir)
-    weights_per_dir = map(get_weights,quad_per_dir)
+    coords_per_dir = map(coordinates,quad_per_dir)
+    weights_per_dir = map(weights,quad_per_dir)
     m = prod(map(length,weights_per_dir))
-    weights = allocator(weight_type,m)
-    coordinates = allocator(coordinate_type,m)
-    tensor_product!(identity,coordinates,coords_per_dir)
-    tensor_product!(prod,weights,weights_per_dir)
-    (;coordinates,weights)
+    w = allocator(weight_type,m)
+    x = allocator(coordinate_type,m)
+    tensor_product!(identity,x,coords_per_dir)
+    tensor_product!(prod,w,weights_per_dir)
+    (;coordinates=x,weights=w)
 end
 
 function tensor_product!(f,result,values_per_dir)
@@ -233,8 +253,69 @@ function quadrature(geom,degree_per_dir;kwargs...)
     end
 end
 
-get_coordinates(a) = a.coordinates
+function monomial_exponents(f,degree_per_dir; monomial_type=SVector{length(degree_per_dir),Int}, allocator=zeros)
+  terms_per_dir = Tuple(map(d->d+1,degree_per_dir))
+  D = length(terms_per_dir)
+  cis = CartesianIndices(terms_per_dir)
+  lis = LinearIndices(cis)
+  m = count(ci->f(Tuple(ci) .- 1),cis)
+  result = zeros(monomial_type,m)
+  for ci in cis
+      t = Tuple(ci) .- 1
+      if f(t)
+          li = lis[ci]
+          result[li] = t
+      end
+  end
+  result
+end
 
-get_weights(a) = a.weights
+function lagrange_shape_functions(monomial_exponents,node_coordinates)
+    monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
+    monomials_t = permutedims(monomials)
+    A = evaluate.(monomials_t,node_coordinates)
+    B = A\I
+    function value!(r,x;scratch=similar(r))
+        C = broadcast!(evaluate,scratch,monomials_t,x)
+        mul!(r,C,B)
+        r
+    end
+    function gradient!(r,x;scratch=similar(r,eltype(x)))
+        C = broadcast!(ForwardDiff.gradient,scratch,monomials_t,x)
+        mul!(r,C,B)
+        r
+    end
+    (;value!,gradient!)
+end
+
+function lagrange_interpolation(
+    geom,degree_per_dir;
+    type=:default,
+    coordinate_type=SVector{length(degree_per_dir),Float64},
+    kwargs...)
+    f = if is_unit_n_cube(geom)
+        if type === :default
+            e->true
+        elseif type === :Q
+            e->true
+        else
+            error("Not implemented")
+        end
+    elseif is_unit_simplex(geom)
+        if type === :default
+            e->true
+        elseif type === :Q
+            e->true
+        else
+            error("Not implemented")
+        end
+    else
+        error("Not implemented")
+    end
+    exponents = monomial_exponents(f,degree_per_dir;kwargs...)
+    node_coordinates = map(coordinate_type,exponents)
+    shape_functions = lagrange_shape_functions(exponents,node_coordinates)
+    (;shape_functions,node_coordinates)
+end
 
 end # module
