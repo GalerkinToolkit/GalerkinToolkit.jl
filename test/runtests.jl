@@ -250,7 +250,7 @@ face_nodes = [
    [[1,2,4,5],[2,3,5,6],[4,5,7,8],[5,6,8,9]]
   ]
 face_reference_id = [Int[],Int[1,1,1,1,1,1,1,1],[1,1,1,1]]
-reference_faces = ([vertex],[segment],[quad])
+reference_faces = ([],[segment],[quad])
 physical_groups = [
   [],
   ["face_1"=>[1,2],"face_2"=>[3,4],"boundary"=>[1,2,3,4,5,6,7,8]],
@@ -274,10 +274,19 @@ vtk_grid("mesh",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
 
-
 isoparametric_poisson(mesh)
 
+msh =  joinpath(@__DIR__,"..","assets","demo.msh")
+mesh = glk.mesh_from_gmsh(msh)
 
+vtk_grid("mesh",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
 
+for d in 1:3
+    vtk_grid("mesh_$d",glk.vtk_args(mesh,d)...) do vtk
+        glk.vtk_physical_groups!(vtk,mesh,d)
+    end
+end
 
 end # module

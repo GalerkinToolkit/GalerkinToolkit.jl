@@ -6,6 +6,7 @@ using StaticArrays
 using LinearAlgebra
 using ForwardDiff
 using Gmsh
+using PartitionedArrays
 
 val_parameter(a) = a
 val_parameter(::Val{a}) where a = a
@@ -30,7 +31,7 @@ gradient!(a) = a.gradient!
 value!(a) = a.value!
 order(a) = a.order
 monomial_exponents(a) = a.monomial_exponents
-node_order(a) = a.node_order
+lex_to_user_nodes(a) = a.lex_to_user_nodes
 
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
@@ -109,7 +110,7 @@ end
 function vtk_args(mesh)
     points = vtk_points(mesh)
     D = num_dims(mesh)
-    allcells = [vtk_cells(mesh,d) for d in 0:D]
+    allcells = [vtk_cells(mesh,d) for d in 0:D if num_faces(mesh,d) != 0]
     cells = reduce(vcat,allcells)
     points, cells
 end
@@ -344,41 +345,42 @@ end
 
 function lagrange_reference_face(geometry,args...;kwargs...)
     interpolation = lagrange_interpolation(geometry,args...;kwargs...)
-    vtk_mesh_cell = default_vtk_mesh_cell(geom,interpolation)
+    vtk_mesh_cell = vtk_mesh_cell_from_geometry(geometry,interpolation)
     (;geometry,interpolation,vtk_mesh_cell)
 end
 
-function default_vtk_mesh_cell(geom,interpolation)
-    #d = num_dims(geom)
-    #nnodes = num_nodes(interpolation)
-    #lex_to_user = lex_to_user_nodes(interpolation)
-    #if d == 0 && nnodes == 1
-    #    cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
-    #    lex_to_vtk = [1]
-    #elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 2
-    #    WriteVTK.VTKCellTypes.VTK_LINE
-    #elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE,nodes)
-    #elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE,nodes[[1,3,2]])
-    #elseif d == 2 && is_n_cube(geom) && nnodes == 4
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes)
-    #elseif d == 2 && is_n_cube(geom) && nnodes == 4
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[[1,2,4,3]])
-    #elseif d == 2 && is_simplex(geom) && nnodes == 3
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TRIANGLE,nodes)
-    #elseif d == 2 && is_simplex(geom) && nnodes == 6
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE,nodes)
-    #elseif d == 3 && is_n_cube(geom) && nnodes == 8
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes)
-    #elseif d == 3 && is_n_cube(geom) && nnodes == 8
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_HEXAHEDRON,nodes[[1,2,4,3,5,6,8,7]])
-    #elseif d == 3 && is_simplex(geom) && nnodes == 4
-    #    nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_TETRA,nodes)
-    #else
-    #    error("Not implemented")
-    #end
-    #nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes[lex_to_user][vtk_to_lex])
+function vtk_mesh_cell_from_geometry(geom,interpolation)
+    d = num_dims(geom)
+    nnodes = num_nodes(interpolation)
+    lex_to_user = lex_to_user_nodes(interpolation)
+    if d == 0 && nnodes == 1
+        cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
+        vtk_to_lex = [1]
+    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 2
+        cell_type = WriteVTK.VTKCellTypes.VTK_LINE
+        vtk_to_lex = [1,2]
+    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE
+        vtk_to_lex = [1,3,2]
+    elseif d == 2 && is_n_cube(geom) && nnodes == 4
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUAD
+        vtk_to_lex = [1,2,4,3]
+    elseif d == 2 && is_simplex(geom) && nnodes == 3
+        cell_type = WriteVTK.VTKCellTypes.VTK_TRIANGLE
+        vtk_to_lex = [1,2,3]
+    elseif d == 2 && is_simplex(geom) && nnodes == 6
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE
+        vtk_to_lex = [1,3,6,2,4,5]
+    elseif d == 3 && is_n_cube(geom) && nnodes == 8
+        cell_type = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
+        vtk_to_lex = [1,2,4,3,5,6,8,7]
+    elseif d == 3 && is_simplex(geom) && nnodes == 4
+        cell_type = WriteVTK.VTKCellTypes.VTK_TETRA
+        vtk_to_lex = [1,2,3,4]
+    else
+        error("Not implemented")
+    end
+    nodes -> WriteVTK.MeshCell(cell_type,nodes[lex_to_user][vtk_to_lex])
 end
 
 function unit_n_cube(D)
@@ -612,17 +614,14 @@ function mesh_from_gmsh_module()
         end
     end
 
-    mesh = GenericMesh(my_node_to_coords,my_face_nodes,my_face_reference_id,my_reference_faces)
-    if length(my_periodic_nodes) != 0
-        nperiodic = length(my_periodic_nodes)
-        nfree = nnodes - nperiodic
-        constraints = GenericPeriodicNodeConstraints(nnodes,nfree,my_periodic_to_master,my_periodic_to_coeff,my_free_and_periodic_nodes)
-        mesh2 = set_periodic_node_constraints(mesh,constraints)
-    else
-        mesh2 = mesh
-    end
-    mesh3 = set_phyisical_groups(mesh2,my_groups)
-    mesh3
+    mesh = (;
+            num_dims=Val(D),
+            node_coordinates = my_node_to_coords,
+            face_nodes = my_face_nodes,
+            face_reference_id = my_face_reference_id,
+            reference_faces = my_reference_faces,
+            physical_groups = my_groups)
+    mesh
 end
 
 function reference_face_from_gmsh_eltype(eltype)
@@ -632,7 +631,7 @@ function reference_face_from_gmsh_eltype(eltype)
         lex_to_gmsh = [1,2]
     elseif eltype == 2
         order = 1
-        geom = unit_simplex(Val(1))
+        geom = unit_simplex(Val(2))
         lex_to_gmsh = [1,2,3]
     elseif eltype == 3
         order = 1
