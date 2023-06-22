@@ -5,6 +5,8 @@ using StaticArrays
 using WriteVTK
 using SparseArrays
 using LinearAlgebra
+using ForwardDiff
+using Test
 
 function isoparametric_poisson(mesh)
 
@@ -175,6 +177,54 @@ function isoparametric_poisson(mesh)
     uh = zeros(nnodes)
     uh[first(free_and_dirichlet_nodes)] = u_free
     uh[last(free_and_dirichlet_nodes)] = u_dirichlet
+
+    eh1 = 0.0
+    for cell in 1:ncells
+        rid = face_to_rid[cell]
+        nodes = face_to_nodes[cell]
+        ue = ues[rid]
+        nl = length(nodes)
+        ∇se = ∇s[rid]
+        ∇xe = ∇x[rid]
+        se = s[rid]
+        we = w[rid]
+        nq = length(we)
+        for k in 1:nl
+            nk = nodes[k]
+            ue[k] = uh[nk]
+        end
+        for iq in 1:nq
+            Jt = zero(TJ) 
+            xint = zero(Tx)
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇se[iq,k]
+                sqx = se[iq,k]
+                Jt += ∇sqx*x'
+                xint += sqx*x
+            end
+            detJt = det(Jt)
+            invJt = inv(Jt)
+            dV = abs(detJt)*we[iq]
+            for k in 1:nl
+                ∇xe[k] = invJt*∇se[iq,k]
+            end
+            ux = u(xint)
+            ∇ux = ForwardDiff.gradient(u,xint)
+            ∇uhx = zero(∇ux)
+            uhx = zero(ux)
+            for k in 1:nl
+                uek = ue[k]
+                ∇uhx += uek*∇xe[k]
+                uhx += uek*se[iq,k]
+            end
+            ∇ex = ∇ux - ∇uhx
+            ex =  ux - uhx
+            eh1 += (∇ex⋅∇ex + ex*ex)*dV
+        end
+    end
+    eh1 = sqrt(eh1)
+    @test eh1 < 1.0e-10
 
     vtk_grid("isoparametric_poisson",glk.vtk_args(mesh)...) do vtk
         glk.vtk_physical_groups!(vtk,mesh)

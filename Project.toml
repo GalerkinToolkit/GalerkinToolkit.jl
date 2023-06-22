@@ -5,7 +5,6 @@ version = "0.1.0"
 
 [deps]
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
-FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -13,11 +12,11 @@ MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
 P4est = "7d669430-f675-4ae7-b43e-fab78ec5a902"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [compat]
-Meshes = "0.28"
 julia = "1"
 
 [extras]
