@@ -30,9 +30,9 @@ function isoparametric_poisson(mesh)
     face_to_rid = glk.face_reference_id(mesh,d)
 
     # Integration rule
-    degree_per_dir = ntuple(i->4,Val(d))
+    degree = 4
     integration_rules = map(ref_cells) do ref_cell
-        glk.quadrature(glk.geometry(ref_cell),degree_per_dir)
+        glk.quadrature(glk.geometry(ref_cell),degree)
     end
     w = map(glk.weights,integration_rules)
     q = map(glk.coordinates,integration_rules)
@@ -240,8 +240,8 @@ vtk_mesh_cell = nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes)
 segment = (;vtk_mesh_cell)
 vtk_mesh_cell = nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[[1,2,4,3]])
 geometry = (;num_dims = Val(2), is_n_cube=true, is_axis_aligned=true, bounding_box=SVector{2,Float64}[(0,0),(1,1)])
-order_per_dir = (1,1)
-interpolation = glk.lagrange_interpolation(geometry,order_per_dir)
+order = 1
+interpolation = glk.lagrange_interpolation(geometry,order)
 quad = (;geometry,vtk_mesh_cell,interpolation)
 node_coordinates = SVector{2,Float64}[(0,0),(1,0),(2,0),(0,1),(1,1),(2,1),(0,2),(1,2),(2,2)]
 face_nodes = [
