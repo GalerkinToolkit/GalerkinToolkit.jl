@@ -583,7 +583,7 @@ function mesh_from_gmsh_module()
     #my_periodic_to_coeff = ones(length(my_periodic_to_master))
 
     # Setup physical groups
-    my_groups = [ Pair{String,Vector{Int32}}[] for d in 0:D]
+    my_groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
     for d in 0:D
         offset = Int32(offsets[d+1])
         dimTags = gmsh.model.getPhysicalGroups(d)
@@ -609,8 +609,7 @@ function mesh_from_gmsh_module()
                 end
             end
             groupname = gmsh.model.getPhysicalName(dim,tag)
-            my_group = groupname => dfaces_in_physical_group
-            push!(my_groups[d+1],my_group)
+            my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
 

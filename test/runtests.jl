@@ -279,6 +279,14 @@ isoparametric_poisson(mesh)
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = glk.mesh_from_gmsh(msh)
 
+#topoloy = glk.topology(mesh)
+#face_to_cells = glk.face_incidence(topology,d-1,d)
+#boundary_faces = findall(cells->length(cells)==1,face_to_cells)
+#face_groups = gkl.physical_groups(mesh,d-1)
+#face_groups["boundary"] = boundary_faces
+#isoparametric_poisson(mesh)
+
+
 vtk_grid("mesh",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
