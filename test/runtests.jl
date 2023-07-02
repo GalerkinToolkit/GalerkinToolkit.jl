@@ -8,6 +8,53 @@ using LinearAlgebra
 using ForwardDiff
 using Test
 
+#segment
+#num_dims(segment)
+#face_reference_id(segment,d)
+#face_reference_id(segment.boundary,d)
+#face_reference_id(segment.boundary.topology,d)
+#shape_functions(segment,d)
+#node_coordinates(segment,d)
+#
+#mesh
+#num_dims(mesh)
+#face_reference_id(mesh,d)
+#face_reference_id(mesh.topology,d)
+#physical_groups(mesh)
+#
+#mesh2 = set_data(mesh;physical_groups,topology)
+
+hex = glk.unit_n_cube(Val(3))
+
+
+domain = (1,2,1,2,1,2)
+cells = (2,2,2)
+mesh = glk.cartesian_mesh(domain,cells)
+mesh,_ = glk.complexify_mesh(mesh)
+vtk_grid("cartesian",glk.vtk_args(mesh)...) |> vtk_save
+
+
+vertex = glk.unit_n_cube(Val(0))
+vertex1 = glk.lagrange_reference_face(vertex,1)
+
+segment = glk.unit_n_cube(Val(1))
+vtk_grid("segment",glk.vtk_args(segment.boundary)...) |> vtk_save
+
+segment2 = glk.lagrange_reference_face(segment,1)
+segment3 = glk.lagrange_reference_face(segment,2)
+segment4 = glk.lagrange_reference_face(segment,4)
+
+quad = glk.unit_n_cube(Val(2))
+vtk_grid("quad",glk.vtk_args(quad.boundary)...) |> vtk_save
+
+quad4 = glk.lagrange_reference_face(quad,1)
+quad9 = glk.lagrange_reference_face(quad,2)
+vtk_grid("quad9",glk.vtk_args(quad9.interpolation.boundary)...) |> vtk_save
+
+mesh_quad4 = glk.mesh_from_reference_face(quad4)
+
+vtk_grid("mesh_quad4",glk.vtk_args(mesh_quad4)...) |> vtk_save
+
 function isoparametric_poisson(mesh)
 
     # Manufactured solution
@@ -234,15 +281,12 @@ function isoparametric_poisson(mesh)
 
 end
 
-vtk_mesh_cell = nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_VERTEX,nodes)
-vertex =(;vtk_mesh_cell)
-vtk_mesh_cell = nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_LINE,nodes)
-segment = (;vtk_mesh_cell)
-vtk_mesh_cell = nodes -> WriteVTK.MeshCell(WriteVTK.VTKCellTypes.VTK_QUAD,nodes[[1,2,4,3]])
-geometry = (;num_dims = Val(2), is_n_cube=true, is_axis_aligned=true, bounding_box=SVector{2,Float64}[(0,0),(1,1)])
 order = 1
-interpolation = glk.lagrange_interpolation(geometry,order)
-quad = (;geometry,vtk_mesh_cell,interpolation)
+segment = glk.unit_n_cube(Val(1))
+segment2 = glk.lagrange_reference_face(segment,order)
+quad = glk.unit_n_cube(Val(2))
+quad4 = glk.lagrange_reference_face(quad,order)
+
 node_coordinates = SVector{2,Float64}[(0,0),(1,0),(2,0),(0,1),(1,1),(2,1),(0,2),(1,2),(2,2)]
 face_nodes = [
    Vector{Int}[],
@@ -250,11 +294,11 @@ face_nodes = [
    [[1,2,4,5],[2,3,5,6],[4,5,7,8],[5,6,8,9]]
   ]
 face_reference_id = [Int[],Int[1,1,1,1,1,1,1,1],[1,1,1,1]]
-reference_faces = ([],[segment],[quad])
+reference_faces = ([],[segment2],[quad4])
 physical_groups = [
-  [],
-  ["face_1"=>[1,2],"face_2"=>[3,4],"boundary"=>[1,2,3,4,5,6,7,8]],
-  ["domain"=>[1,2,3,4]]]
+  Dict([]),
+  Dict(["face_1"=>[1,2],"face_2"=>[3,4],"boundary"=>[1,2,3,4,5,6,7,8]]),
+  Dict(["domain"=>[1,2,3,4]])]
 mesh = (;
     num_dims=Val(2),node_coordinates,
     face_nodes,face_reference_id,
@@ -276,8 +320,16 @@ end
 
 isoparametric_poisson(mesh)
 
+new_mesh, old_to_new = glk.complexify_mesh(mesh)
+
+isoparametric_poisson(new_mesh)
+
+vtk_grid("new_mesh",glk.vtk_args(new_mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,new_mesh)
+end
+
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
-mesh = glk.mesh_from_gmsh(msh)
+mesh = glk.mesh_from_gmsh(msh;complexify=true)
 
 #topoloy = glk.topology(mesh)
 #face_to_cells = glk.face_incidence(topology,d-1,d)
