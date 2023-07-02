@@ -26,13 +26,37 @@ using Test
 
 hex = glk.unit_n_cube(Val(3))
 
-
 domain = (1,2,1,2,1,2)
 cells = (2,2,2)
-mesh = glk.cartesian_mesh(domain,cells)
-mesh,_ = glk.complexify_mesh(mesh)
-vtk_grid("cartesian",glk.vtk_args(mesh)...) |> vtk_save
+mesh = glk.cartesian_mesh(domain,cells,boundary=false,complexify=false)
 
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
+
+boundary_mesh = glk.boundary_from_cartesian_mesh(mesh)
+
+vtk_grid("cartesian_boundary",glk.vtk_args(boundary_mesh)...) do vtk
+        glk.vtk_physical_groups!(vtk,boundary_mesh)
+end
+
+mesh = glk.cartesian_mesh(domain,cells,complexify=false)
+
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
+
+mesh,_ = glk.complexify_mesh(mesh)
+
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
+
+mesh = glk.cartesian_mesh(domain,cells)
+
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
 
 vertex = glk.unit_n_cube(Val(0))
 vertex1 = glk.lagrange_reference_face(vertex,1)

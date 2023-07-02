@@ -827,7 +827,6 @@ function mesh_from_gmsh_module(;complexify=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-
     mesh = AnonymousObject(;
             num_dims=Val(D),
             node_coordinates = my_node_to_coords,
@@ -1553,7 +1552,7 @@ function bounding_box_from_domain(domain)
     (pmin,pmax)
 end
 
-function cartesian_mesh(domain,cells_per_dir)
+function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true)
     box = bounding_box_from_domain(domain)
     D = length(cells_per_dir)
     nodes_per_dir = cells_per_dir .+ 1
@@ -1593,14 +1592,146 @@ function cartesian_mesh(domain,cells_per_dir)
     order = 1
     ref_cell = lagrange_reference_face(cell_geometry,order)
     reference_cells = [ref_cell]
+    interior_cells = collect(Int32,1:length(cell_nodes))
+    groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
     chain = (;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
         face_reference_id=cell_reference_id,
-        reference_faces=reference_cells)
-    mesh = mesh_from_chain(chain)
+        reference_faces=reference_cells,
+        physical_groups=groups,
+       )
+    interior_mesh = mesh_from_chain(chain)
+    if boundary
+        boundary_mesh = boundary_from_cartesian_mesh(interior_mesh)
+        mesh_face_nodes = push(face_nodes(boundary_mesh),face_nodes(interior_mesh,D))
+        mesh_face_reference_id = push(face_reference_id(boundary_mesh),face_reference_id(interior_mesh,D))
+        mesh_reference_faces = push(reference_faces(boundary_mesh),reference_faces(interior_mesh,D))
+        mesh_groups = push(physical_groups(boundary_mesh),groups)
+        mesh = (;
+            num_dims=Val(D),
+            node_coordinates=node_coords,
+            face_nodes=mesh_face_nodes,
+            face_reference_id=mesh_face_reference_id,
+            reference_faces=mesh_reference_faces,
+            physical_groups=mesh_groups,
+           )
+    else
+        mesh = interior_mesh
+    end
+    if complexify
+        mesh, _ = complexify_mesh(mesh)
+    end
     mesh
+end
+
+function boundary_from_cartesian_mesh(mesh)
+    function barrier(
+      D,
+      cell_to_nodes,
+      nnodes,
+      d_to_ldface_to_lnodes)
+    
+      node_to_n = zeros(Int32,nnodes)
+      for nodes in cell_to_nodes
+        for node in nodes
+          node_to_n[node] += Int32(1)
+        end
+      end
+      J = typeof(JaggedArray(Vector{Int32}[]))
+      face_to_nodes = Vector{J}(undef,D)
+      groups = [ Dict{String,Vector{Int32}}() for d in 0:(D-1) ]
+      ngroups = 0
+      for d in 0:(D-1)
+        nmax = 2^d
+        ldface_to_lnodes = d_to_ldface_to_lnodes[d+1]
+        ndfaces = 0
+        for nodes in cell_to_nodes
+          for (ldface,lnodes) in enumerate(ldface_to_lnodes)
+            isboundary = true
+            for lnode in lnodes
+              node = nodes[lnode]
+              if node_to_n[node] > nmax
+                isboundary = false
+                break
+              end
+            end
+            if isboundary
+              ndfaces += 1
+            end
+          end
+        end
+        ptrs = zeros(Int32,ndfaces+1)
+        for dface in 1:ndfaces
+          ptrs[dface+1] += Int32(nmax)
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = zeros(Int32,ndata)
+        dface_to_physical_group = zeros(Int32,ndfaces)
+        ndfaces = 0
+        for nodes in cell_to_nodes
+          for (ldface,lnodes) in enumerate(ldface_to_lnodes)
+            isboundary = true
+            for lnode in lnodes
+              node = nodes[lnode]
+              if node_to_n[node] > nmax
+                isboundary = false
+                break
+              end
+            end
+            if isboundary
+              ndfaces += 1
+              group = ngroups + ldface
+              dface_to_physical_group[ndfaces] = group
+              p = ptrs[ndfaces]-Int32(1)
+              for (i,lnode) in enumerate(lnodes)
+                node = nodes[lnode]
+                data[p+i] = node
+              end
+            end
+          end
+        end
+        nldfaces = length(ldface_to_lnodes)
+        face_to_nodes[d+1] = JaggedArray(data,ptrs)
+        for ldface in 1:nldfaces
+          group = ngroups + ldface
+          group_name = "$(d)-face-$ldface"
+          faces_in_physical_group = findall(g->g==group,dface_to_physical_group)
+          groups[d+1][group_name] = faces_in_physical_group
+        end
+        ngroups += nldfaces
+        if d == (D-1)
+            groups[d+1]["boundary"] = 1:length(dface_to_physical_group)
+        end
+      end # d
+      ngroups += 1
+      groups, face_to_nodes
+    end # barrier
+
+    D = num_dims(mesh)
+    cell_to_nodes = face_nodes(mesh,D)
+    reference_cells = reference_faces(mesh,D)
+    node_coords = node_coordinates(mesh)
+    ref_cell = first(reference_cells)
+    refid_to_refface = reference_faces(boundary(interpolation(ref_cell)))
+    nnodes = num_nodes(mesh)
+    d_to_ldface_to_lnodes = [face_nodes(boundary(interpolation(ref_cell)),d) for d in 0:(D-1)]
+    groups, face_to_nodes = barrier(
+      D,
+      cell_to_nodes,
+      nnodes,
+      d_to_ldface_to_lnodes)
+    face_to_refid = [ ones(Int8,length(face_to_nodes[d+1]))  for d in 0:(D-1)]
+    boundary_mesh = AnonymousObject(;
+        num_dims=Val(D-1),
+        physical_groups=groups,
+        node_coordinates=node_coords,
+        face_nodes=face_to_nodes,
+        face_reference_id=face_to_refid,
+        reference_faces=refid_to_refface)
+    boundary_mesh
 end
 
 function mesh_from_chain(chain)
@@ -1617,14 +1748,23 @@ function mesh_from_chain(chain)
     end
     face_to_nodes[end] = cell_nodes
     face_to_refid[end] = cell_reference_id
-    refid_to_refface = (ntuple(d->[],Val(D))...,reference_cells)
-    AnonymousObject(;
+    ref_cell = first(reference_cells)
+    ref_faces = reference_faces(boundary(interpolation(ref_cell)))
+    refid_to_refface = push(ref_faces,reference_cells)
+    mesh = AnonymousObject(;
       num_dims=Val(D),
       node_coordinates=node_coords,
       face_nodes=face_to_nodes,
       face_reference_id=face_to_refid,
       reference_faces=refid_to_refface,
       )
+    if has_physical_groups(chain)
+        cell_groups = physical_groups(chain)
+        groups = [ typeof(cell_groups)() for d in 0:D]
+        groups[end] = cell_groups
+        mesh = set(mesh,physical_groups=groups)
+    end
+    mesh
 end
 
 
