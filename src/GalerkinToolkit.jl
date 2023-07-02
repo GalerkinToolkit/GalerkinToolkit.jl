@@ -467,32 +467,35 @@ function vtk_mesh_cell_from_geometry(geom,interpolation)
     lib_to_user = lib_to_user_nodes(interpolation)
     if d == 0 && nnodes == 1
         cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
-        vtk_to_lex = [1]
+        vtk_to_lib = [1]
     elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 2
         cell_type = WriteVTK.VTKCellTypes.VTK_LINE
-        vtk_to_lex = [1,2]
+        vtk_to_lib = [1,2]
     elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
         cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE
-        vtk_to_lex = [1,3,2]
+        vtk_to_lib = [1,3,2]
     elseif d == 2 && is_n_cube(geom) && nnodes == 4
         cell_type = WriteVTK.VTKCellTypes.VTK_QUAD
-        vtk_to_lex = [1,2,4,3]
+        vtk_to_lib = [1,2,4,3]
     elseif d == 2 && is_simplex(geom) && nnodes == 3
         cell_type = WriteVTK.VTKCellTypes.VTK_TRIANGLE
-        vtk_to_lex = [1,2,3]
+        vtk_to_lib = [1,2,3]
     elseif d == 2 && is_simplex(geom) && nnodes == 6
         cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE
-        vtk_to_lex = [1,3,6,2,4,5]
+        vtk_to_lib = [1,3,6,2,5,4]
     elseif d == 3 && is_n_cube(geom) && nnodes == 8
         cell_type = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
-        vtk_to_lex = [1,2,4,3,5,6,8,7]
+        vtk_to_lib = [1,2,4,3,5,6,8,7]
     elseif d == 3 && is_simplex(geom) && nnodes == 4
         cell_type = WriteVTK.VTKCellTypes.VTK_TETRA
-        vtk_to_lex = [1,2,3,4]
+        vtk_to_lib = [1,2,3,4]
+    elseif d == 3 && is_simplex(geom) && nnodes == 10
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TETRA
+        vtk_to_lib = [1,3,6,10,2,5,4,7,8,9]
     else
         return nothing
     end
-    nodes -> WriteVTK.MeshCell(cell_type,nodes[lib_to_user][vtk_to_lex])
+    nodes -> WriteVTK.MeshCell(cell_type,(nodes[lib_to_user])[vtk_to_lib])
 end
 
 function unit_n_cube(D;kwargs...)
@@ -611,7 +614,7 @@ function unit_simplex_boundary(
         my_reference_faces = ([vertex],[segment],[tri])
         AnonymousObject(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     else
-        @error "case not implemented"
+        error("case not implemented")
     end
     if my_boundary !== nothing
         topology = topology_from_mesh(my_boundary)
@@ -619,6 +622,100 @@ function unit_simplex_boundary(
     else
         (;topology=nothing)
     end
+end
+
+function simplexify_reference_geometry(geo)
+    if is_unit_simplex(geo)
+        simplexify_unit_simplex(geo)
+    elseif is_unit_n_cube(geo)
+        simplexify_unit_n_cube(geo)
+    else
+        error("case not implemented")
+    end
+end
+
+function simplexify_unit_simplex(geo)
+    order = 1
+    refface = lagrange_reference_face(geo,order)
+    mesh_from_reference_face(refface)
+end
+
+function simplexify_unit_n_cube(geo)
+    D = num_dims(geo)
+    if D in (0,1)
+        return simplexify_unit_simplex(geo)
+    end
+    simplex = unit_simplex(Val(D))
+    order = 1
+    ref_cell = lagrange_reference_face(simplex,order)
+    node_coords = node_coordinates(boundary(geo))
+    cell_nodes = if D == 2
+        [[1,2,3],[2,3,4]]
+    elseif D ==3
+        [[1,2,3,7], [1,2,5,7], [2,3,4,7],
+        [2,4,7,8], [2,5,6,7], [2,6,7,8]]
+    else
+        error("case not implemented")
+    end
+    ncells = length(cell_nodes)
+    cell_reference_id = fill(Int8(1),ncells)
+    reference_cells = [ref_cell]
+    chain = (;
+        num_dims=Val(D),
+        node_coordinates=node_coords,
+        face_nodes=cell_nodes,
+        face_reference_id=cell_reference_id,
+        reference_faces=reference_cells,
+       )
+    mesh_from_chain(chain)
+end
+
+function simplexify_reference_face(ref_face)
+    mesh_geom  = simplexify_reference_geometry(geometry(ref_face))
+    D = num_dims(mesh_geom)
+    node_coordinates_geom = node_coordinates(mesh_geom)
+    ref_faces_geom = reference_faces(mesh_geom,D)
+    face_nodes_geom = face_nodes(mesh_geom,D)
+    face_ref_id_geom = face_reference_id(mesh_geom,D)
+    nfaces = length(face_ref_id_geom)
+    # We need the same order in all directions
+    # for this to make sense
+    my_order = order(interpolation(ref_face))
+    ref_faces_inter = map(r_geom->lagrange_reference_face(geometry(r_geom),my_order),ref_faces_geom)
+    s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
+        m = num_nodes(interpolation(r))
+        n = num_nodes(interpolation(r_geom))
+        f = shape_functions(interpolation(r_geom))
+        x = node_coordinates(interpolation(r))
+        f.value!(zeros(m,n),x)
+    end
+    node_coordinates_inter = node_coordinates(interpolation(ref_face))
+    node_coordinates_aux = map(xi->map(xii->round(Int,my_order*xii),xi),node_coordinates_inter)
+    face_nodes_inter = Vector{Vector{Int}}(undef,nfaces)
+    for face in 1:nfaces
+        ref_id_geom = face_ref_id_geom[face]
+        s = s_ref[ref_id_geom]
+        nodes_geom = face_nodes_geom[face]
+        nnodes, nnodes_geom = size(s)
+        x_mapped = map(1:nnodes) do i
+            x = zero(eltype(node_coordinates_inter))
+            for k in 1:nnodes_geom
+                x += node_coordinates_geom[nodes_geom[k]]*s[i,k]
+            end
+            map(xi->round(Int,my_order*xi),x)
+        end
+        my_nodes = indexin(x_mapped,node_coordinates_aux)
+        face_nodes_inter[face] = my_nodes
+    end
+    ref_inter = 
+    chain = AnonymousObject(;
+        num_dims=Val(D),
+        node_coordinates=node_coordinates_inter,
+        face_nodes = face_nodes_inter,
+        face_reference_id = face_ref_id_geom,
+        reference_faces = ref_faces_inter,
+    )
+    mesh_from_chain(chain)
 end
 
 const INVALID_ID = 0

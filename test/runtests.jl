@@ -24,7 +24,26 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+
+tet = glk.unit_simplex(Val(3))
+refface = glk.lagrange_reference_face(tet,2)
+vtk_grid("debug",glk.vtk_args(glk.mesh_from_reference_face(refface))...) do vtk
+    vtk["nodeid"] = 1:6
+end
+vtk_grid("debug_boundary",glk.vtk_args(glk.boundary(refface.interpolation))...) do vtk 
+    vtk["nodeid"] = 1:6
+end
+
 hex = glk.unit_n_cube(Val(3))
+tri_hex = glk.simplexify_reference_geometry(hex)
+vtk_grid("debug",glk.vtk_args(tri_hex)...) |> vtk_save
+
+order = 2
+refface = glk.lagrange_reference_face(hex,order)
+mesh = glk.simplexify_reference_face(refface)
+
+vtk_grid("debug",glk.vtk_args(mesh)...) |> vtk_save
+
 
 domain = (1,2,1,2,1,2)
 cells = (2,2,2)
