@@ -1714,12 +1714,20 @@ function bounding_box_from_domain(domain)
     (pmin,pmax)
 end
 
-function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true)
-    if boundary
-        mesh = cartesian_mesh_with_boundary(domain,cells_per_dir)
+function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false)
+    mesh = if boundary
+        if simplexify
+            structured_simplex_mesh_with_boundary(domain,cells_per_dir)
+        else
+            cartesian_mesh_with_boundary(domain,cells_per_dir)
+        end
     else
-        chain = cartesian_chain(domain,cells_per_dir)
-        mesh = mesh_from_chain(chain)
+        if simplexify
+            chain = structured_simplex_chain(domain,cells_per_dir)
+        else
+            chain = cartesian_chain(domain,cells_per_dir)
+        end
+        mesh_from_chain(chain)
     end
     if complexify
         mesh, = complexify_mesh(mesh)

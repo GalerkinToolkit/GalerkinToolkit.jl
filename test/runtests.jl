@@ -81,6 +81,18 @@ vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
 
+mesh = glk.cartesian_mesh(domain,cells,simplexify=true)
+
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
+
+mesh = glk.cartesian_mesh(domain,cells,simplexify=true,boundary=false)
+
+vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
+
 vertex = glk.unit_n_cube(Val(0))
 vertex1 = glk.lagrange_reference_face(vertex,1)
 
