@@ -24,12 +24,21 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+domain = (1,2,1,2,1,2)
+cells = (2,2,2)
+mesh = glk.structured_simplex_mesh_with_boundary(domain,cells)
+vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
+    glk.vtk_physical_groups!(vtk,mesh)
+end
 
 tet = glk.unit_simplex(Val(3))
 refface = glk.lagrange_reference_face(tet,2)
-vtk_grid("debug",glk.vtk_args(glk.mesh_from_reference_face(refface))...) do vtk
+mesh = glk.mesh_from_reference_face(refface)
+vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
     vtk["nodeid"] = 1:6
+    glk.vtk_physical_groups!(vtk,mesh)
 end
+
 vtk_grid("debug_boundary",glk.vtk_args(glk.boundary(refface.interpolation))...) do vtk 
     vtk["nodeid"] = 1:6
 end
