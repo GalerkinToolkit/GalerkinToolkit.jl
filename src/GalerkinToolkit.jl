@@ -526,7 +526,7 @@ function unit_n_cube_boundary(
     D;
     reference_face=nothing)
 
-    # TODO order the boundary in a more standard way
+    # TODO use the same convention than in Gridap
     # allow the user define an alternative ordering
 
     d = val_parameter(D)
@@ -567,7 +567,6 @@ function unit_n_cube_boundary(
         @error "Case not implemented"
     end
     if my_boundary !== nothing
-        vtk_grid("debug_$d",vtk_args(my_boundary)...) |> vtk_save
         topology = topology_from_mesh(my_boundary)
         set(my_boundary;topology)
     else
@@ -576,6 +575,8 @@ function unit_n_cube_boundary(
 end
 
 function unit_simplex_boundary(
+    # TODO use the same convention than in Gridap
+    # allow the user to customize the boundary object ids
     D;
     reference_face=nothing)
 
@@ -605,7 +606,7 @@ function unit_simplex_boundary(
         face_nodes = [
             [[1],[2],[3],[4]],
             [[1,2],[1,3],[2,3],[1,4],[2,4],[3,4]],
-            [[1,2,3],[2,3,4],[3,2,4],[3,1,4]],
+            [[1,2,3],[1,2,4],[1,3,4],[2,3,4]],
            ]
         face_reference_id = [ones(Int,4),ones(Int,6),ones(Int,4)]
         tri = reference_face
@@ -635,12 +636,14 @@ function simplexify_reference_geometry(geo)
 end
 
 function simplexify_unit_simplex(geo)
+    @assert is_unit_simplex(geo)
     order = 1
     refface = lagrange_reference_face(geo,order)
     mesh_from_reference_face(refface)
 end
 
 function simplexify_unit_n_cube(geo)
+    @assert is_unit_n_cube(geo)
     D = num_dims(geo)
     if D in (0,1)
         return simplexify_unit_simplex(geo)
@@ -649,14 +652,7 @@ function simplexify_unit_n_cube(geo)
     order = 1
     ref_cell = lagrange_reference_face(simplex,order)
     node_coords = node_coordinates(boundary(geo))
-    cell_nodes = if D == 2
-        [[1,2,3],[2,3,4]]
-    elseif D ==3
-        [[1,2,3,7], [1,2,5,7], [2,3,4,7],
-        [2,4,7,8], [2,5,6,7], [2,6,7,8]]
-    else
-        error("case not implemented")
-    end
+    cell_nodes = simplex_node_ids_n_cube(geo)
     ncells = length(cell_nodes)
     cell_reference_id = fill(Int8(1),ncells)
     reference_cells = [ref_cell]
@@ -667,7 +663,59 @@ function simplexify_unit_n_cube(geo)
         face_reference_id=cell_reference_id,
         reference_faces=reference_cells,
        )
-    mesh_from_chain(chain)
+    mesh = mesh_from_chain(chain)
+    mesh_complex, = complexify_mesh(mesh)
+    groups = [Dict{String,Vector{Int32}}() for d in 0:D]
+    for d in 0:(D-1)
+        sface_to_nodes = face_nodes(mesh_complex,d)
+        cface_to_nodes = face_nodes(boundary(geo),d)
+        nsfaces = length(sface_to_nodes)
+        ncfaces = length(cface_to_nodes)
+        sface_touched = fill(false,nsfaces)
+        for cface in 1:ncfaces
+            fill!(sface_touched,false)
+            nodes_c = cface_to_nodes[cface]
+            for sface in 1:nsfaces
+                nodes_s = sface_to_nodes[sface]
+                if all(map(n->n in nodes_c,nodes_s))
+                    sface_touched[sface] = true
+                end
+            end
+            sfaces_in_group = findall(sface_touched)
+            group_name = "$d-face-$cface"
+            groups[d+1][group_name] = sfaces_in_group
+        end
+    end
+    groups[end]["interior"] = 1:(num_faces(mesh_complex,D))
+    sface_is_boundary = fill(false,num_faces(mesh_complex,D-1))
+    for (_,sfaces) in groups[end-1]
+        sface_is_boundary[sfaces] .= true
+    end
+    groups[end-1]["boundary"] = findall(sface_is_boundary)
+    mesh_complex = set(mesh_complex,physical_groups=groups)
+    mesh_complex
+end
+
+function simplex_node_ids_n_cube(geo)
+    D = num_dims(geo)
+    # TODO check orientation of nodes
+    # this assumes lexicographic ordering
+    # for 3d nodes ids are carefully selected
+    # such that opposite faces match.
+    # This allows one to complexify meshes
+    # of ncubes with oriented faces
+    if D == 0
+        [[1]]
+    elseif D == 1
+        [[1,2]]
+    elseif D == 2
+        [[1,2,3],[2,3,4]]
+    elseif D ==3
+        [[1,2,3,7], [1,2,5,7], [2,3,4,7],
+        [2,4,7,8], [2,5,6,7], [2,6,7,8]]
+    else
+        error("case not implemented")
+    end
 end
 
 function simplexify_reference_face(ref_face)
@@ -715,7 +763,12 @@ function simplexify_reference_face(ref_face)
         face_reference_id = face_ref_id_geom,
         reference_faces = ref_faces_inter,
     )
-    mesh_from_chain(chain)
+    mesh = mesh_from_chain(chain)
+    mesh_complex, = complexify_mesh(mesh)
+    if has_physical_groups(mesh_geom)
+        mesh_complex = set(mesh_complex,physical_groups=physical_groups(mesh_geom))
+    end
+    mesh_complex
 end
 
 const INVALID_ID = 0
@@ -1256,115 +1309,115 @@ function generate_reference_faces(
 end
 
 function generate_face_boundary(
-  Dface_to_vertices,
-  vertex_to_Dfaces,
-  dface_to_vertices,
-  vertex_to_dfaces,
-  Dface_to_refid,
-  Drefid_to_ldface_to_lvertices)
+    Dface_to_vertices,
+    vertex_to_Dfaces,
+    dface_to_vertices,
+    vertex_to_dfaces,
+    Dface_to_refid,
+    Drefid_to_ldface_to_lvertices)
 
-  # Count
-  ndfaces = length(dface_to_vertices)
-  nDfaces = length(Dface_to_vertices)
-  nvertices = length(vertex_to_Dfaces)
-  maxldfaces = 0
-  for ldface_to_lvertices in Drefid_to_ldface_to_lvertices
-    maxldfaces = max(maxldfaces,length(ldface_to_lvertices))
-  end
-  maxDfaces = 0
-  for vertex in 1:length(vertex_to_Dfaces)
-    Dfaces = vertex_to_Dfaces[vertex]
-    maxDfaces = max(maxDfaces,length(Dfaces))
-  end
-  # Allocate output
-  ptrs = zeros(Int32,nDfaces+1)
-  for Dface in 1:nDfaces
-    Drefid = Dface_to_refid[Dface]
-    ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
-    ptrs[Dface+1] = length(ldface_to_lvertices)
-  end
-  length_to_ptrs!(ptrs)
-  ndata = ptrs[end]-1
-  data = fill(Int32(INVALID_ID),ndata)
-  Dface_to_dfaces = GenericJaggedArray(data,ptrs)
-  # Main loop
-  Dfaces1 = fill(Int32(INVALID_ID),maxDfaces)
-  Dfaces2 = fill(Int32(INVALID_ID),maxDfaces)
-  ldfaces1 = fill(Int32(INVALID_ID),maxDfaces)
-  nDfaces1 = 0
-  nDfaces2 = 0
-  newdface = Int32(ndfaces)
-  old_to_new = collect(Int32,1:ndfaces)
-  for Dface in 1:nDfaces
-    Drefid = Dface_to_refid[Dface]
-    ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
-    lvertex_to_vertex = Dface_to_vertices[Dface]
-    ldface_to_dface = Dface_to_dfaces[Dface]
-    for (ldface,lvertices) in enumerate(ldface_to_lvertices)
-      # Do nothing if this local face has already been processed by
-      # a neighbor
-      if ldface_to_dface[ldface] != Int32(INVALID_ID)
-        continue
-      end
-      # Find if there is already a global d-face for this local d-face
-      # if yes, then use the global id of this d-face
-      # if not, create a new one
-      dface2 = Int32(INVALID_ID)
-      fill!(Dfaces1,Int32(INVALID_ID))
-      fill!(Dfaces2,Int32(INVALID_ID))
-      vertices = view(lvertex_to_vertex,lvertices)
-      for (i,lvertex) in enumerate(lvertices)
-        vertex = lvertex_to_vertex[lvertex]
-        dfaces = vertex_to_dfaces[vertex]
-        for dface1 in dfaces
-          vertices1 = dface_to_vertices[dface1]
-          if same_valid_ids(vertices,vertices1)
-            dface2 = dface1
-            break
-          end
-        end
-        if dface2 != Int32(INVALID_ID)
-          break
-        end
-      end
-      if dface2 == Int32(INVALID_ID)
-        newdface += Int32(1)
-        dface2 = newdface
-      end
-      # Find all D-faces around this local d-face
-      for (i,lvertex) in enumerate(lvertices)
-        vertex = lvertex_to_vertex[lvertex]
+    # Count
+    ndfaces = length(dface_to_vertices)
+    nDfaces = length(Dface_to_vertices)
+    nvertices = length(vertex_to_Dfaces)
+    maxldfaces = 0
+    for ldface_to_lvertices in Drefid_to_ldface_to_lvertices
+        maxldfaces = max(maxldfaces,length(ldface_to_lvertices))
+    end
+    maxDfaces = 0
+    for vertex in 1:length(vertex_to_Dfaces)
         Dfaces = vertex_to_Dfaces[vertex]
-        if i == 1
-          copyto!(Dfaces1,Dfaces)
-          nDfaces1 = length(Dfaces)
-        else
-          copyto!(Dfaces2,Dfaces)
-          nDfaces2 = length(Dfaces)
-          intersection!(Dfaces1,Dfaces2,nDfaces1,nDfaces2)
-        end
-      end
-      # Find their correspondent local d-face and set the d-face
-      for Dface1 in Dfaces1
-        if Dface1 != INVALID_ID
-          Drefid1 = Dface_to_refid[Dface1]
-          lvertex1_to_vertex1 = Dface_to_vertices[Dface1]
-          ldface1_to_lvertices1 = Drefid_to_ldface_to_lvertices[Drefid1]
-          ldface2 = Int32(INVALID_ID)
-          for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
-            vertices1 = view(lvertex1_to_vertex1,lvertices1)
-            if same_valid_ids(vertices,vertices1)
-              ldface2 = ldface1
-              break
+        maxDfaces = max(maxDfaces,length(Dfaces))
+    end
+    # Allocate output
+    ptrs = zeros(Int32,nDfaces+1)
+    for Dface in 1:nDfaces
+        Drefid = Dface_to_refid[Dface]
+        ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+        ptrs[Dface+1] = length(ldface_to_lvertices)
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = fill(Int32(INVALID_ID),ndata)
+    Dface_to_dfaces = GenericJaggedArray(data,ptrs)
+    # Main loop
+    Dfaces1 = fill(Int32(INVALID_ID),maxDfaces)
+    Dfaces2 = fill(Int32(INVALID_ID),maxDfaces)
+    ldfaces1 = fill(Int32(INVALID_ID),maxDfaces)
+    nDfaces1 = 0
+    nDfaces2 = 0
+    newdface = Int32(ndfaces)
+    old_to_new = collect(Int32,1:ndfaces)
+    for Dface in 1:nDfaces
+        Drefid = Dface_to_refid[Dface]
+        ldface_to_lvertices = Drefid_to_ldface_to_lvertices[Drefid]
+        lvertex_to_vertex = Dface_to_vertices[Dface]
+        ldface_to_dface = Dface_to_dfaces[Dface]
+        for (ldface,lvertices) in enumerate(ldface_to_lvertices)
+            # Do nothing if this local face has already been processed by
+            # a neighbor
+            if ldface_to_dface[ldface] != Int32(INVALID_ID)
+                continue
             end
-          end
-          @boundscheck @assert ldface2 != INVALID_ID
-          Dface_to_dfaces[Dface1][ldface2] = dface2
-        end
-      end
-    end # (ldface,lvertices)
-  end # Dface
-  Dface_to_dfaces, newdface, old_to_new
+            # Find if there is already a global d-face for this local d-face
+            # if yes, then use the global id of this d-face
+            # if not, create a new one
+            dface2 = Int32(INVALID_ID)
+            fill!(Dfaces1,Int32(INVALID_ID))
+            fill!(Dfaces2,Int32(INVALID_ID))
+            vertices = view(lvertex_to_vertex,lvertices)
+            for (i,lvertex) in enumerate(lvertices)
+                vertex = lvertex_to_vertex[lvertex]
+                dfaces = vertex_to_dfaces[vertex]
+                for dface1 in dfaces
+                    vertices1 = dface_to_vertices[dface1]
+                    if same_valid_ids(vertices,vertices1)
+                        dface2 = dface1
+                        break
+                    end
+                end
+                if dface2 != Int32(INVALID_ID)
+                    break
+                end
+            end
+            if dface2 == Int32(INVALID_ID)
+                newdface += Int32(1)
+                dface2 = newdface
+            end
+            # Find all D-faces around this local d-face
+            for (i,lvertex) in enumerate(lvertices)
+                vertex = lvertex_to_vertex[lvertex]
+                Dfaces = vertex_to_Dfaces[vertex]
+                if i == 1
+                    copyto!(Dfaces1,Dfaces)
+                    nDfaces1 = length(Dfaces)
+                else
+                    copyto!(Dfaces2,Dfaces)
+                    nDfaces2 = length(Dfaces)
+                    intersection!(Dfaces1,Dfaces2,nDfaces1,nDfaces2)
+                end
+            end
+            # Find their correspondent local d-face and set the d-face
+            for Dface1 in Dfaces1
+                if Dface1 != INVALID_ID
+                    Drefid1 = Dface_to_refid[Dface1]
+                    lvertex1_to_vertex1 = Dface_to_vertices[Dface1]
+                    ldface1_to_lvertices1 = Drefid_to_ldface_to_lvertices[Drefid1]
+                    ldface2 = Int32(INVALID_ID)
+                    for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
+                        vertices1 = view(lvertex1_to_vertex1,lvertices1)
+                        if same_valid_ids(vertices,vertices1)
+                            ldface2 = ldface1
+                            break
+                        end
+                    end
+                    @boundscheck @assert ldface2 != INVALID_ID
+                    Dface_to_dfaces[Dface1][ldface2] = dface2
+                end
+            end
+        end # (ldface,lvertices)
+    end # Dface
+    Dface_to_dfaces, newdface, old_to_new
 end
 
 function fill_face_vertices(mesh,d,node_to_vertex)
@@ -1650,80 +1703,19 @@ function bounding_box_from_domain(domain)
 end
 
 function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true)
-    box = bounding_box_from_domain(domain)
-    D = length(cells_per_dir)
-    nodes_per_dir = cells_per_dir .+ 1
-    pmin = first(box)
-    pmax = last(box)
-    extent_per_dir = pmax .- pmin
-    h_per_dir = SVector(extent_per_dir ./ cells_per_dir)
-    nnodes = prod(nodes_per_dir)
-    ncells = prod(cells_per_dir)
-    nlnodes = 2^D
-    cell_nodes_ptrs = fill(Int32(nlnodes),ncells+1)
-    cell_nodes_ptrs[1] = 0
-    length_to_ptrs!(cell_nodes_ptrs)
-    cell_nodes_data = zeros(Int32,ncells*nlnodes)
-    cell_nodes = JaggedArray(cell_nodes_data,cell_nodes_ptrs)
-    cell_cis = CartesianIndices(cells_per_dir)
-    cell_lis = LinearIndices(cells_per_dir)
-    node_cis = CartesianIndices(nodes_per_dir)
-    node_lis = LinearIndices(nodes_per_dir)
-    lnode_cis = CartesianIndices(ntuple(i->0:1,Val(D)))
-    for (cell_li,cell_ci) in enumerate(cell_cis)
-        nodes = cell_nodes[cell_li]
-        for (lnode_li,lnode_ci) in enumerate(lnode_cis)
-            node_ci = CartesianIndex(Tuple(cell_ci) .+ Tuple(lnode_ci))
-            node_li = node_lis[node_ci]
-            nodes[lnode_li] = node_li
-        end
-    end
-    node_coords = zeros(SVector{D,Float64},nnodes)
-    for (node_li,node_ci) in enumerate(node_cis)
-        anchor = SVector(Tuple(node_ci) .- 1)
-        x = pmin .+ h_per_dir .* anchor
-        node_coords[node_li] = x
-    end
-    cell_reference_id = fill(Int32(1),ncells)
-    cell_geometry = unit_n_cube(Val(D))
-    order = 1
-    ref_cell = lagrange_reference_face(cell_geometry,order)
-    reference_cells = [ref_cell]
-    interior_cells = collect(Int32,1:length(cell_nodes))
-    groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = (;
-        num_dims=Val(D),
-        node_coordinates=node_coords,
-        face_nodes=cell_nodes,
-        face_reference_id=cell_reference_id,
-        reference_faces=reference_cells,
-        physical_groups=groups,
-       )
-    interior_mesh = mesh_from_chain(chain)
     if boundary
-        boundary_mesh = boundary_from_cartesian_mesh(interior_mesh)
-        mesh_face_nodes = push(face_nodes(boundary_mesh),face_nodes(interior_mesh,D))
-        mesh_face_reference_id = push(face_reference_id(boundary_mesh),face_reference_id(interior_mesh,D))
-        mesh_reference_faces = push(reference_faces(boundary_mesh),reference_faces(interior_mesh,D))
-        mesh_groups = push(physical_groups(boundary_mesh),groups)
-        mesh = (;
-            num_dims=Val(D),
-            node_coordinates=node_coords,
-            face_nodes=mesh_face_nodes,
-            face_reference_id=mesh_face_reference_id,
-            reference_faces=mesh_reference_faces,
-            physical_groups=mesh_groups,
-           )
+        mesh = cartesian_mesh_with_boundary(domain,cells_per_dir)
     else
-        mesh = interior_mesh
+        chain = cartesian_chain(domain,cells_per_dir)
+        mesh = mesh_from_chain(chain)
     end
     if complexify
-        mesh, _ = complexify_mesh(mesh)
+        mesh, = complexify_mesh(mesh)
     end
     mesh
 end
 
-function boundary_from_cartesian_mesh(mesh)
+function cartesian_mesh_with_boundary(domain,cells)
     function barrier(
       D,
       cell_to_nodes,
@@ -1806,14 +1798,15 @@ function boundary_from_cartesian_mesh(mesh)
       ngroups += 1
       groups, face_to_nodes
     end # barrier
-
-    D = num_dims(mesh)
-    cell_to_nodes = face_nodes(mesh,D)
-    reference_cells = reference_faces(mesh,D)
-    node_coords = node_coordinates(mesh)
+    chain = cartesian_chain(domain,cells)
+    interior_mesh = mesh_from_chain(chain)
+    D = num_dims(interior_mesh)
+    cell_to_nodes = face_nodes(interior_mesh,D)
+    reference_cells = reference_faces(interior_mesh,D)
+    node_coords = node_coordinates(interior_mesh)
     ref_cell = first(reference_cells)
     refid_to_refface = reference_faces(boundary(interpolation(ref_cell)))
-    nnodes = num_nodes(mesh)
+    nnodes = num_nodes(interior_mesh)
     d_to_ldface_to_lnodes = [face_nodes(boundary(interpolation(ref_cell)),d) for d in 0:(D-1)]
     groups, face_to_nodes = barrier(
       D,
@@ -1821,14 +1814,74 @@ function boundary_from_cartesian_mesh(mesh)
       nnodes,
       d_to_ldface_to_lnodes)
     face_to_refid = [ ones(Int8,length(face_to_nodes[d+1]))  for d in 0:(D-1)]
-    boundary_mesh = AnonymousObject(;
-        num_dims=Val(D-1),
-        physical_groups=groups,
+    mesh_face_nodes = push(face_to_nodes,face_nodes(interior_mesh,D))
+    mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
+    mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
+    mesh_groups = push(groups,physical_groups(interior_mesh,D))
+    (;
+     num_dims=Val(D),
+     node_coordinates=node_coords,
+     face_nodes=mesh_face_nodes,
+     face_reference_id=mesh_face_reference_id,
+     reference_faces=mesh_reference_faces,
+     physical_groups=mesh_groups,
+    )
+end
+
+function cartesian_chain(domain,cells_per_dir)
+    box = bounding_box_from_domain(domain)
+    D = length(cells_per_dir)
+    nodes_per_dir = cells_per_dir .+ 1
+    pmin = first(box)
+    pmax = last(box)
+    extent_per_dir = pmax .- pmin
+    h_per_dir = SVector(extent_per_dir ./ cells_per_dir)
+    nnodes = prod(nodes_per_dir)
+    ncells = prod(cells_per_dir)
+    nlnodes = 2^D
+    cell_nodes_ptrs = fill(Int32(nlnodes),ncells+1)
+    cell_nodes_ptrs[1] = 0
+    length_to_ptrs!(cell_nodes_ptrs)
+    cell_nodes_data = zeros(Int32,ncells*nlnodes)
+    cell_nodes = JaggedArray(cell_nodes_data,cell_nodes_ptrs)
+    cell_cis = CartesianIndices(cells_per_dir)
+    cell_lis = LinearIndices(cells_per_dir)
+    node_cis = CartesianIndices(nodes_per_dir)
+    node_lis = LinearIndices(nodes_per_dir)
+    lnode_cis = CartesianIndices(ntuple(i->0:1,Val(D)))
+    for (cell_li,cell_ci) in enumerate(cell_cis)
+        nodes = cell_nodes[cell_li]
+        for (lnode_li,lnode_ci) in enumerate(lnode_cis)
+            node_ci = CartesianIndex(Tuple(cell_ci) .+ Tuple(lnode_ci))
+            node_li = node_lis[node_ci]
+            nodes[lnode_li] = node_li
+        end
+    end
+    node_coords = zeros(SVector{D,Float64},nnodes)
+    for (node_li,node_ci) in enumerate(node_cis)
+        anchor = SVector(Tuple(node_ci) .- 1)
+        x = pmin .+ h_per_dir .* anchor
+        node_coords[node_li] = x
+    end
+    cell_reference_id = fill(Int32(1),ncells)
+    cell_geometry = unit_n_cube(Val(D))
+    order = 1
+    ref_cell = lagrange_reference_face(cell_geometry,order)
+    reference_cells = [ref_cell]
+    interior_cells = collect(Int32,1:length(cell_nodes))
+    groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
+    chain = (;
+        num_dims=Val(D),
         node_coordinates=node_coords,
-        face_nodes=face_to_nodes,
-        face_reference_id=face_to_refid,
-        reference_faces=refid_to_refface)
-    boundary_mesh
+        face_nodes=cell_nodes,
+        face_reference_id=cell_reference_id,
+        reference_faces=reference_cells,
+        physical_groups=groups,
+       )
+    chain
+end
+
+function structured_simplex_chain(domain,cells)
 end
 
 function mesh_from_chain(chain)
