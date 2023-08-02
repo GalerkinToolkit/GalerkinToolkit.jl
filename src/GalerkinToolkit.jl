@@ -62,6 +62,7 @@ order(a) = a.order
 monomial_exponents(a) = a.monomial_exponents
 lib_to_user_nodes(a) = a.lib_to_user_nodes
 interior_nodes(a) = a.interior_nodes
+face_permutation_ids(a) = a.face_permutation_ids
 
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
@@ -103,7 +104,7 @@ function push(a::Tuple,x)
     (a...,x)
 end
 
-function mesh_from_reference_face(ref_face;physical_groups=true)
+function mesh_from_reference_face(ref_face;physical_groups=Val(true))
     boundary_mesh = boundary(ref_face)
     D = num_dims(geometry(ref_face))
     nnodes = num_nodes(ref_face)
@@ -117,7 +118,7 @@ function mesh_from_reference_face(ref_face;physical_groups=true)
       face_nodes=face_to_nodes,
       face_reference_id=face_to_refid,
       reference_faces=refid_refface)
-    if physical_groups
+    if val_parameter(physical_groups)
         groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
         for d in 0:D
             for face in 1:num_faces(mesh,d)
@@ -130,8 +131,6 @@ function mesh_from_reference_face(ref_face;physical_groups=true)
     end
     mesh
 end
-
-evaluate(f,x) = f(x)
 
 function vtk_points(mesh)
     function barrirer(coords)
@@ -544,7 +543,7 @@ function unit_n_cube(D;kwargs...)
     is_simplex = d in (0,1)
     boundary = unit_n_cube_boundary(D;kwargs...)
     geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
-    vertex_permutations = compute_vertex_permutations(geometry)
+    vertex_permutations = vertex_permutations_from_geometry(geometry)
     set(geometry;vertex_permutations)
 end
 
@@ -557,7 +556,7 @@ function unit_simplex(D;kwargs...)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     boundary = unit_simplex_boundary(D;kwargs...)
     geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
-    vertex_permutations = compute_vertex_permutations(geometry)
+    vertex_permutations = vertex_permutations_from_geometry(geometry)
     set(geometry;vertex_permutations)
 end
 
@@ -664,7 +663,7 @@ function unit_simplex_boundary(
     end
 end
 
-function compute_vertex_permutations(geo)
+function vertex_permutations_from_geometry(geo)
     D = num_dims(geo)
     if D == 0
         return [[1]]
@@ -1654,17 +1653,25 @@ function find_node_to_vertex(mesh)
     node_to_vertex, vertex
 end
 
+function reference_topology_from_reference_face(refface)
+    myboundary = refface |> geometry |> boundary |> topology
+    myperms = vertex_permutations(geometry(refface))
+    AnonymousObject(;boundary=myboundary,vertex_permutations=myperms)
+end
+
 function topology_from_mesh(mesh)
     # Assumes that the input is a cell complex
     T = JaggedArray{Int32,Int32}
     D = num_dims(mesh)
     my_face_incidence = Matrix{T}(undef,D+1,D+1)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
-    my_reference_faces = Tuple([ map(f->f|>geometry|>boundary|>topology,reference_faces(mesh,d)) for d in 0:D ])
+    my_reference_faces = Tuple([ map(reference_topology_from_reference_face,reference_faces(mesh,d)) for d in 0:D ])
+    my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
     topo = AnonymousObject(;
         face_incidence=my_face_incidence,
         face_reference_id=my_face_reference_id,
-        reference_faces=my_reference_faces
+        reference_faces=my_reference_faces,
+        face_permutation_ids=my_face_permutation_ids,
        )
     for d in 0:D
         fill_face_interior_mesh_topology!(topo,mesh,d)
@@ -1678,6 +1685,11 @@ function topology_from_mesh(mesh)
             m = n+d
             fill_face_boundary_mesh_topology!(topo,mesh,m,n)
             fill_face_coboundary_mesh_topology!(topo,mesh,m,n)
+        end
+    end
+    for d in 0:D
+        for n in 0:d
+            fill_face_permutation_ids!(topo,d,n)
         end
     end
     topo
@@ -1831,7 +1843,7 @@ function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
     vertex_to_dfaces = face_incidence(topo,0,d)
     Dface_to_refid = face_reference_id(topo,D)
     refid_refface = reference_faces(topo,D)
-    Drefid_to_ldface_to_lvertices = map(refface->face_incidence(refface,d,0),refid_refface)
+    Drefid_to_ldface_to_lvertices = map(refface->face_incidence(boundary(refface),d,0),refid_refface)
     Dface_to_dfaces = barrier(
             Dface_to_vertices,
             vertex_to_Dfaces,
@@ -1840,6 +1852,80 @@ function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
             Dface_to_refid,
             Drefid_to_ldface_to_lvertices)
     topo.face_incidence[D+1,d+1] = Dface_to_dfaces
+end
+
+function fill_face_permutation_ids!(top,D,d)
+    function barrier!(
+            cell_to_lface_to_pindex,
+            cell_to_lface_to_face,
+            cell_to_cvertex_to_vertex,
+            cell_to_ctype,
+            ctype_to_lface_to_cvertices,
+            face_to_fvertex_to_vertex,
+            face_to_ftype,
+            ftype_to_pindex_to_cfvertex_to_fvertex)
+
+        ncells = length(cell_to_lface_to_face)
+        for cell in 1:ncells
+            ctype = cell_to_ctype[cell]
+            lface_to_cvertices = ctype_to_lface_to_cvertices[ctype]
+            a = cell_to_lface_to_face.ptrs[cell]-1
+            c = cell_to_cvertex_to_vertex.ptrs[cell]-1
+            for (lface,cfvertex_to_cvertex) in enumerate(lface_to_cvertices)
+                face = cell_to_lface_to_face.data[a+lface]
+                ftype = face_to_ftype[face]
+                b = face_to_fvertex_to_vertex.ptrs[face]-1
+                pindex_to_cfvertex_to_fvertex = ftype_to_pindex_to_cfvertex_to_fvertex[ftype]
+                pindexfound = false
+                for (pindex, cfvertex_to_fvertex) in enumerate(pindex_to_cfvertex_to_fvertex)
+                    found = true
+                    for (cfvertex,fvertex) in enumerate(cfvertex_to_fvertex)
+                        vertex1 = face_to_fvertex_to_vertex.data[b+fvertex]
+                        cvertex = cfvertex_to_cvertex[cfvertex]
+                        vertex2 = cell_to_cvertex_to_vertex.data[c+cvertex]
+                        if vertex1 != vertex2
+                            found = false
+                            break
+                        end
+                    end
+                    if found
+                        cell_to_lface_to_pindex.data[a+lface] = pindex
+                        pindexfound = true
+                        break
+                    end
+                end
+                @assert pindexfound "Valid pindex not found"
+            end
+        end
+    end
+    @assert D >= d
+    cell_to_lface_to_face = JaggedArray(face_incidence(top,D,d))
+    data = similar(cell_to_lface_to_face.data,Int8)
+    ptrs = cell_to_lface_to_face.ptrs
+    cell_to_lface_to_pindex = JaggedArray(data,ptrs)
+    if d == D || d == 0
+        fill!(cell_to_lface_to_pindex.data,Int8(1))
+        return cell_to_lface_to_pindex
+    end
+    face_to_fvertex_to_vertex = JaggedArray(face_incidence(top,d,0))
+    face_to_ftype = face_reference_id(top,d)
+    ref_dfaces = reference_faces(top,d)
+    ftype_to_pindex_to_cfvertex_to_fvertex = map(vertex_permutations,ref_dfaces)
+    cell_to_cvertex_to_vertex = JaggedArray(face_incidence(top,D,0))
+    cell_to_ctype = face_reference_id(top,D)
+    ref_Dfaces = reference_faces(top,D)
+    ctype_to_lface_to_cvertices = map(p->face_incidence(boundary(p),d,0),ref_Dfaces)
+    barrier!(
+             cell_to_lface_to_pindex,
+             cell_to_lface_to_face,
+             cell_to_cvertex_to_vertex,
+             cell_to_ctype,
+             ctype_to_lface_to_cvertices,
+             face_to_fvertex_to_vertex,
+             face_to_ftype,
+             ftype_to_pindex_to_cfvertex_to_fvertex)
+    top.face_permutation_ids[D+1,d+1] = cell_to_lface_to_pindex
+    top
 end
 
 function bounding_box_from_domain(domain)

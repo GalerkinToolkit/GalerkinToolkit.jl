@@ -9,6 +9,9 @@ using ForwardDiff
 using Test
 
 # TODO
+# before more cleanup:
+# generate a high order mesh from a linear non oriented mesh
+#
 # remove interpolation [done]
 # remove gradient! and value! [done]
 # swap order in tabulation matrix
@@ -36,18 +39,18 @@ using Test
 #mesh2 = set_data(mesh;physical_groups,topology)
 
 geo = glk.unit_simplex(Val(1))
-perms = glk.compute_vertex_permutations(geo)
+perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 2
 glk.vertex_permutations(geo) == perms
 
 geo = glk.unit_simplex(Val(3))
 reffe = glk.reference_face_from_geometry(geo)
 
-perms = glk.compute_vertex_permutations(geo)
+perms = glk.vertex_permutations_from_geometry(geo)
 glk.vertex_permutations(geo) == perms
 
 geo = glk.unit_n_cube(Val(2))
-perms = glk.compute_vertex_permutations(geo)
+perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 8
 glk.vertex_permutations(geo) == perms
 
