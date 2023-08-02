@@ -8,6 +8,15 @@ using LinearAlgebra
 using ForwardDiff
 using Test
 
+# TODO
+# remove interpolation
+# remove gradient! and value!
+# swap order in tabulation matrix
+# topology reference_faces[end][1].boundary
+# cleanups
+
+
+
 #segment
 #num_dims(segment)
 #face_reference_id(segment,d)
@@ -176,8 +185,8 @@ function isoparametric_poisson(mesh)
         shape_functions = glk.shape_functions(interpolation)
         m = length(q)
         n = glk.num_nodes(interpolation)
-        a = glk.gradient!(shape_functions)(zeros(eltype(q),m,n),q)
-        b = glk.value!(shape_functions)(zeros(m,n),q)
+        a = glk.tabulation_matrix!(shape_functions)(ForwardDiff.gradient,zeros(eltype(q),m,n),q)
+        b = glk.tabulation_matrix!(shape_functions)(glk.value,zeros(m,n),q)
         ## TODO use this API instead (NO)
         #a = broadcast(value,shape_functions,transpose(q))
         #b = broadcast(ForwardDiff.gradient,shape_functions,transpose(q))

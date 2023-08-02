@@ -57,8 +57,8 @@ coordinates(a) = a.coordinates
 weights(a) = a.weights
 interpolation(a) = a.interpolation
 shape_functions(a) = a.shape_functions
-gradient!(a) = a.gradient!
-value!(a) = a.value!
+tabulation_matrix!(a) = a.tabulation_matrix!
+tabulation_matrix(a) = a.tabulation_matrix
 order(a) = a.order
 monomial_exponents(a) = a.monomial_exponents
 lib_to_user_nodes(a) = a.lib_to_user_nodes
@@ -350,22 +350,27 @@ function lagrange_monomial_exponents(f,order,D;kwargs...)
     tensor_monomial_exponents((e,os)->f(e,order),order_per_dir;kwargs...)
 end
 
+value(f,x) = f(x)
+
 function lagrange_shape_functions(lagrange_monomial_exponents,node_coordinates)
     monomials = map(e->(x-> prod(x.^e)),lagrange_monomial_exponents)
     monomials_t = permutedims(monomials)
     A = evaluate.(monomials_t,node_coordinates)
     B = A\I
-    function value!(r,x;scratch=similar(r))
-        C = broadcast!(evaluate,scratch,monomials_t,x)
+    function tabulation_matrix!(f,r,x;scratch=nothing)
+        C = if scratch !== nothing
+            broadcast!(f,scratch,monomials_t,x)
+        else
+            broadcast(f,monomials_t,x)
+        end
         mul!(r,C,B)
         r
     end
-    function gradient!(r,x;scratch=similar(r,eltype(x)))
-        C = broadcast!(ForwardDiff.gradient,scratch,monomials_t,x)
-        mul!(r,C,B)
-        r
+    function tabulation_matrix(f,x)
+        C = broadcast(f,monomials_t,x)
+        C*B
     end
-    (;value!,gradient!)
+    (;tabulation_matrix!,tabulation_matrix)
 end
 
 function lagrange_interpolation(
@@ -435,7 +440,7 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
             n = num_nodes(interpolation(r_geom))
             f = shape_functions(interpolation(r_geom))
             x = node_coordinates(interpolation(r))
-            f.value!(zeros(m,n),x)
+            tabulation_matrix(f)(value,x)
         end
         face_nodes_geom = face_nodes(mesh_geom,d)
         nfaces = length(face_ref_id_geom[d+1])
@@ -678,8 +683,7 @@ function compute_vertex_permutations(geo)
     q = coordinates(quad)
     Tx = eltype(vertex_coords)
     TJ = typeof(zero(Tx)*zero(Tx)')
-    A = zeros(Tx,length(q),length(fun_node_coords))
-    shape_funs.gradient!(A,q)
+    A = tabulation_matrix(shape_funs)(ForwardDiff.gradient,q)
     function compute_volume(vertex_coords)
         vol = zero(eltype(TJ))
         for iq in 1:size(A,1)
@@ -732,7 +736,7 @@ function compute_interior_node_permutations(refface)
     q = ho_nodes_coordinates[interior_ho_nodes]
     Tx = eltype(vertex_coords)
     A = zeros(Float64,length(q),length(fun_node_coords))
-    shape_funs.value!(A,q)
+    A = tabulation_matrix(shape_funs)(value,q)
     perm_vertex_coords = similar(vertex_coords)
     node_perms = similar(vertex_perms)
     for (iperm,permutation) in enumerate(vertex_perms)
@@ -868,7 +872,7 @@ function simplexify_reference_face(ref_face)
         n = num_nodes(interpolation(r_geom))
         f = shape_functions(interpolation(r_geom))
         x = node_coordinates(interpolation(r))
-        f.value!(zeros(m,n),x)
+        tabulation_matrix(f)(value,x)
     end
     node_coordinates_inter = node_coordinates(interpolation(ref_face))
     node_coordinates_aux = map(xi->map(xii->round(Int,my_order*xii),xi),node_coordinates_inter)
