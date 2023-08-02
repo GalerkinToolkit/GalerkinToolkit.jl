@@ -55,7 +55,6 @@ bounding_box(a) = a.bounding_box
 vertex_permutations(a) = a.vertex_permutations
 coordinates(a) = a.coordinates
 weights(a) = a.weights
-interpolation(a) = a.interpolation
 shape_functions(a) = a.shape_functions
 tabulation_matrix!(a) = a.tabulation_matrix!
 tabulation_matrix(a) = a.tabulation_matrix
@@ -105,13 +104,13 @@ function push(a::Tuple,x)
 end
 
 function mesh_from_reference_face(ref_face;physical_groups=true)
-    boundary_mesh = boundary(interpolation(ref_face))
+    boundary_mesh = boundary(ref_face)
     D = num_dims(geometry(ref_face))
-    nnodes = num_nodes(interpolation(ref_face))
+    nnodes = num_nodes(ref_face)
     face_to_nodes = push(face_nodes(boundary_mesh),[collect(1:nnodes)])
     face_to_refid = push(face_reference_id(boundary_mesh),[1])
     refid_refface = push(reference_faces(boundary_mesh),[ref_face])
-    node_to_coords = node_coordinates(interpolation(ref_face))
+    node_to_coords = node_coordinates(ref_face)
     mesh = AnonymousObject(;
       num_dims=Val(D),
       node_coordinates=node_to_coords,
@@ -436,10 +435,10 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
     node_is_touched = fill(true,length(node_coordinates_inter))
     for d in 0:(D-1)
         s_ref = map(ref_faces_geom[d+1],ref_faces[d+1]) do r_geom,r
-            m = num_nodes(interpolation(r))
-            n = num_nodes(interpolation(r_geom))
-            f = shape_functions(interpolation(r_geom))
-            x = node_coordinates(interpolation(r))
+            m = num_nodes(r)
+            n = num_nodes(r_geom)
+            f = shape_functions(r_geom)
+            x = node_coordinates(r)
             tabulation_matrix(f)(value,x)
         end
         face_nodes_geom = face_nodes(mesh_geom,d)
@@ -476,19 +475,21 @@ end
 
 function lagrange_reference_face(geometry,args...;interior_node_permutations=Val(true),kwargs...)
     interpolation = lagrange_interpolation(geometry,args...;kwargs...)
-    vtk_mesh_cell = vtk_mesh_cell_from_geometry(geometry,interpolation)
-    refface = AnonymousObject(;geometry,interpolation,vtk_mesh_cell)
+    refface0 = set(interpolation;geometry)
+    vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface0)
+    refface1 = set(interpolation;geometry,vtk_mesh_cell)
     if val_parameter(interior_node_permutations)
-        interior_node_perms = compute_interior_node_permutations(refface)
-        return set(refface;interior_node_permutations=interior_node_perms)
+        interior_node_perms = compute_interior_node_permutations(refface1)
+        return set(refface1;interior_node_permutations=interior_node_perms)
     end
-    refface
+    refface1
 end
 
-function vtk_mesh_cell_from_geometry(geom,interpolation)
+function vtk_mesh_cell_from_reference_face(ref_face)
+    geom = geometry(ref_face)
     d = num_dims(geom)
-    nnodes = num_nodes(interpolation)
-    lib_to_user = lib_to_user_nodes(interpolation)
+    nnodes = num_nodes(ref_face)
+    lib_to_user = lib_to_user_nodes(ref_face)
     if d == 0 && nnodes == 1
         cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
         vtk_to_lib = [1]
@@ -673,11 +674,11 @@ function compute_vertex_permutations(geo)
     admissible_permutations = Vector{Int}[]
     order = 1
     ref_face = lagrange_reference_face(geo,order,interior_node_permutations=Val(false))
-    fun_mesh = boundary(interpolation(ref_face))
+    fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
     vertex_coords = geo_node_coords[vertex_to_geo_node]
-    shape_funs = shape_functions(interpolation(ref_face))
+    shape_funs = shape_functions(ref_face)
     degree = 1
     quad = quadrature(geo,degree)
     q = coordinates(quad)
@@ -713,8 +714,8 @@ function compute_vertex_permutations(geo)
 end
 
 function compute_interior_node_permutations(refface)
-    interior_ho_nodes = interior_nodes(interpolation(refface))
-    ho_nodes_coordinates = node_coordinates(interpolation(refface))
+    interior_ho_nodes = interior_nodes(refface)
+    ho_nodes_coordinates = node_coordinates(refface)
     geo = geometry(refface)
     vertex_perms = vertex_permutations(geo)
     if length(interior_ho_nodes) == 0
@@ -728,11 +729,11 @@ function compute_interior_node_permutations(refface)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
     vertex_to_geo_node = map(first,vertex_to_geo_nodes)
     ref_face = lagrange_reference_face(geo,order)
-    fun_mesh = boundary(interpolation(ref_face))
+    fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
     vertex_coords = geo_node_coords[vertex_to_geo_node]
-    shape_funs = shape_functions(interpolation(ref_face))
+    shape_funs = shape_functions(ref_face)
     q = ho_nodes_coordinates[interior_ho_nodes]
     Tx = eltype(vertex_coords)
     A = zeros(Float64,length(q),length(fun_node_coords))
@@ -865,16 +866,16 @@ function simplexify_reference_face(ref_face)
     nfaces = length(face_ref_id_geom)
     # We need the same order in all directions
     # for this to make sense
-    my_order = order(interpolation(ref_face))
+    my_order = order(ref_face)
     ref_faces_inter = map(r_geom->lagrange_reference_face(geometry(r_geom),my_order),ref_faces_geom)
     s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
-        m = num_nodes(interpolation(r))
-        n = num_nodes(interpolation(r_geom))
-        f = shape_functions(interpolation(r_geom))
-        x = node_coordinates(interpolation(r))
+        m = num_nodes(r)
+        n = num_nodes(r_geom)
+        f = shape_functions(r_geom)
+        x = node_coordinates(r)
         tabulation_matrix(f)(value,x)
     end
-    node_coordinates_inter = node_coordinates(interpolation(ref_face))
+    node_coordinates_inter = node_coordinates(ref_face)
     node_coordinates_aux = map(xi->map(xii->round(Int,my_order*xii),xi),node_coordinates_inter)
     face_nodes_inter = Vector{Vector{Int}}(undef,nfaces)
     for face in 1:nfaces
@@ -1250,9 +1251,9 @@ function complexify_mesh(mesh)
         old_dface_to_nodes = face_nodes(mesh,d)
         new_nface_to_nodes = newface_nodes[n+1]
         nrefid_to_ldface_to_lvertices = map(a->face_incidence(topology(boundary(geometry(a))),d,0),newreffaces[n+1])
-        nrefid_to_ldface_to_lnodes = map(a->face_nodes(boundary(interpolation(a)),d),newreffaces[n+1])
-        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(boundary(interpolation(a)),d),newreffaces[n+1])
-        nrefid_to_drefrefid_to_ref_dface = map(a->reference_faces(boundary(interpolation(a)),d),newreffaces[n+1])
+        nrefid_to_ldface_to_lnodes = map(a->face_nodes(boundary(a),d),newreffaces[n+1])
+        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(boundary(a),d),newreffaces[n+1])
+        nrefid_to_drefrefid_to_ref_dface = map(a->reference_faces(boundary(a),d),newreffaces[n+1])
         new_nface_to_new_dfaces, n_new_dfaces, old_dface_to_new_dface = generate_face_boundary(
             new_nface_to_new_vertices,
             new_vertex_to_new_nfaces,
@@ -1591,9 +1592,9 @@ function fill_face_vertices(mesh,d,node_to_vertex)
     face_to_refid = face_reference_id(mesh,d)
     refid_to_lvertex_to_lnodes = map(reference_faces(mesh,d)) do a
         if num_dims(geometry(a)) != 0
-            face_nodes(boundary(interpolation(a)),0)
+            face_nodes(boundary(a),0)
         else
-            [interior_nodes(interpolation(a))]
+            [interior_nodes(a)]
         end
     end
     barrier(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
@@ -1626,9 +1627,9 @@ function find_node_to_vertex(mesh)
         face_to_refid = face_reference_id(mesh,d)
         refid_to_lvertex_to_lnodes = map(reference_faces(mesh,d)) do a
             if num_dims(geometry(a)) != 0
-                face_nodes(boundary(interpolation(a)),0)
+                face_nodes(boundary(a),0)
             else
-                [interior_nodes(interpolation(a))]
+                [interior_nodes(a)]
             end
         end
         barrier!(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
@@ -1749,7 +1750,7 @@ function fill_face_vertices_mesh_topology!(topo,mesh,d)
     dface_to_nodes = face_nodes(mesh,d)
     dface_to_refid = face_reference_id(mesh,d)
     refid_refface = reference_faces(mesh,d)
-    refid_to_lvertex_to_lnodes = map(refface->face_nodes(boundary(interpolation(refface)),0),refid_refface)
+    refid_to_lvertex_to_lnodes = map(refface->face_nodes(boundary(refface),0),refid_refface)
     face_incidence(topo)[d+1,0+1] = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
 end
 
@@ -1950,9 +1951,9 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     reference_cells = reference_faces(interior_mesh,D)
     node_coords = node_coordinates(interior_mesh)
     ref_cell = first(reference_cells)
-    refid_to_refface = reference_faces(boundary(interpolation(ref_cell)))
+    refid_to_refface = reference_faces(boundary(ref_cell))
     nnodes = num_nodes(interior_mesh)
-    d_to_ldface_to_lnodes = [face_nodes(boundary(interpolation(ref_cell)),d) for d in 0:(D-1)]
+    d_to_ldface_to_lnodes = [face_nodes(boundary(ref_cell),d) for d in 0:(D-1)]
     groups, face_to_nodes = barrier(
       D,
       cell_to_nodes,
@@ -2189,15 +2190,15 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     cell_to_nodes = face_nodes(interior_mesh,D)
     reference_cells = reference_faces(interior_mesh,D)
     ref_cell = first(reference_cells)
-    refid_to_refface = reference_faces(boundary(interpolation(ref_cell)))
+    refid_to_refface = reference_faces(boundary(ref_cell))
     nnodes = num_nodes(interior_mesh)
 
     cell_geometry = unit_n_cube(Val(D))
     ref_simplex_mesh = simplexify_reference_geometry(cell_geometry)
     d_to_ldface_to_sldface_to_lnodes = [
       [ face_nodes(ref_simplex_mesh,d)[physical_groups(ref_simplex_mesh,d)["$d-face-$ldface"]]
-      for ldface in 1:num_faces(boundary(interpolation(ref_cell)),d) ] for d in 0:(D-1)]
-    d_to_ldface_to_lnodes = [face_nodes(boundary(interpolation(ref_cell)),d) for d in 0:(D-1)]
+      for ldface in 1:num_faces(boundary(ref_cell),d) ] for d in 0:(D-1)]
+    d_to_ldface_to_lnodes = [face_nodes(boundary(ref_cell),d) for d in 0:(D-1)]
     groups, face_to_nodes = barrier(
       D,
       cell_to_nodes,
@@ -2237,7 +2238,7 @@ function mesh_from_chain(chain)
     face_to_nodes[end] = cell_nodes
     face_to_refid[end] = cell_reference_id
     ref_cell = first(reference_cells)
-    ref_faces = reference_faces(boundary(interpolation(ref_cell)))
+    ref_faces = reference_faces(boundary(ref_cell))
     refid_to_refface = push(ref_faces,reference_cells)
     mesh = AnonymousObject(;
       num_dims=Val(D),

@@ -9,8 +9,8 @@ using ForwardDiff
 using Test
 
 # TODO
-# remove interpolation
-# remove gradient! and value!
+# remove interpolation [done]
+# remove gradient! and value! [done]
 # swap order in tabulation matrix
 # topology reference_faces[end][1].boundary
 # cleanups
@@ -74,7 +74,7 @@ vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
 
-vtk_grid("debug_boundary",glk.vtk_args(glk.boundary(refface.interpolation))...) do vtk 
+vtk_grid("debug_boundary",glk.vtk_args(glk.boundary(refface))...) do vtk 
     vtk["nodeid"] = 1:6
 end
 
@@ -143,7 +143,7 @@ vtk_grid("quad",glk.vtk_args(quad.boundary)...) |> vtk_save
 
 quad4 = glk.lagrange_reference_face(quad,1)
 quad9 = glk.lagrange_reference_face(quad,2)
-vtk_grid("quad9",glk.vtk_args(quad9.interpolation.boundary)...) |> vtk_save
+vtk_grid("quad9",glk.vtk_args(quad9.boundary)...) |> vtk_save
 
 mesh_quad4 = glk.mesh_from_reference_face(quad4)
 
@@ -181,24 +181,11 @@ function isoparametric_poisson(mesh)
     # Shape functions
     ab = map(integration_rules,ref_cells) do integration_rule,ref_cell
         q = glk.coordinates(integration_rule)
-        interpolation = glk.interpolation(ref_cell)
-        shape_functions = glk.shape_functions(interpolation)
+        shape_functions = glk.shape_functions(ref_cell)
         m = length(q)
-        n = glk.num_nodes(interpolation)
+        n = glk.num_nodes(ref_cell)
         a = glk.tabulation_matrix!(shape_functions)(ForwardDiff.gradient,zeros(eltype(q),m,n),q)
         b = glk.tabulation_matrix!(shape_functions)(glk.value,zeros(m,n),q)
-        ## TODO use this API instead (NO)
-        #a = broadcast(value,shape_functions,transpose(q))
-        #b = broadcast(ForwardDiff.gradient,shape_functions,transpose(q))
-        # One can always specialize these calls with efficient implementations
-        # for the relevant types if needed
-        # Use this one instead
-        # a = gkl.tabulation_matrix(shape_functions)(value,q)
-        # b = gkl.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
-        # Which should be equivalent to
-        # a = broadcast(value,glk.array(shape_functions),transpose(q))
-        # b = broadcast(ForwardDiff.gradient,glk.array(shape_functions),transpose(q))
-        #
         (a,b)
     end
     ∇s = map(first,ab)
