@@ -14,6 +14,8 @@ using Test
 # swap order in tabulation matrix
 # topology reference_faces[end][1].boundary
 # cleanups
+# parametrize with Ti and Tf
+# think about order if it needs to be a tuple
 
 
 
@@ -38,7 +40,9 @@ perms = glk.compute_vertex_permutations(geo)
 @test length(perms) == 2
 glk.vertex_permutations(geo) == perms
 
-geo = glk.unit_simplex(Val(2))
+geo = glk.unit_simplex(Val(3))
+reffe = glk.reference_face_from_geometry(geo)
+
 perms = glk.compute_vertex_permutations(geo)
 glk.vertex_permutations(geo) == perms
 
@@ -47,16 +51,16 @@ perms = glk.compute_vertex_permutations(geo)
 @test length(perms) == 8
 glk.vertex_permutations(geo) == perms
 
-quad1 = glk.lagrange_reference_face(geo,1)
-node_perms = glk.compute_interior_node_permutations(quad1)
+quad1 = glk.reference_face_from_geometry(geo)
+node_perms = glk.interior_node_permutations_from_reference_face(quad1)
 @test all(map(i->all(i .!= 0),node_perms))
 
-quad2 = glk.lagrange_reference_face(geo,2)
-node_perms = glk.compute_interior_node_permutations(quad2)
+quad2 = glk.reference_face_from_geometry(geo,order=2)
+node_perms = glk.interior_node_permutations_from_reference_face(quad2)
 @test all(map(i->all(i .!= 0),node_perms))
 
-quad3 = glk.lagrange_reference_face(geo,3)
-node_perms = glk.compute_interior_node_permutations(quad3)
+quad3 = glk.reference_face_from_geometry(geo,order=3)
+node_perms = glk.interior_node_permutations_from_reference_face(quad3)
 @test all(map(i->all(i .!= 0),node_perms))
 
 domain = (1,2,1,2,1,2)
@@ -67,7 +71,7 @@ vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
 end
 
 tet = glk.unit_simplex(Val(3))
-refface = glk.lagrange_reference_face(tet,2)
+refface = glk.reference_face_from_geometry(tet,order=2)
 mesh = glk.mesh_from_reference_face(refface)
 vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
     vtk["nodeid"] = 1:6
@@ -85,7 +89,7 @@ vtk_grid("debug",glk.vtk_args(tri_hex)...) do vtk
 end
 
 order = 2
-refface = glk.lagrange_reference_face(hex,order)
+refface = glk.reference_face_from_geometry(hex;order)
 mesh = glk.simplexify_reference_face(refface)
 
 vtk_grid("debug",glk.vtk_args(mesh)...) |> vtk_save
@@ -129,20 +133,20 @@ vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
 end
 
 vertex = glk.unit_n_cube(Val(0))
-vertex1 = glk.lagrange_reference_face(vertex,1)
+vertex1 = glk.reference_face_from_geometry(vertex)
 
 segment = glk.unit_n_cube(Val(1))
 vtk_grid("segment",glk.vtk_args(segment.boundary)...) |> vtk_save
 
-segment2 = glk.lagrange_reference_face(segment,1)
-segment3 = glk.lagrange_reference_face(segment,2)
-segment4 = glk.lagrange_reference_face(segment,4)
+segment2 = glk.reference_face_from_geometry(segment)
+segment3 = glk.reference_face_from_geometry(segment,order=2)
+segment4 = glk.reference_face_from_geometry(segment,order=4)
 
 quad = glk.unit_n_cube(Val(2))
 vtk_grid("quad",glk.vtk_args(quad.boundary)...) |> vtk_save
 
-quad4 = glk.lagrange_reference_face(quad,1)
-quad9 = glk.lagrange_reference_face(quad,2)
+quad4 = glk.reference_face_from_geometry(quad,order=1)
+quad9 = glk.reference_face_from_geometry(quad,order=2)
 vtk_grid("quad9",glk.vtk_args(quad9.boundary)...) |> vtk_save
 
 mesh_quad4 = glk.mesh_from_reference_face(quad4)
@@ -376,9 +380,9 @@ end
 
 order = 1
 segment = glk.unit_n_cube(Val(1))
-segment2 = glk.lagrange_reference_face(segment,order)
+segment2 = glk.reference_face_from_geometry(segment;order)
 quad = glk.unit_n_cube(Val(2))
-quad4 = glk.lagrange_reference_face(quad,order)
+quad4 = glk.reference_face_from_geometry(quad;order)
 
 node_coordinates = SVector{2,Float64}[(0,0),(1,0),(2,0),(0,1),(1,1),(2,1),(0,2),(1,2),(2,2)]
 face_nodes = [

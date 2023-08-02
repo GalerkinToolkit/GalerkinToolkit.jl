@@ -327,78 +327,79 @@ function quadrature(geom,degree;kwargs...)
     end
 end
 
-function lagrange_monomial_exponents(f,order,D;kwargs...)
-    function tensor_monomial_exponents(f,degree_per_dir; monomial_type=SVector{length(degree_per_dir),Int}, allocator=zeros)
-        terms_per_dir = Tuple(map(d->d+1,degree_per_dir))
-        D = length(terms_per_dir)
-        cis = CartesianIndices(terms_per_dir)
-        m = count(ci->f(Tuple(ci) .- 1,degree_per_dir),cis)
-        li = 0
-        result = zeros(monomial_type,m)
-        for ci in cis
-            t = Tuple(ci) .- 1
-            if f(t,degree_per_dir)
-                li += 1
-                result[li] = t
-            end
+function monomial_exponents_from_filter(
+    f,order_per_dir; monomial_type=SVector{length(order_per_dir),Int}, allocator=zeros)
+    terms_per_dir = Tuple(map(d->d+1,order_per_dir))
+    D = length(terms_per_dir)
+    cis = CartesianIndices(terms_per_dir)
+    m = count(ci->f(Tuple(ci) .- 1,order_per_dir),cis)
+    li = 0
+    result = zeros(monomial_type,m)
+    for ci in cis
+        t = Tuple(ci) .- 1
+        if f(t,order_per_dir)
+            li += 1
+            result[li] = t
         end
-        result
     end
-    d = val_parameter(D)
-    order_per_dir = ntuple(i->order,Val(d))
-    tensor_monomial_exponents((e,os)->f(e,order),order_per_dir;kwargs...)
+    result
 end
 
-value(f,x) = f(x)
+function monomial_exponents_from_type(type,order_per_dir;kwargs...)
+    filter = if type == :Q
+        (e,o)->true
+    elseif type == :P
+        (e,o)->sum(e)<=maximum(o)
+    else
+        error("Case not implemented (yet)")
+    end
+    monomial_exponents_from_filter(filter,order_per_dir;kwargs...)
+end
 
-function lagrange_shape_functions(lagrange_monomial_exponents,node_coordinates)
-    monomials = map(e->(x-> prod(x.^e)),lagrange_monomial_exponents)
-    monomials_t = permutedims(monomials)
-    A = evaluate.(monomials_t,node_coordinates)
+function shape_functions_from_bases(primal,dual)
+    primal_t = permutedims(primal)
+    A = value.(dual,primal_t)
     B = A\I
     function tabulation_matrix!(f,r,x;scratch=nothing)
         C = if scratch !== nothing
-            broadcast!(f,scratch,monomials_t,x)
+            broadcast!(f,scratch,primal_t,x)
         else
-            broadcast(f,monomials_t,x)
+            broadcast(f,primal_t,x)
         end
         mul!(r,C,B)
         r
     end
     function tabulation_matrix(f,x)
-        C = broadcast(f,monomials_t,x)
+        C = broadcast(f,primal_t,x)
         C*B
     end
     (;tabulation_matrix!,tabulation_matrix)
 end
 
-function lagrange_interpolation(
-    geom,order;
+value(f,x) = f(x)
+
+function reference_face_from_geometry(
+    geometry;
+    order=1,
     type=:default,
+    interior_node_permutations=Val(true),
     lib_to_user_nodes = nothing,
-    coordinate_type=SVector{num_dims(geom),Float64},
+    coordinate_type=SVector{num_dims(geometry),Float64},
     kwargs...)
-    f = if is_unit_n_cube(geom)
-        if type === :default
-            (e,o)->true
-        elseif type === :Q
-            (e,o)->true
+
+    if type === :default
+        if is_n_cube(geometry) 
+            type = :Q
+        elseif is_simplex(geometry)
+            type = :P
         else
-            error("Not implemented")
+            error("Case not implemented")
         end
-    elseif is_unit_simplex(geom)
-        if type === :default
-            (e,o)->sum(e)<=o
-        elseif type === :P
-            (e,o)->sum(e)<=o
-        else
-            error("Not implemented")
-        end
-    else
-        error("Not implemented")
     end
-    d = num_dims(geom)
-    monomial_exponents = lagrange_monomial_exponents(f,order,Val(d);kwargs...)
+    D = num_dims(geometry)
+    order_per_dir = ntuple(i->order,Val(D))
+    monomial_exponents =
+    monomial_exponents_from_type(type,order_per_dir,kwargs...)
     T = eltype(coordinate_type)
     node_coordinates = map(monomial_exponents) do exponent
         c = map(exponent) do e
@@ -411,14 +412,37 @@ function lagrange_interpolation(
         coordinate_type(c)
     end
     nnodes = length(node_coordinates)
-    lib_to_user_nodes = lib_to_user_nodes !== nothing ? lib_to_user_nodes : collect(1:nnodes)
+    lib_to_user_nodes = if lib_to_user_nodes !== nothing
+        lib_to_user_nodes 
+    else
+        collect(1:nnodes)
+    end
     node_coordinates[lib_to_user_nodes] = node_coordinates
-    shape_functions = lagrange_shape_functions(monomial_exponents,node_coordinates)
-    boundary, interior_nodes = lagrange_reference_face_boundary(geom,node_coordinates,order)
-    AnonymousObject(;shape_functions,node_coordinates,order,monomial_exponents,lib_to_user_nodes,boundary,interior_nodes)
+    monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
+    dofs = map(x->(f->f(x)),node_coordinates)
+    shape_functions = shape_functions_from_bases(monomials,dofs)
+    refface = AnonymousObject(;
+        geometry,
+        shape_functions,
+        node_coordinates,
+        order,
+        monomial_exponents,
+        lib_to_user_nodes)
+    boundary, interior_nodes = reference_face_boundary_from_reference_face(refface)
+    vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface)
+    refface1 = set(refface;boundary,interior_nodes,vtk_mesh_cell)
+    if val_parameter(interior_node_permutations)
+        interior_node_permutations = interior_node_permutations_from_reference_face(refface1)
+    else
+        interior_node_permutations = nothing
+    end
+    set(refface1;interior_node_permutations)
 end
 
-function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
+function reference_face_boundary_from_reference_face(refface)
+    geom = geometry(refface)
+    node_coordinates_inter = node_coordinates(refface)
+    order_inter = order(refface)
     D = num_dims(geom)
     if D == 0
         return nothing, collect(1:length(node_coordinates_inter))
@@ -426,10 +450,10 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
     mesh_geom = boundary(geom)
     node_coordinates_geom = node_coordinates(mesh_geom)
     face_nodes_inter = Vector{Vector{Vector{Int}}}(undef,D)
-    node_coordinates_aux = map(xi->map(xii->round(Int,order*xii),xi),node_coordinates_inter)
+    node_coordinates_aux = map(xi->map(xii->round(Int,order_inter*xii),xi),node_coordinates_inter)
     ref_faces_geom = reference_faces(mesh_geom)
     ref_faces = map(ref_faces_geom) do ref_faces_geom_d
-        map(r->lagrange_reference_face(geometry(r),order),ref_faces_geom_d)
+        map(r->reference_face_from_geometry(geometry(r);order=order_inter),ref_faces_geom_d)
     end
     face_ref_id_geom = face_reference_id(mesh_geom)
     node_is_touched = fill(true,length(node_coordinates_inter))
@@ -454,7 +478,7 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
                 for k in 1:nnodes_geom
                     x += node_coordinates_geom[nodes_geom[k]]*s[i,k]
                 end
-                map(xi->round(Int,order*xi),x)
+                map(xi->round(Int,order_inter*xi),x)
             end
             my_nodes = indexin(x_mapped,node_coordinates_aux)
             node_is_touched[my_nodes] .= false
@@ -471,18 +495,6 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
     )
     interior_nodes = findall(node_is_touched)
     mesh_inter, interior_nodes
-end
-
-function lagrange_reference_face(geometry,args...;interior_node_permutations=Val(true),kwargs...)
-    interpolation = lagrange_interpolation(geometry,args...;kwargs...)
-    refface0 = set(interpolation;geometry)
-    vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface0)
-    refface1 = set(interpolation;geometry,vtk_mesh_cell)
-    if val_parameter(interior_node_permutations)
-        interior_node_perms = compute_interior_node_permutations(refface1)
-        return set(refface1;interior_node_permutations=interior_node_perms)
-    end
-    refface1
 end
 
 function vtk_mesh_cell_from_reference_face(ref_face)
@@ -558,7 +570,7 @@ function unit_n_cube_boundary(
 
     d = val_parameter(D)
     if reference_face === nothing && d != 0
-        reference_face = lagrange_reference_face(unit_n_cube(d-1),1)
+        reference_face = reference_face_from_geometry(unit_n_cube(d-1))
     end
     my_boundary = if d == 0
         nothing
@@ -609,7 +621,7 @@ function unit_simplex_boundary(
 
     d = val_parameter(D)
     if reference_face === nothing && d != 0
-        reference_face = lagrange_reference_face(unit_simplex(Val(d-1)),1)
+        reference_face = reference_face_from_geometry(unit_simplex(Val(d-1)))
     end
     my_boundary = if d == 0
         nothing
@@ -673,7 +685,7 @@ function compute_vertex_permutations(geo)
     end
     admissible_permutations = Vector{Int}[]
     order = 1
-    ref_face = lagrange_reference_face(geo,order,interior_node_permutations=Val(false))
+    ref_face = reference_face_from_geometry(geo,interior_node_permutations=Val(false))
     fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
@@ -713,7 +725,7 @@ function compute_vertex_permutations(geo)
     admissible_permutations
 end
 
-function compute_interior_node_permutations(refface)
+function interior_node_permutations_from_reference_face(refface)
     interior_ho_nodes = interior_nodes(refface)
     ho_nodes_coordinates = node_coordinates(refface)
     geo = geometry(refface)
@@ -724,11 +736,10 @@ function compute_interior_node_permutations(refface)
     if length(vertex_perms) == 1
         return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
     end
-    order = 1
     geo_mesh = boundary(geo)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
     vertex_to_geo_node = map(first,vertex_to_geo_nodes)
-    ref_face = lagrange_reference_face(geo,order)
+    ref_face = reference_face_from_geometry(geo)
     fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
@@ -775,8 +786,7 @@ end
 
 function simplexify_unit_simplex(geo)
     @assert is_unit_simplex(geo)
-    order = 1
-    refface = lagrange_reference_face(geo,order)
+    refface = reference_face_from_geometry(geo)
     mesh_from_reference_face(refface)
 end
 
@@ -788,7 +798,7 @@ function simplexify_unit_n_cube(geo)
     end
     simplex = unit_simplex(Val(D))
     order = 1
-    ref_cell = lagrange_reference_face(simplex,order)
+    ref_cell = reference_face_from_geometry(simplex)
     node_coords = node_coordinates(boundary(geo))
     cell_nodes = simplex_node_ids_n_cube(geo)
     ncells = length(cell_nodes)
@@ -867,7 +877,7 @@ function simplexify_reference_face(ref_face)
     # We need the same order in all directions
     # for this to make sense
     my_order = order(ref_face)
-    ref_faces_inter = map(r_geom->lagrange_reference_face(geometry(r_geom),my_order),ref_faces_geom)
+    ref_faces_inter = map(r_geom->reference_face_from_geometry(geometry(r_geom),order=my_order),ref_faces_geom)
     s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
         m = num_nodes(r)
         n = num_nodes(r_geom)
@@ -1166,7 +1176,7 @@ function reference_face_from_gmsh_eltype(eltype)
         en, = gmsh.model.mesh.getElementProperties(eltype)
         error("Unsupported element type. elemType: $eltype ($en)")
     end
-    lagrange_reference_face(geom,order;lib_to_user_nodes=lib_to_gmsh)
+    reference_face_from_geometry(geom;order,lib_to_user_nodes=lib_to_gmsh)
 end
 
 function intersection!(a,b,na,nb)
@@ -2011,8 +2021,7 @@ function cartesian_chain(domain,cells_per_dir)
     end
     cell_reference_id = fill(Int32(1),ncells)
     cell_geometry = unit_n_cube(Val(D))
-    order = 1
-    ref_cell = lagrange_reference_face(cell_geometry,order)
+    ref_cell = reference_face_from_geometry(cell_geometry)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
