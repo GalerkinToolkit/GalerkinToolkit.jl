@@ -7,6 +7,7 @@ using LinearAlgebra
 using ForwardDiff
 using Gmsh
 using PartitionedArrays
+using Combinatorics
 
 # TEMPORARY helper in the design process
 # Using NamedTuples is starting to be too verbouse
@@ -51,6 +52,7 @@ is_n_cube(a) = hasproperty(a,:is_n_cube) ? val_parameter(a.is_n_cube) : false
 is_simplex(a) = hasproperty(a,:is_simplex) ? val_parameter(a.is_simplex) : false
 is_axis_aligned(a) = a.is_axis_aligned
 bounding_box(a) = a.bounding_box
+vertex_permutations(a) = a.vertex_permutations
 coordinates(a) = a.coordinates
 weights(a) = a.weights
 interpolation(a) = a.interpolation
@@ -467,10 +469,15 @@ function lagrange_reference_face_boundary(geom,node_coordinates_inter,order)
     mesh_inter, interior_nodes
 end
 
-function lagrange_reference_face(geometry,args...;kwargs...)
+function lagrange_reference_face(geometry,args...;interior_node_permutations=Val(true),kwargs...)
     interpolation = lagrange_interpolation(geometry,args...;kwargs...)
     vtk_mesh_cell = vtk_mesh_cell_from_geometry(geometry,interpolation)
-    AnonymousObject(;geometry,interpolation,vtk_mesh_cell)
+    refface = AnonymousObject(;geometry,interpolation,vtk_mesh_cell)
+    if val_parameter(interior_node_permutations)
+        interior_node_perms = compute_interior_node_permutations(refface)
+        return set(refface;interior_node_permutations=interior_node_perms)
+    end
+    refface
 end
 
 function vtk_mesh_cell_from_geometry(geom,interpolation)
@@ -519,7 +526,8 @@ function unit_n_cube(D;kwargs...)
     is_simplex = d in (0,1)
     boundary = unit_n_cube_boundary(D;kwargs...)
     geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
-    geometry
+    vertex_permutations = compute_vertex_permutations(geometry)
+    set(geometry;vertex_permutations)
 end
 
 function unit_simplex(D;kwargs...)
@@ -531,7 +539,8 @@ function unit_simplex(D;kwargs...)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     boundary = unit_simplex_boundary(D;kwargs...)
     geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
-    geometry
+    vertex_permutations = compute_vertex_permutations(geometry)
+    set(geometry;vertex_permutations)
 end
 
 function unit_n_cube_boundary(
@@ -635,6 +644,118 @@ function unit_simplex_boundary(
     else
         (;topology=nothing)
     end
+end
+
+function compute_vertex_permutations(geo)
+    D = num_dims(geo)
+    if D == 0
+        return [[1]]
+    end
+    geo_mesh = boundary(geo)
+    vertex_to_geo_nodes = face_nodes(geo_mesh,0)
+    vertex_to_geo_node = map(first,vertex_to_geo_nodes)
+    nvertices = length(vertex_to_geo_node)
+    # TODO compute this more lazily
+    # so that we never compute it for 3d 
+    # since it is not needed
+    if D > 2
+        return [collect(1:nvertices)]
+    end
+    permutations = Combinatorics.permutations(1:nvertices)
+    if is_simplex(geo)
+        return collect(permutations)
+    end
+    admissible_permutations = Vector{Int}[]
+    order = 1
+    ref_face = lagrange_reference_face(geo,order,interior_node_permutations=Val(false))
+    fun_mesh = boundary(interpolation(ref_face))
+    geo_node_coords = node_coordinates(geo_mesh)
+    fun_node_coords = node_coordinates(fun_mesh)
+    vertex_coords = geo_node_coords[vertex_to_geo_node]
+    shape_funs = shape_functions(interpolation(ref_face))
+    degree = 1
+    quad = quadrature(geo,degree)
+    q = coordinates(quad)
+    Tx = eltype(vertex_coords)
+    TJ = typeof(zero(Tx)*zero(Tx)')
+    A = zeros(Tx,length(q),length(fun_node_coords))
+    shape_funs.gradient!(A,q)
+    function compute_volume(vertex_coords)
+        vol = zero(eltype(TJ))
+        for iq in 1:size(A,1)
+            J = zero(TJ)
+            for fun_node in 1:size(A,2)
+                vertex = fun_node # TODO we are assuming that the vertices and nodes match
+                g = A[iq,fun_node]
+                x = vertex_coords[vertex]
+                J += g*x'
+            end
+            vol += abs(det(J))
+        end
+        vol
+    end
+    refvol = compute_volume(vertex_coords)
+    perm_vertex_coords = similar(vertex_coords)
+    for permutation in permutations
+        for (j,cj) in enumerate(permutation)
+          perm_vertex_coords[j] = vertex_coords[cj]
+        end
+        vol2 = compute_volume(perm_vertex_coords)
+        if (refvol + vol2) ≈ (2*refvol)
+            push!(admissible_permutations,permutation)
+        end
+    end
+    admissible_permutations
+end
+
+function compute_interior_node_permutations(refface)
+    interior_ho_nodes = interior_nodes(interpolation(refface))
+    ho_nodes_coordinates = node_coordinates(interpolation(refface))
+    geo = geometry(refface)
+    vertex_perms = vertex_permutations(geo)
+    if length(interior_ho_nodes) == 0
+        return map(i->Int[],vertex_perms)
+    end
+    if length(vertex_perms) == 1
+        return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
+    end
+    order = 1
+    geo_mesh = boundary(geo)
+    vertex_to_geo_nodes = face_nodes(geo_mesh,0)
+    vertex_to_geo_node = map(first,vertex_to_geo_nodes)
+    ref_face = lagrange_reference_face(geo,order)
+    fun_mesh = boundary(interpolation(ref_face))
+    geo_node_coords = node_coordinates(geo_mesh)
+    fun_node_coords = node_coordinates(fun_mesh)
+    vertex_coords = geo_node_coords[vertex_to_geo_node]
+    shape_funs = shape_functions(interpolation(ref_face))
+    q = ho_nodes_coordinates[interior_ho_nodes]
+    Tx = eltype(vertex_coords)
+    A = zeros(Float64,length(q),length(fun_node_coords))
+    shape_funs.value!(A,q)
+    perm_vertex_coords = similar(vertex_coords)
+    node_perms = similar(vertex_perms)
+    for (iperm,permutation) in enumerate(vertex_perms)
+        for (j,cj) in enumerate(permutation)
+          perm_vertex_coords[j] = vertex_coords[cj]
+        end
+        node_to_pnode = fill(INVALID_ID,length(interior_ho_nodes))
+        for iq in 1:size(A,1)
+            y = zero(Tx)
+            for fun_node in 1:size(A,2)
+                vertex = fun_node # TODO we are assuming that the vertices and nodes match
+                g = A[iq,fun_node]
+                x = perm_vertex_coords[vertex]
+                y += g*x
+            end
+            pnode = findfirst(i->(norm(i-y)+1)≈1,q)
+            if pnode != nothing
+               node_to_pnode[iq] = pnode
+            end
+        end
+        node_perms[iperm] = node_to_pnode
+    end
+    node_perms
 end
 
 function simplexify_reference_geometry(geo)

@@ -24,6 +24,32 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+geo = glk.unit_simplex(Val(1))
+perms = glk.compute_vertex_permutations(geo)
+@test length(perms) == 2
+glk.vertex_permutations(geo) == perms
+
+geo = glk.unit_simplex(Val(2))
+perms = glk.compute_vertex_permutations(geo)
+glk.vertex_permutations(geo) == perms
+
+geo = glk.unit_n_cube(Val(2))
+perms = glk.compute_vertex_permutations(geo)
+@test length(perms) == 8
+glk.vertex_permutations(geo) == perms
+
+quad1 = glk.lagrange_reference_face(geo,1)
+node_perms = glk.compute_interior_node_permutations(quad1)
+@test all(map(i->all(i .!= 0),node_perms))
+
+quad2 = glk.lagrange_reference_face(geo,2)
+node_perms = glk.compute_interior_node_permutations(quad2)
+@test all(map(i->all(i .!= 0),node_perms))
+
+quad3 = glk.lagrange_reference_face(geo,3)
+node_perms = glk.compute_interior_node_permutations(quad3)
+@test all(map(i->all(i .!= 0),node_perms))
+
 domain = (1,2,1,2,1,2)
 cells = (2,2,2)
 mesh = glk.structured_simplex_mesh_with_boundary(domain,cells)
@@ -152,6 +178,18 @@ function isoparametric_poisson(mesh)
         n = glk.num_nodes(interpolation)
         a = glk.gradient!(shape_functions)(zeros(eltype(q),m,n),q)
         b = glk.value!(shape_functions)(zeros(m,n),q)
+        ## TODO use this API instead (NO)
+        #a = broadcast(value,shape_functions,transpose(q))
+        #b = broadcast(ForwardDiff.gradient,shape_functions,transpose(q))
+        # One can always specialize these calls with efficient implementations
+        # for the relevant types if needed
+        # Use this one instead
+        # a = gkl.tabulation_matrix(shape_functions)(value,q)
+        # b = gkl.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
+        # Which should be equivalent to
+        # a = broadcast(value,glk.array(shape_functions),transpose(q))
+        # b = broadcast(ForwardDiff.gradient,glk.array(shape_functions),transpose(q))
+        #
         (a,b)
     end
     ∇s = map(first,ab)
