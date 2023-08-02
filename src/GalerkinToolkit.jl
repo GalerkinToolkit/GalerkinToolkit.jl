@@ -940,17 +940,17 @@ function with_gmsh(f;options=default_gmsh_options())
     end
 end
 
-function mesh_from_gmsh(file;complexify=true,renumber=true,kwargs...)
+function mesh_from_gmsh(file;complexify=true,topology=true,renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
     with_gmsh(;kwargs...) do
         gmsh.open(file)
         renumber && gmsh.model.mesh.renumberNodes()
         renumber && gmsh.model.mesh.renumberElements()
-        mesh_from_gmsh_module(;complexify)
+        mesh_from_gmsh_module(;complexify,topology)
     end
 end
 
-function mesh_from_gmsh_module(;complexify=true)
+function mesh_from_gmsh_module(;complexify=true,topology=true)
     entities = gmsh.model.getEntities()
     nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
 
@@ -1134,8 +1134,11 @@ function mesh_from_gmsh_module(;complexify=true)
 
     if complexify
         mesh, _ = complexify_mesh(mesh)
+        if topology
+            topo = topology_from_mesh(mesh)
+            mesh = set(mesh,topology=topo)
+        end
     end
-
     mesh
 end
 
@@ -1936,7 +1939,7 @@ function bounding_box_from_domain(domain)
     (pmin,pmax)
 end
 
-function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false)
+function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false,topology=true)
     mesh = if boundary
         if simplexify
             structured_simplex_mesh_with_boundary(domain,cells_per_dir)
@@ -1953,6 +1956,10 @@ function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simpl
     end
     if complexify
         mesh, = complexify_mesh(mesh)
+        if topology
+            topo = topology_from_mesh(mesh)
+            mesh = set(mesh,topology=topo)
+        end
     end
     mesh
 end
