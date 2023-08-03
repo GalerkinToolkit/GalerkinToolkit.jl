@@ -34,30 +34,13 @@ function Base.show(io::IO,a::Object)
         print(io,k," = ")
         if isa(v,Object)
             print(io,"GalerkinToolkit.Object(...)")
-        else
-            print(io,v)
-        end
-    end
-    print(io,")")
-end
-
-function Base.show(io::IO, mime::MIME"text/plain", a::Object)
-    print(io,"GalerkinToolkit.Object(\n")
-    dict = getfield(a, :item)
-    for (i,(k,v)) in enumerate(dict)
-        if i != 1
-            print(io,",\n")
-        end
-        print(io,"    ",k," = ")
-        if isa(v,Object)
-            print(io,"GalerkinToolkit.Object(...)")
         elseif isa(v,AbstractArray) && length(v) > 10
             print(io,"[...]")
         else
             print(io,v)
         end
     end
-    print(io,"\n)")
+    print(io,")")
 end
 
 val_parameter(a) = a
@@ -595,12 +578,13 @@ function unit_n_cube_boundary(
     # allow the user define an alternative ordering
 
     d = val_parameter(D)
-    if reference_face === nothing && d != 0
+    if d == 0
+        return nothing
+    end
+    if reference_face === nothing
         reference_face = reference_face_from_geometry(unit_n_cube(d-1))
     end
-    my_boundary = if d == 0
-        nothing
-    elseif d == 1
+    my_boundary = if d == 1
         node_coordinates = SVector{1,Float64}[(0,),(1,)]
         face_nodes = [[[1],[2]]]
         face_reference_id = [[1,1]]
@@ -631,12 +615,8 @@ function unit_n_cube_boundary(
     else
         @error "Case not implemented"
     end
-    if my_boundary !== nothing
-        topology = topology_from_mesh(my_boundary)
-        setproperties(my_boundary;topology)
-    else
-        (;topology=nothing)
-    end
+    topology = topology_from_mesh(my_boundary)
+    setproperties(my_boundary;topology)
 end
 
 function unit_simplex_boundary(
@@ -646,12 +626,13 @@ function unit_simplex_boundary(
     reference_face=nothing)
 
     d = val_parameter(D)
-    if reference_face === nothing && d != 0
+    if d == 0
+        return nothing
+    end
+    if reference_face === nothing
         reference_face = reference_face_from_geometry(unit_simplex(Val(d-1)))
     end
-    my_boundary = if d == 0
-        nothing
-    elseif d == 1
+    my_boundary = if d == 1
         node_coordinates = SVector{1,Float64}[(0,),(1,)]
         face_nodes = [[[1],[2]]]
         face_reference_id = [[1,1]]
@@ -682,12 +663,8 @@ function unit_simplex_boundary(
     else
         error("case not implemented")
     end
-    if my_boundary !== nothing
-        topology = topology_from_mesh(my_boundary)
-        setproperties(my_boundary;topology)
-    else
-        (;topology=nothing)
-    end
+    topology = topology_from_mesh(my_boundary)
+    setproperties(my_boundary;topology)
 end
 
 function vertex_permutations_from_geometry(geo)
@@ -1684,9 +1661,15 @@ function find_node_to_vertex(mesh)
 end
 
 function reference_topology_from_reference_face(refface)
-    myboundary = refface |> geometry |> boundary |> topology
-    myperms = vertex_permutations(geometry(refface))
-    Object(;boundary=myboundary,vertex_permutations=myperms)
+    geom = geometry(refface)
+    D = num_dims(geom)
+    if D != 0
+        myboundary = geom |> boundary |> topology
+    else
+        myboundary = nothing
+    end
+    myperms = vertex_permutations(geom)
+    Object(;num_dims=Val(D),boundary=myboundary,vertex_permutations=myperms)
 end
 
 function topology_from_mesh(mesh)
