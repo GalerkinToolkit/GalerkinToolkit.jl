@@ -12,11 +12,11 @@ using Test
 # before more cleanup:
 # generate a high order mesh from a linear non oriented mesh
 #
-# visualization mesh
+# visualization mesh [done]
 #
 # remove interpolation [done]
 # remove gradient! and value! [done]
-# swap order in tabulation matrix
+# swap order in tabulation matrix. Important!!
 # topology reference_faces[end][1].boundary
 # cleanups
 # parametrize with Ti and Tf
@@ -119,9 +119,10 @@ end
 
 domain = (1,2,1,2)
 cells = (2,2)
-mesh = glk.cartesian_mesh(domain,cells,simplexify=true,boundary=false,complexify=false)
+mesh = glk.cartesian_mesh(domain,cells,simplexify=false,boundary=false,complexify=false)
 vismesh, visglue = glk.visualization_mesh_from_mesh(mesh)
 vismesh, visglue = glk.visualization_mesh_from_mesh(mesh,order=2)
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh,resolution=4)
 
 pointdata = zeros(glk.num_nodes(vismesh))
 for face in 1:glk.num_faces(mesh,2)
@@ -136,6 +137,10 @@ vtk_grid("vismesh",glk.vtk_args(vismesh,2)...) do vtk
     vtk["pointdata"] = pointdata
 end
 
+mesh = glk.cartesian_mesh(domain,cells,simplexify=true,boundary=false,complexify=false)
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh)
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh,order=2)
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh,resolution=4)
 
 domain = (1,2,1,2,1,2)
 cells = (2,2,2)

@@ -1956,6 +1956,15 @@ function bounding_box_from_domain(domain)
     (pmin,pmax)
 end
 
+function domain_from_bounding_box(box)
+    l = sum(length,box)
+    ntuple(Val(l)) do i
+        vector = mod(i-1,2)+1
+        component = div(i-1,2)+1
+        box[vector][component]
+    end
+end
+
 function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false,topology=true)
     mesh = if boundary
         if simplexify
@@ -2375,7 +2384,7 @@ function mesh_from_chain(chain)
     mesh
 end
 
-function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subcells=nothing)
+function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,resolution=nothing)
     function barrier(
             refid_to_tabulation,
             refid_to_scell_to_snodes,
@@ -2490,19 +2499,20 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subc
     end # barrier
     refid_to_refface = reference_faces(mesh,dim)
     refid_to_refmesh = map(refid_to_refface) do ref_face
-        if order === nothing && subcells === nothing
+        if order === nothing && resolution === nothing
             # Use the given cells as visualization cells
             mesh_from_reference_face(ref_face)
-        elseif order !== nothing && subcells === nothing
+        elseif order !== nothing && resolution === nothing
             # Use cells of given order as visualization cells
             geo = geometry(ref_face)
             ref_face_ho = reference_face_from_geometry(geo;order)
             mesh_from_reference_face(ref_face_ho)
-        elseif order === nothing && subcells !== nothing
-            # Use linear sub-cells with subcells per direction
-            error("Not implemented (yet)")
+        elseif order === nothing && resolution !== nothing
+            # Use linear sub-cells with $resolution per direction per direction
+            geom = geometry(ref_face)
+            refine_reference_geometry(geom,resolution)
         else
-            error("order and subcells kw-arguments can not be given at the same time")
+            error("order and resolution kw-arguments can not be given at the same time")
         end
     end
     refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
@@ -2530,6 +2540,118 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subc
             cell_to_nodes,
             cell_to_refid,
             Val(Dn))
+end
+
+function refine_reference_geometry(geo,resolution)
+    function refine_n_cube_aligned(geo,n)
+        box = bounding_box(geo)
+        domain = domain_from_bounding_box(box)
+        D = num_dims(geo)
+        cells = ntuple(i->n,Val(D))
+        cartesian_mesh(domain,cells)
+    end
+    function refine_unit_triangle(geo,n)
+        # Copyed + adapted from Gridap
+        tri_num(n) = n*(n+1)÷2
+        v(n,i,j) = tri_num(n) - tri_num(n-i+1) + j
+        D = 2
+        quad_to_tris = ((1,2,3),(2,4,3))
+        quad = CartesianIndices( (0:1,0:1) )
+        Tp = SVector{2,Float64}
+        n_verts = tri_num(n+1)
+        n_cells = tri_num(n)+tri_num(n-1)
+        n_verts_x_cell = 3
+        X = zeros(Tp,n_verts)
+        T = [ zeros(Int,n_verts_x_cell) for i in 1:n_cells ]
+        for i in 1:n+1
+          for j in 1:n+1-i+1
+            vert = v(n+1,i,j)
+            X[vert] = SVector((i-1)/n,(j-1)/n)
+          end
+        end
+        for i in 1:n
+          for j in 1:n-(i-1)
+            verts = ntuple( lv-> v(n+1, (i,j).+quad[lv].I ...), Val{2^D}() )
+            cell = v(n,i,j)
+            T[cell] .= map(i->verts[i],quad_to_tris[1])
+            if (i-1)+(j-1) < n-1
+              cell = tri_num(n) + v(n-1,i,j)
+              T[cell] .= map(i->verts[i],quad_to_tris[2])
+            end
+          end
+        end
+        refface = reference_face_from_geometry(geo)
+        chain = Object(;
+                       num_dims=Val(2),
+                       node_coordinates = X,
+                       face_nodes = T,
+                       face_reference_id = fill(1,length(T)),
+                       reference_faces = [refface]
+                      )
+        mesh_from_chain(chain)
+    end
+    function refine_unit_tet(geo,n)
+        # Copyed + adapted from Gridap
+        tri_num(n) = n*(n+1)÷2
+        tet_num(n) = n*(n+1)*(n+2)÷6
+        v(n,i,j) = tri_num(n) - tri_num(n-i+1) + j
+        v(n,i,j,k) = tet_num(n) - tet_num(n-i+1) + v(n-i+1,j,k)
+        D = 3
+        cube_to_tets = ((1,2,3,5),(2,4,3,6),(3,5,7,6),(2,3,5,6),(3,4,7,6),(4,6,7,8))
+        cube = CartesianIndices( (0:1,0:1,0:1) )
+        n_core_tets = length(cube_to_tets)-2
+        Tp = SVector{3,Float64}
+        n_verts = tet_num(n+1)
+        n_cells = tet_num(n)+n_core_tets*tet_num(n-1)+tet_num(n-2)
+        n_verts_x_cell = 4
+        X = zeros(Tp,n_verts)
+        T = [ zeros(Int,n_verts_x_cell) for i in 1:n_cells ]
+        for i in 1:n+1
+          for j in 1:n+1-(i-1)
+            for k in 1:n+1-(i-1)-(j-1)
+              vert = v(n+1,i,j,k)
+              X[vert] = SVector((i-1)/n,(j-1)/n,(k-1)/n)
+            end
+          end
+        end
+        for i in 1:n
+          for j in 1:n-(i-1)
+            for k in 1:n-(i-1)-(j-1)
+              verts = ntuple( lv-> v(n+1, (i,j,k).+cube[lv].I ...), Val{2^D}() )
+              cell = v(n,i,j,k)
+              T[cell] .= map(i->verts[i],cube_to_tets[1])
+              if (i-1)+(j-1)+(k-1) < n-1
+                cell = tet_num(n) + (v(n-1,i,j,k)-1)*n_core_tets
+                for t in 1:n_core_tets
+                  T[cell+t] .= map(i->verts[i],cube_to_tets[t+1])
+                end
+              end
+              if (i-1)+(j-1)+(k-1) < n-2
+                cell = tet_num(n) + n_core_tets*tet_num(n-1) + v(n-2,i,j,k)
+                T[cell] .= map(i->verts[i],cube_to_tets[end])
+              end
+            end
+          end
+        end
+        refface = reference_face_from_geometry(geo)
+        chain = Object(;
+                       num_dims=Val(3),
+                       node_coordinates = X,
+                       face_nodes = T,
+                       face_reference_id = fill(1,length(T)),
+                       reference_faces = [refface],
+                      )
+        mesh_from_chain(chain)
+    end
+    if is_n_cube(geo) && is_axis_aligned(geo)
+        refine_n_cube_aligned(geo,resolution)
+    elseif is_unit_simplex(geo) && num_dims(geo) == 2
+        refine_unit_triangle(geo,resolution)
+    elseif is_unit_simplex(geo) && num_dims(geo) == 3
+        refine_unit_tet(geo,resolution)
+    else
+        error("Case not implemented (yet)")
+    end
 end
 
 
