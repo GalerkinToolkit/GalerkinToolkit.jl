@@ -12,6 +12,8 @@ using Test
 # before more cleanup:
 # generate a high order mesh from a linear non oriented mesh
 #
+# visualization mesh
+#
 # remove interpolation [done]
 # remove gradient! and value! [done]
 # swap order in tabulation matrix
@@ -114,6 +116,27 @@ mesh = glk.cartesian_mesh(domain,cells,complexify=false)
 vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
+
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh)
+
+pointdata = zeros(glk.num_nodes(vismesh))
+for face in 1:glk.num_faces(mesh,3)
+    fine_nodes = visglue.face_fine_nodes[face]
+    for fine_node in fine_nodes
+        pointdata[fine_node] = face
+    end
+end
+
+vtk_grid("vismesh",glk.vtk_args(vismesh,3)...) do vtk
+    vtk["cellid"] = visglue.parent_face
+    vtk["pointdata"] = pointdata
+end
+
+xxx
+
+
+
+
 
 mesh,_ = glk.complexify_mesh(mesh)
 
