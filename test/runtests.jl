@@ -40,7 +40,6 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
-
 geo = glk.unit_simplex(Val(1))
 perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 2
@@ -465,6 +464,7 @@ end
 
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = glk.mesh_from_gmsh(msh;complexify=true)
+@test glk.periodic_nodes(mesh) == ([] => [])
 
 
 #topoloy = glk.topology(mesh)

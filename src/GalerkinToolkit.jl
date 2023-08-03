@@ -55,6 +55,8 @@ face_reference_id(a) = a.face_reference_id
 vtk_mesh_cell(a) = a.vtk_mesh_cell
 physical_groups(a) = a.physical_groups
 has_physical_groups(a) = hasproperty(a,:physical_groups)
+periodic_nodes(a) = a.periodic_nodes
+has_periodic_nodes(a) = hasproperty(a,:periodic_nodes)
 geometry(a) = a.geometry
 topology(a) = a.topology
 boundary(a) = a.boundary
@@ -361,10 +363,10 @@ function monomial_exponents_from_filter(
     result
 end
 
-function monomial_exponents_from_type(type,order_per_dir;kwargs...)
-    filter = if type == :Q
+function monomial_exponents_from_space(space,order_per_dir;kwargs...)
+    filter = if space == :Q
         (e,o)->true
-    elseif type == :P
+    elseif space == :P
         (e,o)->sum(e)<=maximum(o)
     else
         error("Case not implemented (yet)")
@@ -389,33 +391,39 @@ function shape_functions_from_bases(primal,dual)
         C = broadcast(f,primal_t,x)
         C*B
     end
-    Object(;tabulation_matrix!,tabulation_matrix)
+    # We want this to be type stable for
+    # performance reasons
+    (;tabulation_matrix!,tabulation_matrix)
 end
 
 value(f,x) = f(x)
 
+function default_polynomial_space(geo)
+    if is_n_cube(geo) 
+        :Q
+    elseif is_simplex(geo)
+        :P
+    else
+        error("Case not implemented")
+    end
+end
+
 function reference_face_from_geometry(
     geometry;
     order=1,
-    type=:default,
+    order_per_dir = ntuple(i->order,Val(num_dims(geometry))),
+    space=:default,
     interior_node_permutations=Val(true),
     lib_to_user_nodes = nothing,
     coordinate_type=SVector{num_dims(geometry),Float64},
     kwargs...)
 
-    if type === :default
-        if is_n_cube(geometry) 
-            type = :Q
-        elseif is_simplex(geometry)
-            type = :P
-        else
-            error("Case not implemented")
-        end
-    end
     D = num_dims(geometry)
-    order_per_dir = ntuple(i->order,Val(D))
+    if space === :default
+        space = default_polynomial_space(geometry)
+    end
     monomial_exponents =
-    monomial_exponents_from_type(type,order_per_dir,kwargs...)
+        monomial_exponents_from_space(space,order_per_dir,kwargs...)
     T = eltype(coordinate_type)
     node_coordinates = map(monomial_exponents) do exponent
         c = map(exponent) do e
@@ -441,7 +449,8 @@ function reference_face_from_geometry(
         geometry,
         shape_functions,
         node_coordinates,
-        order,
+        order= D==0 ? 1 : maximum(order_per_dir),
+        order_per_dir,
         monomial_exponents,
         lib_to_user_nodes)
     boundary, interior_nodes = reference_face_boundary_from_reference_face(refface)
@@ -1091,19 +1100,18 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
     end
 
     ## Setup periodic nodes
-    #node_to_main_node = fill(Int32(INVALID_ID),nnodes)
-    #for (dim,tag) in entities
-    #    tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
-    #    for i in 1:length(nodeTags)
-    #        node = nodeTags[i]
-    #        main_node = nodeTagsMaster[i]
-    #        node_to_main_node[node] = main_node
-    #    end
-    #end
-    #my_free_and_periodic_nodes = partition_from_mask(i->i==INVALID_ID,node_to_main_node)
-    #my_periodic_nodes = last(my_free_and_periodic_nodes)
-    #my_periodic_to_master = node_to_main_node[my_periodic_nodes]
-    #my_periodic_to_coeff = ones(length(my_periodic_to_master))
+    node_to_master_node = fill(Int32(INVALID_ID),nnodes)
+    for (dim,tag) in entities
+        tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
+        for i in 1:length(nodeTags)
+            node = nodeTags[i]
+            master_node = nodeTagsMaster[i]
+            node_to_master_node[node] = master_node
+        end
+    end
+    pnode_to_node = Int32.(findall(i->i!=INVALID_ID,node_to_master_node))
+    pnode_to_master = node_to_master_node[pnode_to_node]
+    periodic_nodes = pnode_to_node => pnode_to_master
 
     # Setup physical groups
     my_groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
@@ -1141,7 +1149,9 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
             face_nodes = my_face_nodes,
             face_reference_id = my_face_reference_id,
             reference_faces = my_reference_faces,
-            physical_groups = my_groups)
+            physical_groups = my_groups,
+            periodic_nodes,
+           )
 
     if complexify
         mesh, _ = complexify_mesh(mesh)
@@ -1339,6 +1349,9 @@ function complexify_mesh(mesh)
             end
         end
         new_mesh = setproperties(new_mesh,physical_groups=new_physical_groups)
+    end
+    if has_periodic_nodes(mesh)
+        new_mesh = setproperties(new_mesh;periodic_nodes=periodic_nodes(mesh))
     end
     new_mesh, old_to_new
 end
@@ -2654,6 +2667,48 @@ function refine_reference_geometry(geo,resolution)
     end
 end
 
+
+#function lagrangian_reference_element(
+#    geom;
+#    space=:default
+#    order=1,
+#    shape=Val(()),
+#    major=:component,
+#    order_per_dir=ntuple(i->order,Val(num_dims(geom))),
+#    )
+#
+#    reffe_scalar 
+#
+#    shape = Val{val_parameter(shape)}()
+#
+#
+#    if space === :default
+#        space = default_polynomial_space(geo)
+#    end
+#
+#    monomial_exponents = monomial_exponents_from_space(space,order_per_dir)
+#    monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
+#
+#    function tensor_basis(shape::Val{T}) where T
+#        [1]
+#    end
+#    function tensor_basis(shape::Tuple{Any})
+#        D = shape[1]
+#        cis = CartesianIndices(shape)
+#        basis = map(cis) do ci
+#            i, = Tuple(ci)
+#            SVector(ntuple(j-> i==j ? 1 : 0,Val(D)))
+#        end
+#        basis[:]
+#    end
+#    es = tensor_basis()
+#    primal = map(monomials) do monomial
+#        map(es)  do e
+#            x -> monomiam(x)*e
+#        end
+#    end
+#
+#end
 
 
 end # module
