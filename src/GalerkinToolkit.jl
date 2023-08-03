@@ -9,28 +9,55 @@ using Gmsh
 using PartitionedArrays
 using Combinatorics
 
-# TEMPORARY helper in the design process
-# Using NamedTuples is starting to be too verbouse
-# in stack traces.
-struct AnonymousObject
-    __data__::NamedTuple
-    AnonymousObject(;kwargs...) = new((;kwargs...))
+# Inspited by PropertyUtils.jl
+struct Object
+    item::Dict{Symbol,Any}
+end
+Object(;kwargs...) = Object(Dict(kwargs))
+Base.propertynames(i::Object) = collect(keys(getfield(i, :item)))
+Base.getproperty(i::Object, x::Symbol) = getindex(getfield(i, :item), x)
+Base.setproperty!(i::Object, name::Symbol, x) = setindex!(getfield(i, :item), x, name)
+
+function setproperties(a::Object;kwargs...)
+    dict = getfield(a, :item)
+    item = merge(dict,kwargs)
+    Object(item)
 end
 
-function Base.propertynames(x::AnonymousObject, private::Bool=false)
-    propertynames(x.__data__,private)
-end
-
-function Base.getproperty(x::AnonymousObject,sym::Symbol)
-    if sym === :__data__
-        Base.getfield(x,sym)
-    else
-        Base.getproperty(x.__data__,sym)
+function Base.show(io::IO,a::Object)
+    print(io,"GalerkinToolkit.Object(")
+    dict = getfield(a, :item)
+    for (i,(k,v)) in enumerate(dict)
+        if i != 1
+            print(io,", ")
+        end
+        print(io,k," = ")
+        if isa(v,Object)
+            print(io,"GalerkinToolkit.Object(...)")
+        else
+            print(io,v)
+        end
     end
+    print(io,")")
 end
 
-function set(a::AnonymousObject;kwargs...)
-    AnonymousObject(;a.__data__...,kwargs...)
+function Base.show(io::IO, mime::MIME"text/plain", a::Object)
+    print(io,"GalerkinToolkit.Object(\n")
+    dict = getfield(a, :item)
+    for (i,(k,v)) in enumerate(dict)
+        if i != 1
+            print(io,",\n")
+        end
+        print(io,"    ",k," = ")
+        if isa(v,Object)
+            print(io,"GalerkinToolkit.Object(...)")
+        elseif isa(v,AbstractArray) && length(v) > 10
+            print(io,"[...]")
+        else
+            print(io,v)
+        end
+    end
+    print(io,"\n)")
 end
 
 val_parameter(a) = a
@@ -112,7 +139,7 @@ function mesh_from_reference_face(ref_face;physical_groups=Val(true))
     face_to_refid = push(face_reference_id(boundary_mesh),[1])
     refid_refface = push(reference_faces(boundary_mesh),[ref_face])
     node_to_coords = node_coordinates(ref_face)
-    mesh = AnonymousObject(;
+    mesh = Object(;
       num_dims=Val(D),
       node_coordinates=node_to_coords,
       face_nodes=face_to_nodes,
@@ -127,7 +154,7 @@ function mesh_from_reference_face(ref_face;physical_groups=Val(true))
         end
         groups[end-1]["boundary"] = 1:num_faces(mesh,D-1)
         groups[end]["interior"] = [1]
-        mesh = set(mesh,physical_groups=groups)
+        mesh = setproperties(mesh,physical_groups=groups)
     end
     mesh
 end
@@ -372,7 +399,7 @@ function shape_functions_from_bases(primal,dual)
         C = broadcast(f,primal_t,x)
         C*B
     end
-    (;tabulation_matrix!,tabulation_matrix)
+    Object(;tabulation_matrix!,tabulation_matrix)
 end
 
 value(f,x) = f(x)
@@ -420,7 +447,7 @@ function reference_face_from_geometry(
     monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
     dofs = map(x->(f->f(x)),node_coordinates)
     shape_functions = shape_functions_from_bases(monomials,dofs)
-    refface = AnonymousObject(;
+    refface = Object(;
         geometry,
         shape_functions,
         node_coordinates,
@@ -429,13 +456,13 @@ function reference_face_from_geometry(
         lib_to_user_nodes)
     boundary, interior_nodes = reference_face_boundary_from_reference_face(refface)
     vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface)
-    refface1 = set(refface;boundary,interior_nodes,vtk_mesh_cell)
+    refface1 = setproperties(refface;boundary,interior_nodes,vtk_mesh_cell)
     if val_parameter(interior_node_permutations)
         interior_node_permutations = interior_node_permutations_from_reference_face(refface1)
     else
         interior_node_permutations = nothing
     end
-    set(refface1;interior_node_permutations)
+    setproperties(refface1;interior_node_permutations)
 end
 
 function reference_face_boundary_from_reference_face(refface)
@@ -485,7 +512,7 @@ function reference_face_boundary_from_reference_face(refface)
         end
         face_nodes_inter[d+1] = face_nodes_inter_d
     end
-    mesh_inter = AnonymousObject(;
+    mesh_inter = Object(;
         num_dims = Val(D-1),
         node_coordinates=node_coordinates_inter,
         face_nodes=face_nodes_inter,
@@ -542,9 +569,9 @@ function unit_n_cube(D;kwargs...)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     is_simplex = d in (0,1)
     boundary = unit_n_cube_boundary(D;kwargs...)
-    geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
+    geometry = Object(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
     vertex_permutations = vertex_permutations_from_geometry(geometry)
-    set(geometry;vertex_permutations)
+    setproperties(geometry;vertex_permutations)
 end
 
 function unit_simplex(D;kwargs...)
@@ -555,9 +582,9 @@ function unit_simplex(D;kwargs...)
     is_n_cube = d in (0,1)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     boundary = unit_simplex_boundary(D;kwargs...)
-    geometry = AnonymousObject(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
+    geometry = Object(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
     vertex_permutations = vertex_permutations_from_geometry(geometry)
-    set(geometry;vertex_permutations)
+    setproperties(geometry;vertex_permutations)
 end
 
 function unit_n_cube_boundary(
@@ -579,7 +606,7 @@ function unit_n_cube_boundary(
         face_reference_id = [[1,1]]
         vertex = reference_face
         my_reference_faces = ([vertex],)
-        AnonymousObject(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 2
         node_coordinates = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1)]
         face_nodes = [[[1],[2],[3],[4]],[[1,2],[3,4],[1,3],[2,4]]]
@@ -587,7 +614,7 @@ function unit_n_cube_boundary(
         segment = reference_face
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment])
-        AnonymousObject(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,0,1),(1,0,1),(0,1,1),(1,1,1)]
         face_nodes = [
@@ -600,13 +627,13 @@ function unit_n_cube_boundary(
         segment = first(reference_faces(boundary(geometry(quad)),1))
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment],[quad])
-        AnonymousObject(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     else
         @error "Case not implemented"
     end
     if my_boundary !== nothing
         topology = topology_from_mesh(my_boundary)
-        set(my_boundary;topology)
+        setproperties(my_boundary;topology)
     else
         (;topology=nothing)
     end
@@ -630,7 +657,7 @@ function unit_simplex_boundary(
         face_reference_id = [[1,1]]
         vertex = reference_face
         my_reference_faces = ([vertex],)
-        AnonymousObject(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 2
         node_coordinates = SVector{2,Float64}[(0,0),(1,0),(0,1)]
         face_nodes = [[[1],[2],[3]],[[1,2],[1,3],[2,3]]]
@@ -638,7 +665,7 @@ function unit_simplex_boundary(
         segment = reference_face
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment])
-        AnonymousObject(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
         face_nodes = [
@@ -651,13 +678,13 @@ function unit_simplex_boundary(
         segment = first(reference_faces(boundary(geometry(tri)),1))
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment],[tri])
-        AnonymousObject(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     else
         error("case not implemented")
     end
     if my_boundary !== nothing
         topology = topology_from_mesh(my_boundary)
-        set(my_boundary;topology)
+        setproperties(my_boundary;topology)
     else
         (;topology=nothing)
     end
@@ -839,7 +866,7 @@ function simplexify_unit_n_cube(geo)
         sface_is_boundary[sfaces] .= true
     end
     groups[end-1]["boundary"] = findall(sface_is_boundary)
-    mesh_complex = set(mesh_complex,physical_groups=groups)
+    mesh_complex = setproperties(mesh_complex,physical_groups=groups)
     mesh_complex
 end
 
@@ -903,7 +930,7 @@ function simplexify_reference_face(ref_face)
         face_nodes_inter[face] = my_nodes
     end
     ref_inter = 
-    chain = AnonymousObject(;
+    chain = Object(;
         num_dims=Val(D),
         node_coordinates=node_coordinates_inter,
         face_nodes = face_nodes_inter,
@@ -913,7 +940,7 @@ function simplexify_reference_face(ref_face)
     mesh = mesh_from_chain(chain)
     mesh_complex, = complexify_mesh(mesh)
     if has_physical_groups(mesh_geom)
-        mesh_complex = set(mesh_complex,physical_groups=physical_groups(mesh_geom))
+        mesh_complex = setproperties(mesh_complex,physical_groups=physical_groups(mesh_geom))
     end
     mesh_complex
 end
@@ -1124,7 +1151,7 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-    mesh = AnonymousObject(;
+    mesh = Object(;
             num_dims=Val(D),
             node_coordinates = my_node_to_coords,
             face_nodes = my_face_nodes,
@@ -1136,7 +1163,7 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
         mesh, _ = complexify_mesh(mesh)
         if topology
             topo = topology_from_mesh(mesh)
-            mesh = set(mesh,topology=topo)
+            mesh = setproperties(mesh,topology=topo)
         end
     end
     mesh
@@ -1309,7 +1336,7 @@ function complexify_mesh(mesh)
         old_to_new[d+1] = old_dface_to_new_dface
     end
     node_to_coords = node_coordinates(mesh)
-    new_mesh = AnonymousObject(;
+    new_mesh = Object(;
         num_dims = Val(D),
         node_coordinates=node_to_coords,
         face_nodes=newface_nodes,
@@ -1327,7 +1354,7 @@ function complexify_mesh(mesh)
                 new_physical_groups[d+1][group_name] = new_group_faces
             end
         end
-        new_mesh = set(new_mesh,physical_groups=new_physical_groups)
+        new_mesh = setproperties(new_mesh,physical_groups=new_physical_groups)
     end
     new_mesh, old_to_new
 end
@@ -1659,7 +1686,7 @@ end
 function reference_topology_from_reference_face(refface)
     myboundary = refface |> geometry |> boundary |> topology
     myperms = vertex_permutations(geometry(refface))
-    AnonymousObject(;boundary=myboundary,vertex_permutations=myperms)
+    Object(;boundary=myboundary,vertex_permutations=myperms)
 end
 
 function topology_from_mesh(mesh)
@@ -1670,7 +1697,7 @@ function topology_from_mesh(mesh)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
     my_reference_faces = Tuple([ map(reference_topology_from_reference_face,reference_faces(mesh,d)) for d in 0:D ])
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
-    topo = AnonymousObject(;
+    topo = Object(;
         face_incidence=my_face_incidence,
         face_reference_id=my_face_reference_id,
         reference_faces=my_reference_faces,
@@ -1958,7 +1985,7 @@ function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simpl
         mesh, = complexify_mesh(mesh)
         if topology
             topo = topology_from_mesh(mesh)
-            mesh = set(mesh,topology=topo)
+            mesh = setproperties(mesh,topology=topo)
         end
     end
     mesh
@@ -2067,7 +2094,7 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
     mesh_groups = push(groups,physical_groups(interior_mesh,D))
-    AnonymousObject(;
+    Object(;
      num_dims=Val(D),
      node_coordinates=node_coords,
      face_nodes=mesh_face_nodes,
@@ -2118,7 +2145,7 @@ function cartesian_chain(domain,cells_per_dir)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = AnonymousObject(;
+    chain = Object(;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
@@ -2184,7 +2211,7 @@ function structured_simplex_chain(domain,cells_per_dir)
     reference_cells = reference_faces(ref_simplex_mesh,D)
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = AnonymousObject(;
+    chain = Object(;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
@@ -2315,7 +2342,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_groups(simplex_chain))
-    AnonymousObject(;
+    Object(;
      num_dims=Val(D),
      node_coordinates=node_coords,
      face_nodes=mesh_face_nodes,
@@ -2342,7 +2369,7 @@ function mesh_from_chain(chain)
     ref_cell = first(reference_cells)
     ref_faces = reference_faces(boundary(ref_cell))
     refid_to_refface = push(ref_faces,reference_cells)
-    mesh = AnonymousObject(;
+    mesh = Object(;
       num_dims=Val(D),
       node_coordinates=node_coords,
       face_nodes=face_to_nodes,
@@ -2353,7 +2380,7 @@ function mesh_from_chain(chain)
         cell_groups = physical_groups(chain)
         groups = [ typeof(cell_groups)() for d in 0:D]
         groups[end] = cell_groups
-        mesh = set(mesh,physical_groups=groups)
+        mesh = setproperties(mesh,physical_groups=groups)
     end
     mesh
 end

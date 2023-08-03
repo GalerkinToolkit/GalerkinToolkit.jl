@@ -38,6 +38,7 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+
 geo = glk.unit_simplex(Val(1))
 perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 2
@@ -45,6 +46,9 @@ glk.vertex_permutations(geo) == perms
 
 geo = glk.unit_simplex(Val(3))
 reffe = glk.reference_face_from_geometry(geo)
+
+@show reffe
+display(reffe)
 
 perms = glk.vertex_permutations_from_geometry(geo)
 glk.vertex_permutations(geo) == perms
@@ -430,6 +434,7 @@ end
 
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = glk.mesh_from_gmsh(msh;complexify=true)
+
 
 #topoloy = glk.topology(mesh)
 #face_to_cells = glk.face_incidence(topology,d-1,d)
