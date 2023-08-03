@@ -2376,6 +2376,118 @@ function mesh_from_chain(chain)
 end
 
 function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subcells=nothing)
+    function barrier(
+            refid_to_tabulation,
+            refid_to_scell_to_snodes,
+            refid_to_scell_to_srefid,
+            refid_to_srefid_to_oid,
+            refid_to_srefid_to_vrefface,
+            refid_to_snode_to_coords,
+            node_to_coords,
+            cell_to_nodes,
+            cell_to_refid,
+            ::Val{Dn}) where Dn
+
+        ncells = length(cell_to_refid)
+        nvnodes = 0
+        nvcells = 0
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            nvnodes += length(refid_to_snode_to_coords[refid])
+            nvcells += length(refid_to_scell_to_srefid[refid])
+
+        end
+        nrefids = length(refid_to_srefid_to_oid)
+        i_to_oid = reduce(vcat,refid_to_srefid_to_oid)
+        i_to_vrefface = reduce(vcat,refid_to_srefid_to_vrefface)
+        refid_to_srefid_to_i = Vector{Vector{Int}}(undef,nrefids)
+        i = 0
+        for refid in 1:nrefids
+            srefid_to_oid = refid_to_srefid_to_oid[refid]
+            nsrefids = length(srefid_to_oid)
+            srefid_to_i = zeros(Int,nsrefids)
+            for srefid in 1:nsrefids
+                i += 1
+                srefid_to_i[srefid] = i
+            end
+            refid_to_srefid_to_i[refid] = srefid_to_i
+        end
+        vrefid_to_oid = unique(i_to_oid)
+        i_to_vrefid = indexin(i_to_oid,vrefid_to_oid)
+        vrefid_to_i = indexin(vrefid_to_oid,i_to_oid)
+        vrefid_to_vrefface = i_to_vrefface[vrefid_to_i]
+        Tx = SVector{Dn,Float64}
+        vnode_to_coords = zeros(Tx,nvnodes)
+        vcell_to_vnodes_ptrs = zeros(Int32,nvcells+1)
+        vcell_to_vrefid = zeros(Int32,nvcells)
+        vcell_to_cell = zeros(Int32,nvcells)
+        cell_to_vnodes = fill(0:1,ncells)
+        vcell = 0
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            scell_to_snodes = refid_to_scell_to_snodes[refid]
+            nscells = length(scell_to_snodes)
+            scell_to_srefid = refid_to_scell_to_srefid[refid]
+            srefid_to_i = refid_to_srefid_to_i[refid]
+            for scell in 1:nscells
+                srefid = scell_to_srefid[scell]
+                i = srefid_to_i[srefid]
+                vrefid = i_to_vrefid[i]
+                snodes = scell_to_snodes[scell]
+                vcell += 1
+                vcell_to_vnodes_ptrs[vcell+1] = length(snodes)
+                vcell_to_vrefid[vcell] = vrefid
+                vcell_to_cell[vcell] = cell
+            end
+        end
+        length_to_ptrs!(vcell_to_vnodes_ptrs)
+        ndata = vcell_to_vnodes_ptrs[end]-1
+        vcell_to_vnodes_data = zeros(Int32,ndata)
+        vcell = 0
+        vnode = 0
+        vnode_prev = 1
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            scell_to_snodes = refid_to_scell_to_snodes[refid]
+            nscells = length(scell_to_snodes)
+            for scell in 1:nscells
+                snodes = scell_to_snodes[scell]
+                vcell += 1
+                p = vcell_to_vnodes_ptrs[vcell]
+                for (i,snode) in enumerate(snodes)
+                    vcell_to_vnodes_data[p-1+i] = snode + vnode
+                end
+            end
+            tabulation = refid_to_tabulation[refid]
+            nsnodes = size(tabulation,1)
+            nodes = cell_to_nodes[cell]
+            for snode in 1:nsnodes
+                y = zero(Tx)
+                for (i,node) in enumerate(nodes)
+                    coeff = tabulation[snode,i]
+                    x = node_to_coords[node]
+                    y += coeff*x
+                end
+                vnode += 1
+                vnode_to_coords[vnode] = y
+            end
+            cell_to_vnodes[cell] = vnode_prev:vnode
+            vnode_prev = vnode + 1
+        end
+        vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
+        vchain = Object(;
+                        num_dims=Val(dim),
+                        node_coordinates=vnode_to_coords,
+                        face_nodes=vcell_to_vnodes,
+                        face_reference_id=vcell_to_vrefid,
+                        reference_faces=vrefid_to_vrefface)
+        vmesh = mesh_from_chain(vchain)
+        vglue = (;parent_face=vcell_to_cell,
+                 reference_coordinates=refid_to_snode_to_coords,
+                 face_fine_nodes = cell_to_vnodes,
+                 num_dims=Val(dim))
+        vmesh, vglue
+    end # barrier
     refid_to_refface = reference_faces(mesh,dim)
     refid_to_refmesh = map(refid_to_refface) do ref_face
         if order === nothing && subcells === nothing
@@ -2393,7 +2505,6 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subc
             error("order and subcells kw-arguments can not be given at the same time")
         end
     end
-
     refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
         shape_funs = shape_functions(refface)
         x = node_coordinates(refmesh)
@@ -2408,111 +2519,17 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subc
     cell_to_nodes = face_nodes(mesh,dim)
     cell_to_refid = face_reference_id(mesh,dim)
     Dn = num_ambient_dims(mesh)
-
-    ncells = length(cell_to_refid)
-    nvnodes = 0
-    nvcells = 0
-    for cell in 1:ncells
-        refid = cell_to_refid[cell]
-        nvnodes += length(refid_to_snode_to_coords[refid])
-        nvcells += length(refid_to_scell_to_srefid[refid])
-
-    end
-    nrefids = length(refid_to_srefid_to_oid)
-    i_to_oid = reduce(vcat,refid_to_srefid_to_oid)
-    i_to_vrefface = reduce(vcat,refid_to_srefid_to_vrefface)
-    refid_to_srefid_to_i = Vector{Vector{Int}}(undef,nrefids)
-    i = 0
-    for refid in 1:nrefids
-        srefid_to_oid = refid_to_srefid_to_oid[refid]
-        nsrefids = length(srefid_to_oid)
-        srefid_to_i = zeros(Int,nsrefids)
-        for srefid in 1:nsrefids
-            i += 1
-            srefid_to_i[srefid] = i
-        end
-        refid_to_srefid_to_i[refid] = srefid_to_i
-    end
-    vrefid_to_oid = unique(i_to_oid)
-    i_to_vrefid = indexin(i_to_oid,vrefid_to_oid)
-    vrefid_to_i = indexin(vrefid_to_oid,i_to_oid)
-    vrefid_to_vrefface = i_to_vrefface[vrefid_to_i]
-    Tx = SVector{Dn,Float64}
-    vnode_to_coords = zeros(Tx,nvnodes)
-    vcell_to_vnodes_ptrs = zeros(Int32,nvcells+1)
-    vcell_to_vrefid = zeros(Int32,nvcells)
-    vcell_to_cell = zeros(Int32,nvcells)
-    cell_to_vnodes = fill(0:1,ncells)
-    vcell = 0
-    for cell in 1:ncells
-        refid = cell_to_refid[cell]
-        scell_to_snodes = refid_to_scell_to_snodes[refid]
-        nscells = length(scell_to_snodes)
-        scell_to_srefid = refid_to_scell_to_srefid[refid]
-        srefid_to_i = refid_to_srefid_to_i[refid]
-        for scell in 1:nscells
-            srefid = scell_to_srefid[scell]
-            i = srefid_to_i[srefid]
-            vrefid = i_to_vrefid[i]
-            snodes = scell_to_snodes[scell]
-            vcell += 1
-            vcell_to_vnodes_ptrs[vcell+1] = length(snodes)
-            vcell_to_vrefid[vcell] = vrefid
-            vcell_to_cell[vcell] = cell
-        end
-    end
-    length_to_ptrs!(vcell_to_vnodes_ptrs)
-    ndata = vcell_to_vnodes_ptrs[end]-1
-    vcell_to_vnodes_data = zeros(Int32,ndata)
-    vcell = 0
-    vnode = 0
-    vnode_prev = 1
-    for cell in 1:ncells
-        refid = cell_to_refid[cell]
-        scell_to_snodes = refid_to_scell_to_snodes[refid]
-        nscells = length(scell_to_snodes)
-        for scell in 1:nscells
-            snodes = scell_to_snodes[scell]
-            vcell += 1
-            p = vcell_to_vnodes_ptrs[vcell]
-            for (i,snode) in enumerate(snodes)
-                vcell_to_vnodes_data[p-1+i] = snode + vnode
-            end
-        end
-        tabulation = refid_to_tabulation[refid]
-        nsnodes = size(tabulation,1)
-        nodes = cell_to_nodes[cell]
-        for snode in 1:nsnodes
-            y = zero(Tx)
-            for (i,node) in enumerate(nodes)
-                coeff = tabulation[snode,i]
-                x = node_to_coords[node]
-                y += coeff*x
-            end
-            vnode += 1
-            vnode_to_coords[vnode] = y
-        end
-        cell_to_vnodes[cell] = vnode_prev:vnode
-        vnode_prev = vnode + 1
-    end
-    vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
-
-    vchain = Object(;
-        num_dims=Val(dim),
-        node_coordinates=vnode_to_coords,
-        face_nodes=vcell_to_vnodes,
-        face_reference_id=vcell_to_vrefid,
-        reference_faces=vrefid_to_vrefface)
-
-    vmesh = mesh_from_chain(vchain)
-
-    vglue = (
-        ;parent_face=vcell_to_cell,
-        reference_coordinates=refid_to_snode_to_coords,
-        face_fine_nodes = cell_to_vnodes,
-        num_dims=Val(dim))
-
-    vmesh, vglue
+    barrier(
+            refid_to_tabulation,
+            refid_to_scell_to_snodes,
+            refid_to_scell_to_srefid,
+            refid_to_srefid_to_oid,
+            refid_to_srefid_to_vrefface,
+            refid_to_snode_to_coords,
+            node_to_coords,
+            cell_to_nodes,
+            cell_to_refid,
+            Val(Dn))
 end
 
 
