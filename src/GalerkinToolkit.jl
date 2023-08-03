@@ -162,6 +162,13 @@ function vtk_cells(mesh,d)
     function barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
         cells = map(face_to_refid,face_to_nodes) do refid, nodes
             mesh_cell = refid_mesh_cell[refid]
+            if mesh_cell === nothing
+                msg = """
+                Not enough information to visualize this mesh via vtk:
+                vtk_mesh_cell returns nothing for the reference face in position $refid in dimension $d.
+                """
+                error(msg)
+            end
             mesh_cell(nodes)
         end
         cells
@@ -2377,7 +2384,7 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,subc
         elseif order !== nothing && subcells === nothing
             # Use cells of given order as visualization cells
             geo = geometry(ref_face)
-            ref_face_ho = reference_face_from_geometry(geo,order)
+            ref_face_ho = reference_face_from_geometry(geo;order)
             mesh_from_reference_face(ref_face_ho)
         elseif order === nothing && subcells !== nothing
             # Use linear sub-cells with subcells per direction

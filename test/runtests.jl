@@ -117,26 +117,29 @@ vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
     glk.vtk_physical_groups!(vtk,mesh)
 end
 
+domain = (1,2,1,2)
+cells = (2,2)
+mesh = glk.cartesian_mesh(domain,cells,simplexify=true,boundary=false,complexify=false)
 vismesh, visglue = glk.visualization_mesh_from_mesh(mesh)
+vismesh, visglue = glk.visualization_mesh_from_mesh(mesh,order=2)
 
 pointdata = zeros(glk.num_nodes(vismesh))
-for face in 1:glk.num_faces(mesh,3)
+for face in 1:glk.num_faces(mesh,2)
     fine_nodes = visglue.face_fine_nodes[face]
     for fine_node in fine_nodes
         pointdata[fine_node] = face
     end
 end
 
-vtk_grid("vismesh",glk.vtk_args(vismesh,3)...) do vtk
+vtk_grid("vismesh",glk.vtk_args(vismesh,2)...) do vtk
     vtk["cellid"] = visglue.parent_face
     vtk["pointdata"] = pointdata
 end
 
-xxx
 
-
-
-
+domain = (1,2,1,2,1,2)
+cells = (2,2,2)
+mesh = glk.cartesian_mesh(domain,cells,boundary=false,complexify=false)
 
 mesh,_ = glk.complexify_mesh(mesh)
 
