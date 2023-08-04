@@ -695,6 +695,9 @@ function unit_simplex_boundary(
     setproperties(my_boundary;topology)
 end
 
+## Admissible if the following map is admissible
+# phi_i(x) = sum_i x_perm[i] * fun_i(x)
+# This map sends vertex i to vertex perm[i]
 function vertex_permutations_from_geometry(geo)
     D = num_dims(geo)
     if D == 0
@@ -2801,6 +2804,7 @@ function lagrangian_reference_element(
         dof_to_index,
         node_to_dofs,
        )
+    # Boundary only makes sense for scalar case
     boundary, interior_nodes_refface = reference_face_boundary_from_reference_face(refface)
     if length(interior_nodes_refface) !=0 && myshape !=()
         own_dofs_nested = map(interior_nodes_refface) do node
@@ -2809,6 +2813,21 @@ function lagrangian_reference_element(
         own_dofs = reduce(vcat,own_dofs_nested)
     else
         own_dofs = interior_nodes_refface
+    end
+    face_interior_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
+    face_interior_nodes[end] = [interior_nodes_refface]
+    for d in 0:(D-1)
+        face_to_refid = face_reference_id(boundary,d)
+        face_to_nodes = face_nodes(boundary,d)
+        refid_to_refface = reference_faces(boundary,d)
+        refid_to_interior_nodes = map(interior_nodes,refid_to_refface)
+        ndfaces = num_faces(boundary,d)
+        face_interior_nodes[d+1] = Vector{Vector{Int}}(undef,ndfaces)
+        for face in 1:ndfaces
+            refid = face_to_refid[face]
+            my_interior_nodes = refid_to_interior_nodes[refid]
+            face_interior_nodes[d+1][face] = face_to_nodes[face][my_interior_nodes]
+        end
     end
     face_own_dofs = Vector{Vector{Vector{Int}}}(undef,D+1)
     face_own_dofs[end] = [own_dofs]
@@ -2834,14 +2853,58 @@ function lagrangian_reference_element(
         end
     end
     vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface)
-    refface1 = setproperties(refface;boundary,interior_nodes=interior_nodes_refface,vtk_mesh_cell)
+    refface1 = setproperties(
+        refface;boundary,interior_nodes=interior_nodes_refface,face_interior_nodes,face_own_dofs,own_dofs,vtk_mesh_cell)
     if val_parameter(interior_node_permutations)
         interior_node_permutations = interior_node_permutations_from_reference_face(refface1)
+        face_interior_node_permutations = map(0:(D-1)) do d
+            face_to_refid = face_reference_id(boundary,d)
+            face_to_nodes = face_nodes(boundary,d)
+            refid_to_refface = reference_faces(boundary,d)
+            refid_to_interior_node_permutations = map(r->r.interior_node_permutations,refid_to_refface)#TODO
+            map(face_to_refid) do refid
+                refid_to_interior_node_permutations[refid]
+            end
+        end
+        push!(face_interior_node_permutations,[interior_node_permutations])
+        # TODO Not needed
+        own_dof_permutations = map(interior_node_permutations) do permutation
+            permuted_interior_nodes = interior_nodes_refface[permutation]
+            if length(permuted_interior_nodes) != 0 && myshape != ()
+                permuted_own_dofs_nested = map(permuted_interior_nodes) do pnode
+                    collect(node_to_dofs[pnode][:])
+                end
+                permuted_own_dofs = reduce(vcat,permuted_own_dofs_nested)
+                odof_to_podof = indexin(own_dofs,permuted_own_dofs)
+            else
+                odof_to_podof = permutation
+            end
+        end
+        face_own_dof_permutations = map(face_interior_node_permutations,face_interior_nodes) do face_to_perms, face_to_nodes
+            map(face_to_perms,face_to_nodes) do perms,nodes
+                map(perms) do permutation
+                    permuted_interior_nodes = nodes[permutation]
+                    if length(permuted_interior_nodes) != 0 && myshape != ()
+                        permuted_own_dofs_nested = map(permuted_interior_nodes) do pnode
+                            collect(node_to_dofs[pnode][:])
+                        end
+                        permuted_own_dofs = reduce(vcat,permuted_own_dofs_nested)
+                        odof_to_podof = indexin(own_dofs,permuted_own_dofs)
+                    else
+                        odof_to_podof = permutation
+                    end
+                end
+            end
+        end
+        #push!(face_own_node_permutations,[own_dof_permutations])
     else
         interior_node_permutations = nothing
+        face_interior_node_permutations = nothing
+        own_dof_permutations = nothing
+        face_own_dof_permutations = nothing
     end
     #TODO interior dofs on the boundary and permutations
-    setproperties(refface1;interior_node_permutations,face_own_dofs)
+    setproperties(refface1;interior_node_permutations,face_interior_node_permutations,own_dof_permutations,face_own_dof_permutations)
 end
 
 

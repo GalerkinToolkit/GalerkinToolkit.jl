@@ -54,7 +54,12 @@ reffe = glk.lagrangian_reference_element(geo,shape=(2,),major=:component)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
 A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
 
-display(reffe.face_own_dofs)
+geo = glk.unit_n_cube(Val(2))
+reffe = glk.lagrangian_reference_element(geo,order=3,shape=(2,))
+display(reffe.interior_nodes)
+display(reffe.interior_node_permutations)
+display(reffe.own_dofs)
+display(reffe.own_dof_permutations)
 
 xxx
 
