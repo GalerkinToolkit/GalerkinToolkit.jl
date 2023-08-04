@@ -44,7 +44,7 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
-geo = glk.unit_n_cube(Val(2))
+geo = glk.unit_n_cube(Val(1))
 reffe = glk.lagrangian_reference_element(geo)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
 B = reffe.shape_functions.tabulation_matrix(ForwardDiff.gradient,reffe.node_coordinates)
@@ -53,8 +53,12 @@ reffe = glk.lagrangian_reference_element(geo,shape=(2,),order=2,major=:node)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
 A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
 
-
 reffe = glk.lagrangian_reference_element(geo,shape=(2,),major=:component)
+A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
+A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
+display(reffe.node_to_dofs)
+
+reffe = glk.lagrangian_reference_element(geo,shape=(),major=:component)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
 A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
 display(reffe.node_to_dofs)
@@ -73,7 +77,7 @@ perms = glk.vertex_permutations_from_geometry(geo)
 glk.vertex_permutations(geo) == perms
 
 geo = glk.unit_simplex(Val(3))
-reffe = glk.reference_face_from_geometry(geo)
+reffe = glk.lagrangian_reference_face(geo)
 
 @show reffe
 display(reffe)
@@ -86,15 +90,15 @@ perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 8
 glk.vertex_permutations(geo) == perms
 
-quad1 = glk.reference_face_from_geometry(geo)
+quad1 = glk.lagrangian_reference_face(geo)
 node_perms = glk.interior_node_permutations_from_reference_face(quad1)
 @test all(map(i->all(i .!= 0),node_perms))
 
-quad2 = glk.reference_face_from_geometry(geo,order=2)
+quad2 = glk.lagrangian_reference_face(geo,order=2)
 node_perms = glk.interior_node_permutations_from_reference_face(quad2)
 @test all(map(i->all(i .!= 0),node_perms))
 
-quad3 = glk.reference_face_from_geometry(geo,order=3)
+quad3 = glk.lagrangian_reference_face(geo,order=3)
 node_perms = glk.interior_node_permutations_from_reference_face(quad3)
 @test all(map(i->all(i .!= 0),node_perms))
 
@@ -106,7 +110,7 @@ vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
 end
 
 tet = glk.unit_simplex(Val(3))
-refface = glk.reference_face_from_geometry(tet,order=2)
+refface = glk.lagrangian_reference_face(tet,order=2)
 mesh = glk.mesh_from_reference_face(refface)
 vtk_grid("debug",glk.vtk_args(mesh)...) do vtk
     vtk["nodeid"] = 1:6
@@ -124,7 +128,7 @@ vtk_grid("debug",glk.vtk_args(tri_hex)...) do vtk
 end
 
 order = 2
-refface = glk.reference_face_from_geometry(hex;order)
+refface = glk.lagrangian_reference_face(hex;order)
 mesh = glk.simplexify_reference_face(refface)
 
 vtk_grid("debug",glk.vtk_args(mesh)...) |> vtk_save
@@ -197,20 +201,20 @@ vtk_grid("cartesian",glk.vtk_args(mesh)...) do vtk
 end
 
 vertex = glk.unit_n_cube(Val(0))
-vertex1 = glk.reference_face_from_geometry(vertex)
+vertex1 = glk.lagrangian_reference_face(vertex)
 
 segment = glk.unit_n_cube(Val(1))
 vtk_grid("segment",glk.vtk_args(segment.boundary)...) |> vtk_save
 
-segment2 = glk.reference_face_from_geometry(segment)
-segment3 = glk.reference_face_from_geometry(segment,order=2)
-segment4 = glk.reference_face_from_geometry(segment,order=4)
+segment2 = glk.lagrangian_reference_face(segment)
+segment3 = glk.lagrangian_reference_face(segment,order=2)
+segment4 = glk.lagrangian_reference_face(segment,order=4)
 
 quad = glk.unit_n_cube(Val(2))
 vtk_grid("quad",glk.vtk_args(quad.boundary)...) |> vtk_save
 
-quad4 = glk.reference_face_from_geometry(quad,order=1)
-quad9 = glk.reference_face_from_geometry(quad,order=2)
+quad4 = glk.lagrangian_reference_face(quad,order=1)
+quad9 = glk.lagrangian_reference_face(quad,order=2)
 vtk_grid("quad9",glk.vtk_args(quad9.boundary)...) |> vtk_save
 
 mesh_quad4 = glk.mesh_from_reference_face(quad4)
@@ -444,9 +448,9 @@ end
 
 order = 1
 segment = glk.unit_n_cube(Val(1))
-segment2 = glk.reference_face_from_geometry(segment;order)
+segment2 = glk.lagrangian_reference_face(segment;order)
 quad = glk.unit_n_cube(Val(2))
-quad4 = glk.reference_face_from_geometry(quad;order)
+quad4 = glk.lagrangian_reference_face(quad;order)
 
 node_coordinates = SVector{2,Float64}[(0,0),(1,0),(2,0),(0,1),(1,1),(2,1),(0,2),(1,2),(2,2)]
 face_nodes = [
