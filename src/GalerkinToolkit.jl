@@ -10,6 +10,7 @@ using PartitionedArrays
 using Combinatorics
 
 # Inspited by PropertyUtils.jl
+# Use a dict directly instead? (provably not, we would not be type stable even if we wanted,really?)
 struct Object
     item::Dict{Symbol,Any}
 end
@@ -18,6 +19,7 @@ Base.propertynames(i::Object) = collect(keys(getfield(i, :item)))
 Base.getproperty(i::Object, x::Symbol) = getindex(getfield(i, :item), x)
 Base.setproperty!(i::Object, name::Symbol, x) = setindex!(getfield(i, :item), x, name)
 
+# TODO setproperty instead?
 function setproperties(a::Object;kwargs...)
     dict = getfield(a, :item)
     item = merge(dict,kwargs)
@@ -374,9 +376,16 @@ function monomial_exponents_from_space(space,order_per_dir;kwargs...)
     monomial_exponents_from_filter(filter,order_per_dir;kwargs...)
 end
 
-function shape_functions_from_bases(primal,dual)
+function shape_functions_and_dofs_from_bases(primal,dual)
     primal_t = permutedims(primal)
-    A = value.(dual,primal_t)
+    function dofs_from_dual_basis(dual)
+        function tabulation_matrix(primal)
+            A = value.(dual,primal_t)
+        end
+        (;tabulation_matrix)
+    end
+    dofs = dofs_from_dual_basis(dual)
+    A = dofs.tabulation_matrix(primal)
     B = A\I
     function tabulation_matrix!(f,r,x;scratch=nothing)
         C = if scratch !== nothing
@@ -393,8 +402,10 @@ function shape_functions_from_bases(primal,dual)
     end
     # We want this to be type stable for
     # performance reasons
-    (;tabulation_matrix!,tabulation_matrix)
+    shape_functions = (;tabulation_matrix!,tabulation_matrix)
+    shape_functions, dofs
 end
+
 
 value(f,x) = f(x)
 
@@ -444,10 +455,11 @@ function reference_face_from_geometry(
     node_coordinates[lib_to_user_nodes] = node_coordinates
     monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
     dofs = map(x->(f->f(x)),node_coordinates)
-    shape_functions = shape_functions_from_bases(monomials,dofs)
+    shape_functions, dofs = shape_functions_and_dofs_from_bases(monomials,dofs)
     refface = Object(;
         geometry,
         shape_functions,
+        dofs,
         node_coordinates,
         order= D==0 ? 1 : maximum(order_per_dir),
         order_per_dir,
@@ -2668,47 +2680,169 @@ function refine_reference_geometry(geo,resolution)
 end
 
 
-#function lagrangian_reference_element(
-#    geom;
-#    space=:default
-#    order=1,
-#    shape=Val(()),
-#    major=:component,
-#    order_per_dir=ntuple(i->order,Val(num_dims(geom))),
-#    )
-#
-#    reffe_scalar 
-#
-#    shape = Val{val_parameter(shape)}()
-#
-#
-#    if space === :default
-#        space = default_polynomial_space(geo)
-#    end
-#
-#    monomial_exponents = monomial_exponents_from_space(space,order_per_dir)
-#    monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
-#
-#    function tensor_basis(shape::Val{T}) where T
-#        [1]
-#    end
-#    function tensor_basis(shape::Tuple{Any})
-#        D = shape[1]
-#        cis = CartesianIndices(shape)
-#        basis = map(cis) do ci
-#            i, = Tuple(ci)
-#            SVector(ntuple(j-> i==j ? 1 : 0,Val(D)))
-#        end
-#        basis[:]
-#    end
-#    es = tensor_basis()
-#    primal = map(monomials) do monomial
-#        map(es)  do e
-#            x -> monomiam(x)*e
-#        end
-#    end
-#
-#end
+# This should replace reference_face_from_geometry
+# TODO
+# two different versions
+# shape = :scalar, (), (1,) etc
+# :scalar should be different than ()
+function lagrangian_reference_element(
+    geom;
+    space=:default,
+    order=1,
+    shape=Val(()),
+    init_tensor=SArray{Tuple{val_parameter(shape)...}},
+    major=:component,
+    inner=(a,b)->sum(map(*,a,b)),
+    order_per_dir=ntuple(i->order,Val(num_dims(geom))),
+    lib_to_user_nodes = nothing,
+    init_coordinate=SVector,
+    interior_node_permutations=Val(true),
+    )
+
+    if space === :default
+        space = default_polynomial_space(geom)
+    end
+    monomial_exponents = monomial_exponents_from_space(space,order_per_dir)
+    monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
+    myshape = val_parameter(shape)
+    cis = CartesianIndices(myshape)
+    cis_flat = cis[:]
+    l = prod(myshape)
+    if myshape == ()
+        tensor_basis = [1]
+    else
+        tensor_basis = map(cis_flat) do ci
+            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
+        end
+    end
+    if myshape == ()
+        primal = monomials
+    else
+        primal_nested = map(monomials) do monomial
+            map(tensor_basis)  do e
+                x -> monomial(x)*e
+            end
+        end
+        primal = reduce(vcat,primal_nested)
+    end
+    T = Float64
+    node_coordinates = map(monomial_exponents) do exponent
+        c = map(exponent) do e
+            if order != 0
+                T(e/order)
+            else
+                T(e)
+            end
+        end
+        init_coordinate(c)
+    end
+    nnodes = length(node_coordinates)
+    lib_to_user_nodes = if lib_to_user_nodes !== nothing
+        lib_to_user_nodes 
+    else
+        collect(1:nnodes)
+    end
+    node_coordinates[lib_to_user_nodes] = node_coordinates
+    if myshape == ()
+       dual = map(x->(f->f(x)),node_coordinates)
+       dof_to_node = 1:nnodes
+       dof_to_index = fill(CartesianIndex(()),nnodes)
+    else
+        if major === :component
+            dual_nested = map(node_coordinates) do x
+                map(tensor_basis) do e
+                    f->inner(e,f(x))
+                end
+            end
+            dof_to_node_nested = map(1:nnodes) do inode
+                fill(inode,length(cis))
+            end
+            dof_to_index_nested = map(1:nnodes) do inode
+                cis[:]
+            end
+        elseif major === :node
+            dual_nested = map(tensor_basis) do e
+                map(node_coordinates) do x
+                    f->inner(e,f(x))
+                end
+            end
+            dof_to_node_nested = map(cis_flat) do ci
+                collect(1:nnodes)
+            end
+            dof_to_index_nested = map(cis_flat) do ci
+                fill(ci,nnodes)
+            end
+        end
+        dual = reduce(vcat,dual_nested)
+        dof_to_node = reduce(vcat,dof_to_node_nested)
+        dof_to_index = reduce(vcat,dof_to_index_nested)
+    end
+    node_to_dofs = zeros(eltype(tensor_basis),nnodes)
+    ndofs = length(dof_to_node)
+    lis = LinearIndices(cis)
+    for dof in 1:ndofs
+        node = dof_to_node[dof]
+        ci = dof_to_index[dof]
+        node_to_dofs[node] += dof*tensor_basis[lis[ci]]
+    end
+    shape_functions, dofs = shape_functions_and_dofs_from_bases(primal,dual)
+    D = num_dims(geom)
+    refface = Object(;
+        geometry=geom,
+        num_dofs = ndofs,
+        shape_functions,
+        dofs,
+        node_coordinates,
+        order= D==0 ? 1 : maximum(order_per_dir),
+        order_per_dir,
+        monomial_exponents,
+        lib_to_user_nodes,
+        dof_to_node,
+        dof_to_index,
+        node_to_dofs,
+       )
+    boundary, interior_nodes_refface = reference_face_boundary_from_reference_face(refface)
+    if length(interior_nodes_refface) !=0 && myshape !=()
+        own_dofs_nested = map(interior_nodes_refface) do node
+            collect(node_to_dofs[node][:])
+        end
+        own_dofs = reduce(vcat,own_dofs_nested)
+    else
+        own_dofs = interior_nodes_refface
+    end
+    face_own_dofs = Vector{Vector{Vector{Int}}}(undef,D+1)
+    face_own_dofs[end] = [own_dofs]
+    for d in 0:(D-1)
+        face_to_refid = face_reference_id(boundary,d)
+        face_to_nodes = face_nodes(boundary,d)
+        refid_to_refface = reference_faces(boundary,d)
+        refid_to_interior_nodes = map(interior_nodes,refid_to_refface)
+        ndfaces = num_faces(boundary,d)
+        face_own_dofs[d+1] = Vector{Vector{Int}}(undef,ndfaces)
+        for face in 1:ndfaces
+            refid = face_to_refid[face]
+            my_interior_nodes = refid_to_interior_nodes[refid]
+            mynodes = face_to_nodes[face][my_interior_nodes]
+            if length(mynodes) !=0 && myshape != ()
+                own_dofs_nested = map(mynodes) do node
+                    collect(node_to_dofs[node][:])
+                end
+                face_own_dofs[d+1][face] = reduce(vcat,own_dofs_nested)
+            else
+                face_own_dofs[d+1][face] = mynodes
+            end
+        end
+    end
+    vtk_mesh_cell = vtk_mesh_cell_from_reference_face(refface)
+    refface1 = setproperties(refface;boundary,interior_nodes=interior_nodes_refface,vtk_mesh_cell)
+    if val_parameter(interior_node_permutations)
+        interior_node_permutations = interior_node_permutations_from_reference_face(refface1)
+    else
+        interior_node_permutations = nothing
+    end
+    #TODO interior dofs on the boundary and permutations
+    setproperties(refface1;interior_node_permutations,face_own_dofs)
+end
 
 
 end # module

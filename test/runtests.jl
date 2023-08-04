@@ -40,6 +40,27 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+geo = glk.unit_n_cube(Val(2))
+reffe = glk.lagrangian_reference_element(geo)
+A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
+B = reffe.shape_functions.tabulation_matrix(ForwardDiff.gradient,reffe.node_coordinates)
+
+reffe = glk.lagrangian_reference_element(geo,shape=(2,),order=2,major=:node)
+A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
+A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
+
+
+reffe = glk.lagrangian_reference_element(geo,shape=(2,),major=:component)
+A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
+A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
+
+display(reffe.face_own_dofs)
+
+xxx
+
+reffe = glk.lagrangian_reference_element(geo,shape=(2,3))
+A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
+
 geo = glk.unit_simplex(Val(1))
 perms = glk.vertex_permutations_from_geometry(geo)
 @test length(perms) == 2
