@@ -22,7 +22,11 @@ using Test
 # parametrize with Ti and Tf
 # think about order if it needs to be a tuple
 
-
+#lagrangian_reference_face(geo)
+#lagrangian_reference_element(geo)
+#lagrangian_reference_element(geo,shape=:scaler)
+#lagrangian_reference_element(geo,shape=())
+#lagrangian_reference_element(geo,shape=(2,))
 
 #segment
 #num_dims(segment)
@@ -53,15 +57,12 @@ A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coor
 reffe = glk.lagrangian_reference_element(geo,shape=(2,),major=:component)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
 A = reffe.shape_functions.tabulation_matrix(ForwardDiff.jacobian,reffe.node_coordinates)
+display(reffe.node_to_dofs)
 
 geo = glk.unit_n_cube(Val(2))
 reffe = glk.lagrangian_reference_element(geo,order=3,shape=(2,))
-display(reffe.interior_nodes)
-display(reffe.interior_node_permutations)
-display(reffe.own_dofs)
-display(reffe.own_dof_permutations)
-
-xxx
+display(reffe.face_own_dofs)
+display(reffe.face_own_dof_permutations)
 
 reffe = glk.lagrangian_reference_element(geo,shape=(2,3))
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
