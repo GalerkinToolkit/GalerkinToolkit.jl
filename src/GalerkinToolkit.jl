@@ -72,6 +72,7 @@ face_own_dof_permutations(a) = a.face_own_dof_permutations
 node_to_dofs(a) = a.node_to_dofs
 dof_to_node(a) = a.dof_to_node
 dof_to_index(a) = a.dof_to_index
+num_dofs(a) = a.num_dofs
 coordinates(a) = a.coordinates
 weights(a) = a.weights
 shape_functions(a) = a.shape_functions
@@ -1900,7 +1901,8 @@ function fill_face_permutation_ids!(top,D,d)
     cell_to_lface_to_pindex = JaggedArray(data,ptrs)
     if d == D || d == 0
         fill!(cell_to_lface_to_pindex.data,Int8(1))
-        return cell_to_lface_to_pindex
+        top.face_permutation_ids[D+1,d+1] = cell_to_lface_to_pindex
+        return top
     end
     face_to_fvertex_to_vertex = JaggedArray(face_incidence(top,d,0))
     face_to_ftype = face_reference_id(top,d)
@@ -2721,7 +2723,9 @@ function lagrangian_reference_element_scalar(geom;kwargs...)
     end
     face_own_dofs = face_interior_nodes
     face_own_dof_permutations = face_interior_node_permutations
+    num_dofs = nnodes
     reffe = setproperties(refface;
+        num_dofs,
         node_to_dofs,
         dof_to_node,
         dof_to_index,
@@ -2823,6 +2827,7 @@ function lagrangian_reference_element_tensor(
         end
     end
     reffe = setproperties(reffe_scalar;
+        num_dofs=ndofs,
         shape_functions,
         dofs,
         node_to_dofs,
@@ -2831,6 +2836,148 @@ function lagrangian_reference_element_tensor(
         face_own_dofs=my_face_own_dofs,
         face_own_dof_permutations=my_face_own_dof_permutations)
     reffe
+end
+
+
+function dof_glue_from_mesh_and_local_dofs(
+    mesh,
+    local_dofs;
+    face_glue=map(n->1:length(face_reference_id(local_dofs,n)),0:num_dims(local_dofs)))
+
+    D = num_dims(local_dofs)
+    n_nface_refid = face_reference_id(local_dofs)
+    n_refid_reffe = reference_faces(local_dofs)
+    n_refid_nldofs = map(refid_reffe->map(num_dofs,refid_reffe),n_refid_reffe)
+    n_refid_j_ljface_odof_ldof = map(refid_reffe->map(reffe->face_own_dofs(reffe),refid_reffe),n_refid_reffe)
+    n_refid_j_ljface_p_odof_podof = map(refid_reffe->map(reffe->face_own_dof_permutations(reffe),refid_reffe),n_refid_reffe)
+    @assert length(face_glue) == D+1
+    n_nface_Nface = face_glue
+    @assert num_dims(mesh) >= D
+    mesh_topology = topology(mesh)
+    nd_Nface_ldface_dface = face_incidence(mesh_topology)
+    nd_Nface_ldface_p = face_permutation_ids(mesh_topology)
+    d_to_ndfaces = map(d->num_faces(mesh,d),0:D)
+    dof = 0
+    d_dface_podof_dof = map(0:D) do d
+        ndfaces = d_to_ndfaces[d+1]
+        dface_podof_dof_ptrs = zeros(Int32,ndfaces+1)
+        dface_istouched = fill(false,ndfaces)
+        for n in d:D
+            Nface_ldface_dface = nd_Nface_ldface_dface[n+1,d+1]
+            nface_Nface = n_nface_Nface[n+1]
+            nface_refid = n_nface_refid[n+1]
+            refid_nldofs = n_refid_nldofs[n+1]
+            refid_j_ljface_odof_ldof = n_refid_j_ljface_odof_ldof[n+1]
+            refid_j_ljface_p_odof_podof = n_refid_j_ljface_p_odof_podof[n+1]
+            nnfaces = length(nface_refid)
+            for nface in 1:nnfaces
+                refid = nface_refid[nface]
+                j_ljface_odof_ldof = refid_j_ljface_odof_ldof[refid]
+                ldface_odof_ldof = j_ljface_odof_ldof[d+1]
+                Nface = nface_Nface[nface]
+                ldface_dface = Nface_ldface_dface[Nface]
+                for ldface in 1:length(ldface_dface)
+                    dface = ldface_dface[ldface]
+                    if dface_istouched[dface]# This one is not really needed
+                        continue
+                    end
+                    odof_ldof = ldface_odof_ldof[ldface]
+                    dface_podof_dof_ptrs[dface+1] = length(odof_ldof)
+                    dface_istouched[dface] = true
+                end
+            end
+        end
+        length_to_ptrs!(dface_podof_dof_ptrs)
+        ndata = dface_podof_dof_ptrs[end]-1
+        dface_podof_dof_data = zeros(Int32,ndata)
+        fill!(dface_istouched,false)
+        for n in d:D
+            Nface_ldface_dface = nd_Nface_ldface_dface[n+1,d+1]
+            nface_Nface = n_nface_Nface[n+1]
+            nface_refid = n_nface_refid[n+1]
+            refid_nldofs = n_refid_nldofs[n+1]
+            refid_j_ljface_odof_ldof = n_refid_j_ljface_odof_ldof[n+1]
+            refid_j_ljface_p_odof_podof = n_refid_j_ljface_p_odof_podof[n+1]
+            nnfaces = length(nface_refid)
+            for nface in 1:nnfaces
+                refid = nface_refid[nface]
+                j_ljface_odof_ldof = refid_j_ljface_odof_ldof[refid]
+                dlface_odof_ldof = j_ljface_odof_ldof[d+1]
+                Nface = nface_Nface[nface]
+                ldface_dface = Nface_ldface_dface[Nface]
+                for ldface in 1:length(ldface_dface)
+                    dface = ldface_dface[ldface]
+                    if dface_istouched[dface]
+                        continue
+                    end
+                    odof_ldof = dlface_odof_ldof[ldface]
+                    offset = dface_podof_dof_ptrs[dface]-1
+                    for podof in 1:length(odof_ldof)
+                        dof += 1
+                        dface_podof_dof_data[offset+podof] = dof
+                    end
+                    dface_istouched[dface] = true
+                end
+            end
+        end
+        JaggedArray(dface_podof_dof_data,dface_podof_dof_ptrs)
+    end
+    ndofs = dof
+    n_nface_ldof_dof = map(0:D) do n
+        nface_Nface = n_nface_Nface[n+1]
+        nface_refid = n_nface_refid[n+1]
+        refid_nldofs = n_refid_nldofs[n+1]
+        refid_j_ljface_odof_ldof = n_refid_j_ljface_odof_ldof[n+1]
+        refid_j_ljface_p_odof_podof = n_refid_j_ljface_p_odof_podof[n+1]
+        nnfaces = length(nface_refid)
+        nface_ldof_dof_ptrs = zeros(Int32,nnfaces+1)
+        for nface in 1:nnfaces
+            refid = nface_refid[nface]
+            nldofs =  refid_nldofs[refid]
+            nface_ldof_dof_ptrs[nface+1] = nldofs
+        end
+        length_to_ptrs!(nface_ldof_dof_ptrs)
+        ndata = nface_ldof_dof_ptrs[end]-1
+        nface_ldof_dof_data = zeros(Int32,ndata)
+        nface_ldof_dof = JaggedArray(nface_ldof_dof_data,nface_ldof_dof_ptrs)
+        for d in 0:n
+            Nface_ldface_dface = nd_Nface_ldface_dface[n+1,d+1]
+            Nface_ldface_p = nd_Nface_ldface_p[n+1,d+1]
+            dface_podof_dof = d_dface_podof_dof[d+1]
+            for nface in 1:nnfaces
+                Nface_ldface_dface = nd_Nface_ldface_dface[n+1,d+1]
+                Nface = nface_Nface[nface]
+                refid = nface_refid[nface]
+                j_ljface_odof_ldof = refid_j_ljface_odof_ldof[refid]
+                j_ljface_p_odof_podof = refid_j_ljface_p_odof_podof[refid]
+                dlface_odof_ldof = j_ljface_odof_ldof[d+1]
+                ldface_p_odof_podof = j_ljface_p_odof_podof[d+1]
+                ldface_dface = Nface_ldface_dface[Nface]
+                ldface_p = Nface_ldface_p[Nface]
+                ldof_dof = nface_ldof_dof[nface]
+                for ldface in 1:length(ldface_dface)
+                    dface = ldface_dface[ldface]
+                    p_odof_podof = ldface_p_odof_podof[ldface]
+                    p = ldface_p[ldface]
+                    odof_podof = p_odof_podof[p]
+                    odof_ldof = dlface_odof_ldof[ldface]
+                    podof_dof = dface_podof_dof[dface]
+                    for odof in 1:length(odof_podof)
+                        podof = odof_podof[odof]
+                        dof = podof_dof[podof]
+                        ldof = odof_ldof[odof]
+                        ldof_dof[ldof] = dof
+                    end
+                end
+            end
+        end
+        nface_ldof_dof
+    end
+    Object(;
+        num_dims=Val(D),
+        face_dofs=n_nface_ldof_dof,
+        num_dofs=ndofs,
+       )
 end
 
 

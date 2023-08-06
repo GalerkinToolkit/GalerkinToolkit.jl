@@ -44,6 +44,23 @@ using Test
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+
+domain = (1,2,1,2)
+cells = (2,2)
+mesh = glk.cartesian_mesh(domain,cells)
+
+D = glk.num_dims(mesh)
+geo = glk.reference_faces(mesh,D)|>first|>glk.geometry
+reffe = glk.lagrangian_reference_element(geo,order=3)
+
+local_dofs = glk.Object(;
+    num_dims=Val(2),
+    face_reference_id = [Int[],Int[],fill(1,glk.num_faces(mesh,2))],
+    reference_faces = ((),(),[reffe])
+)
+
+dof_glue = glk.dof_glue_from_mesh_and_local_dofs(mesh,local_dofs)
+
 geo = glk.unit_n_cube(Val(1))
 reffe = glk.lagrangian_reference_element(geo)
 A = reffe.shape_functions.tabulation_matrix(glk.value,reffe.node_coordinates)
