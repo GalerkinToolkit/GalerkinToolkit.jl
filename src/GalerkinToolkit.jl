@@ -2843,6 +2843,8 @@ function dof_glue_from_mesh_and_local_dofs(
     mesh,
     local_dofs;
     face_glue=map(n->1:length(face_reference_id(local_dofs,n)),0:num_dims(local_dofs)))
+    # TODO periodic boundary conditions (just find and return slave->master mapping)
+    # First we need to find slave->master faces while building the mesh topology
 
     D = num_dims(local_dofs)
     n_nface_refid = face_reference_id(local_dofs)
