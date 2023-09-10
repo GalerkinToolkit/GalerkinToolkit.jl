@@ -7,6 +7,22 @@ using SparseArrays
 using LinearAlgebra
 using ForwardDiff
 using Test
+using PartitionedArrays
+using Metis
+
+msh =  joinpath(@__DIR__,"..","assets","demo.msh")
+mesh = glk.mesh_from_gmsh(msh;complexify=false)
+
+np = 4
+ranks = DebugArray(LinearIndices((np,)))
+pmesh = glk.partition_mesh_via_nodes(Metis.partition,ranks,mesh)
+
+map(pmesh,ranks) do mesh,rank
+    pvtk_grid("pdebug",glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+        glk.vtk_physical_groups!(vtk,mesh)
+        vtk["piece"] = fill(rank,sum(glk.num_faces(mesh)))
+    end
+end
 
 # TODO
 # before more cleanup:

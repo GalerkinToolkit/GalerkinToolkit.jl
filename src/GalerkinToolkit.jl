@@ -8,6 +8,7 @@ using ForwardDiff
 using Gmsh
 using PartitionedArrays
 using Combinatorics
+using SparseArrays
 
 # Inspited by PropertyUtils.jl
 # Use a dict directly instead? (provably not, we would not be type stable even if we wanted,really?)
@@ -2982,5 +2983,114 @@ function dof_glue_from_mesh_and_local_dofs(
        )
 end
 
+function assemble_graph(nnodes,d_to_cell_to_nodes)
+    ndata = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            ndata += nlnodes*nlnodes
+        end
+    end
+    I = zeros(Int32,ndata)
+    J = zeros(Int32,ndata)
+    p = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            for j in 1:nlnodes
+                for i in 1:nlnodes
+                    p += 1
+                    I[p] = nodes[i]
+                    J[p] = nodes[j]
+                end
+            end
+        end
+    end
+    V = ones(Int8,ndata)
+    g = sparse(I,J,V,nnodes,nnodes)
+    fill!(g.nzval,Int8(1))
+    g
+end
+
+function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+    nnodes = num_nodes(mesh)
+    node_to_lnode = zeros(Int32,nnodes)
+    node_to_lnode[lnode_to_node] = 1:length(lnode_to_node)
+    lnode_to_coords = node_coordinates(mesh)[lnode_to_node]
+    lface_to_lnodes_mesh = map(lface_to_face_mesh,face_nodes(mesh)) do lface_to_face,face_to_nodes
+        lface_to_nodes = view(face_to_nodes,lface_to_face)
+        lface_to_lnodes = JaggedArray(lface_to_nodes)
+        f = node->node_to_lnode[node]
+        lface_to_lnodes.data .= f.(lface_to_lnodes.data)
+        lface_to_lnodes
+    end
+    lface_to_refid_mesh = map((a,b)->b[a],lface_to_face_mesh,face_reference_id(mesh))
+    D = num_dims(mesh)
+    lmesh = Object(;
+        num_dims=Val(D),
+        node_coordinates=lnode_to_coords,
+        face_nodes=lface_to_lnodes_mesh,
+        face_reference_id=lface_to_refid_mesh,
+        reference_faces=reference_faces(mesh))
+    if has_physical_groups(mesh)
+        lgroups_mesh = map(lface_to_face_mesh,num_faces(mesh),physical_groups(mesh)) do lface_to_face, nfaces, groups
+            lgroups = Dict{String,Vector{Int32}}()
+            face_to_lface = zeros(Int32,nfaces)
+            face_to_lface[lface_to_face] = 1:length(lface_to_face)
+            for (k,faces) in groups
+                lgroups[k] = filter(i->i!=0,face_to_lface[faces])
+            end
+            lgroups
+        end
+        lmesh = setproperties(lmesh;physical_groups=lgroups_mesh)
+    end
+    if has_periodic_nodes(mesh)
+        pnode_to_node,pnode_to_master = periodic_nodes(mesh)
+        plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
+        plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
+        lmesh = setproperties(lmesh,periodic_nodes=(plnode_to_lnode=>plnode_to_lmaster))
+    end
+    lmesh
+end
+
+function partition_mesh_via_nodes(colorize,ranks,mesh)
+    face_nodes_mesh = face_nodes(mesh)
+    nnodes = num_nodes(mesh)
+    g = assemble_graph(nnodes,face_nodes_mesh)
+    node_to_color=colorize(g,length(ranks))
+    node_faces_mesh = map(face_nodes_mesh) do face_to_nodes
+        generate_face_coboundary(face_to_nodes,nnodes)
+    end
+    map(ranks) do rank
+        onode_to_node = findall(color->color==rank,node_to_color)
+        node_to_mask = fill(false,nnodes)
+        face_partition_mesh = map(face_nodes_mesh,node_faces_mesh) do face_to_nodes, node_to_faces
+            nfaces = length(face_to_nodes)
+            face_to_mask = fill(false,nfaces)
+            for node in onode_to_node
+                for face in node_to_faces[node]
+                    face_to_mask[face] = true
+                end
+            end
+            lface_to_face = findall(face_to_mask)
+            nlfaces = length(lface_to_face)
+            lface_to_color = zeros(Int32,nlfaces)
+            for (lface,face) in enumerate(lface_to_face)
+                nodes = face_to_nodes[face]
+                color = maximum(node->node_to_color[node],nodes)
+                lface_to_color[lface] = color
+                node_to_mask[nodes] .= true
+            end
+            LocalIndices(nfaces,rank,lface_to_face,lface_to_color)
+        end
+        lnode_to_node = findall(node_to_mask)
+        lface_to_face_mesh = map(local_to_global,face_partition_mesh)
+        restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+    end
+end
 
 end # module
