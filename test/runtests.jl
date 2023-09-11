@@ -10,19 +10,6 @@ using Test
 using PartitionedArrays
 using Metis
 
-msh =  joinpath(@__DIR__,"..","assets","demo.msh")
-mesh = glk.mesh_from_gmsh(msh;complexify=false)
-
-np = 4
-ranks = DebugArray(LinearIndices((np,)))
-pmesh = glk.partition_mesh_via_nodes(Metis.partition,ranks,mesh)
-
-map(pmesh,ranks) do mesh,rank
-    pvtk_grid("pdebug",glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
-        glk.vtk_physical_groups!(vtk,mesh)
-        vtk["piece"] = fill(rank,sum(glk.num_faces(mesh)))
-    end
-end
 
 # TODO
 # before more cleanup:
@@ -60,6 +47,23 @@ end
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+msh =  joinpath(@__DIR__,"..","assets","demo.msh")
+mesh = glk.mesh_from_gmsh(msh;complexify=false)
+
+np = 4
+ranks = DebugArray(LinearIndices((np,)))
+# TODO inclure global "glue" outside pmesh?
+pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:nodes)
+pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:cells)
+
+map(pmesh,ranks) do mesh,rank
+    pvtk_grid("pdebug",glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+        glk.vtk_physical_groups!(vtk,mesh)
+        vtk["piece"] = fill(rank,sum(glk.num_faces(mesh)))
+        vtk["owner"] = local_to_owner(mesh.local_nodes)
+        vtk["interface"] = map(colors->Int(length(colors)!=1),mesh.local_node_colors)
+    end
+end
 
 domain = (1,2,1,2)
 cells = (2,2)

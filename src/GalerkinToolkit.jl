@@ -3057,15 +3057,34 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
+function partition_mesh(colorize,ranks,mesh;via=:nodes)
+    if via === :nodes
+        partition_mesh_via_nodes(colorize,ranks,mesh)
+    elseif via === :cells
+        partition_mesh_via_cells(colorize,ranks,mesh)
+    else
+        error("case not implemented")
+    end
+end
+
 function partition_mesh_via_nodes(colorize,ranks,mesh)
     face_nodes_mesh = face_nodes(mesh)
     nnodes = num_nodes(mesh)
-    g = assemble_graph(nnodes,face_nodes_mesh)
-    node_to_color=colorize(g,length(ranks))
+    root = 1
+    colors_root = map(ranks) do rank
+        if rank == root
+            g = assemble_graph(nnodes,face_nodes_mesh)
+            colors::Vector{Int32}=colorize(g,length(ranks))
+        else
+            colors = Int32[]
+        end
+        colors
+    end
+    node_to_color = emit(colors_root;source=root)
     node_faces_mesh = map(face_nodes_mesh) do face_to_nodes
         generate_face_coboundary(face_to_nodes,nnodes)
     end
-    map(ranks) do rank
+    map(ranks,node_to_color) do rank,node_to_color
         onode_to_node = findall(color->color==rank,node_to_color)
         node_to_mask = fill(false,nnodes)
         face_partition_mesh = map(face_nodes_mesh,node_faces_mesh) do face_to_nodes, node_to_faces
@@ -3093,4 +3112,129 @@ function partition_mesh_via_nodes(colorize,ranks,mesh)
     end
 end
 
+function partition_mesh_via_cells(colorize,ranks,mesh)
+    D = num_dims(mesh)
+    cell_to_nodes = face_nodes(mesh,D)
+    nnodes = num_nodes(mesh)
+    node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
+    ncells = length(cell_to_nodes)
+    root = 1
+    colors_root = map(ranks) do rank
+        if rank == root
+            g = assemble_graph(ncells,[node_to_cells])
+            colors::Vector{Int32} = colorize(g,length(ranks))
+        else
+            colors = Int32[]
+        end
+        colors
+    end
+    cell_to_color = emit(colors_root;source=root)
+    map(ranks,cell_to_color) do rank,cell_to_color
+        ocell_to_cell = findall(color->color==rank,cell_to_color)
+        node_to_mask = fill(false,nnodes)
+        for cell in ocell_to_cell
+            nodes = cell_to_nodes[cell]
+            node_to_mask[nodes] .= true
+        end
+        lnode_to_node = findall(node_to_mask)
+        nlnodes = length(lnode_to_node)
+        lnode_to_colors = JaggedArray(view(node_to_cells,lnode_to_node))
+        f = cell->cell_to_color[cell]
+        lnode_to_colors.data .= f.(lnode_to_colors.data)
+        lnode_to_colors = JaggedArray(map(colors->sort(unique(colors)),lnode_to_colors))
+        lnode_to_owner = zeros(Int32,nlnodes)
+        for (lnode, node) in enumerate(lnode_to_node)
+            cells = node_to_cells[node]
+            color = maximum(cell->cell_to_color[cell],cells)
+            lnode_to_owner[lnode] = color
+        end
+        lface_to_face_mesh = map(face_nodes(mesh)[1:end-1]) do face_to_nodes
+            nfaces = length(face_to_nodes)
+            face_to_mask = fill(false,nfaces)
+            for face in 1:nfaces
+                nodes = face_to_nodes[face]
+                if all(node->node_to_mask[node],nodes)
+                    face_to_mask[face] = true
+                end
+            end
+            lface_to_face = findall(face_to_mask)
+            lface_to_face
+        end
+        lmesh = restrict_mesh(mesh,lnode_to_node,[lface_to_face_mesh...,ocell_to_cell])
+        local_nodes = LocalIndices(nnodes,rank,lnode_to_node,lnode_to_owner)
+        setproperties(lmesh;local_nodes,local_node_colors=lnode_to_colors)
+    end
+end
+
+#function generate_coarse_dof_glue_from_pmesh(pmesh)
+#    ranks = linear_indices(pmesh)
+#    lnode_to_colors = map(lmesh->lmesh.lnode_to_colors,pmesh)
+#    node_partition = map(lmesh->lmesh.local_nodes,pmesh)
+#    generate_coarse_objects(ranks,lnode_to_colors,node_partition)
+#    clnode_to_lnodes, clnode_to_cnode, ncnodes
+#
+#end
+#
+#function generate_coarse_objects(ranks,lnode_to_colors,node_partition)
+#    clnode_to_lnodes, clnode_to_owner, nown = map(ranks,lnode_to_colors) do rank,lnode_to_colors
+#        interface_node_to_lnode = findall(colors->length(colors)!=1,lnode_to_colors)
+#        interface_node_to_colors = view(lnode_to_colors,interface_node_to_lnode)
+#        # assumes sorted colors
+#        clnode_to_colors = unique(interface_node_to_colors)
+#        interface_node_to_clnode = indexin(interface_node_to_colors,clnode_to_colors)
+#        clnode_to_interface_nodes = inverse_index_map(interface_node_to_clnode)
+#        f = interface_node->interface_node_to_lnode[interface_node]
+#        clnode_to_interface_nodes.data .= f.(clnode_to_interface_nodes.data)
+#        clnode_to_lnodes = clnode_to_interface_nodes
+#        clnode_to_owner = map(maximum,clnode_to_colors)
+#        nown = count(owner->owner==rank,clnode_to_owner)
+#        clnode_to_lnodes, clnode_to_owner, nown
+#    end |> tuple_of_arrays
+#    ncnodes = sum(nown)
+#    cnode_partition = variable_partition(nown,ncnodes)
+#    v = PVector{Vector{Int}}(undef,node_partition)
+#    map(ranks,cnode_partition,clnode_to_owner,clnode_to_lnodes,local_values(v)) do rank, conodes, clnode_to_owner, clnode_to_lnodes lnode_to_v
+#        conode_to_cnode = own_to_global(conodes)
+#        conode = 0
+#        for (clnode,owner) in enumerate(clnode_to_owner)
+#            if owner != rank
+#                continue
+#            end
+#            conode += 1
+#            cnode = conode_to_cnode[conode]
+#            lnodes = clnode_to_lnodes[clnode]
+#            lnode_to_v[lnodes] .= cnode
+#        end
+#    end
+#    consistent!(v) |> wait
+#    clnode_to_cnode = map(ranks,clnode_to_lnodes,local_values(v)) do rank, clnode_to_lnodes, lnode_to_v
+#        nclnodes = length(clnode_to_lnodes)
+#        my_clnode_to_cnode = zeros(Int,nclnodes)
+#        for clnode in 1:nclnodes
+#            lnodes = clnode_to_lnodes[clnode]
+#            cnode = lnode_to_v[first(lnode)]
+#            my_clnode_to_cnode[clnode] = cnode
+#        end
+#    end
+#    clnode_to_lnodes, clnode_to_cnode, ncnodes
+#end
+
+function inverse_index_map(a_to_b,nb)
+    b_to_as_ptrs = zeros(Int32,nb+1)
+    for b in a_to_b
+        b_to_as_ptrs[b+1] += 1
+    end
+    length_to_ptrs!(b_to_as_ptrs)
+    ndata = b_to_as_ptrs[end]-1
+    b_to_as_data = zeros(Int32,ndata)
+    for (a,b) in enumerate(a_to_b)
+        p = b_to_as_ptrs[b]
+        b_to_as_data[p] = a
+        b_to_as_ptrs[b] += 1
+    end
+    rewind_ptrs!(b_to_as_ptrs)
+    JaggedArray(b_to_as_data,b_to_as_ptrs)
+end
+
 end # module
+
