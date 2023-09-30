@@ -84,6 +84,7 @@ monomial_exponents(a) = a.monomial_exponents
 lib_to_user_nodes(a) = a.lib_to_user_nodes
 interior_nodes(a) = a.interior_nodes
 face_permutation_ids(a) = a.face_permutation_ids
+face_permutation_ids(a,m,n) = face_permutation_ids(a)[m+1,n+1]
 
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
@@ -101,6 +102,16 @@ function face_offsets(a)
         offsets[d+1] = offsets[d] + num_faces(a,d-1)
     end
     offsets
+end
+
+function face_dim(a,d)
+    n = num_faces(a,d)
+    fill(d,n)
+end
+
+function face_dim(a)
+    D = num_dims(a)
+    reduce(vcat,map(d->face_dim(a,d),0:D))
 end
 
 function is_unit_n_cube(geom)
@@ -327,6 +338,55 @@ function tensor_product_quadrature(
     (;coordinates=x,weights=w)
 end
 
+# Duffy map from the n-cube in [0,1]^d to the n-simplex in [0,1]^d
+function duffy_map(q)
+    D = length(q)
+    a = 1.0
+    m = ntuple(Val(D)) do i
+        if i == 1
+            q[i]
+        else
+            a *= (1-q[i-1])
+            a*q[i]
+        end
+    end
+    typeof(q)(m)
+end
+
+function duffy_quadrature(order,Dval)
+    function map_to(a,b,(points,weights))
+      points_ab = similar(points)
+      weights_ab = similar(weights)
+      points_ab .= 0.5*(b-a)*points .+ 0.5*(a+b)
+      weights_ab .= 0.5*(b-a)*weights
+      (points_ab, weights_ab)
+    end
+    n = ceil(Int, (order + 1.0) / 2.0 )
+    D = val_parameter(Dval)
+    beta = 0
+    dim_to_quad_1d = map(1:(D-1)) do d
+        alpha = (D-1)-(d-1)
+        map_to(0,1,gaussjacobi(n,alpha,beta))
+    end
+    quad_1d = map_to(0,1,gausslegendre(n))
+    push!(dim_to_quad_1d,quad_1d)
+    coords_per_dir = map(first,dim_to_quad_1d)
+    weights_per_dir =  map(last,dim_to_quad_1d)
+    a = 0.5
+    for d in (D-1):-1:1
+        ws_1d = weights_per_dir[d]
+        ws_1d[:] *= a
+        a *= 0.5
+    end
+    m = prod(map(length,weights_per_dir))
+    w = zeros(Float64,m)
+    x = zeros(SVector{D,Float64},m)
+    tensor_product!(identity,x,coords_per_dir)
+    tensor_product!(prod,w,weights_per_dir)
+    x .= duffy_map.(x)
+    (;coordinates=x,weights=w)
+end
+
 function tensor_product!(f,result,values_per_dir)
     shape = Tuple(map(length,values_per_dir))
     cis = CartesianIndices(shape)
@@ -347,8 +407,10 @@ function quadrature(geom,degree;kwargs...)
             degree_per_dir = ntuple(i->degree,Val(D))
             tensor_product_quadrature(degree_per_dir,limits_per_dir;kwargs...)
         else
-        error("Not implemented")
+            error("Not implemented")
         end
+    elseif is_unit_simplex(geom)
+        duffy_quadrature(degree,num_dims(geom))
     else
         error("Not implemented")
     end
@@ -575,7 +637,8 @@ function unit_n_cube_boundary(
         segment = reference_face
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment])
-        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        outwards_normals = SVector{2,Float64}[(0,-1),(0,1),(-1,0),(1,0)]
+        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,0,1),(1,0,1),(0,1,1),(1,1,1)]
         face_nodes = [
@@ -588,7 +651,8 @@ function unit_n_cube_boundary(
         segment = first(reference_faces(boundary(geometry(quad)),1))
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment],[quad])
-        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        outwards_normals = SVector{3,Float64}[(0,0,-1),(0,0,1),(0,-1,0),(0,1,0),(-1,0,0),(1,0,0)]
+        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     else
         @error "Case not implemented"
     end
@@ -623,7 +687,9 @@ function unit_simplex_boundary(
         segment = reference_face
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment])
-        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        n1 = sqrt(2)/2
+        outwards_normals = SVector{2,Float64}[(0,-1),(-1,0),(n1,n1)]
+        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
         face_nodes = [
@@ -636,7 +702,9 @@ function unit_simplex_boundary(
         segment = first(reference_faces(boundary(geometry(tri)),1))
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment],[tri])
-        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        n1 = sqrt(3)/3
+        outwards_normals = SVector{3,Float64}[(0,0,-1),(0,-1,0),(-1,0,0),(n1,n1,n1)]
+        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     else
         error("case not implemented")
     end
