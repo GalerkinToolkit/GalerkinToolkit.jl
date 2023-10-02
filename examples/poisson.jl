@@ -18,6 +18,7 @@ function add_default_params(params_in,params_default)
 end
 
 function default_params_poisson()
+    outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
     params[:mesh] = glk.cartesian_mesh((0,1,0,1),(10,10))
     params[:u] = (x) -> sum(x)
@@ -27,7 +28,7 @@ function default_params_poisson()
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
     params[:solve] = \
-    params[:example_name] = "poisson"
+    params[:example_path] = joinpath(outdir,"poisson")
     params
 end
 
@@ -45,7 +46,7 @@ function poisson(params_in)
     dirichlet_tags = params[:dirichlet_tags]
     degree = params[:integration_degree]
     solve = params[:solve]
-    example_name = params[:example_name]
+    example_path = params[:example_path]
     neumann_tags = params[:neumann_tags]
 
     # Dirichlet values
@@ -340,7 +341,7 @@ function poisson(params_in)
     results[:nfree] = nfree
     results[:ncells] = ncells
 
-    vtk_grid(example_name,glk.vtk_args(mesh)...) do vtk
+    vtk_grid(example_path,glk.vtk_args(mesh)...) do vtk
         glk.vtk_physical_groups!(vtk,mesh)
         vtk["tag"] = node_to_tag
         vtk["uh"] = uh
