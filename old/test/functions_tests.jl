@@ -1,3 +1,0 @@
-module FunctionsTests
-
-end # module
