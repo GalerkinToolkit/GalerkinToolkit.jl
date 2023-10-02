@@ -16,33 +16,33 @@ params[:neumann_tags] = ["1-face-2"]
 params[:u] = (x) -> sum(x)
 params[:f] = (x) -> 0.0
 params[:g] = (x) -> 1.0
-@time results = poisson(params)
+@time results = Poisson.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 @test results[:ncells] == 10*5
 
 params = Dict{Symbol,Any}()
 params[:mesh] = gt.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
-@time results = poisson(params)
+@time results = Poisson.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 @test results[:ncells] == 5*5*5
 
 params = Dict{Symbol,Any}()
 params[:mesh] = gt.cartesian_mesh((0,3,0,2),(5,5),simplexify=true)
-@time results = poisson(params)
+@time results = Poisson.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 
 params = Dict{Symbol,Any}()
 params[:mesh] = gt.cartesian_mesh((0,3,0,2,0,1),(5,5,5),simplexify=true)
-@time results = poisson(params)
+@time results = Poisson.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 
 params = Dict{Symbol,Any}()
 params[:hi] = 1
-@time results = poisson(params)
+@time results = Poisson.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 

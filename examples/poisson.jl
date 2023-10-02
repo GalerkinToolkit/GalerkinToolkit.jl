@@ -1,9 +1,34 @@
+module Poisson
+
 import GalerkinToolkit as glk
 import ForwardDiff
 using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
+
+function main(params_in)
+
+    # Process params
+    params_default = default_params_poisson()
+    params = add_default_params(params_in,params_default)
+
+    # Setup main data structures
+    state = setup(params)
+
+    # Assemble system and solve it
+    A,b = assemble_system(state)
+    add_neumann_bcs!(b,state)
+    uh = solve_system(A,b,state)
+
+    # Post process
+    results = Dict{Symbol,Any}()
+    add_basic_info!(results,state)
+    integrate_error_norms!(results,uh,state)
+    export_results(uh,params,state)
+
+    results
+end
 
 function add_default_params(params_in,params_default)
     UmD = setdiff(keys(params_in),keys(params_default))
@@ -32,24 +57,10 @@ function default_params_poisson()
     params
 end
 
-function poisson(params_in)
-
-    # Process params
-    params_default = default_params_poisson()
-    params = add_default_params(params_in,params_default)
-
-    # Get the parameters
+function setup_dirichlet_bcs(params)
     mesh = params[:mesh]
     u = params[:u]
-    f = params[:f]
-    g = params[:g]
     dirichlet_tags = params[:dirichlet_tags]
-    degree = params[:integration_degree]
-    solve = params[:solve]
-    example_path = params[:example_path]
-    neumann_tags = params[:neumann_tags]
-
-    # Dirichlet values
     node_to_tag = zeros(glk.num_nodes(mesh))
     tag_to_name = dirichlet_tags
     glk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
@@ -58,36 +69,97 @@ function poisson(params_in)
     dirichlet_nodes = last(free_and_dirichlet_nodes)
     x_dirichlet = view(node_to_x,dirichlet_nodes)
     u_dirichlet = u.(x_dirichlet)
+    dirichlet_bcs = (;free_and_dirichlet_nodes,u_dirichlet,node_to_tag)
+end
 
-    # Reference cell
-    d = glk.num_dims(mesh)
+function setup_integration(params,objects)
+    mesh = params[:mesh]
+    degree = params[:integration_degree]
+    D = glk.num_dims(mesh)
+    if objects === :cells
+        d = D
+    elseif objects === :faces
+        d = D-1
+    else
+        error("")
+    end
+    # Integration
     ref_cells = glk.reference_faces(mesh,d)
-    cell_to_rid = glk.face_reference_id(mesh,d)
-
-    # Integration rule
+    face_to_rid = glk.face_reference_id(mesh,d)
     integration_rules = map(ref_cells) do ref_cell
         glk.quadrature(glk.geometry(ref_cell),degree)
     end
-    w = map(glk.weights,integration_rules)
-    q = map(glk.coordinates,integration_rules)
+    rid_to_weights = map(glk.weights,integration_rules)
+    rid_to_coords = map(glk.coordinates,integration_rules)
+    integration = (;rid_to_weights,rid_to_coords,face_to_rid,d)
+end
 
-    # Shape functions
-    ab = map(integration_rules,ref_cells) do integration_rule,ref_cell
-        q = glk.coordinates(integration_rule)
+function setup_isomap(params,integration)
+    rid_to_coords = integration.rid_to_coords
+    face_to_rid = integration.face_to_rid
+    d = integration.d
+    mesh = params[:mesh]
+    ref_cells = glk.reference_faces(mesh,d)
+    shape_funs = map(rid_to_coords,ref_cells) do q,ref_cell
         shape_functions = glk.shape_functions(ref_cell)
-        m = length(q)
-        n = glk.num_nodes(ref_cell)
-        a1 = glk.tabulation_matrix!(shape_functions)(ForwardDiff.gradient,zeros(eltype(q),m,n),q)
-        b1 = glk.tabulation_matrix!(shape_functions)(glk.value,zeros(m,n),q)
-        (a1,b1)
+        shape_vals = glk.tabulation_matrix(shape_functions)(glk.value,q)
+        shape_grads = glk.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
+        shape_vals, shape_grads
     end
-    ∇s = map(first,ab)
-    s = map(last,ab)
+    rid_to_shape_vals = map(first,shape_funs)
+    rid_to_shape_grads = map(last,shape_funs)
+    face_to_nodes = glk.face_nodes(mesh,d)
+    node_to_coords = glk.node_coordinates(mesh)
+    isomap = (;face_to_nodes,node_to_coords,face_to_rid,rid_to_shape_vals,rid_to_shape_grads,d)
+end
+
+function setup_neumann_bcs(params)
+    mesh = params[:mesh]
+    neumann_tags = params[:neumann_tags]
+    neum_face_to_face = Int[]
+    if length(neumann_tags) != 0
+        D = glk.num_dims(mesh)
+        tag_to_groups = glk.physical_groups(mesh,D-1)
+        neum_face_to_face = reduce(union,map(tag->tag_to_groups[tag],neumann_tags))
+    end
+    (;neum_face_to_face)
+end
+
+function setup_user_funs(params)
+    u = params[:u]
+    f = params[:f]
+    g = params[:g]
+    user_funs = (;u,f,g)
+end
+
+function setup(params)
+    dirichlet_bcs = setup_dirichlet_bcs(params)
+    neumann_bcs = setup_neumann_bcs(params)
+    cell_integration = setup_integration(params,:cells)
+    face_integration = setup_integration(params,:faces)
+    cell_isomap = setup_isomap(params,cell_integration)
+    face_isomap = setup_isomap(params,face_integration)
+    user_funs = setup_user_funs(params)
+    solve = params[:solve]
+    state = (;solve,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
+end
+
+function assemble_system(state)
+
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    f = state.user_funs.f
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
 
     # Count coo entries
     n_coo = 0
-    cell_to_nodes = glk.face_nodes(mesh,d)
-    ncells = glk.num_faces(mesh,d)
+    ncells = length(cell_to_nodes)
     node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
     nfree = length(first(free_and_dirichlet_nodes))
     for cell in 1:ncells
@@ -204,88 +276,120 @@ function poisson(params_in)
         end
     end
 
-    # Neumann conditions
-    if length(neumann_tags) != 0
+    A = sparse(I_coo,J_coo,V_coo,nfree,nfree)
 
-        face_to_rid = glk.face_reference_id(mesh,d-1)
-        face_to_nodes = glk.face_nodes(mesh,d-1)
-        ref_faces = glk.reference_faces(mesh,d-1)
-        n_ref_faces = length(ref_faces)
+    A,b
+end
 
-        # Integration rule
-        integration_rules_f = map(ref_faces) do ref_face
-            glk.quadrature(glk.geometry(ref_face),degree)
-        end
-        w_f = map(glk.weights,integration_rules_f)
-        q_f = map(glk.coordinates,integration_rules_f)
+function add_neumann_bcs!(b,state)
 
-        # Shape functions
-        ab = map(integration_rules_f,ref_faces) do integration_rule,ref_cell
-            q = glk.coordinates(integration_rule)
-            shape_functions = glk.shape_functions(ref_cell)
-            m = length(q)
-            n = glk.num_nodes(ref_cell)
-            a1 = glk.tabulation_matrix!(shape_functions)(ForwardDiff.gradient,zeros(eltype(q),m,n),q)
-            b1 = glk.tabulation_matrix!(shape_functions)(glk.value,zeros(m,n),q)
-            (a1,b1)
-        end
-        ∇s_f = map(first,ab)
-        s_f = map(last,ab)
+    neum_face_to_face = state.neumann_bcs.neum_face_to_face
+    if length(neum_face_to_face) == 0
+        return nothing
+    end
+    face_to_rid = state.face_isomap.face_to_rid
+    face_to_nodes = state.face_isomap.face_to_nodes
+    ∇s_f = state.face_isomap.rid_to_shape_grads
+    s_f = state.face_isomap.rid_to_shape_vals
+    node_to_x = state.face_isomap.node_to_coords
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    g = state.user_funs.g
+    w_f = state.face_integration.rid_to_weights
+    d = state.cell_integration.d
 
-        tag_to_groups = glk.physical_groups(mesh,d-1)
-        neum_face_to_face = reduce(union,map(tag->tag_to_groups[tag],neumann_tags))
-        fes = map(i->zeros(size(i,2)),s_f)
+    fes = map(i->zeros(size(i,2)),s_f)
+    Tx = SVector{d,Float64}
+    Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
+    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    nfree = length(first(free_and_dirichlet_nodes))
 
-        Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
-
-        for face in neum_face_to_face
-            rid = face_to_rid[face]
-            nodes = face_to_nodes[face]
-            ∇se = ∇s_f[rid]
-            se = s_f[rid]
-            we = w_f[rid]
-            nq = length(we)
-            fe = fes[rid]
-            fill!(fe,zero(eltype(fe)))
-            nl = length(nodes)
-            for iq in 1:nq
-                Jt = zero(Ts) 
-                xint = zero(Tx)
-                for k in 1:nl
-                    x = node_to_x[nodes[k]]
-                    ∇sqx = ∇se[iq,k]
-                    sqx = se[iq,k]
-                    Jt += ∇sqx*x'
-                    xint += sqx*x
-                end
-                J = transpose(Jt)
-                dS = sqrt(det(Jt*J))*we[iq]
-                ∇ux = ForwardDiff.gradient(u,xint)
-                gx = g(xint)
-                for k in 1:nl
-                    fe[k] +=  gx*se[iq,k]*dS
-                end
+    for face in neum_face_to_face
+        rid = face_to_rid[face]
+        nodes = face_to_nodes[face]
+        ∇se = ∇s_f[rid]
+        se = s_f[rid]
+        we = w_f[rid]
+        nq = length(we)
+        fe = fes[rid]
+        fill!(fe,zero(eltype(fe)))
+        nl = length(nodes)
+        for iq in 1:nq
+            Jt = zero(Ts) 
+            xint = zero(Tx)
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇se[iq,k]
+                sqx = se[iq,k]
+                Jt += ∇sqx*x'
+                xint += sqx*x
             end
-            for i in 1:nl
-                ni = nodes[i]
-                gi = node_to_free_node[ni]
-                if gi > nfree
-                    continue
-                end
-                b[gi] += fe[i]
+            J = transpose(Jt)
+            dS = sqrt(det(Jt*J))*we[iq]
+            gx = g(xint)
+            for k in 1:nl
+                fe[k] +=  gx*se[iq,k]*dS
             end
+        end
+        for i in 1:nl
+            ni = nodes[i]
+            gi = node_to_free_node[ni]
+            if gi > nfree
+                continue
+            end
+            b[gi] += fe[i]
         end
     end
 
-    A = sparse(I_coo,J_coo,V_coo,nfree,nfree)
+    nothing
+end
+
+function solve_system(A,b,state)
+    solve = state.solve
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    node_to_x = state.cell_isomap.node_to_coords
+
+    nnodes = length(node_to_x)
     u_free = solve(A,b)
-    nnodes = glk.num_nodes(mesh)
     uh = zeros(nnodes)
     uh[first(free_and_dirichlet_nodes)] = u_free
     uh[last(free_and_dirichlet_nodes)] = u_dirichlet
+    uh
+end
+
+function add_basic_info!(results,state)
+    node_to_x = state.cell_isomap.node_to_coords
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    nfree = length(first(free_and_dirichlet_nodes))
+    nnodes = length(node_to_x)
+    ncells = length(cell_to_rid)
+    results[:nnodes] = nnodes
+    results[:nfree] = nfree
+    results[:ncells] = ncells
+    results
+end
+
+function integrate_error_norms!(results,uh,state)
+
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    u = state.user_funs.u
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
 
     eh1 = 0.0
     el2 = 0.0
+    ncells = length(cell_to_rid)
+    ues = map(i->zeros(size(i,2)),∇s)
+    ∇x = map(i->similar(i,size(i,2)),∇s)
+    Tx = SVector{d,Float64}
+    TJ = typeof(zero(Tx)*zero(Tx)')
     for cell in 1:ncells
         rid = cell_to_rid[cell]
         nodes = cell_to_nodes[cell]
@@ -332,22 +436,25 @@ function poisson(params_in)
         end
     end
 
-    results = Dict{Symbol,Any}()
     eh1 = sqrt(eh1)
     el2 = sqrt(el2)
     results[:eh1] = eh1
     results[:el2] = el2
-    results[:nnodes] = nnodes
-    results[:nfree] = nfree
-    results[:ncells] = ncells
+    results
+end
 
+function export_results(uh,params,state)
+    mesh = params[:mesh]
+    example_path = params[:example_path]
+    node_to_tag = state.dirichlet_bcs.node_to_tag
     vtk_grid(example_path,glk.vtk_args(mesh)...) do vtk
         glk.vtk_physical_groups!(vtk,mesh)
         vtk["tag"] = node_to_tag
         vtk["uh"] = uh
         vtk["dim"] = glk.face_dim(mesh)
     end
-    results
 end
+
+end # module
 
 
