@@ -3235,6 +3235,7 @@ function partition_mesh_via_cells(colorize,ranks,mesh)
             lface_to_face
         end
         lmesh = restrict_mesh(mesh,lnode_to_node,[lface_to_face_mesh...,ocell_to_cell])
+        # TODO we know the neighbors (in lnode_to_colors), use them
         local_nodes = LocalIndices(nnodes,rank,lnode_to_node,lnode_to_owner)
         setproperties(lmesh;local_nodes,local_node_colors=lnode_to_colors)
     end

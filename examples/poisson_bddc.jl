@@ -13,39 +13,28 @@ const CORNER = 0
 const EDGE = 1
 const FACE = 2
 
+struct DDOperator{A}
+    matrices::A
+end
+
 function main(params_in)
 
     # Process params
     params_default = default_params()
     params = add_default_params(params_in,params_default)
 
-    # Setup
-    pmesh = params[:pmesh]
-    bddc_type = params[:bddc_type]
-    u = params[:u]
-    ranks = linear_indices(pmesh)
-    np = length(ranks)
+    # Setup main data structures
+    state = setup(params)
 
-    # Setup dirichlet_bcs
-    dirichlet_tags = params[:dirichlet_tags]
-    dirichlet_bcs = map(pmesh) do mesh
-        node_to_tag = zeros(glk.num_nodes(mesh))
-        tag_to_name = dirichlet_tags
-        glk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-        free_and_dirichlet_nodes = glk.partition_from_mask(i->i==0,node_to_tag)
-        node_to_x = glk.node_coordinates(mesh)
-        dirichlet_nodes = last(free_and_dirichlet_nodes)
-        x_dirichlet = view(node_to_x,dirichlet_nodes)
-        u_dirichlet = u.(x_dirichlet)
-        (;free_and_dirichlet_nodes,u_dirichlet,node_to_tag)
-    end
+    # Assemble system and solve it
+    A,b = assemble_system(state)
 
-    coarse_dofs = setup_coarse_dofs(pmesh,dirichlet_bcs,bddc_type)
-
-    display(coarse_dofs)
 
     # Visualize mesh
     example_path = params[:example_path]
+    pmesh = params[:pmesh]
+    ranks = linear_indices(pmesh)
+    np = length(ranks)
     map(pmesh,ranks) do mesh,rank
         pvtk_grid(example_path,glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
             glk.vtk_physical_groups!(vtk,mesh)
@@ -83,17 +72,120 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:solve] = \
     params[:example_path] = joinpath(outdir,"poisson_parallel")
     params[:bddc_type] = (CORNER,EDGE,FACE)
     params
 end
 
-function setup_coarse_dofs(pmesh,dirichlet_bcs,types)
+function setup_dirichlet_bcs(mesh,params)
+    u = params[:u]
+    dirichlet_tags = params[:dirichlet_tags]
+    node_to_tag = zeros(glk.num_nodes(mesh))
+    tag_to_name = dirichlet_tags
+    glk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
+    free_and_dirichlet_nodes = glk.partition_from_mask(i->i==0,node_to_tag)
+    node_to_x = glk.node_coordinates(mesh)
+    dirichlet_nodes = last(free_and_dirichlet_nodes)
+    x_dirichlet = view(node_to_x,dirichlet_nodes)
+    u_dirichlet = u.(x_dirichlet)
+    dirichlet_bcs = (;free_and_dirichlet_nodes,u_dirichlet,node_to_tag)
+end
+
+function setup_integration(mesh,params,objects)
+    degree = params[:integration_degree]
+    D = glk.num_dims(mesh)
+    if objects === :cells
+        d = D
+    elseif objects === :faces
+        d = D-1
+    else
+        error("")
+    end
+    # Integration
+    ref_cells = glk.reference_faces(mesh,d)
+    face_to_rid = glk.face_reference_id(mesh,d)
+    integration_rules = map(ref_cells) do ref_cell
+        glk.quadrature(glk.geometry(ref_cell),degree)
+    end
+    rid_to_weights = map(glk.weights,integration_rules)
+    rid_to_coords = map(glk.coordinates,integration_rules)
+    integration = (;rid_to_weights,rid_to_coords,face_to_rid,d)
+end
+
+function setup_isomap(mesh,params,integration)
+    rid_to_coords = integration.rid_to_coords
+    face_to_rid = integration.face_to_rid
+    d = integration.d
+    ref_cells = glk.reference_faces(mesh,d)
+    shape_funs = map(rid_to_coords,ref_cells) do q,ref_cell
+        shape_functions = glk.shape_functions(ref_cell)
+        shape_vals = glk.tabulation_matrix(shape_functions)(glk.value,q)
+        shape_grads = glk.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
+        shape_vals, shape_grads
+    end
+    rid_to_shape_vals = map(first,shape_funs)
+    rid_to_shape_grads = map(last,shape_funs)
+    face_to_nodes = glk.face_nodes(mesh,d)
+    node_to_coords = glk.node_coordinates(mesh)
+    isomap = (;face_to_nodes,node_to_coords,face_to_rid,rid_to_shape_vals,rid_to_shape_grads,d)
+end
+
+function setup_neumann_bcs(mesh,params)
+    neumann_tags = params[:neumann_tags]
+    neum_face_to_face = Int[]
+    if length(neumann_tags) != 0
+        D = glk.num_dims(mesh)
+        tag_to_groups = glk.physical_groups(mesh,D-1)
+        neum_face_to_face = reduce(union,map(tag->tag_to_groups[tag],neumann_tags))
+    end
+    (;neum_face_to_face)
+end
+
+function setup_user_funs(params)
+    u = params[:u]
+    f = params[:f]
+    g = params[:g]
+    user_funs = (;u,f,g)
+end
+
+function setup(params)
+    pmesh = params[:pmesh]
+    bddc_type = params[:bddc_type]
     ranks = linear_indices(pmesh)
-    lnode_to_colors = map(glk.local_node_colors,pmesh)
-    node_partition = map(glk.local_nodes,pmesh)
-    cldof_to_ldofs, cldof_to_owner, nown = map(ranks,lnode_to_colors,dirichlet_bcs) do rank,lnode_to_colors,dirichlet_bcs
+    state1 = map(ranks,pmesh) do rank,mesh
+        dirichlet_bcs = setup_dirichlet_bcs(mesh,params)
+        neumann_bcs = setup_neumann_bcs(mesh,params)
+        cell_integration = setup_integration(mesh,params,:cells)
+        face_integration = setup_integration(mesh,params,:faces)
+        cell_isomap = setup_isomap(mesh,params,cell_integration)
+        face_isomap = setup_isomap(mesh,params,face_integration)
+        user_funs = setup_user_funs(params)
+        lnode_to_colors = glk.local_node_colors(mesh)
+        lnodes = glk.local_nodes(mesh)
+        (;
+         dirichlet_bcs,
+         neumann_bcs,
+         cell_integration,
+         cell_isomap,
+         face_integration,
+         face_isomap,
+         user_funs,
+         rank,
+         bddc_type,
+         lnode_to_colors,
+         lnodes)
+    end
+    state2 = setup_dof_partition(state1)
+    state3 = setup_coarse_dofs(state2)
+    state3
+end
+
+function setup_coarse_dofs(state1)
+    state2 = map(state1) do state1
+        rank = state1.rank
+        lnode_to_colors = state1.lnode_to_colors
+        dirichlet_bcs = state1.dirichlet_bcs
+        bddc_type = state1.bddc_type
         free_and_dirichlet_lnodes = dirichlet_bcs.free_and_dirichlet_nodes
         nldofs = length(first(free_and_dirichlet_lnodes))
         lnode_to_ldof = glk.permutation(free_and_dirichlet_lnodes)
@@ -116,16 +208,22 @@ function setup_coarse_dofs(pmesh,dirichlet_bcs,types)
         clnode_to_type = fill(EDGE,nclnodes)
         clnode_to_type[ map(i->length(i) == 2,clnode_to_colors) ] .= FACE
         clnode_to_type[ map(i->length(i) == 1,clnode_to_ldofs) ] .= CORNER
-        mask = map(i->i in types,clnode_to_type)
-        my_cldof_to_ldofs = JaggedArray(clnode_to_ldofs[mask])
-        my_cldof_to_owner = clnode_to_owner[mask]
-        my_nown = count(owner->owner==rank,my_cldof_to_owner)
-        my_cldof_to_ldofs, my_cldof_to_owner, my_nown
-    end |> tuple_of_arrays
+        mask = map(i->i in bddc_type,clnode_to_type)
+        cldof_to_ldofs = JaggedArray(clnode_to_ldofs[mask])
+        cldof_to_owner = clnode_to_owner[mask]
+        nocdofs = count(owner->owner==rank,cldof_to_owner)
+        (;cldof_to_ldofs,cldof_to_owner,nocdofs)
+    end
+    nown = map(i->i.nocdofs,state2)
     ncdofs = sum(nown)
     cdof_partition = variable_partition(nown,ncdofs)
+    node_partition = map(i->i.lnodes,state1)
     v = PVector{Vector{Int}}(undef,node_partition)
-    map(ranks,cdof_partition,cldof_to_owner,cldof_to_ldofs,local_values(v),dirichlet_bcs) do rank, codofs, cldof_to_owner, cldof_to_ldofs, lnode_to_v, dirichlet_bcs
+    map(state1,state2,local_values(v),cdof_partition) do state1,state2,lnode_to_v,codofs
+        rank = state1.rank
+        cldof_to_owner = state2.cldof_to_owner
+        cldof_to_ldofs = state2.cldof_to_ldofs
+        dirichlet_bcs = state1.dirichlet_bcs
         ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
         codof_to_cdof = own_to_global(codofs)
         codof = 0
@@ -141,7 +239,10 @@ function setup_coarse_dofs(pmesh,dirichlet_bcs,types)
         end
     end
     consistent!(v) |> wait
-    cldof_to_cdof = map(ranks,cldof_to_ldofs,local_values(v),dirichlet_bcs) do rank, cldof_to_ldofs, lnode_to_v,dirichlet_bcs
+    cldof_to_cdof = map(state1,state2,local_values(v)) do state1, state2, lnode_to_v
+        rank = state1.rank
+        cldof_to_ldofs = state2.cldof_to_ldofs
+        dirichlet_bcs = state1.dirichlet_bcs
         ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
         ncldofs = length(cldof_to_ldofs)
         my_cldof_to_cdof = zeros(Int,ncldofs)
@@ -153,9 +254,267 @@ function setup_coarse_dofs(pmesh,dirichlet_bcs,types)
         my_cldof_to_cdof
     end
     rank_to_cdofs = gather(cldof_to_cdof,destination=MAIN)
-    map(cldof_to_ldofs,rank_to_cdofs) do cldof_to_ldofs,rank_to_cdofs
-        (;cldof_to_ldofs, rank_to_cdofs, num_cdofs = ncdofs)
+    state3 = map(state1,state2,rank_to_cdofs) do state1, state2, rank_to_cdofs
+        cldof_to_ldofs = state2.cldof_to_ldofs
+        coarse_dofs = (;cldof_to_ldofs, rank_to_cdofs, num_cdofs = ncdofs)
+        (;coarse_dofs,state1...)
     end
+    state3
+end
+
+function setup_dof_partition(state1)
+    nodofs = map(state1) do state1
+        rank = state1.rank
+        dirichlet_bcs = state1.dirichlet_bcs
+        free_and_dirichlet_lnodes = dirichlet_bcs.free_and_dirichlet_nodes
+        lnodes = state1.lnodes
+        lnode_to_owner = local_to_owner(lnodes)
+        ldof_to_lnode = first(free_and_dirichlet_lnodes)
+        count(lnode->lnode_to_owner[lnode]==rank,ldof_to_lnode)
+    end
+    ndofs = sum(nodofs)
+    dof_partition = variable_partition(nodofs,ndofs)
+    node_partition = map(i->i.lnodes,state1)
+    v = PVector{Vector{Int}}(undef,node_partition)
+    map(local_values(v),dof_partition,state1) do lnode_to_dof, odofs, state1
+        lnodes = state1.lnodes
+        dirichlet_bcs = state1.dirichlet_bcs
+        ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
+        odof_to_dof = own_to_global(odofs)
+        lnode_to_owner = local_to_owner(lnodes)
+        nldofs = length(ldof_to_lnode)
+        odof = 0
+        for ldof in 1:nldofs
+            lnode = ldof_to_lnode[ldof]
+            if lnode_to_owner[lnode] == rank
+                odof += 1
+                dof = odof_to_dof[odof]
+                lnode_to_dof[lnode] = dof
+            end
+        end
+    end
+    consistent!(v) |> wait
+    state2 = map(local_values(v),state1) do lnode_to_dof,state1
+        rank = state1.rank
+        lnodes = state1.lnodes
+        dirichlet_bcs = state1.dirichlet_bcs
+        lnode_to_owner = local_to_owner(lnodes)
+        ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
+        ldof_to_dof = lnode_to_dof[ldof_to_lnode]
+        ldof_to_owner = lnode_to_owner[ldof_to_lnode]
+        ldofs = LocalIndices(ndofs,rank,ldof_to_dof,ldof_to_owner)
+        (;ldofs,state1...)
+    end
+    state2
+end
+
+function assemble_system(state)
+    Alocal,blocal = map(assemble_system_locally,state) |> tuple_of_arrays
+    map(add_neumann_bcs_locally!,blocal,state)
+    dof_partition = map(i->i.ldofs,state)
+    b = PVector(blocal,dof_partition)
+    assemble!(b) |> wait # do not forget this
+    A = DDOperator(Alocal)
+    A,b
+end
+
+function assemble_system_locally(state)
+
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    f = state.user_funs.f
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
+
+    # Count coo entries
+    n_coo = 0
+    ncells = length(cell_to_nodes)
+    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    nfree = length(first(free_and_dirichlet_nodes))
+    for cell in 1:ncells
+        nodes = cell_to_nodes[cell]
+        for nj in nodes
+            if node_to_free_node[nj] > nfree
+                continue
+            end
+            for ni in nodes
+                if node_to_free_node[ni] > nfree
+                    continue
+                end
+                n_coo += 1
+            end
+        end
+    end
+
+    # Allocate coo values
+    I_coo = zeros(Int32,n_coo)
+    J_coo = zeros(Int32,n_coo)
+    V_coo = zeros(Float64,n_coo)
+    b = zeros(nfree)
+
+    # Allocate auxiliary buffers
+    ∇x = map(i->similar(i,size(i,2)),∇s)
+    Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
+    fes = map(i->zeros(size(i,2)),∇s)
+    ues = map(i->zeros(size(i,2)),∇s)
+
+    Tx = SVector{d,Float64}
+    TJ = typeof(zero(Tx)*zero(Tx)')
+
+    # Fill coo values
+    i_coo = 0
+    for cell in 1:ncells
+        rid = cell_to_rid[cell]
+        nodes = cell_to_nodes[cell]
+        Ae = Aes[rid]
+        ue = ues[rid]
+        fe = fes[rid]
+        nl = length(nodes)
+        ∇se = ∇s[rid]
+        ∇xe = ∇x[rid]
+        se = s[rid]
+        we = w[rid]
+        nq = length(we)
+        fill!(Ae,zero(eltype(Ae)))
+        fill!(fe,zero(eltype(Ae)))
+        fill!(ue,zero(eltype(Ae)))
+        for k in 1:nl
+            nk = nodes[k]
+            gk = node_to_free_node[nk]
+            if  gk <= nfree
+                continue
+            end
+            ue[k] = u_dirichlet[gk-nfree]
+        end
+        for iq in 1:nq
+            Jt = zero(TJ) 
+            xint = zero(Tx)
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇se[iq,k]
+                sqx = se[iq,k]
+                Jt += ∇sqx*x'
+                xint += sqx*x
+            end
+            detJt = det(Jt)
+            invJt = inv(Jt)
+            dV = abs(detJt)*we[iq]
+            for k in 1:nl
+                ∇xe[k] = invJt*∇se[iq,k]
+            end
+            for j in 1:nl
+                for i in 1:nl
+                    Ae[i,j] += ∇xe[i]⋅∇xe[j]*dV
+                end
+            end
+            fx = f(xint)
+            for k in 1:nl
+                fe[k] +=  fx*se[iq,k]*dV
+            end
+        end
+        for i in 1:nl
+            for j in 1:nl
+                fe[i] -= Ae[i,j]*ue[j]
+            end
+        end
+        for i in 1:nl
+            ni = nodes[i]
+            gi = node_to_free_node[ni]
+            if gi > nfree
+                continue
+            end
+            b[gi] += fe[i]
+        end
+        for j in 1:nl
+            nj = nodes[j]
+            gj = node_to_free_node[nj]
+            if  gj > nfree
+                continue
+            end
+            for i in 1:nl
+                ni = nodes[i]
+                gi = node_to_free_node[ni]
+                if gi > nfree
+                    continue
+                end
+                i_coo += 1
+                I_coo[i_coo] = gi
+                J_coo[i_coo] = gj
+                V_coo[i_coo] = Ae[i,j]
+            end
+        end
+    end
+
+    A = sparse(I_coo,J_coo,V_coo,nfree,nfree)
+
+    A,b
+end
+
+function add_neumann_bcs_locally!(b,state)
+
+    neum_face_to_face = state.neumann_bcs.neum_face_to_face
+    if length(neum_face_to_face) == 0
+        return nothing
+    end
+    face_to_rid = state.face_isomap.face_to_rid
+    face_to_nodes = state.face_isomap.face_to_nodes
+    ∇s_f = state.face_isomap.rid_to_shape_grads
+    s_f = state.face_isomap.rid_to_shape_vals
+    node_to_x = state.face_isomap.node_to_coords
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    g = state.user_funs.g
+    w_f = state.face_integration.rid_to_weights
+    d = state.cell_integration.d
+
+    fes = map(i->zeros(size(i,2)),s_f)
+    Tx = SVector{d,Float64}
+    Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
+    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    nfree = length(first(free_and_dirichlet_nodes))
+
+    for face in neum_face_to_face
+        rid = face_to_rid[face]
+        nodes = face_to_nodes[face]
+        ∇se = ∇s_f[rid]
+        se = s_f[rid]
+        we = w_f[rid]
+        nq = length(we)
+        fe = fes[rid]
+        fill!(fe,zero(eltype(fe)))
+        nl = length(nodes)
+        for iq in 1:nq
+            Jt = zero(Ts) 
+            xint = zero(Tx)
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇se[iq,k]
+                sqx = se[iq,k]
+                Jt += ∇sqx*x'
+                xint += sqx*x
+            end
+            J = transpose(Jt)
+            dS = sqrt(det(Jt*J))*we[iq]
+            gx = g(xint)
+            for k in 1:nl
+                fe[k] +=  gx*se[iq,k]*dS
+            end
+        end
+        for i in 1:nl
+            ni = nodes[i]
+            gi = node_to_free_node[ni]
+            if gi > nfree
+                continue
+            end
+            b[gi] += fe[i]
+        end
+    end
+
+    nothing
 end
 
 
