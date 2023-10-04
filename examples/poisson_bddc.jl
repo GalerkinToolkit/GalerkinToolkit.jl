@@ -40,6 +40,82 @@ function LinearAlgebra.mul!(b::PVector,A::DDOperator,x::PVector)
     b
 end
 
+struct BDDC{T<:DDOperator,S}
+    A::T
+    workspace::S
+end
+
+function LinearAlgebra.ldiv!(x::PVector,M::BDDC,r::PVector)
+    consistent!(r) |> wait
+    workspace = M.workspace
+    # Coarse correction
+    rci = map(workspace,local_values(r)) do workspace,ri
+        Wi = workspace.Wi
+        Phii = workspace.Phii
+        PhiiT = transpose(Phii)
+        PhiiT*(Wi .* ri)# TODO allocations here
+    end
+    rank_to_rci = gather(rci,destination=MAIN) # TODO allocations here
+    rank_to_v1ci = map(rank_to_rci,workspace) do rank_to_rci,workspace
+        rank = workspace.rank
+        if rank == MAIN
+            ncdofs = workspace.ncdofs
+            Pc = workspace.Pc
+            rank_to_cdofs = workspace.rank_to_cdofs
+            rc = zeros(ncdofs)#TODO allocation here
+            nparts = length(rank_to_cdofs)
+            for part in 1:nparts
+                cdofs = rank_to_cdofs[part]
+                rci = rank_to_rci[part]
+                rc[cdofs] += rci
+            end
+            v1ic = Pc\rc # TODO allocation here
+            JaggedArray([ v1ic[cdofs] for cdofs in rank_to_cdofs])# TODO allocation here
+        else
+            JaggedArray([Float64[]])# TODO allocation here
+        end
+    end
+    v1ci = scatter(rank_to_v1ci) # TODO allocation here
+    v1 = similar(x) # TODO allocation here
+    map(workspace,local_values(v1),v1ci) do workspace,v1i,v1ci
+        Wi = workspace.Wi
+        Phii = workspace.Phii
+        v1i .= Wi.*(Phii*v1ci) # TODO allocations here
+    end
+    assemble!(v1) |> wait # TODO group communications
+
+    # Neumann correction
+    v2 = similar(x) # TODO allocation here
+    map(workspace,local_values(v2),local_values(r)) do workspace,v2i,r
+        Wi = workspace.Wi
+        nldofs = length(Wi)
+        Pn = workspace.Pn
+        ncldofs = workspace.ncldofs
+        rhs = vcat((Wi.*r),zeros(ncldofs)) # TODO allocations here
+        sol = Pn\rhs # TODO allocation here
+        zi = view(sol,1:nldofs)
+        v2i .= Wi .* zi
+    end
+    assemble!(v2) |> wait # TODO group communications
+
+    # Dirichlet correction
+    A = M.A
+    r1 = r - A*(v1+v2) # TODO allocations here
+    consistent!(r1) |> wait
+    v3 = similar(x) # TODO allocation here
+    map(workspace,local_values(v3),local_values(r1)) do workspace, v3i, r1i
+        RIi = workspace.RIi
+        Pd = workspace.Pd
+        fill!(v3i,zero(eltype(v3i)))
+        v3i[RIi] .= Pd\r1i[RIi] # TODO allocations here
+    end
+    #assemble!(v3) |> wait # TODO really needed, boundary is 0? TODO group communications
+
+    # Final correction
+    x .= v1 .+ v2 .+ v3
+    x
+end
+
 function main(params_in)
 
     # Dict to collect results
@@ -193,8 +269,8 @@ function setup(params)
          lnodes)
     end
     state2 = setup_dof_partition(state1)
-    #state3 = setup_coarse_dofs(state2)
-    #state3
+    state3 = setup_coarse_dofs(state2)
+    state3
 end
 
 function setup_coarse_dofs(state1)
@@ -273,7 +349,7 @@ function setup_coarse_dofs(state1)
     rank_to_cdofs = gather(cldof_to_cdof,destination=MAIN)
     state3 = map(state1,state2,rank_to_cdofs) do state1, state2, rank_to_cdofs
         cldof_to_ldofs = state2.cldof_to_ldofs
-        coarse_dofs = (;cldof_to_ldofs, rank_to_cdofs, num_cdofs = ncdofs)
+        coarse_dofs = (;cldof_to_ldofs, rank_to_cdofs,ncdofs)
         (;coarse_dofs,state1...)
     end
     state3
@@ -371,8 +447,8 @@ function assemble_system_locally(state)
     end
 
     # Allocate coo values
-    I_coo = zeros(Int32,n_coo)
-    J_coo = zeros(Int32,n_coo)
+    I_coo = zeros(Int,n_coo)
+    J_coo = zeros(Int,n_coo)
     V_coo = zeros(Float64,n_coo)
     b = zeros(nfree)
 
@@ -537,9 +613,16 @@ function add_neumann_bcs_locally!(b,state)
 end
 
 function solve_system(results,A,b,state)
+    M = setup_BDDC(A,state)
     x = similar(b)
     fill!(x,zero(eltype(b)))
-    IterativeSolvers.cg!(x,A,b,verbose=true)
+    IterativeSolvers.cg!(copy(x),A,b,Pl=M,verbose=i_am_main(state))
+    ranks = linear_indices(state)
+    t = PTimer(ranks)
+    tic!(t,barrier=true)
+    IterativeSolvers.cg!(x,A,b,Pl=M)
+    toc!(t,"cg!")
+    display(t)
     consistent!(x) |> wait
     node_partition = map(i->i.lnodes,state)
     uh = pzeros(node_partition)
@@ -550,6 +633,114 @@ function solve_system(results,A,b,state)
         uh[last(free_and_dirichlet_nodes)] = u_dirichlet
     end
     uh
+end
+
+function setup_BDDC(A,state)
+    workspace1 = map(A.matrices,state) do Ai,state
+        # Setup Neumann problems
+        cldof_to_ldofs = state.coarse_dofs.cldof_to_ldofs
+        nldofs = size(Ai,1)
+        ncldofs = length(cldof_to_ldofs)
+        cldof_to_coefs = map(cldof_to_ldofs) do ldofs
+            fill(1/length(ldofs),length(ldofs))
+        end
+        mycolptr = cldof_to_ldofs.ptrs
+        myrowval = cldof_to_ldofs.data
+        mynzval = reduce(vcat,cldof_to_coefs)
+        CiT = SparseMatrixCSC(nldofs,ncldofs,mycolptr,myrowval,mynzval)
+        Ci = transpose(CiT)
+        Zi = spzeros(ncldofs,ncldofs)
+        Ti = [Ai CiT; Ci Zi]
+        Pn = lu(Ti)# TODO with some work one could use Cholesky
+        rhs = [zeros(nldofs,ncldofs);Matrix(I,ncldofs,ncldofs)]
+        Phii = (Pn\rhs)[1:nldofs,:]
+
+        # Setup Dirichlet problems
+        lnode_to_colors = state.lnode_to_colors
+        free_and_dirichlet_lnodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+        ldof_to_lnode = first(free_and_dirichlet_lnodes)
+        nldofs = length(ldof_to_lnode)
+        lnode_to_ldof = glk.permutation(free_and_dirichlet_lnodes)
+        nlnodes = length(lnode_to_colors)
+        idof_to_lnode = findall(1:nlnodes) do lnode
+            colors = lnode_to_colors[lnode]
+            ldof = lnode_to_ldof[lnode]
+            length(colors)==1 && ldof <= nldofs
+        end
+        idof_to_ldof = lnode_to_ldof[idof_to_lnode]
+        RIi = idof_to_ldof
+        AIi = Ai[RIi,RIi]
+        Pd = cholesky(AIi)
+
+        # Setup weight
+        ldof_to_colors = lnode_to_colors[ldof_to_lnode]
+        ldof_to_w = map(colors->1/length(colors),ldof_to_colors)
+        Wi = ldof_to_w
+
+        rank_to_cdofs = state.coarse_dofs.rank_to_cdofs
+        rank = state.rank
+        ncdofs = state.coarse_dofs.ncdofs
+        (;Pn,Phii,Pd,RIi,Wi,ncldofs,rank_to_cdofs,rank,ncdofs)
+    end
+
+    # Setup coarse solver
+    Aci = map(workspace1,A.matrices) do workspace1,Ai
+        Phii = workspace1.Phii
+        PhiiT = transpose(Phii)
+        PhiiT*Ai*Phii
+    end
+    rank_to_Aci = gather_matrix(Aci,destination=MAIN)
+    workspace2 = map(rank_to_Aci,workspace1) do rank_to_Aci,workspace1
+        rank_to_cdofs = workspace1.rank_to_cdofs
+        rank = workspace1.rank
+        ncdofs = workspace1.ncdofs
+        if rank == MAIN
+            nparts = length(rank_to_cdofs)
+            ncoo = 0
+            for part in 1:nparts
+                cdofs = rank_to_cdofs[part]
+                ncoo += length(cdofs)*length(cdofs)
+            end
+            Icoo = zeros(Int,ncoo)
+            Jcoo = zeros(Int,ncoo)
+            Vcoo = zeros(ncoo)
+            ncoo = 0
+            for part in 1:nparts
+                cdofs = rank_to_cdofs[part]
+                myAci = rank_to_Aci[part]
+                for lj in 1:size(myAci,2)
+                    for li in 1:size(myAci,1)
+                        ncoo += 1
+                        Icoo[ncoo] = cdofs[li]
+                        Jcoo[ncoo] = cdofs[lj]
+                        Vcoo[ncoo] = myAci[li,lj]
+                    end
+                end
+            end
+            Ac = sparse(Icoo,Jcoo,Vcoo,ncdofs,ncdofs)
+            Ac = 0.5*(Ac+transpose(Ac)) # TODO cholesky requires exactly symmetric matrices (no rounding errors allowed)
+            Pc = cholesky(Ac)
+        else
+            Pc = nothing
+        end
+        (;Pc,workspace1...)
+    end
+    BDDC(A,workspace2)
+end
+
+# TODO this should be handled by PartitionedArrays
+function gather_matrix(Aci;destination=MAIN)
+    # TODO, we can pack all the data in the same message
+    s = gather(map(i->size(i),Aci);destination)
+    data = gather(map(i->i[:],Aci);destination)
+    ranks = linear_indices(Aci)
+    map(ranks,data,s) do rank,data,s
+        if rank == destination
+            map(reshape,data,s)
+        else
+            nothing
+        end
+    end
 end
 
 function export_results(uh,params,state)
