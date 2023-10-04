@@ -8,16 +8,42 @@ using SparseArrays
 using WriteVTK
 using PartitionedArrays
 using Metis
+using IterativeSolvers
 
 const CORNER = 0
 const EDGE = 1
 const FACE = 2
 
-struct DDOperator{A}
+struct DDOperator{A,B<:PRange}
     matrices::A
+    ids::B
+end
+
+Base.eltype(A::DDOperator) = eltype(eltype(A.matrices))
+Base.eltype(::Type{<:DDOperator{A}}) where A = eltype(eltype(A))
+Base.size(A::DDOperator) = (length(A.ids),length(A.ids))
+Base.axes(A::DDOperator) = (A.ids,A.ids)
+Base.size(A::DDOperator,i::Integer) = length(A.ids)
+Base.axes(A::DDOperator,i::Integer) = A.ids
+
+function Base.:*(A::DDOperator,x::PVector)
+    b = similar(x)
+    mul!(b,A,x)
+    b
+end
+
+function LinearAlgebra.mul!(b::PVector,A::DDOperator,x::PVector)
+    fill!(b,zero(eltype(b)))
+    consistent!(x) |> wait # TODO we can add latency hiding here
+    map(mul!,local_values(b),A.matrices,local_values(x))
+    assemble!(b) |> wait
+    b
 end
 
 function main(params_in)
+
+    # Dict to collect results
+    results = Dict{Symbol,Any}()
 
     # Process params
     params_default = default_params()
@@ -28,22 +54,13 @@ function main(params_in)
 
     # Assemble system and solve it
     A,b = assemble_system(state)
+    uh = solve_system(results,A,b,state)
 
+    # Post process
+    integrate_error_norms!(results,uh,state)
+    export_results(uh,params,state)
 
-    # Visualize mesh
-    example_path = params[:example_path]
-    pmesh = params[:pmesh]
-    ranks = linear_indices(pmesh)
-    np = length(ranks)
-    map(pmesh,ranks) do mesh,rank
-        pvtk_grid(example_path,glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
-            glk.vtk_physical_groups!(vtk,mesh)
-            vtk["piece",VTKCellData()] = fill(rank,sum(glk.num_faces(mesh)))
-            vtk["owner",VTKPointData()] = local_to_owner(glk.local_nodes(mesh))
-            vtk["interface",VTKPointData()] = map(colors->Int(length(colors)!=1),glk.local_node_colors(mesh))
-        end
-    end
-
+    results
 end
 
 function add_default_params(params_in,params_default)
@@ -72,7 +89,7 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:example_path] = joinpath(outdir,"poisson_parallel")
+    params[:example_path] = joinpath(outdir,"poisson_bddc")
     params[:bddc_type] = (CORNER,EDGE,FACE)
     params
 end
@@ -176,8 +193,8 @@ function setup(params)
          lnodes)
     end
     state2 = setup_dof_partition(state1)
-    state3 = setup_coarse_dofs(state2)
-    state3
+    #state3 = setup_coarse_dofs(state2)
+    #state3
 end
 
 function setup_coarse_dofs(state1)
@@ -276,7 +293,9 @@ function setup_dof_partition(state1)
     dof_partition = variable_partition(nodofs,ndofs)
     node_partition = map(i->i.lnodes,state1)
     v = PVector{Vector{Int}}(undef,node_partition)
+    fill!(v,0)
     map(local_values(v),dof_partition,state1) do lnode_to_dof, odofs, state1
+        rank = state1.rank
         lnodes = state1.lnodes
         dirichlet_bcs = state1.dirichlet_bcs
         ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
@@ -314,7 +333,7 @@ function assemble_system(state)
     dof_partition = map(i->i.ldofs,state)
     b = PVector(blocal,dof_partition)
     assemble!(b) |> wait # do not forget this
-    A = DDOperator(Alocal)
+    A = DDOperator(Alocal,axes(b,1))
     A,b
 end
 
@@ -515,6 +534,116 @@ function add_neumann_bcs_locally!(b,state)
     end
 
     nothing
+end
+
+function solve_system(results,A,b,state)
+    x = similar(b)
+    fill!(x,zero(eltype(b)))
+    IterativeSolvers.cg!(x,A,b,verbose=true)
+    consistent!(x) |> wait
+    node_partition = map(i->i.lnodes,state)
+    uh = pzeros(node_partition)
+    map(state,local_values(uh),local_values(x)) do state, uh, u_free
+        free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+        u_dirichlet = state.dirichlet_bcs.u_dirichlet
+        uh[first(free_and_dirichlet_nodes)] = u_free
+        uh[last(free_and_dirichlet_nodes)] = u_dirichlet
+    end
+    uh
+end
+
+function export_results(uh,params,state)
+    example_path = params[:example_path]
+    pmesh = params[:pmesh]
+    ranks = linear_indices(pmesh)
+    np = length(ranks)
+    map(pmesh,ranks,local_values(uh)) do mesh,rank,uh
+        pvtk_grid(example_path,glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+            glk.vtk_physical_groups!(vtk,mesh)
+            vtk["piece",VTKCellData()] = fill(rank,sum(glk.num_faces(mesh)))
+            vtk["owner",VTKPointData()] = local_to_owner(glk.local_nodes(mesh))
+            vtk["uh",VTKPointData()] = uh
+            vtk["interface",VTKPointData()] = map(colors->Int(length(colors)!=1),glk.local_node_colors(mesh))
+        end
+    end
+end
+
+function integrate_error_norms!(results,uh,state)
+    errs = map(integrate_error_norms_local,local_values(uh),state)
+    eh1 = sum(map(i->i.eh1,errs)) |> sqrt
+    el2 = sum(map(i->i.el2,errs)) |> sqrt
+    results[:eh1] = eh1
+    results[:el2] = el2
+    results
+end
+
+function integrate_error_norms_local(uh,state)
+
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    u = state.user_funs.u
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
+
+    eh1 = 0.0
+    el2 = 0.0
+    ncells = length(cell_to_rid)
+    ues = map(i->zeros(size(i,2)),∇s)
+    ∇x = map(i->similar(i,size(i,2)),∇s)
+    Tx = SVector{d,Float64}
+    TJ = typeof(zero(Tx)*zero(Tx)')
+    for cell in 1:ncells
+        rid = cell_to_rid[cell]
+        nodes = cell_to_nodes[cell]
+        ue = ues[rid]
+        nl = length(nodes)
+        ∇se = ∇s[rid]
+        ∇xe = ∇x[rid]
+        se = s[rid]
+        we = w[rid]
+        nq = length(we)
+        for k in 1:nl
+            nk = nodes[k]
+            ue[k] = uh[nk]
+        end
+        for iq in 1:nq
+            Jt = zero(TJ) 
+            xint = zero(Tx)
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇se[iq,k]
+                sqx = se[iq,k]
+                Jt += ∇sqx*x'
+                xint += sqx*x
+            end
+            detJt = det(Jt)
+            invJt = inv(Jt)
+            dV = abs(detJt)*we[iq]
+            for k in 1:nl
+                ∇xe[k] = invJt*∇se[iq,k]
+            end
+            ux = u(xint)
+            ∇ux = ForwardDiff.gradient(u,xint)
+            ∇uhx = zero(∇ux)
+            uhx = zero(ux)
+            for k in 1:nl
+                uek = ue[k]
+                ∇uhx += uek*∇xe[k]
+                uhx += uek*se[iq,k]
+            end
+            ∇ex = ∇ux - ∇uhx
+            ex =  ux - uhx
+            eh1 += (∇ex⋅∇ex + ex*ex)*dV
+            el2 += ex*ex*dV
+        end
+    end
+
+    (;eh1,el2)
 end
 
 
