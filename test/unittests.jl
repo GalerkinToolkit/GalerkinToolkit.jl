@@ -47,6 +47,15 @@ using Metis
 #
 #mesh2 = set_data(mesh;physical_groups,topology)
 
+domain = (1,2,1,2)
+np = 4
+cells = (4,4)
+ranks = LinearIndices((np,))
+mesh = glk.cartesian_mesh(domain,cells)
+pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:cells)
+node_partition = map(mesh->mesh.local_nodes,pmesh)
+node_to_parts = glk.collect_parts_around(node_partition)
+
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
@@ -58,6 +67,8 @@ ranks = DebugArray(LinearIndices((np,)))
 pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:nodes)
 pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:cells)
 
+
+
 map(pmesh,ranks) do mesh,rank
     pvtk_grid(joinpath(outdir,"pdebug"),glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
         glk.vtk_physical_groups!(vtk,mesh)
@@ -66,6 +77,7 @@ map(pmesh,ranks) do mesh,rank
         vtk["interface"] = map(colors->Int(length(colors)!=1),mesh.local_node_colors)
     end
 end
+
 
 domain = (1,2,1,2)
 cells = (2,2)
