@@ -457,6 +457,356 @@ end
 
 
 
+function diag!(diagA,A::SparseMatrixCSC)
+    # TODO improve with binary search
+    colptr = A.colptr
+    rowval = A.rowval
+    nzval = A.nzval
+    ncols = length(colptr)-1
+    for j in 1:ncols
+        pini = colptr[j]
+        pend = colptr[j+1]-1
+        for p in pini:pend
+            i = rowval[p]
+            if j != i
+                continue
+            end
+            diagA[j] = nzval[p]
+        end
+    end
+    diagA
+end
+
+function spmv!(b,A,x)
+    T = eltype(b)
+    alpha = zero(T)
+    beta = one(T)
+    spmv!(b,A,x,alpha,beta)
+    b
+end
+
+function spmv!(b,A::SparseMatrixCSC,x,alpha,beta)
+    colptr = A.colptr
+    rowval = A.rowval
+    nzval = A.nzval
+    nrows,ncols = size(A)
+    if alpha == zero(eltype(b))
+        b .= alpha
+    else
+        b .= alpha .* b
+    end
+    for j in 1:ncols
+        xj = x[j]
+        pini = colptr[j]
+        pend = colptr[j+1]-1
+        for p in pini:pend
+            i = rowval[p]
+            aij = nzval[p]
+            b[i] += beta*aij*xj
+        end
+    end
+    b
+end
+
+function spmm(A::SparseMatrixCSC,B::SparseMatrixCSC)
+    # TODO implementation
+    A*B
+end
+
+const SparseMatrixCSCT = Transpose{R,SparseMatrixCSC{R,S}} where {R,S}
+
+function sprap(R::SparseMatrixCSCT,A::SparseMatrixCSC,P::SparseMatrixCSC)
+    # TODO implementation
+    R*A*P
+end
+
+function jacobi!(x,A,b;kwargs...)
+    setup = jacobi_setup(x,A,b;kwargs...)
+    jacobi!(x,A,b,setup)
+end
+
+function jacobi_setup(x,A,b;maxiters,omega=1)
+    options = (;maxiters,omega)
+    jacobi_setup(x,A,b,options)
+end
+
+function jacobi_setup(x,A::SparseMatrixCSC,b,options)
+  xnew = similar(x)
+  diagA = similar(x)
+  diag!(diagA,A)
+  (;xnew,diagA,options)
+end
+
+function jacobi_setup!(setup,A::SparseMatrixCSC)
+    diag!(setup.diagA,A)
+    setup
+end
+
+function jacobi!(xin,A::SparseMatrixCSC,b,setup)
+    maxiters = setup.options.maxiters
+    omega = setup.options.omega
+    x = xin
+    xnew = setup.xnew
+    diagA = setup.diagA
+    colptr = A.colptr
+    rowval = A.rowval
+    nzval = A.nzval
+    nrows,ncols = size(A)
+    for iter in 1:maxiters
+        xnew .= b .+ diagA .* x ./ omega
+        for j in 1:ncols
+            xj = x[j]
+            pini = colptr[j]
+            pend = colptr[j+1]-1
+            for p in pini:pend
+                i = rowval[p]
+                aij = nzval[p]
+                xnew[i] -= aij*xj
+            end
+        end
+        xnew .= omega .* xnew ./ diagA
+        x,xnew = xnew,x
+    end
+    xin .= x
+    xin
+end
+
+function aggregate(A;epsilon)
+    options = (;epsilon)
+    aggregate(A,options)
+end
+
+function aggregate(A::SparseMatrixCSC,options)
+
+    epsi = options.epsilon
+    typeof_aggregate = Int32
+    typeof_strength = eltype(A.nzval)
+
+    nnodes = size(A,1)
+    pending = typeof_aggregate(0)
+    isolated = typeof_aggregate(-1)
+    
+    node_to_aggregate = fill(pending,nnodes)
+    node_to_old_aggregate = similar(node_to_aggregate)
+
+    diagA = zeros(eltype(A),nnodes)
+    diag!(diagA,A)
+
+    node_to_neigs = jagged_array(A.rowval,A.colptr)
+    node_to_vals = jagged_array(A.nzval,A.colptr)
+    strongly_connected = (node,ineig) -> begin
+        neig = node_to_neigs[node][ineig]
+        aii = diagA[node]
+        ajj = diagA[neig]
+        aij = node_to_vals[node][ineig]
+        abs(aij) > epsi*sqrt(aii*ajj)
+    end
+    coupling_strength = (node,ineig) -> begin
+        abs(node_to_vals[node][ineig])
+    end
+
+    # Initialization
+    for node in 1:nnodes
+        neigs = node_to_neigs[node]
+        isolated_node = count(i->i!=node,neigs) == 0
+        if isolated_node
+            node_to_aggregate[node] = isolated
+        end
+    end
+
+    # Step 1
+    aggregate = typeof_aggregate(0)
+    for node in 1:nnodes
+        if node_to_aggregate[node] != pending
+            continue
+        end
+        neigs = node_to_neigs[node]
+        nneigs = length(neigs)
+        all_pending = true
+        for ineig in 1:nneigs
+            neig = neigs[ineig]
+            if neig == node || !strongly_connected(node,ineig)
+                continue
+            end
+            all_pending &= (node_to_aggregate[neig] == pending)
+        end
+        if !all_pending
+            continue
+        end
+        aggregate += typeof_aggregate(1)
+        node_to_aggregate[node] = aggregate
+        for ineig in 1:nneigs
+            neig = neigs[ineig]
+            if neig == node || !strongly_connected(node,ineig)
+                continue
+            end
+            node_to_aggregate[neig] = aggregate
+        end
+    end
+
+    # Step 2
+    copy!(node_to_old_aggregate,node_to_aggregate)
+    for node in 1:nnodes
+        if node_to_aggregate[node] != pending
+            continue
+        end
+        strength = zero(typeof_strength)
+        neigs = node_to_neigs[node]
+        nneigs = length(neigs)
+        for ineig in 1:nneigs
+            neig = neigs[ineig]
+            if neig == node || !strongly_connected(node,ineig)
+                continue
+            end
+            neig_aggregate = node_to_old_aggregate[neig]
+            if neig_aggregate != pending && neig_aggregate != isolated
+                neig_strength = coupling_strength(node,ineig)
+                if neig_strength > strength
+                    strength = neig_strength
+                    node_to_aggregate[node] = neig_aggregate
+                end
+            end
+        end
+    end
+
+    # Step 3
+    for node in 1:nnodes
+        if node_to_aggregate[node] != pending
+            continue
+        end
+        aggregate += typeof_aggregate(1)
+        node_to_aggregate[node] = aggregate
+        neigs = node_to_neigs[node]
+        nneigs = length(neigs)
+        for ineig in 1:nneigs
+            neig = neigs[ineig]
+            if neig == node || !strongly_connected(node,ineig)
+                continue
+            end
+            neig_aggregate = node_to_old_aggregate[neig]
+            if neig_aggregate == pending || neig_aggregate == isolated
+                node_to_aggregate[neig] = aggregate
+            end
+        end
+    end
+    naggregates = aggregate
+
+    ## Compression
+    aggregate_to_nodes_ptrs = zeros(Int,naggregates+1)
+    for node in 1:nnodes
+        agg = node_to_aggregate[node]
+        if agg == pending
+            continue
+        end
+        aggregate_to_nodes_ptrs[agg+1] += 1
+    end
+    length_to_ptrs!(aggregate_to_nodes_ptrs)
+    ndata = aggregate_to_nodes_ptrs[end]-1
+    aggregate_to_nodes_data = zeros(Int,ndata)
+    for node in 1:nnodes
+        agg = node_to_aggregate[node]
+        if agg == pending
+            continue
+        end
+        p = aggregate_to_nodes_ptrs[agg]
+        aggregate_to_nodes_data[p] = node
+        aggregate_to_nodes_ptrs[agg] += 1
+    end
+    rewind_ptrs!(aggregate_to_nodes_ptrs)
+    aggregate_to_nodes = JaggedArray(aggregate_to_nodes_data,aggregate_to_nodes_ptrs)
+
+    aggregate_to_nodes
+end
+
+function prolongator(A,agg_to_nodes;omega=1)
+    options = (;omega)
+    prolongator(A,agg_to_nodes,options)
+end
+
+function prolongator(A::SparseMatrixCSC,agg_to_nodes,options)
+    # TODO Optimize
+    omega = options.omega
+    nrows,ncols = size(A)
+    diagA = zeros(eltype(A.nzval),nrows)
+    diag!(diagA,A) # TODO We are taking the diagonal to many times
+    nagg = length(agg_to_nodes)
+    P0 = SparseMatrixCSC(ncols,nagg,agg_to_nodes.ptrs,agg_to_nodes.data,ones(length(agg_to_nodes.data)))
+    Dinv = sparse(1:nrows,1:nrows,1 ./ diagA,nrows,nrows)
+    Id = sparse(1:nrows,1:nrows,ones(nrows),nrows,nrows)
+    P = (I-omega*Dinv*A)*P0
+end
+
+function smooth_aggregation(A;epsilon,omega)
+    aggrs = aggregate(A;epsilon)
+    P = prolongator(A,aggrs;omega)
+    R = transpose(P)
+    Ac = sprap(R,A,P)
+    Ac,R,P
+end
+
+function amg!(x,A,b;kwargs...)
+    setup = amg_setup(x,A,b;kwargs...)
+    amg!(x,A,b,setup)
+end
+
+function amg_setup(x,A,b;fine_params,coarse_solver)
+    nlevels = length(fine_params)
+    fine_levels_setup =  map(fine_params) do fine_level
+        (;pre_smoother,pos_smoother,coarsen,cycle) = fine_level
+        pre_setup = pre_smoother.setup(x,A,b;pre_smoother.params...)
+        pos_setup = pos_smoother.setup(x,A,b;pos_smoother.params...)
+        pre_smoother! = (x,b) -> pre_smoother.solve(x,A,b,pre_setup)
+        pos_smoother! = (x,b) -> pos_smoother.solve(x,A,b,pos_setup)
+        Ac,R,P = coarsen.setup(A;coarsen.params...)
+        r = similar(b)
+        e = similar(x)
+        rc = similar(r,axes(Ac,1))
+        ec = similar(e,axes(Ac,2))
+        level_setup = (;R,A,Ac,P,r,e,rc,ec,pre_smoother!,pos_smoother!,cycle)
+        A = Ac
+        b = rc
+        x = ec
+        level_setup
+    end
+    coarse_setup = coarse_solver.setup(x,A,b,coarse_solver.params...)
+    coarse_solver! = (x,b)->coarse_solver.solve(x,A,b,coarse_setup)
+    (;nlevels,fine_levels_setup,coarse_solver!)
+end
+
+function amg!(x,A,b,setup)
+    level = 1
+    amg_cycle!(x,b,setup,level)
+    x
+end
+
+function amg_cycle!(x,b,setup,level)
+    if level == setup.nlevels+1
+        return setup.coarse_solver!(x,b)
+    end
+    level_setup = setup.fine_levels_setup[level]
+    (;R,A,P,r,e,rc,ec,pre_smoother!,pos_smoother!,cycle) = level_setup
+    pre_smoother!(x,b)
+    copy!(r,b)
+    spmv!(r,A,x,-1,1) # TODO mul! better? Provably, yes
+    mul!(rc,R,r) # TODO spmv!
+    fill!(ec,zero(eltype(ec)))
+    cycle(ec,rc,setup,level+1)
+    spmv!(e,P,ec)
+    x .-= e
+    pos_smoother!(x,b)
+    x
+end
+
+function v_cycle!(args...)
+    amg_cycle!(args...)
+end
+
+function w_cycle!(args...)
+    amg_cycle!(args...)
+    amg_cycle!(args...)
+end
+
+
 end # module
 
 
