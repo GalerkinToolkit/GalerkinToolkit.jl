@@ -1129,7 +1129,7 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
             refdfaces = (refdfaces...,refface)
         end
         if refdfaces == ()
-            refdfaces = reference_faces(first(first(my_reference_faces)),d)
+            refdfaces = reference_faces(boundary(first(first(my_reference_faces))),d)
         end
         my_reference_faces = (refdfaces,my_reference_faces...)
     end
