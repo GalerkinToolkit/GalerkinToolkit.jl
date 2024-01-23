@@ -10,6 +10,270 @@ using PartitionedArrays
 using Combinatorics
 using SparseArrays
 
+struct Geometry{A,B,C,D}
+    num_dims::A
+    is_axis_aligned::Bool
+    is_n_cube::Bool
+    is_simplex::Bool
+    bounding_box::B
+    boundary::C
+    vertex_permutations::D
+end
+function Geometry(;
+    num_dims,
+    is_axis_aligned,
+    is_n_cube,
+    is_simplex,
+    bounding_box,
+    boundary=nothing,
+    vertex_permutations=nothing)
+
+    Geometry(
+        num_dims,
+        is_axis_aligned,
+        is_n_cube,
+        is_simplex,
+        bounding_box,
+        boundary,
+        vertex_permutations)
+end
+function setproperties(
+    geom::Geometry;
+    boundary=nothing,
+    vertex_permutations=nothing)
+
+    Geometry(
+        geom.num_dims,
+        geom.is_axis_aligned,
+        geom.is_n_cube,
+        geom.is_simplex,
+        geom.bounding_box,
+        boundary === nothing ? geom.boundary : boundary,
+        vertex_permutations == nothing ? geom.vertex_permutations : vertex_permutations)
+end
+function Base.show(io::IO,data::Geometry)
+    print(io,"GalerkinToolkit.Geometry(…)")
+end
+
+struct Mesh
+    num_dims
+    node_coordinates
+    face_nodes
+    face_reference_id
+    reference_faces
+    physical_groups
+    periodic_nodes
+    topology
+    outwards_normals
+end
+function Mesh(;
+    num_dims,
+    node_coordinates,
+    face_nodes,
+    face_reference_id,
+    reference_faces,
+    physical_groups = nothing,
+    periodic_nodes = nothing,
+    topology = nothing, 
+    outwards_normals = nothing,
+    )
+    Mesh(
+         num_dims,
+         node_coordinates,
+         face_nodes,
+         face_reference_id,
+         reference_faces,
+         physical_groups,
+         periodic_nodes,
+         topology,
+         outwards_normals,
+        )
+end
+function setproperties(m::Mesh;
+    physical_groups = nothing,
+    periodic_nodes = nothing,
+    topology = nothing,
+    outwards_normals = nothing,
+    )
+    Mesh(
+         m.num_dims,
+         m.node_coordinates,
+         m.face_nodes,
+         m.face_reference_id,
+         m.reference_faces,
+         physical_groups === nothing ? m.physical_groups : physical_groups,
+         periodic_nodes === nothing ? m.periodic_nodes : periodic_nodes,
+         topology === nothing ? m.topology : topology,
+         outwards_normals === nothing ? m.outwards_normals : outwards_normals,
+        )
+end
+function Base.show(io::IO,data::Mesh)
+    print(io,"GalerkinToolkit.Mesh(…)")
+end
+
+struct Chain
+    num_dims
+    node_coordinates
+    face_nodes
+    face_reference_id
+    reference_faces
+    physical_groups
+    periodic_nodes
+end
+function Chain(;
+        num_dims,
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_faces,
+        physical_groups = nothing,
+        periodic_nodes = nothing,
+    )
+    Chain(
+          num_dims,
+          node_coordinates,
+          face_nodes,
+          face_reference_id,
+          reference_faces,
+          physical_groups,
+          periodic_nodes,
+         )
+end
+function setproperties(c::Chain;
+    physical_groups = nothing,
+    periodic_nodes = nothing)
+    Chain(
+          c.num_dims,
+          c.node_coordinates,
+          c.face_nodes,
+          c.face_reference_id,
+          c.reference_faces,
+          physical_groups === nothing ? c.physical_groups : physical_groups,
+          periodic_nodes === nothing ? c.periodic_nodes : periodic_nodes,
+         )
+end
+function Base.show(io::IO,data::Chain)
+    print(io,"GalerkinToolkit.Chain(…)")
+end
+
+struct Topology
+    face_incidence
+    face_reference_id
+    reference_faces
+    face_permutation_ids
+end
+function Topology(;
+    face_incidence,
+    face_reference_id,
+    reference_faces,
+    face_permutation_ids)
+    Topology(
+             face_incidence,
+             face_reference_id,
+             reference_faces,
+             face_permutation_ids)
+end
+function setproperties(t::Topology)
+    t
+end
+function Base.show(io::IO,data::Topology)
+    print(io,"GalerkinToolkit.Topology(…)")
+end
+
+# TODO this is growing too big
+struct Face
+    geometry
+    shape_functions
+    dofs
+    node_coordinates
+    order
+    order_per_dir
+    monomial_exponents
+    lib_to_user_nodes
+    boundary
+    interior_nodes
+    vtk_mesh_cell
+    num_dofs
+    node_to_dofs
+    dof_to_node
+    dof_to_index
+    face_own_dofs
+    face_own_dof_permutations
+end
+function Face(;
+    geometry,
+    shape_functions,
+    dofs,
+    node_coordinates,
+    order,
+    order_per_dir,
+    monomial_exponents,
+    lib_to_user_nodes,
+    boundary=nothing,
+    interior_nodes=nothing,
+    vtk_mesh_cell=nothing,
+    num_dofs=nothing,
+    node_to_dofs=nothing,
+    dof_to_node=nothing,
+    dof_to_index=nothing,
+    face_own_dofs=nothing,
+    face_own_dof_permutations=nothing)
+    Face(
+         geometry,
+         shape_functions,
+         dofs,
+         node_coordinates,
+         order,
+         order_per_dir,
+         monomial_exponents,
+         lib_to_user_nodes,
+         boundary,
+         interior_nodes,
+         vtk_mesh_cell,
+         num_dofs,
+         node_to_dofs,
+         dof_to_node,
+         dof_to_index,
+         face_own_dofs,
+         face_own_dof_permutations,)
+end
+function setproperties(f::Face;
+    shape_functions=nothing,
+    dofs=nothing,
+    boundary=nothing,
+    interior_nodes=nothing,
+    vtk_mesh_cell=nothing,
+    num_dofs=nothing,
+    node_to_dofs=nothing,
+    dof_to_node=nothing,
+    dof_to_index=nothing,
+    face_own_dofs=nothing,
+    face_own_dof_permutations=nothing
+    )
+    Face(
+         f.geometry,
+         shape_functions === nothing ? f.shape_functions : shape_functions,
+         dofs === nothing ? f.dofs : dofs,
+         f.node_coordinates,
+         f.order,
+         f.order_per_dir,
+         f.monomial_exponents,
+         f.lib_to_user_nodes,
+         boundary === nothing ? f.boundary : boundary,
+         interior_nodes === nothing ? f.interior_nodes : interior_nodes,
+         vtk_mesh_cell === nothing ? f.vtk_mesh_cell : vtk_mesh_cell,
+         num_dofs === nothing ? f.num_dofs : num_dofs,
+         node_to_dofs === nothing ? f.node_to_dofs : node_to_dofs,
+         dof_to_node === nothing ? f.dof_to_node : dof_to_node,
+         dof_to_index === nothing ? f.dof_to_index : dof_to_index,
+         face_own_dofs === nothing ? f.face_own_dofs : face_own_dofs,
+         face_own_dof_permutations === nothing ? f.face_own_dof_permutations : face_own_dof_permutations
+    )
+end
+function Base.show(io::IO,data::Face)
+    print(io,"GalerkinToolkit.Face(…)")
+end
+
 # Inspited by PropertyUtils.jl
 # Use a dict directly instead? (provably not, we would not be type stable even if we wanted,really?)
 struct Object
@@ -57,9 +321,9 @@ face_incidence(a) = a.face_incidence
 face_reference_id(a) = a.face_reference_id
 vtk_mesh_cell(a) = a.vtk_mesh_cell
 physical_groups(a) = a.physical_groups
-has_physical_groups(a) = hasproperty(a,:physical_groups)
+has_physical_groups(a) = hasproperty(a,:physical_groups) && a.physical_groups !== nothing
 periodic_nodes(a) = a.periodic_nodes
-has_periodic_nodes(a) = hasproperty(a,:periodic_nodes)
+has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
 geometry(a) = a.geometry
 topology(a) = a.topology
 boundary(a) = a.boundary
@@ -147,7 +411,7 @@ function mesh_from_reference_face(ref_face;physical_groups=Val(true))
     face_to_refid = push(face_reference_id(boundary_mesh),[1])
     refid_refface = push(reference_faces(boundary_mesh),[ref_face])
     node_to_coords = node_coordinates(ref_face)
-    mesh = Object(;
+    mesh = Mesh(;
       num_dims=Val(D),
       node_coordinates=node_to_coords,
       face_nodes=face_to_nodes,
@@ -537,7 +801,7 @@ function reference_face_boundary_from_reference_face(refface)
         end
         face_nodes_inter[d+1] = face_nodes_inter_d
     end
-    mesh_inter = Object(;
+    mesh_inter = Mesh(;
         num_dims = Val(D-1),
         node_coordinates=node_coordinates_inter,
         face_nodes=face_nodes_inter,
@@ -594,7 +858,7 @@ function unit_n_cube(D;kwargs...)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     is_simplex = d in (0,1)
     boundary = unit_n_cube_boundary(D;kwargs...)
-    geometry = Object(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
+    geometry = Geometry(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
     vertex_permutations = vertex_permutations_from_geometry(geometry)
     setproperties(geometry;vertex_permutations)
 end
@@ -607,7 +871,7 @@ function unit_simplex(D;kwargs...)
     is_n_cube = d in (0,1)
     bounding_box=SVector{d,Float64}[ntuple(i->0,Val(d)),ntuple(i->1,Val(d))]
     boundary = unit_simplex_boundary(D;kwargs...)
-    geometry = Object(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
+    geometry = Geometry(;num_dims,is_n_cube,is_simplex,is_axis_aligned,bounding_box,boundary)
     vertex_permutations = vertex_permutations_from_geometry(geometry)
     setproperties(geometry;vertex_permutations)
 end
@@ -632,7 +896,7 @@ function unit_n_cube_boundary(
         face_reference_id = [[1,1]]
         vertex = reference_face
         my_reference_faces = ([vertex],)
-        Object(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Mesh(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 2
         node_coordinates = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1)]
         face_nodes = [[[1],[2],[3],[4]],[[1,2],[3,4],[1,3],[2,4]]]
@@ -641,7 +905,7 @@ function unit_n_cube_boundary(
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment])
         outwards_normals = SVector{2,Float64}[(0,-1),(0,1),(-1,0),(1,0)]
-        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
+        Mesh(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,0,1),(1,0,1),(0,1,1),(1,1,1)]
         face_nodes = [
@@ -655,7 +919,7 @@ function unit_n_cube_boundary(
         vertex = first(reference_faces(boundary(geometry(segment)),0))
         my_reference_faces = ([vertex],[segment],[quad])
         outwards_normals = SVector{3,Float64}[(0,0,-1),(0,0,1),(0,-1,0),(0,1,0),(-1,0,0),(1,0,0)]
-        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
+        Mesh(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     else
         @error "Case not implemented"
     end
@@ -682,7 +946,7 @@ function unit_simplex_boundary(
         face_reference_id = [[1,1]]
         vertex = reference_face
         my_reference_faces = ([vertex],)
-        Object(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
+        Mesh(;num_dims=Val(0),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces)
     elseif d == 2
         node_coordinates = SVector{2,Float64}[(0,0),(1,0),(0,1)]
         face_nodes = [[[1],[2],[3]],[[1,2],[1,3],[2,3]]]
@@ -692,7 +956,7 @@ function unit_simplex_boundary(
         my_reference_faces = ([vertex],[segment])
         n1 = sqrt(2)/2
         outwards_normals = SVector{2,Float64}[(0,-1),(-1,0),(n1,n1)]
-        Object(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
+        Mesh(;num_dims=Val(1),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     elseif d == 3
         node_coordinates = SVector{3,Float64}[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
         face_nodes = [
@@ -707,7 +971,7 @@ function unit_simplex_boundary(
         my_reference_faces = ([vertex],[segment],[tri])
         n1 = sqrt(3)/3
         outwards_normals = SVector{3,Float64}[(0,0,-1),(0,-1,0),(-1,0,0),(n1,n1,n1)]
-        Object(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
+        Mesh(;num_dims=Val(2),node_coordinates,face_nodes,face_reference_id,reference_faces=my_reference_faces,outwards_normals)
     else
         error("case not implemented")
     end
@@ -858,7 +1122,7 @@ function simplexify_unit_n_cube(geo)
     ncells = length(cell_nodes)
     cell_reference_id = fill(Int8(1),ncells)
     reference_cells = [ref_cell]
-    chain = (;
+    chain = Chain(;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
@@ -958,7 +1222,7 @@ function simplexify_reference_face(ref_face)
         face_nodes_inter[face] = my_nodes
     end
     ref_inter = 
-    chain = Object(;
+    chain = Chain(;
         num_dims=Val(D),
         node_coordinates=node_coordinates_inter,
         face_nodes = face_nodes_inter,
@@ -1178,7 +1442,7 @@ function mesh_from_gmsh_module(;complexify=true,topology=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-    mesh = Object(;
+    mesh = Mesh(;
             num_dims=Val(D),
             node_coordinates = my_node_to_coords,
             face_nodes = my_face_nodes,
@@ -1365,7 +1629,7 @@ function complexify_mesh(mesh)
         old_to_new[d+1] = old_dface_to_new_dface
     end
     node_to_coords = node_coordinates(mesh)
-    new_mesh = Object(;
+    new_mesh = Mesh(;
         num_dims = Val(D),
         node_coordinates=node_to_coords,
         face_nodes=newface_nodes,
@@ -1735,7 +1999,7 @@ function topology_from_mesh(mesh)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
     my_reference_faces = Tuple([ map(reference_topology_from_reference_face,reference_faces(mesh,d)) for d in 0:D ])
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
-    topo = Object(;
+    topo = Topology(;
         face_incidence=my_face_incidence,
         face_reference_id=my_face_reference_id,
         reference_faces=my_reference_faces,
@@ -2142,7 +2406,7 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
     mesh_groups = push(groups,physical_groups(interior_mesh,D))
-    Object(;
+    Mesh(;
      num_dims=Val(D),
      node_coordinates=node_coords,
      face_nodes=mesh_face_nodes,
@@ -2193,7 +2457,7 @@ function cartesian_chain(domain,cells_per_dir)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = Object(;
+    chain = Chain(;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
@@ -2259,7 +2523,7 @@ function structured_simplex_chain(domain,cells_per_dir)
     reference_cells = reference_faces(ref_simplex_mesh,D)
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = Object(;
+    chain = Chain(;
         num_dims=Val(D),
         node_coordinates=node_coords,
         face_nodes=cell_nodes,
@@ -2390,7 +2654,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_groups(simplex_chain))
-    Object(;
+    Mesh(;
      num_dims=Val(D),
      node_coordinates=node_coords,
      face_nodes=mesh_face_nodes,
@@ -2417,7 +2681,7 @@ function mesh_from_chain(chain)
     ref_cell = first(reference_cells)
     ref_faces = reference_faces(boundary(ref_cell))
     refid_to_refface = push(ref_faces,reference_cells)
-    mesh = Object(;
+    mesh = Mesh(;
       num_dims=Val(D),
       node_coordinates=node_coords,
       face_nodes=face_to_nodes,
@@ -2533,7 +2797,7 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,reso
             vnode_prev = vnode + 1
         end
         vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
-        vchain = Object(;
+        vchain = Chain(;
                         num_dims=Val(dim),
                         node_coordinates=vnode_to_coords,
                         face_nodes=vcell_to_vnodes,
@@ -2630,7 +2894,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrangian_reference_face(geo)
-        chain = Object(;
+        chain = Chain(;
                        num_dims=Val(2),
                        node_coordinates = X,
                        face_nodes = T,
@@ -2683,7 +2947,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrangian_reference_face(geo)
-        chain = Object(;
+        chain = Chain(;
                        num_dims=Val(3),
                        node_coordinates = X,
                        face_nodes = T,
@@ -2740,7 +3004,7 @@ function lagrangian_reference_face(
     monomials = map(e->(x-> prod(x.^e)),monomial_exponents)
     dofs = map(x->(f->f(x)),node_coordinates)
     shape_functions, dofs = shape_functions_and_dofs_from_bases(monomials,dofs)
-    refface = Object(;
+    refface = Face(;
         geometry,
         shape_functions,
         dofs,
