@@ -28,6 +28,27 @@ quad = gt.default_quadrature(cube3;degree=2)
 quad = gt.default_quadrature(cube1;degree=4,real_type=Float32)
 quad = gt.default_quadrature(spx1;degree=4,real_type=Float32)
 
+@show typeof(spx0)
+
+fe = gt.lagrangian_fe(spx0,order=1)
+fe = gt.lagrangian_fe(spx1,order=1)
+fe = gt.lagrangian_fe(spx2,order=1)
+fe = gt.lagrangian_fe(spx3,order=1)
+display(fe)
+
+fe = gt.lagrangian_fe(cube0,order=1)
+fe = gt.lagrangian_fe(cube1,order=1)
+fe = gt.lagrangian_fe(cube2,order=1)
+fe = gt.lagrangian_fe(cube3,order=1)
+display(fe)
+
+fe = gt.lagrangian_fe(cube2,order=3)
+@show gt.node_coordinates(fe)
+
+#∂spx0 = gt.boundary(spx0)
+#∂spx0 = gt.boundary(spx1)
+#∂cube0 = gt.boundary(cube0)
+
 
 
 end # module

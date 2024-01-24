@@ -18,33 +18,92 @@ end
 val_parameter(a) = a
 val_parameter(::Val{a}) where a = a
 num_dims(a) = val_parameter(a.num_dims)
+node_coordinates(a) = a.node_coordinates
+reference_faces(a) = a.reference_faces
+face_nodes(a) = a.face_nodes
+face_incidence(a) = a.face_incidence
+face_reference_id(a) = a.face_reference_id
+vtk_mesh_cell(a) = a.vtk_mesh_cell
+physical_groups(a) = a.physical_groups
+has_physical_groups(a) = hasproperty(a,:physical_groups) && a.physical_groups !== nothing
+periodic_nodes(a) = a.periodic_nodes
+has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
+geometry(a) = a.geometry
+topology(a) = a.topology
+boundary(a) = a.boundary
+is_n_cube(a) = hasproperty(a,:is_n_cube) ? val_parameter(a.is_n_cube) : false
+is_simplex(a) = hasproperty(a,:is_simplex) ? val_parameter(a.is_simplex) : false
+is_axis_aligned(a) = a.is_axis_aligned
+bounding_box(a) = a.bounding_box
+vertex_permutations(a) = a.vertex_permutations
+face_own_dofs(a) = a.face_own_dofs
+face_own_dof_permutations(a) = a.face_own_dof_permutations
+node_to_dofs(a) = a.node_to_dofs
+dof_to_node(a) = a.dof_to_node
+dof_to_index(a) = a.dof_to_index
+num_dofs(a) = a.num_dofs
 coordinates(a) = a.coordinates
 weights(a) = a.weights
+shape_functions(a) = a.shape_functions
+tabulation_matrix!(a) = a.tabulation_matrix!
+tabulation_matrix(a) = a.tabulation_matrix
+order(a) = a.order
+monomial_exponents(a) = a.monomial_exponents
+lib_to_user_nodes(a) = a.lib_to_user_nodes
+interior_nodes(a) = a.interior_nodes
+face_permutation_ids(a) = a.face_permutation_ids
+face_permutation_ids(a,m,n) = face_permutation_ids(a)[m+1,n+1]
+local_nodes(a) = a.local_nodes
+local_node_colors(a) = a.local_node_colors
+real_type(a) = a.real_type
+int_type(a) = a.int_type
 
-struct UnitSimplex{D} <: GalerkinToolkitDataType
+reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
+face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
+face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2)+1]
+face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
+num_faces(a) = map(length,face_reference_id(a))
+num_faces(a,d) = length(face_reference_id(a,d))
+physical_groups(a,d) = physical_groups(a)[val_parameter(d)+1]
+num_nodes(a) = length(node_coordinates(a))
+num_ambient_dims(a) = length(eltype(node_coordinates(a)))
+function face_offsets(a)
+    D = num_dims(a)
+    offsets = zeros(Int,D+1)
+    for d in 1:D
+        offsets[d+1] = offsets[d] + num_faces(a,d-1)
+    end
+    offsets
+end
+function face_dim(a,d)
+    n = num_faces(a,d)
+    fill(d,n)
+end
+function face_dim(a)
+    D = num_dims(a)
+    reduce(vcat,map(d->face_dim(a,d),0:D))
+end
+
+struct UnitSimplex{D,Tv,Ti} <: GalerkinToolkitDataType
     num_dims::Val{D}
-end
-function Base.show(io::IO,k::MIME"text/plain",data::UnitSimplex)
-    D = num_dims(data)
-    print(io,"Unit simplex of dimension $D")
+    real_type::Type{Tv}
+    int_type::Type{Ti}
 end
 
-struct UnitNCube{D} <: GalerkinToolkitDataType
+struct UnitNCube{D,Tv,Ti} <: GalerkinToolkitDataType
     num_dims::Val{D}
-end
-function Base.show(io::IO,k::MIME"text/plain",data::UnitNCube)
-    D = num_dims(data)
-    print(io,"Unit cube of dimension $D")
+    real_type::Type{Tv}
+    int_type::Type{Ti}
 end
 
-function unit_simplex(num_dims)
+function unit_simplex(num_dims;real_type=Float64,int_type=Int)
     D = val_parameter(num_dims)
-    UnitSimplex(Val(D))
+    UnitSimplex(Val(D),real_type,int_type)
 end
 
-function unit_n_cube(num_dims)
+function unit_n_cube(num_dims;real_type=Float64,int_type=Int)
     D = val_parameter(num_dims)
-    UnitNCube(Val(D))
+    UnitNCube(Val(D),real_type,int_type)
 end
 
 struct GenericCuadrature{A,B} <: GalerkinToolkitDataType
@@ -64,20 +123,20 @@ end
 
 function default_quadrature(geo::UnitSimplex;
     degree,
-    real_type=Float64)
+    real_type=geo.real_type)
     duffy_quadrature(geo;degree,real_type)
 end
 
 function default_quadrature(geo::UnitNCube;
     degree,
-    real_type=Float64)
+    real_type=geo.real_type)
     degree_per_dir = ntuple(i->degree,Val(num_dims(geo)))
     tensor_product_quadrature(geo;degree_per_dir,real_type)
 end
 
 function duffy_quadrature(geo::UnitSimplex;
     degree,
-    real_type = Float64,
+    real_type = geo.real_type,
     )
     D = num_dims(geo)
     if D == 0
@@ -132,7 +191,7 @@ end
 
 function tensor_product_quadrature(geo::UnitNCube;
     degree_per_dir,
-    real_type = Float64,
+    real_type = geo.real_type,
     )
 
     D = num_dims(geo)
@@ -166,5 +225,105 @@ function tensor_product!(f,result,values_per_dir)
     end
     result
 end
+
+abstract type AbstractLagrangeFE <: GalerkinToolkitDataType end
+
+struct GenericLagrangeFE{A,B} <: AbstractLagrangeFE
+    geometry::A
+    order_per_dir::B
+    space::Symbol
+end
+struct LagrangianUnitSimplex{D,Tv,Ti} <: AbstractLagrangeFE
+    geometry::UnitSimplex{D,Tv,Ti}
+    order_per_dir::NTuple{D,Ti}
+    space::Symbol
+end
+struct LagrangianUnitNCube{D,Tv,Ti} <: AbstractLagrangeFE
+    geometry::UnitNCube{D,Tv,Ti}
+    order_per_dir::NTuple{D,Ti}
+    space::Symbol
+end
+
+function lagrangian_fe(geometry,order_per_dir,space)
+    GenericLagrangeFE(geometry,order_per_dir,space)
+end
+function lagrangian_fe(geometry::UnitSimplex,order_per_dir,space)
+    LagrangianUnitSimplex(geometry,order_per_dir,space)
+end
+function lagrangian_fe(geometry::UnitNCube,order_per_dir,space)
+    LagrangianUnitNCube(geometry,order_per_dir,space)
+end
+
+function lagrangian_fe(geometry;order,space=default_space(geometry))
+    D = num_dims(geometry)
+    order_per_dir = ntuple(i->order,Val(D))
+    lagrangian_fe(geometry,order_per_dir,space)
+end
+
+default_space(::UnitSimplex) = :P
+default_space(::UnitNCube) = :Q
+
+function tensor_product_lagrangian_fe(geometry::UnitNCube;order_per_dir,space=:Q)
+    lagrangian_fe(geometry,order_per_dir,space)
+end
+
+function monomial_exponents(fe::AbstractLagrangeFE)
+    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> real_type)
+end
+
+function node_coordinates(fe::AbstractLagrangeFE)
+    mexps = monomial_exponents(fe)
+    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+end
+
+function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,real_type)
+    node_coordinates = map(monomial_exponents) do exponent
+        map(exponent,order_per_dir) do e,order
+            if order != 0
+                real_type(e/order)
+            else
+                real_type(e)
+            end
+        end
+    end
+end
+
+function monomial_exponents_from_space(space,args...)
+    filter = if space == :Q
+        (e,o)->true
+    elseif space == :P
+        (e,o)->sum(e)<=maximum(o)
+    else
+        error("Case not implemented (yet)")
+    end
+    monomial_exponents_from_filter(filter,args...)
+end
+
+function monomial_exponents_from_filter(f,order_per_dir,int_type)
+    terms_per_dir = Tuple(map(d->d+1,order_per_dir))
+    D = length(terms_per_dir)
+    cis = CartesianIndices(terms_per_dir)
+    m = count(ci->f(Tuple(ci) .- 1,order_per_dir),cis)
+    li = 0
+    result = zeros(SVector{D,int_type},m)
+    for ci in cis
+        t = Tuple(ci) .- 1
+        if f(t,order_per_dir)
+            li += 1
+            result[li] = t
+        end
+    end
+    result
+end
+
+#function boundary(::UnitSimplex{0})
+#    nothing
+#end
+#
+#function boundary(::UnitNCube{0})
+#    nothing
+#end
+
+
 
 end # module
