@@ -2,6 +2,7 @@ module GalerkinToolkitTests
 
 using Test
 import GalerkinToolkit as gt
+using WriteVTK
 
 spx0 = gt.unit_simplex(0)
 spx1 = gt.unit_simplex(1)
@@ -46,6 +47,8 @@ fe = gt.lagrangian_fe(cube3,order)
 display(fe)
 
 fe = gt.lagrangian_fe(cube0,order)
+@show gt.monomial_exponents(fe)
+@show gt.node_coordinates(fe)
 fe = gt.lagrangian_fe(cube2,order)
 @show gt.node_coordinates(fe)
 
@@ -61,7 +64,6 @@ A = tabulator(gt.value,x)
 @test A≈B
 x = gt.node_coordinates(fe)
 A = tabulator(gt.value,x)
-@show A
 
 fe = gt.lagrangian_fe(spx2,order;shape=(3,))
 funs = gt.shape_functions(fe)
@@ -73,7 +75,25 @@ A = tabulator(gt.value,x)
 @test A≈B
 x = gt.node_coordinates(fe)
 A = tabulator(gt.value,x)
-@show A
+
+fe = gt.lagrangian_fe(spx2,order;shape=())
+funs = gt.shape_functions(fe)
+x = gt.coordinates(quad)
+B = broadcast(gt.value,permutedims(funs),x)
+display(B)
+tabulator = gt.tabulator(fe)
+A = tabulator(gt.value,x)
+@test A≈B
+x = gt.node_coordinates(fe)
+A = tabulator(gt.value,x)
+
+outdir = mkpath(joinpath(@__DIR__,"..","output"))
+
+msh =  joinpath(@__DIR__,"..","assets","demo.msh")
+mesh = gt.mesh_from_gmsh(msh;complexify=false)
+vtk_grid(joinpath(outdir,"demo"),gt.vtk_args(mesh)...) do vtk
+    gt.vtk_physical_groups!(vtk,mesh)
+end
 
 
 #∂spx0 = gt.boundary(spx0)

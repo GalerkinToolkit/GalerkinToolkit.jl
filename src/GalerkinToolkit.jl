@@ -23,7 +23,6 @@ reference_faces(a) = a.reference_faces
 face_nodes(a) = a.face_nodes
 face_incidence(a) = a.face_incidence
 face_reference_id(a) = a.face_reference_id
-vtk_mesh_cell(a) = a.vtk_mesh_cell
 physical_groups(a) = a.physical_groups
 has_physical_groups(a) = hasproperty(a,:physical_groups) && a.physical_groups !== nothing
 periodic_nodes(a) = a.periodic_nodes
@@ -44,7 +43,6 @@ dof_to_index(a) = a.dof_to_index
 num_dofs(a) = a.num_dofs
 coordinates(a) = a.coordinates
 weights(a) = a.weights
-shape_functions(a) = a.shape_functions
 tabulation_matrix!(a) = a.tabulation_matrix!
 tabulation_matrix(a) = a.tabulation_matrix
 order(a) = a.order
@@ -269,59 +267,7 @@ end
 struct ScalarShape end
 const SCALAR_SHAPE = ScalarShape()
 
-#struct LagrangeFE{D,Tv,Ti} <: AbstractLagrangeFE
-#    geometry::ExtrusionPolytope{D,Tv,Ti}
-#    order_per_dir::NTuple{D,Ti}
-#    space::Symbol
-#    lib_to_user_nodes::Vector{Ti}
-#    major::Symbol
-#    shape::ScalarShape
-#end
-#
-#struct TensorValuedLagrangeFE{D,S,Tv,Ti} <: AbstractLagrangeFE
-#    geometry::ExtrusionPolytope{D,Tv,Ti}
-#    order_per_dir::NTuple{D,Ti}
-#    space::Symbol
-#    lib_to_user_nodes::Vector{Ti}
-#    major::Symbol
-#    shape::NTuple{S,Ti}
-#end
-
 lagrangian_fe(args...) = GenericLagrangeFE(args...)
-
-#function lagrangian_fe(
-#        geometry::ExtrusionPolytope{D,Tv,Ti},
-#        order_per_dir::NTuple{D,Ti},
-#        space::Symbol,
-#        lib_to_user_nodes::Vector{Ti},
-#        major::Symbol,
-#        shape::ScalarShape) where {D,Tv,Ti}
-#
-#    LagrangeFE(
-#               geometry,
-#               order_per_dir,
-#               space,
-#               lib_to_user_nodes,
-#               major,
-#               shape)
-#end
-#
-#function lagrangian_fe(
-#        geometry::ExtrusionPolytope{D,Tv,Ti},
-#        order_per_dir::NTuple{D,Ti},
-#        space::Symbol,
-#        lib_to_user_nodes::Vector{Ti},
-#        major::Symbol,
-#        shape::NTuple{S,Ti}) where {D,S,Tv,Ti}
-#
-#    TensorValuedLagrangeFE(
-#               geometry,
-#               order_per_dir,
-#               space,
-#               lib_to_user_nodes,
-#               major,
-#               shape)
-#end
 
 function lagrangian_fe(geometry,order;
         space = default_space(geometry),
@@ -360,7 +306,7 @@ function lib_to_user_nodes(fe::AbstractLagrangeFE)
 end
 
 function monomial_exponents(fe::AbstractLagrangeFE)
-    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> real_type)
+    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> int_type)
 end
 
 function node_coordinates(fe::AbstractLagrangeFE)
@@ -370,6 +316,11 @@ function node_coordinates(fe::AbstractLagrangeFE)
 end
 
 function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,real_type)
+    D = length(order_per_dir)
+    Tv = real_type
+    if length(monomial_exponents) == 0
+        return  
+    end
     node_coordinates = map(monomial_exponents) do exponent
         map(exponent,order_per_dir) do e,order
             if order != 0
@@ -377,7 +328,7 @@ function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_
             else
                 real_type(e)
             end
-        end
+        end |> SVector{D,Tv}
     end
 end
 
@@ -385,21 +336,22 @@ function monomial_exponents_from_space(space,args...)
     if space == :Q
         monomial_exponents_from_filter((e,o)->true,args...)
     elseif space == :P
-        monomial_exponents_from_filter((e,o)->sum(e)<=maximum(o),args...)
+        monomial_exponents_from_filter((e,o)->sum(e)<=maximum(o,init=0),args...)
     else
         error("Case not implemented (yet)")
     end
 end
 
 function monomial_exponents_from_filter(f,order_per_dir,int_type)
+    Ti = int_type
     terms_per_dir = Tuple(map(d->d+1,order_per_dir))
     D = length(terms_per_dir)
     cis = CartesianIndices(terms_per_dir)
-    m = count(ci->f(Tuple(ci) .- 1,order_per_dir),cis)
-    li = 0
+    m = count(ci->f(SVector{D,Ti}(Tuple(ci) .- 1),order_per_dir),cis)
     result = zeros(SVector{D,int_type},m)
+    li = 0
     for ci in cis
-        t = Tuple(ci) .- 1
+        t = SVector{D,Ti}(Tuple(ci) .- 1)
         if f(t,order_per_dir)
             li += 1
             result[li] = t
@@ -409,13 +361,13 @@ function monomial_exponents_from_filter(f,order_per_dir,int_type)
 end
 
 function tensor_basis(fe::AbstractLagrangeFE)
-    Ti = fe |> geometry |> int_type
+    Tv = fe |> geometry |> real_type
     if fe.shape == SCALAR_SHAPE
-        return Ti(1)
+        return Tv(1)
     else
         cis = CartesianIndices(val_parameter(fe.shape))
         l = prod(val_parameter(fe.shape))
-        init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Ti}
+        init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Tv}
         cis_flat = cis[:]
         return map(cis_flat) do ci
             init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
@@ -491,6 +443,437 @@ function tabulator(fe)
         C = broadcast(f,primal_t,x)
         C*B
     end
+end
+
+abstract type AbstractFEMesh <: GalerkinToolkitDataType end
+
+struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
+    node_coordinates::A
+    face_nodes::B
+    face_reference_id::C
+    reference_faces::D
+    periodic_nodes::E
+    physical_groups::F
+    outwards_normals::G
+end
+
+function fe_mesh(args...)
+    GenericFEMesh(args...)
+end
+
+function fe_mesh(
+    node_coordinates,
+    face_nodes,
+    face_reference_id,
+    reference_faces;
+    periodic_nodes = eltype(eltype(face_reference_id))[],
+    physical_groups = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
+    outwards_normals = nothing
+    )
+    fe_mesh(
+            node_coordinates,
+            face_nodes,
+            face_reference_id,
+            reference_faces,
+            periodic_nodes,
+            physical_groups,
+            outwards_normals)
+end
+
+num_dims(mesh::AbstractFEMesh) = length(reference_faces(mesh))-1
+
+const INVALID_ID = 0
+
+function default_gmsh_options()
+    [
+     "General.Terminal"=>1,
+     "Mesh.SaveAll"=>1,
+     "Mesh.MedImportGroupsOfNodes"=>1
+    ]
+end
+
+function with_gmsh(f;options=default_gmsh_options())
+    gmsh.initialize()
+    for (k,v) in options
+        gmsh.option.setNumber(k,v)
+    end
+    try
+        return f()
+    finally
+        gmsh.finalize()
+    end
+end
+
+function mesh_from_gmsh(file;complexify=true,topology=true,renumber=true,kwargs...)
+    @assert ispath(file) "File not found: $(file)"
+    with_gmsh(;kwargs...) do
+        gmsh.open(file)
+        renumber && gmsh.model.mesh.renumberNodes()
+        renumber && gmsh.model.mesh.renumberElements()
+        mesh_from_gmsh_module(;complexify,topology)
+    end
+end
+
+function mesh_from_gmsh_module(;complexify=true,topology=true)
+    entities = gmsh.model.getEntities()
+    nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
+
+    # find num_dims
+    ddim = -1
+    for e in entities
+        ddim = max(ddim,e[1])
+    end
+    if ddim == -1
+        error("No entities in the msh file.")
+    end
+    D = ddim
+
+    # find embedded_dimension
+    dtouched = [false,false,false]
+    for node in nodeTags
+        if !(coord[(node-1)*3+1] + 1 ≈ 1)
+            dtouched[1] = true
+        end
+        if !(coord[(node-1)*3+2] + 1 ≈ 1)
+            dtouched[2] = true
+        end
+        if !(coord[(node-1)*3+3] + 1 ≈ 1)
+            dtouched[3] = true
+        end
+    end
+    if dtouched[3]
+        adim = 3
+    elseif dtouched[2]
+        adim = 2
+    elseif dtouched[1]
+        adim = 1
+    else
+        adim = 0
+    end
+
+    # Setup node coords
+    nmin = minimum(nodeTags)
+    nmax = maximum(nodeTags)
+    nnodes = length(nodeTags)
+    if !(nmax == nnodes && nmin == 1)
+        error("Only consecutive node tags allowed.")
+    end
+    my_node_to_coords = zeros(SVector{adim,Float64},nnodes)
+    m = zero(MVector{adim,Float64})
+    for node in nodeTags
+        for j in 1:adim
+            k = (node-1)*3 + j
+            xj = coord[k]
+            m[j] = xj
+        end
+        my_node_to_coords[node] = m
+    end
+
+    # Setup face nodes
+    offsets = zeros(Int32,D+1)
+    my_face_nodes = Vector{JaggedArray{Int32,Int32}}(undef,D+1)
+    for d in 0:D
+        elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(d)
+        ndfaces = 0
+        for t in 1:length(elemTypes)
+            ndfaces += length(elemTags[t])
+        end
+        if ndfaces != 0
+            nmin::Int = minimum( minimum, elemTags )
+            nmax::Int = maximum( maximum, elemTags )
+            if !( (nmax-nmin+1) == ndfaces)
+                error("Only consecutive elem tags allowed.")
+            end
+            offsets[d+1] = nmin-1
+        end
+        ptrs = zeros(Int32,ndfaces+1)
+        dface = 0
+        for t in 1:length(elemTypes)
+            elementName, dim, order, numNodes, nodeCoord =
+            gmsh.model.mesh.getElementProperties(elemTypes[t])
+            for e in 1:length(elemTags[t])
+                dface += 1
+                ptrs[dface+1] = numNodes
+            end
+        end
+        length_to_ptrs!(ptrs)
+        ndata = ptrs[end]-1
+        data = zeros(Int32,ndata)
+        dface = 1
+        for t in 1:length(elemTypes)
+            p = ptrs[dface]-Int32(1)
+            for (i,node) in enumerate(nodeTags[t])
+                data[p+i] = node
+            end
+            dface += length(elemTags[t])
+        end
+        my_face_nodes[d+1] = JaggedArray(data,ptrs)
+    end
+
+    # Setup face_reference_id
+    my_face_reference_id = Vector{Vector{Int32}}(undef,D+1)
+    for d in 0:D
+        elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(d)
+        ndfaces = length(my_face_nodes[d+1])
+        dface_to_refid = zeros(Int8,ndfaces)
+        refid = 0
+        dface = 0
+        for t in 1:length(elemTypes)
+            refid += 1
+            for e in 1:length(elemTags[t])
+                dface += 1
+                dface_to_refid[dface] = refid
+            end
+        end
+        my_face_reference_id[d+1] = dface_to_refid
+    end
+
+    # Setup reference faces
+    my_reference_faces = ()
+    for d in D:-1:0
+        elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(d)
+        refdfaces = ()
+        for t in 1:length(elemTypes)
+            refface = reference_face_from_gmsh_eltype(elemTypes[t])
+            refdfaces = (refdfaces...,refface)
+        end
+        if refdfaces == ()
+            refdfaces = reference_faces(boundary(first(first(my_reference_faces))),d)
+        end
+        my_reference_faces = (refdfaces,my_reference_faces...)
+    end
+
+    ## Setup periodic nodes
+    node_to_master_node = fill(Int32(INVALID_ID),nnodes)
+    for (dim,tag) in entities
+        tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
+        for i in 1:length(nodeTags)
+            node = nodeTags[i]
+            master_node = nodeTagsMaster[i]
+            node_to_master_node[node] = master_node
+        end
+    end
+    pnode_to_node = Int32.(findall(i->i!=INVALID_ID,node_to_master_node))
+    pnode_to_master = node_to_master_node[pnode_to_node]
+    periodic_nodes = pnode_to_node => pnode_to_master
+
+    # Setup physical groups
+    my_groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
+    for d in 0:D
+        offset = Int32(offsets[d+1])
+        dimTags = gmsh.model.getPhysicalGroups(d)
+        for (dim,tag) in dimTags
+            @boundscheck @assert dim == d
+            g_entities = gmsh.model.getEntitiesForPhysicalGroup(dim,tag)
+            ndfaces_in_physical_group = 0
+            for entity in g_entities
+                elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(dim,entity)
+                for t in 1:length(elemTypes)
+                    ndfaces_in_physical_group += length(elemTags[t])
+                end
+            end
+            dfaces_in_physical_group = zeros(Int32,ndfaces_in_physical_group)
+            ndfaces_in_physical_group = 0
+            for entity in g_entities
+                elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(dim,entity)
+                for t in 1:length(elemTypes)
+                    for etag in elemTags[t]
+                        ndfaces_in_physical_group += 1
+                        dfaces_in_physical_group[ndfaces_in_physical_group] = Int32(etag)-offset
+                    end
+                end
+            end
+            groupname = gmsh.model.getPhysicalName(dim,tag)
+            my_groups[d+1][groupname] = dfaces_in_physical_group
+        end
+    end
+    mesh = fe_mesh(
+            my_node_to_coords,
+            my_face_nodes,
+            my_face_reference_id,
+            my_reference_faces;
+            physical_groups = my_groups,
+            periodic_nodes,)
+
+    if complexify
+        error("Not Implemented")
+        mesh, _ = complexify_mesh(mesh)
+    end
+    mesh
+end
+
+function reference_face_from_gmsh_eltype(eltype)
+    if eltype == 1
+        order = 1
+        geom = unit_n_cube(Val(1))
+        lib_to_gmsh = [1,2]
+    elseif eltype == 2
+        order = 1
+        geom = unit_simplex(Val(2))
+        lib_to_gmsh = [1,2,3]
+    elseif eltype == 3
+        order = 1
+        geom = unit_n_cube(Val(2))
+        lib_to_gmsh = [1,2,4,3]
+    elseif eltype == 4
+        order = 1
+        geom = unit_simplex(Val(3))
+        lib_to_gmsh = [1,2,3,4]
+    elseif eltype == 5
+        order = 1
+        lib_to_gmsh = [1,2,4,3,5,6,8,7]
+    elseif eltype == 15
+        order = 1
+        geom = unit_n_cube(Val(0))
+        lib_to_gmsh = [1]
+    elseif eltype == 8
+        order = 2
+        geom = unit_n_cube(Val(1))
+        lib_to_gmsh = [1,3,2]
+    elseif eltype == 9
+        order = 2
+        geom = unit_simplex(Val(2))
+        lib_to_gmsh = [1,4,2,6,5,3]
+    else
+        en, = gmsh.model.mesh.getElementProperties(eltype)
+        error("Unsupported element type. elemType: $eltype ($en)")
+    end
+    lagrangian_fe(geom,order;lib_to_user_nodes=lib_to_gmsh)
+end
+
+function vtk_points(mesh)
+    function barrirer(coords)
+        nnodes = length(coords)
+        points = zeros(3,nnodes)
+        for node in 1:nnodes
+            coord = coords[node]
+            for i in 1:length(coord)
+                points[i,node] = coord[i]
+            end
+        end
+        points
+    end
+    coords = node_coordinates(mesh)
+    barrirer(coords)
+end
+
+function vtk_cells(mesh,d)
+    function barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
+        cells = map(face_to_refid,face_to_nodes) do refid, nodes
+            mesh_cell = refid_mesh_cell[refid]
+            if mesh_cell === nothing
+                msg = """
+                Not enough information to visualize this mesh via vtk:
+                vtk_mesh_cell returns nothing for the reference face in position $refid in dimension $d.
+                """
+                error(msg)
+            end
+            mesh_cell(nodes)
+        end
+        cells
+    end
+    face_to_nodes = face_nodes(mesh,d)
+    face_to_refid = face_reference_id(mesh,d)
+    refid_refface = reference_faces(mesh,d)
+    refid_mesh_cell = map(vtk_mesh_cell,refid_refface)
+    barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
+end
+
+"""
+    args = vtk_args(mesh,d)
+
+Return the arguments `args` to be passed in final position
+to functions like `WriteVTK.vtk_grid`.
+"""
+function vtk_args(mesh,d)
+    points = vtk_points(mesh)
+    cells = vtk_cells(mesh,d)
+    points, cells
+end
+
+function vtk_args(mesh)
+    points = vtk_points(mesh)
+    D = num_dims(mesh)
+    allcells = [vtk_cells(mesh,d) for d in 0:D if num_faces(mesh,d) != 0]
+    cells = reduce(vcat,allcells)
+    points, cells
+end
+
+function vtk_physical_groups!(vtk,mesh,d;physical_groups=physical_groups(mesh,d))
+    ndfaces = num_faces(mesh,d)
+    for group in physical_groups
+        name,faces = group
+        face_mask = zeros(Int,ndfaces)
+        face_mask[faces] .= 1
+        vtk[name,WriteVTK.VTKCellData()] = face_mask
+    end
+    vtk
+end
+
+function vtk_physical_groups!(vtk,mesh;physical_groups=physical_groups(mesh))
+    nfaces = sum(num_faces(mesh))
+    offsets = face_offsets(mesh)
+    D = num_dims(mesh)
+    data = Dict{String,Vector{Int}}()
+    for d in 0:D
+        for group in physical_groups[d+1]
+            name, = group
+            if !haskey(data,name)
+                face_mask = zeros(Int,nfaces)
+                data[name] = face_mask
+            end
+        end
+    end
+    for d in 0:D
+        for group in physical_groups[d+1]
+            offset = offsets[d+1]
+            name,faces = group
+            face_mask = data[name]
+            face_mask[faces.+offset] .= 1
+        end
+    end
+    for (name,face_mask) in data
+        vtk[name,WriteVTK.VTKCellData()] = face_mask
+    end
+    vtk
+end
+
+function vtk_mesh_cell(ref_face)
+    geom = geometry(ref_face)
+    d = num_dims(geom)
+    nnodes = num_nodes(ref_face)
+    lib_to_user = lib_to_user_nodes(ref_face)
+    if d == 0 && nnodes == 1
+        cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
+        vtk_to_lib = [1]
+    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 2
+        cell_type = WriteVTK.VTKCellTypes.VTK_LINE
+        vtk_to_lib = [1,2]
+    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE
+        vtk_to_lib = [1,3,2]
+    elseif d == 2 && is_n_cube(geom) && nnodes == 4
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUAD
+        vtk_to_lib = [1,2,4,3]
+    elseif d == 2 && is_simplex(geom) && nnodes == 3
+        cell_type = WriteVTK.VTKCellTypes.VTK_TRIANGLE
+        vtk_to_lib = [1,2,3]
+    elseif d == 2 && is_simplex(geom) && nnodes == 6
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE
+        vtk_to_lib = [1,3,6,2,5,4]
+    elseif d == 3 && is_n_cube(geom) && nnodes == 8
+        cell_type = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
+        vtk_to_lib = [1,2,4,3,5,6,8,7]
+    elseif d == 3 && is_simplex(geom) && nnodes == 4
+        cell_type = WriteVTK.VTKCellTypes.VTK_TETRA
+        vtk_to_lib = [1,2,3,4]
+    elseif d == 3 && is_simplex(geom) && nnodes == 10
+        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TETRA
+        vtk_to_lib = [1,3,6,10,2,5,4,7,8,9]
+    else
+        return nothing
+    end
+    nodes -> WriteVTK.MeshCell(cell_type,(nodes[lib_to_user])[vtk_to_lib])
 end
 
 
