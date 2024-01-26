@@ -95,6 +95,29 @@ vtk_grid(joinpath(outdir,"demo"),gt.vtk_args(mesh)...) do vtk
     gt.vtk_physical_groups!(vtk,mesh)
 end
 
+@show gt.unit_simplex(0) |> gt.boundary
+@show gt.unit_simplex(1) |> gt.boundary
+@show gt.unit_simplex(2) |> gt.boundary
+@show gt.unit_simplex(3) |> gt.boundary
+
+@show gt.unit_n_cube(0) |> gt.boundary
+@show gt.unit_n_cube(1) |> gt.boundary
+@show gt.unit_n_cube(2) |> gt.boundary
+@show gt.unit_n_cube(3) |> gt.boundary
+
+order = 2
+gt.lagrangian_fe(spx1,order) |> gt.boundary |> gt.topology
+
+mesh = gt.mesh_from_gmsh(msh;complexify=false)
+
+new_mesh, old_to_new = gt.complexify(mesh)
+
+mesh = gt.mesh_from_gmsh(msh)
+
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = gt.cartesian_mesh(domain,cells)
+mesh = gt.cartesian_mesh(domain,cells,simplexify=true)
 
 #∂spx0 = gt.boundary(spx0)
 #∂spx0 = gt.boundary(spx1)
