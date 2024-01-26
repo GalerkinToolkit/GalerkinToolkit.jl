@@ -121,6 +121,8 @@ mesh = gt.cartesian_mesh(domain,cells,boundary=false)
 mesh = gt.cartesian_mesh(domain,cells,simplexify=true)
 mesh = gt.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
+vmesh, vglue = gt.visualization_mesh(mesh)
+
 #∂spx0 = gt.boundary(spx0)
 #∂spx0 = gt.boundary(spx1)
 #∂cube0 = gt.boundary(cube0)
