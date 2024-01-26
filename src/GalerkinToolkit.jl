@@ -19,6 +19,7 @@ Object(;kwargs...) = Object(Dict(kwargs))
 Base.propertynames(i::Object) = collect(keys(getfield(i, :item)))
 Base.getproperty(i::Object, x::Symbol) = getindex(getfield(i, :item), x)
 Base.setproperty!(i::Object, name::Symbol, x) = setindex!(getfield(i, :item), x, name)
+Base.copy(i::Object) = Object(getfield(i, :item))
 
 # TODO setproperty instead?
 function setproperties(a::Object;kwargs...)
