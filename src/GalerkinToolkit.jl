@@ -2012,7 +2012,7 @@ function fe_chain(
     face_reference_id,
     reference_faces;
     periodic_nodes = eltype(eltype(face_reference_id))[],
-    physical_groups = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
+    physical_groups = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
     outwards_normals = nothing
     )
     fe_chain(
@@ -2057,10 +2057,10 @@ function mesh_from_chain(chain)
       node_coords,
       face_to_nodes,
       face_to_refid,
-      refid_to_refface,
-      pnodes,
-      groups,
-      onormals)
+      refid_to_refface;
+      periodic_nodes = pnodes,
+      physical_groups = groups,
+      outwards_normals = onormals)
 end
 
 function simplexify(geo::AbstractFaceGeometry)
@@ -2104,7 +2104,7 @@ function simplexify_unit_n_cube(geo)
         reference_cells,
        )
     mesh = mesh_from_chain(chain)
-    mesh_complex, = complexify_mesh(mesh)
+    mesh_complex, = complexify(mesh)
     groups = [Dict{String,Vector{Int32}}() for d in 0:D]
     for d in 0:(D-1)
         sface_to_nodes = face_nodes(mesh_complex,d)
@@ -2203,7 +2203,7 @@ function simplexify_reference_face(ref_face)
         reference_faces = ref_faces_inter,
     )
     mesh = mesh_from_chain(chain)
-    mesh_complex, = complexify_mesh(mesh)
+    mesh_complex, = complexify(mesh)
     pg = physical_groups(mesh_complex)
     pg .= physical_groups(mesh_geom)
     mesh_complex
@@ -2225,7 +2225,7 @@ function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simpl
         mesh_from_chain(chain)
     end
     if complexify
-        mesh, = complexify_mesh(mesh)
+        mesh, = GalerkinToolkit.complexify(mesh)
     end
     mesh
 end
@@ -2596,7 +2596,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_groups(simplex_chain))
-    fe_chain(
+    fe_mesh(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
