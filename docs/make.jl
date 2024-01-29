@@ -6,7 +6,6 @@ DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); re
 makedocs(;
     modules=[GalerkinToolkit],
     authors="Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors",
-    repo="https://github.com/fverdugo/GalerkinToolkit.jl/blob/{commit}{path}#{line}",
     sitename="GalerkinToolkit.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
