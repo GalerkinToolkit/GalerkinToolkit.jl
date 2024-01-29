@@ -1990,6 +1990,84 @@ function find_node_to_vertex(mesh)
     node_to_vertex, vertex
 end
 
+function physical_nodes(mesh,d)
+    nnodes = num_nodes(mesh)
+    node_to_touched = fill(false,nnodes)
+    node_groups = Dict{String,Vector{Int32}}()
+    face_to_nodes = face_nodes(mesh,d)
+    for (name,faces) in physical_groups(mesh,d)
+        fill!(node_to_touched,false)
+        for face in faces
+            nodes = face_to_nodes[face]
+            node_to_touched[nodes] .= true
+        end
+        node_groups[name] = findall(node_to_touched)
+    end
+    node_groups
+end
+
+function physical_nodes(mesh;merge_dims=Val(true),disjoint=Val(false))
+    D = num_dims(mesh)
+    d_to_groups = [ physical_nodes(mesh,d) for d in 0:D ]
+    if val_parameter(merge_dims) == false && val_parameter(disjoint) == false
+        return d_to_groups
+    end
+    names = Set{String}()
+    for groups in d_to_groups
+        for name in keys(groups)
+            push!(names,name)
+        end
+    end
+    if val_parameter(disjoint) == false
+        nnodes = num_nodes(mesh)
+        node_to_touched = fill(false,nnodes)
+        node_groups = Dict{String,Vector{Int32}}()
+        for name in names
+            fill!(node_to_touched,false)
+            for groups in d_to_groups
+                for (name2,nodes) in groups
+                    if name != name2
+                        continue
+                    end
+                    node_to_touched[nodes] .= true
+                end
+            end
+            node_groups[name] = findall(node_to_touched)
+        end
+        return node_groups
+    else
+        tag_to_name = sort(collect(names))
+        nnodes = num_nodes(mesh)
+        node_to_tag = zeros(Int32,nnodes)
+        classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
+        disjoint_groups = Dict{String,Vector{Int32}}()
+        for (tag,name) in enumerate(tag_to_name)
+            disjoint_groups[name] = findall(tag2->tag2==tag,node_to_tag)
+        end
+        return disjoint_groups
+    end
+end
+
+function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
+    fill!(node_to_tag,zero(eltype(node_to_tag)))
+    for d in dmax:-1:0
+        face_to_nodes = face_nodes(mesh,d)
+        face_groups = physical_groups(mesh,d)
+        for (tag,name) in enumerate(tag_to_name)
+            for (name2,faces) in face_groups
+                if name != name2
+                    continue
+                end
+                for face in faces
+                    nodes = face_to_nodes[face]
+                    node_to_tag[nodes] .= tag
+                end
+            end
+        end
+    end
+    node_to_tag
+end
+
 abstract type AbstractFEChain <: GalerkinToolkitDataType end
 
 struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
@@ -2898,5 +2976,6 @@ function mesh_from_reference_face(ref_face)
                 face_to_refid,
                 refid_refface)
 end
+
 
 end # module

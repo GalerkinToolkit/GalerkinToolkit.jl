@@ -121,6 +121,13 @@ mesh = gt.cartesian_mesh(domain,cells,boundary=false)
 mesh = gt.cartesian_mesh(domain,cells,simplexify=true)
 mesh = gt.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
+mesh = gt.mesh_from_gmsh(msh)
+node_groups = gt.physical_nodes(mesh)
+node_groups = gt.physical_nodes(mesh;disjoint=true)
+node_groups = gt.physical_nodes(mesh;merge_dims=true)
+node_groups = gt.physical_nodes(mesh;merge_dims=true,disjoint=false)
+node_groups = gt.physical_nodes(mesh;merge_dims=true,disjoint=true)
+
 vmesh, vglue = gt.visualization_mesh(mesh)
 
 #∂spx0 = gt.boundary(spx0)
