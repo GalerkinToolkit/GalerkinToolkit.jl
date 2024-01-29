@@ -2995,5 +2995,36 @@ function mesh_from_reference_face(ref_face)
                 refid_refface)
 end
 
+partition_from_mask(a) = partition_from_mask(identity,a)
+
+function partition_from_mask(f,node_to_mask)
+    T = Vector{Int32}
+    free_nodes = convert(T,findall(f,node_to_mask))
+    dirichlet_nodes = convert(T,findall(i->!f(i),node_to_mask))
+    nfree = length(free_nodes)
+    ndiri = length(dirichlet_nodes)
+    permutation = T(undef,nfree+ndiri)
+    permutation[free_nodes] = 1:nfree
+    permutation[dirichlet_nodes] = (1:ndiri) .+ nfree
+    TwoWayPartition(free_nodes,dirichlet_nodes,permutation)
+end
+
+struct TwoWayPartition{A} <: AbstractVector{A}
+    first::A
+    last::A
+    permutation::A
+end
+
+permutation(a::TwoWayPartition) = a.permutation
+Base.size(a::TwoWayPartition) = (2,)
+Base.IndexStyle(::Type{<:TwoWayPartition}) = IndexLinear()
+function Base.getindex(a::TwoWayPartition,i::Int)
+    @boundscheck @assert i in (1,2)
+    if i == 1
+        a.first
+    else
+        a.last
+    end
+end
 
 end # module

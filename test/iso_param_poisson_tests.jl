@@ -1,11 +1,14 @@
-module Poisson
+module IsoParamPoissonTest
 
-import GalerkinToolkit as glk
+import GalerkinToolkit as gk
 import ForwardDiff
 using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
+
+# This one implements a vanilla iso-parametric Poisson solver by only
+# using the mesh interface.
 
 function main(params_in)
 
@@ -45,27 +48,35 @@ end
 function default_params_poisson()
     outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
-    params[:mesh] = glk.cartesian_mesh((0,1,0,1),(10,10))
+    params[:mesh] = gk.cartesian_mesh((0,1,0,1),(10,10))
     params[:u] = (x) -> sum(x)
     params[:f] = (x) -> 0.0
     params[:g] = (x) -> 0.0
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:solve] = \
+    params[:solver] = lu_solver()
     params[:example_path] = joinpath(outdir,"poisson")
     params
+end
+
+function lu_solver()
+    setup(x,A,b) = lu(A)
+    setup! = lu!
+    solve! = ldiv!
+    finalize!(S) = nothing
+    (;setup,setup!,solve!,finalize!)
 end
 
 function setup_dirichlet_bcs(params)
     mesh = params[:mesh]
     u = params[:u]
     dirichlet_tags = params[:dirichlet_tags]
-    node_to_tag = zeros(glk.num_nodes(mesh))
+    node_to_tag = zeros(gk.num_nodes(mesh))
     tag_to_name = dirichlet_tags
-    glk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-    free_and_dirichlet_nodes = glk.partition_from_mask(i->i==0,node_to_tag)
-    node_to_x = glk.node_coordinates(mesh)
+    gk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
+    free_and_dirichlet_nodes = gk.partition_from_mask(i->i==0,node_to_tag)
+    node_to_x = gk.node_coordinates(mesh)
     dirichlet_nodes = last(free_and_dirichlet_nodes)
     x_dirichlet = view(node_to_x,dirichlet_nodes)
     u_dirichlet = u.(x_dirichlet)
@@ -75,7 +86,7 @@ end
 function setup_integration(params,objects)
     mesh = params[:mesh]
     degree = params[:integration_degree]
-    D = glk.num_dims(mesh)
+    D = gk.num_dims(mesh)
     if objects === :cells
         d = D
     elseif objects === :faces
@@ -84,13 +95,13 @@ function setup_integration(params,objects)
         error("")
     end
     # Integration
-    ref_cells = glk.reference_faces(mesh,d)
-    face_to_rid = glk.face_reference_id(mesh,d)
+    ref_cells = gk.reference_faces(mesh,d)
+    face_to_rid = gk.face_reference_id(mesh,d)
     integration_rules = map(ref_cells) do ref_cell
-        glk.quadrature(glk.geometry(ref_cell),degree)
+        gk.default_quadrature(gk.geometry(ref_cell),degree)
     end
-    rid_to_weights = map(glk.weights,integration_rules)
-    rid_to_coords = map(glk.coordinates,integration_rules)
+    rid_to_weights = map(gk.weights,integration_rules)
+    rid_to_coords = map(gk.coordinates,integration_rules)
     integration = (;rid_to_weights,rid_to_coords,face_to_rid,d)
 end
 
@@ -99,17 +110,16 @@ function setup_isomap(params,integration)
     face_to_rid = integration.face_to_rid
     d = integration.d
     mesh = params[:mesh]
-    ref_cells = glk.reference_faces(mesh,d)
+    ref_cells = gk.reference_faces(mesh,d)
     shape_funs = map(rid_to_coords,ref_cells) do q,ref_cell
-        shape_functions = glk.shape_functions(ref_cell)
-        shape_vals = glk.tabulation_matrix(shape_functions)(glk.value,q)
-        shape_grads = glk.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
+        shape_vals = gk.tabulator(ref_cell)(gk.value,q)
+        shape_grads = gk.tabulator(ref_cell)(ForwardDiff.gradient,q)
         shape_vals, shape_grads
     end
     rid_to_shape_vals = map(first,shape_funs)
     rid_to_shape_grads = map(last,shape_funs)
-    face_to_nodes = glk.face_nodes(mesh,d)
-    node_to_coords = glk.node_coordinates(mesh)
+    face_to_nodes = gk.face_nodes(mesh,d)
+    node_to_coords = gk.node_coordinates(mesh)
     isomap = (;face_to_nodes,node_to_coords,face_to_rid,rid_to_shape_vals,rid_to_shape_grads,d)
 end
 
@@ -118,8 +128,8 @@ function setup_neumann_bcs(params)
     neumann_tags = params[:neumann_tags]
     neum_face_to_face = Int[]
     if length(neumann_tags) != 0
-        D = glk.num_dims(mesh)
-        tag_to_groups = glk.physical_groups(mesh,D-1)
+        D = gk.num_dims(mesh)
+        tag_to_groups = gk.physical_faces(mesh,D-1)
         neum_face_to_face = reduce(union,map(tag->tag_to_groups[tag],neumann_tags))
     end
     (;neum_face_to_face)
@@ -140,8 +150,8 @@ function setup(params)
     cell_isomap = setup_isomap(params,cell_integration)
     face_isomap = setup_isomap(params,face_integration)
     user_funs = setup_user_funs(params)
-    solve = params[:solve]
-    state = (;solve,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
+    solver = params[:solver]
+    state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
 end
 
 function assemble_system(state)
@@ -160,7 +170,7 @@ function assemble_system(state)
     # Count coo entries
     n_coo = 0
     ncells = length(cell_to_nodes)
-    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
     nfree = length(first(free_and_dirichlet_nodes))
     for cell in 1:ncells
         nodes = cell_to_nodes[cell]
@@ -300,7 +310,7 @@ function add_neumann_bcs!(b,state)
     fes = map(i->zeros(size(i,2)),s_f)
     Tx = SVector{d,Float64}
     Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
-    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
     nfree = length(first(free_and_dirichlet_nodes))
 
     for face in neum_face_to_face
@@ -344,13 +354,15 @@ function add_neumann_bcs!(b,state)
 end
 
 function solve_system(A,b,state)
-    solve = state.solve
+    solver = state.solver
     free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
     u_dirichlet = state.dirichlet_bcs.u_dirichlet
     node_to_x = state.cell_isomap.node_to_coords
-
+    u_free = similar(b,axes(A,2))
+    setup = solver.setup(u_free,A,b)
+    solver.solve!(u_free,setup,b)
+    solver.finalize!(setup)
     nnodes = length(node_to_x)
-    u_free = solve(A,b)
     uh = zeros(nnodes)
     uh[first(free_and_dirichlet_nodes)] = u_free
     uh[last(free_and_dirichlet_nodes)] = u_dirichlet
@@ -447,365 +459,53 @@ function export_results(uh,params,state)
     mesh = params[:mesh]
     example_path = params[:example_path]
     node_to_tag = state.dirichlet_bcs.node_to_tag
-    vtk_grid(example_path,glk.vtk_args(mesh)...) do vtk
-        glk.vtk_physical_groups!(vtk,mesh)
+    vtk_grid(example_path,gk.vtk_args(mesh)...) do vtk
+        gk.vtk_physical_faces!(vtk,mesh)
         vtk["tag"] = node_to_tag
         vtk["uh"] = uh
-        vtk["dim"] = glk.face_dim(mesh)
+        vtk["dim"] = gk.face_dim(mesh)
     end
 end
 
+using Test
 
+tol = 1.0e-10
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2),(10,5),complexify=false)
+params[:dirichlet_tags] = ["1-face-1","1-face-3","1-face-4"]
+params[:neumann_tags] = ["1-face-2"]
+params[:u] = (x) -> sum(x)
+params[:f] = (x) -> 0.0
+params[:g] = (x) -> 1.0
+results = main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
+@test results[:ncells] == 10*5
 
-function diag!(diagA,A::SparseMatrixCSC)
-    # TODO improve with binary search
-    colptr = A.colptr
-    rowval = A.rowval
-    nzval = A.nzval
-    ncols = length(colptr)-1
-    for j in 1:ncols
-        pini = colptr[j]
-        pend = colptr[j+1]-1
-        for p in pini:pend
-            i = rowval[p]
-            if j != i
-                continue
-            end
-            diagA[j] = nzval[p]
-        end
-    end
-    diagA
-end
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
+results = main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
+@test results[:ncells] == 5*5*5
 
-function spmv!(b,A,x)
-    T = eltype(b)
-    alpha = zero(T)
-    beta = one(T)
-    spmv!(b,A,x,alpha,beta)
-    b
-end
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2),(5,5),simplexify=true)
+results = main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
 
-function spmv!(b,A::SparseMatrixCSC,x,alpha,beta)
-    colptr = A.colptr
-    rowval = A.rowval
-    nzval = A.nzval
-    nrows,ncols = size(A)
-    if alpha == zero(eltype(b))
-        b .= alpha
-    else
-        b .= alpha .* b
-    end
-    for j in 1:ncols
-        xj = x[j]
-        pini = colptr[j]
-        pend = colptr[j+1]-1
-        for p in pini:pend
-            i = rowval[p]
-            aij = nzval[p]
-            b[i] += beta*aij*xj
-        end
-    end
-    b
-end
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5),simplexify=true)
+results = main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
 
-function spmm(A::SparseMatrixCSC,B::SparseMatrixCSC)
-    # TODO implementation
-    A*B
-end
-
-const SparseMatrixCSCT = Transpose{R,SparseMatrixCSC{R,S}} where {R,S}
-
-function sprap(R::SparseMatrixCSCT,A::SparseMatrixCSC,P::SparseMatrixCSC)
-    # TODO implementation
-    R*A*P
-end
-
-function jacobi!(x,A,b;kwargs...)
-    setup = jacobi_setup(x,A,b;kwargs...)
-    jacobi!(x,A,b,setup)
-end
-
-function jacobi_setup(x,A,b;maxiters,omega=1)
-    options = (;maxiters,omega)
-    jacobi_setup(x,A,b,options)
-end
-
-function jacobi_setup(x,A::SparseMatrixCSC,b,options)
-  xnew = similar(x)
-  diagA = similar(x)
-  diag!(diagA,A)
-  (;xnew,diagA,options)
-end
-
-function jacobi_setup!(setup,A::SparseMatrixCSC)
-    diag!(setup.diagA,A)
-    setup
-end
-
-function jacobi!(xin,A::SparseMatrixCSC,b,setup)
-    maxiters = setup.options.maxiters
-    omega = setup.options.omega
-    x = xin
-    xnew = setup.xnew
-    diagA = setup.diagA
-    colptr = A.colptr
-    rowval = A.rowval
-    nzval = A.nzval
-    nrows,ncols = size(A)
-    for iter in 1:maxiters
-        xnew .= b .+ diagA .* x ./ omega
-        for j in 1:ncols
-            xj = x[j]
-            pini = colptr[j]
-            pend = colptr[j+1]-1
-            for p in pini:pend
-                i = rowval[p]
-                aij = nzval[p]
-                xnew[i] -= aij*xj
-            end
-        end
-        xnew .= omega .* xnew ./ diagA
-        x,xnew = xnew,x
-    end
-    xin .= x
-    xin
-end
-
-function aggregate(A;epsilon)
-    options = (;epsilon)
-    aggregate(A,options)
-end
-
-function aggregate(A::SparseMatrixCSC,options)
-
-    epsi = options.epsilon
-    typeof_aggregate = Int32
-    typeof_strength = eltype(A.nzval)
-
-    nnodes = size(A,1)
-    pending = typeof_aggregate(0)
-    isolated = typeof_aggregate(-1)
-    
-    node_to_aggregate = fill(pending,nnodes)
-    node_to_old_aggregate = similar(node_to_aggregate)
-
-    diagA = zeros(eltype(A),nnodes)
-    diag!(diagA,A)
-
-    node_to_neigs = jagged_array(A.rowval,A.colptr)
-    node_to_vals = jagged_array(A.nzval,A.colptr)
-    strongly_connected = (node,ineig) -> begin
-        neig = node_to_neigs[node][ineig]
-        aii = diagA[node]
-        ajj = diagA[neig]
-        aij = node_to_vals[node][ineig]
-        abs(aij) > epsi*sqrt(aii*ajj)
-    end
-    coupling_strength = (node,ineig) -> begin
-        abs(node_to_vals[node][ineig])
-    end
-
-    # Initialization
-    for node in 1:nnodes
-        neigs = node_to_neigs[node]
-        isolated_node = count(i->i!=node,neigs) == 0
-        if isolated_node
-            node_to_aggregate[node] = isolated
-        end
-    end
-
-    # Step 1
-    aggregate = typeof_aggregate(0)
-    for node in 1:nnodes
-        if node_to_aggregate[node] != pending
-            continue
-        end
-        neigs = node_to_neigs[node]
-        nneigs = length(neigs)
-        all_pending = true
-        for ineig in 1:nneigs
-            neig = neigs[ineig]
-            if neig == node || !strongly_connected(node,ineig)
-                continue
-            end
-            all_pending &= (node_to_aggregate[neig] == pending)
-        end
-        if !all_pending
-            continue
-        end
-        aggregate += typeof_aggregate(1)
-        node_to_aggregate[node] = aggregate
-        for ineig in 1:nneigs
-            neig = neigs[ineig]
-            if neig == node || !strongly_connected(node,ineig)
-                continue
-            end
-            node_to_aggregate[neig] = aggregate
-        end
-    end
-
-    # Step 2
-    copy!(node_to_old_aggregate,node_to_aggregate)
-    for node in 1:nnodes
-        if node_to_aggregate[node] != pending
-            continue
-        end
-        strength = zero(typeof_strength)
-        neigs = node_to_neigs[node]
-        nneigs = length(neigs)
-        for ineig in 1:nneigs
-            neig = neigs[ineig]
-            if neig == node || !strongly_connected(node,ineig)
-                continue
-            end
-            neig_aggregate = node_to_old_aggregate[neig]
-            if neig_aggregate != pending && neig_aggregate != isolated
-                neig_strength = coupling_strength(node,ineig)
-                if neig_strength > strength
-                    strength = neig_strength
-                    node_to_aggregate[node] = neig_aggregate
-                end
-            end
-        end
-    end
-
-    # Step 3
-    for node in 1:nnodes
-        if node_to_aggregate[node] != pending
-            continue
-        end
-        aggregate += typeof_aggregate(1)
-        node_to_aggregate[node] = aggregate
-        neigs = node_to_neigs[node]
-        nneigs = length(neigs)
-        for ineig in 1:nneigs
-            neig = neigs[ineig]
-            if neig == node || !strongly_connected(node,ineig)
-                continue
-            end
-            neig_aggregate = node_to_old_aggregate[neig]
-            if neig_aggregate == pending || neig_aggregate == isolated
-                node_to_aggregate[neig] = aggregate
-            end
-        end
-    end
-    naggregates = aggregate
-
-    ## Compression
-    aggregate_to_nodes_ptrs = zeros(Int,naggregates+1)
-    for node in 1:nnodes
-        agg = node_to_aggregate[node]
-        if agg == pending
-            continue
-        end
-        aggregate_to_nodes_ptrs[agg+1] += 1
-    end
-    length_to_ptrs!(aggregate_to_nodes_ptrs)
-    ndata = aggregate_to_nodes_ptrs[end]-1
-    aggregate_to_nodes_data = zeros(Int,ndata)
-    for node in 1:nnodes
-        agg = node_to_aggregate[node]
-        if agg == pending
-            continue
-        end
-        p = aggregate_to_nodes_ptrs[agg]
-        aggregate_to_nodes_data[p] = node
-        aggregate_to_nodes_ptrs[agg] += 1
-    end
-    rewind_ptrs!(aggregate_to_nodes_ptrs)
-    aggregate_to_nodes = JaggedArray(aggregate_to_nodes_data,aggregate_to_nodes_ptrs)
-
-    aggregate_to_nodes
-end
-
-function prolongator(A,agg_to_nodes;omega=1)
-    options = (;omega)
-    prolongator(A,agg_to_nodes,options)
-end
-
-function prolongator(A::SparseMatrixCSC,agg_to_nodes,options)
-    # TODO Optimize
-    omega = options.omega
-    nrows,ncols = size(A)
-    diagA = zeros(eltype(A.nzval),nrows)
-    diag!(diagA,A) # TODO We are taking the diagonal to many times
-    nagg = length(agg_to_nodes)
-    P0 = SparseMatrixCSC(ncols,nagg,agg_to_nodes.ptrs,agg_to_nodes.data,ones(length(agg_to_nodes.data)))
-    Dinv = sparse(1:nrows,1:nrows,1 ./ diagA,nrows,nrows)
-    Id = sparse(1:nrows,1:nrows,ones(nrows),nrows,nrows)
-    P = (I-omega*Dinv*A)*P0
-end
-
-function smooth_aggregation(A;epsilon,omega)
-    aggrs = aggregate(A;epsilon)
-    P = prolongator(A,aggrs;omega)
-    R = transpose(P)
-    Ac = sprap(R,A,P)
-    Ac,R,P
-end
-
-function amg!(x,A,b;kwargs...)
-    setup = amg_setup(x,A,b;kwargs...)
-    amg!(x,A,b,setup)
-end
-
-function amg_setup(x,A,b;fine_params,coarse_solver)
-    nlevels = length(fine_params)
-    fine_levels_setup =  map(fine_params) do fine_level
-        (;pre_smoother,pos_smoother,coarsen,cycle) = fine_level
-        pre_setup = pre_smoother.setup(x,A,b;pre_smoother.params...)
-        pos_setup = pos_smoother.setup(x,A,b;pos_smoother.params...)
-        pre_smoother! = (x,b) -> pre_smoother.solve(x,A,b,pre_setup)
-        pos_smoother! = (x,b) -> pos_smoother.solve(x,A,b,pos_setup)
-        Ac,R,P = coarsen.setup(A;coarsen.params...)
-        r = similar(b)
-        e = similar(x)
-        rc = similar(r,axes(Ac,1))
-        ec = similar(e,axes(Ac,2))
-        level_setup = (;R,A,Ac,P,r,e,rc,ec,pre_smoother!,pos_smoother!,cycle)
-        A = Ac
-        b = rc
-        x = ec
-        level_setup
-    end
-    coarse_setup = coarse_solver.setup(x,A,b,coarse_solver.params...)
-    coarse_solver! = (x,b)->coarse_solver.solve(x,A,b,coarse_setup)
-    (;nlevels,fine_levels_setup,coarse_solver!)
-end
-
-function amg!(x,A,b,setup)
-    level = 1
-    amg_cycle!(x,b,setup,level)
-    x
-end
-
-function amg_cycle!(x,b,setup,level)
-    if level == setup.nlevels+1
-        return setup.coarse_solver!(x,b)
-    end
-    level_setup = setup.fine_levels_setup[level]
-    (;R,A,P,r,e,rc,ec,pre_smoother!,pos_smoother!,cycle) = level_setup
-    pre_smoother!(x,b)
-    copy!(r,b)
-    spmv!(r,A,x,-1,1) # TODO mul! better? Provably, yes
-    mul!(rc,R,r) # TODO spmv!
-    fill!(ec,zero(eltype(ec)))
-    cycle(ec,rc,setup,level+1)
-    spmv!(e,P,ec)
-    x .-= e
-    pos_smoother!(x,b)
-    x
-end
-
-function v_cycle!(args...)
-    amg_cycle!(args...)
-end
-
-function w_cycle!(args...)
-    amg_cycle!(args...)
-    amg_cycle!(args...)
-end
-
+params = Dict{Symbol,Any}()
+params[:hi] = 1
+results = main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
 
 end # module
 
