@@ -1,3 +1,9 @@
+# TODO there are functions that depending on the input
+# return objects on different interfaces
+# topology
+# boundary
+# reference_faces
+#
 
 abstract type GalerkinToolkitDataType end
 function Base.show(io::IO,data::GalerkinToolkitDataType)
@@ -24,15 +30,31 @@ val_parameter(::Val{a}) where a = a
 Return the number of space dimensions of `a`. Defaults to `a.num_dims`.
 """
 num_dims(a) = val_parameter(a.num_dims)
+"""
+"""
 node_coordinates(a) = a.node_coordinates
+"""
+"""
 reference_faces(a) = a.reference_faces
+"""
+"""
 face_nodes(a) = a.face_nodes
+"""
+"""
 face_incidence(a) = a.face_incidence
+"""
+"""
 face_reference_id(a) = a.face_reference_id
+"""
+"""
 physical_faces(a) = a.physical_faces
 has_physical_faces(a) = hasproperty(a,:physical_faces) && a.physical_faces !== nothing
+"""
+"""
 periodic_nodes(a) = a.periodic_nodes
 has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
+"""
+"""
 geometry(a) = a.geometry
 """
 """
@@ -66,20 +88,35 @@ coordinates(a) = a.coordinates
 """
 weights(a) = a.weights
 order_per_dir(a) = a.order_per_dir
+"""
+"""
 monomial_exponents(a) = a.monomial_exponents
+"""
+"""
+primal_basis(a) = a.primal_basis
+"""
+"""
+dual_basis(a) = a.dual_basis
+"""
+"""
 lib_to_user_nodes(a) = a.lib_to_user_nodes
+"""
+"""
 interior_nodes(a) = a.interior_nodes
+"""
+"""
 face_permutation_ids(a) = a.face_permutation_ids
 face_permutation_ids(a,m,n) = face_permutation_ids(a)[m+1,n+1]
 local_nodes(a) = a.local_nodes
 local_node_colors(a) = a.local_node_colors
 """
-
 """
 real_type(a) = a.real_type
 """
 """
 int_type(a) = a.int_type
+"""
+"""
 outwards_normals(a) = a.outwards_normals
 
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
@@ -89,6 +126,8 @@ face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
 num_faces(a) = map(length,face_reference_id(a))
 num_faces(a,d) = length(face_reference_id(a,d))
 physical_faces(a,d) = physical_faces(a)[val_parameter(d)+1]
+"""
+"""
 num_nodes(a) = length(node_coordinates(a))
 num_ambient_dims(a) = length(eltype(node_coordinates(a)))
 function face_offsets(a)
@@ -142,12 +181,6 @@ struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
     extrusion::NTuple{D,Bool}
     bounding_box::NTuple{2,SVector{D,Tv}}
     int_type::Type{Ti}
-end
-
-"""
-"""
-function num_dims(a::AbstractFaceGeometry)
-    val_parameter(a.num_dims)
 end
 
 """
@@ -213,6 +246,8 @@ end
 # Basic constructors
 
 - [`default_quadrature`](@ref)
+- [`duffy_quadrature`](@ref)
+- [`tensor_product_quadrature`](@ref)
 
 # Supertype hierarchy
 
@@ -235,6 +270,8 @@ function quadrature(coordinates::Vector{SVector{D,T}},weights::Vector{T}) where 
     Cuadrature(coordinates,weights)
 end
 
+"""
+"""
 function duffy_quadrature(geo,degree)
     @assert is_unit_simplex(geo)
     D = num_dims(geo)
@@ -289,6 +326,8 @@ function duffy_quadrature(geo,degree)
     quadrature(x,w)
 end
 
+"""
+"""
 function tensor_product_quadrature(geo,degree_per_dir)
     @assert is_n_cube(geo)
     @assert is_axis_aligned(geo)
@@ -346,6 +385,30 @@ function default_quadrature(geo,degree)
     end
 end
 
+"""
+    abstract type AbstractMeshFace
+
+# Basic queries
+
+- [`geometry`](@ref)
+- [`num_dims`](@ref)
+- [`num_nodes`](@ref)
+- [`node_coordinates`](@ref)
+- [`monomial_exponents`](@ref)
+- [`primal_basis`](@ref)
+- [`dual_basis`](@ref)
+- [`lib_to_user_nodes`](@ref)
+- [`shape_functions`](@ref)
+- [`tabulator`](@ref)
+- [`boundary`](@ref)
+- [`interior_nodes`](@ref)
+- [`interior_node_permutations`](@ref)
+
+# Basic constructors
+
+- [`lagrange_mesh_face`](@ref)
+
+"""
 abstract type AbstractMeshFace <: GalerkinToolkitDataType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
@@ -361,6 +424,8 @@ end
 
 lagrange_mesh_face(args...) = GenericLagrangeMeshFace(args...)
 
+"""
+"""
 function lagrange_mesh_face(geometry,order;
         space = default_space(geometry),
         lib_to_user_nodes = int_type(geometry)[])
@@ -462,6 +527,8 @@ end
 inner(a,b) = sum(map(*,a,b))
 value(f,x) = f(x)
 
+"""
+"""
 function shape_functions(fe)
     primal = primal_basis(fe)
     dual = dual_basis(fe)
@@ -478,6 +545,8 @@ function shape_functions(fe)
     end
 end
 
+"""
+"""
 function tabulator(fe)
     primal = primal_basis(fe)
     dual = dual_basis(fe)
@@ -599,6 +668,28 @@ end
 #    end
 #end
 
+"""
+    abstract type AbstractFEMesh
+
+# Basic queries
+
+- [`node_coordinates`](@ref)
+- [`face_nodes`](@ref)
+- [`face_reference_id`](@ref)
+- [`reference_faces`](@ref)
+- [`periodic_nodes`](@ref)
+- [`physical_faces`](@ref)
+- [`physical_nodes`](@ref)
+- [`outwards_normals`](@ref)
+
+# Basic constructors
+
+- [`fe_mesh`](@ref)
+- [`mesh_from_gmsh`](@ref)
+- [`cartesian_mesh`](@ref)
+- [`mesh_from_chain`](@ref)
+
+"""
 abstract type AbstractFEMesh <: GalerkinToolkitDataType end
 
 struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
@@ -615,6 +706,8 @@ function fe_mesh(args...)
     GenericFEMesh(args...)
 end
 
+"""
+"""
 function fe_mesh(
     node_coordinates,
     face_nodes,
@@ -658,6 +751,8 @@ function with_gmsh(f;options=default_gmsh_options())
     end
 end
 
+"""
+"""
 function mesh_from_gmsh(file;complexify=true,renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
     with_gmsh(;kwargs...) do
@@ -952,6 +1047,8 @@ function vtk_args(mesh)
     points, cells
 end
 
+"""
+"""
 function vtk_physical_faces!(vtk,mesh,d;physical_faces=physical_faces(mesh,d))
     ndfaces = num_faces(mesh,d)
     for group in physical_faces
@@ -991,6 +1088,8 @@ function vtk_physical_faces!(vtk,mesh;physical_faces=physical_faces(mesh))
     vtk
 end
 
+"""
+"""
 function vtk_mesh_cell(ref_face)
     geom = geometry(ref_face)
     d = num_dims(geom)
@@ -1281,6 +1380,8 @@ function vertex_permutations_from_face_geometry(geo)
     admissible_permutations
 end
 
+"""
+"""
 function interior_node_permutations(fe::AbstractMeshFace)
     interior_node_permutations_from_mesh_face(fe)
 end
@@ -1333,6 +1434,21 @@ function interior_node_permutations_from_mesh_face(refface)
     node_perms
 end
 
+"""
+    abstract type AbstractMeshTopology
+
+# Basic queries
+
+- [`face_incidence`](@ref)
+- [`face_reference_id`](@ref)
+- [`face_permutation_ids`](@ref)
+- [`reference_faces`](@ref)
+
+# Basic constructors
+
+- [`topology`](@ref)
+
+"""
 abstract type AbstractMeshTopology <: GalerkinToolkitDataType end
 
 struct GenericMeshTopology{A,B,C,D} <: AbstractMeshTopology
@@ -1346,6 +1462,8 @@ function mesh_topology(args...)
     GenericMeshTopology(args...)
 end
 
+"""
+"""
 function topology(mesh::AbstractFEMesh)
     topology_from_mesh(mesh)
 end
@@ -1666,6 +1784,19 @@ function same_valid_ids(a,b)
 end
 
 ## TODO AbstractFaceTopology <: AbstractMeshTopology
+"""
+    abstract type AbstractFaceTopology
+
+# Basic queries
+
+- [`boundary`](@ref)
+- [`vertex_permutations`](@ref)
+
+# Basic constructors
+
+- [`topology`](@ref)
+
+"""
 abstract type AbstractFaceTopology <: GalerkinToolkitDataType end
 
 struct GenericFaceTopology{A,B} <: AbstractFaceTopology
@@ -1695,6 +1826,8 @@ function topology_from_mesh_face(refface)
     face_topology(myboundary,myperms)
 end
 
+"""
+"""
 function complexify(mesh::AbstractFEMesh)
     complexify_mesh(mesh)
 end
@@ -2144,6 +2277,8 @@ function physical_nodes(mesh,d)
     node_groups
 end
 
+"""
+"""
 function physical_nodes(mesh;
     merge_dims=Val(false),
     disjoint=Val(false),
@@ -2190,6 +2325,8 @@ function physical_nodes(mesh;
     node_groups
 end
 
+"""
+"""
 function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     fill!(node_to_tag,zero(eltype(node_to_tag)))
     for d in dmax:-1:0
@@ -2210,6 +2347,8 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     node_to_tag
 end
 
+"""
+"""
 function physical_names(mesh,d)
     groups = physical_faces(mesh,d)
     Set(keys(groups))
@@ -2224,6 +2363,25 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
+"""
+abstract type AbstractFEChain
+
+# Basic queries
+
+- [`node_coordinates`](@ref)
+- [`face_nodes`](@ref)
+- [`face_reference_id`](@ref)
+- [`reference_faces`](@ref)
+- [`periodic_nodes`](@ref)
+- [`physical_faces`](@ref)
+- [`physical_nodes`](@ref)
+- [`outwards_normals`](@ref)
+
+# Basic constructors
+
+- [`fe_chain`](@ref)
+
+"""
 abstract type AbstractFEChain <: GalerkinToolkitDataType end
 
 struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
@@ -2240,6 +2398,8 @@ function fe_chain(args...)
     GenericFEChain(args...)
 end
 
+"""
+"""
 function fe_chain(
     node_coordinates,
     face_nodes,
@@ -2265,6 +2425,8 @@ function fe_mesh(chain::AbstractFEChain)
     mesh_from_chain(chain)
 end
 
+"""
+"""
 function mesh_from_chain(chain)
     D = num_dims(chain)
     cell_nodes = face_nodes(chain)
@@ -2297,6 +2459,9 @@ function mesh_from_chain(chain)
       outwards_normals = onormals)
 end
 
+# TODO simplexify mesh
+"""
+"""
 function simplexify(geo::AbstractFaceGeometry)
     simplexify_face_geometry(geo)
 end
@@ -2443,6 +2608,8 @@ function simplexify_reference_face(ref_face)
     mesh_complex
 end
 
+"""
+"""
 function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false)
     mesh = if boundary
         if simplexify
