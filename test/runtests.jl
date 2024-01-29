@@ -123,10 +123,10 @@ mesh = gt.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
 mesh = gt.mesh_from_gmsh(msh)
 face_groups = gt.physical_faces(mesh)
-node_groups = gt.physical_nodes(mesh)
-node_groups = gt.physical_nodes(mesh;disjoint=true)
+group_names = gt.physical_names(mesh,2)
+group_names = gt.physical_names(mesh)
+group_names = gt.physical_names(mesh;merge_dims=true)
 node_groups = gt.physical_nodes(mesh;merge_dims=true)
-node_groups = gt.physical_nodes(mesh;merge_dims=true,disjoint=false)
 node_groups = gt.physical_nodes(mesh;merge_dims=true,disjoint=true)
 
 vmesh, vglue = gt.visualization_mesh(mesh)

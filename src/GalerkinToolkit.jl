@@ -2006,22 +2006,25 @@ function physical_nodes(mesh,d)
     node_groups
 end
 
-function physical_nodes(mesh;merge_dims=Val(true),disjoint=Val(false))
+function physical_nodes(mesh;
+    merge_dims=Val(false),
+    disjoint=Val(false),
+    name_priority=nothing)
+
+    if val_parameter(disjoint) == true && val_parameter(merge_dims) == false
+        error("disjoint=true requires merge_dims=true")
+    end
     D = num_dims(mesh)
     d_to_groups = [ physical_nodes(mesh,d) for d in 0:D ]
-    if val_parameter(merge_dims) == false && val_parameter(disjoint) == false
+    if val_parameter(merge_dims) == false
         return d_to_groups
     end
-    names = Set{String}()
-    for groups in d_to_groups
-        for name in keys(groups)
-            push!(names,name)
-        end
-    end
+    names = physical_names(mesh;merge_dims)
+    nnodes = num_nodes(mesh)
+    node_groups = Dict{String,Vector{Int32}}()
+
     if val_parameter(disjoint) == false
-        nnodes = num_nodes(mesh)
         node_to_touched = fill(false,nnodes)
-        node_groups = Dict{String,Vector{Int32}}()
         for name in names
             fill!(node_to_touched,false)
             for groups in d_to_groups
@@ -2034,18 +2037,19 @@ function physical_nodes(mesh;merge_dims=Val(true),disjoint=Val(false))
             end
             node_groups[name] = findall(node_to_touched)
         end
-        return node_groups
     else
-        tag_to_name = sort(collect(names))
-        nnodes = num_nodes(mesh)
+        if name_priority === nothing
+            tag_to_name = sort(collect(names))
+        else
+            tag_to_name = name_priority
+        end
         node_to_tag = zeros(Int32,nnodes)
         classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-        disjoint_groups = Dict{String,Vector{Int32}}()
         for (tag,name) in enumerate(tag_to_name)
-            disjoint_groups[name] = findall(tag2->tag2==tag,node_to_tag)
+            node_groups[name] = findall(t->t==tag,node_to_tag)
         end
-        return disjoint_groups
     end
+    node_groups
 end
 
 function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
@@ -2066,6 +2070,20 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
         end
     end
     node_to_tag
+end
+
+function physical_names(mesh,d)
+    groups = physical_faces(mesh,d)
+    Set(keys(groups))
+end
+
+function physical_names(mesh;merge_dims=Val(false))
+    D = num_dims(mesh)
+    d_to_names = [ physical_names(mesh,d) for d in 0:D]
+    if val_parameter(merge_dims) == false
+        return d_to_names
+    end
+    reduce(union,d_to_names)
 end
 
 abstract type AbstractFEChain <: GalerkinToolkitDataType end
