@@ -14,8 +14,15 @@ function push(a::Tuple,x)
     (a...,x)
 end
 
+
 val_parameter(a) = a
 val_parameter(::Val{a}) where a = a
+
+"""
+    num_dims(a)
+
+Return the number of space dimensions of `a`. Defaults to `a.num_dims`.
+"""
 num_dims(a) = val_parameter(a.num_dims)
 node_coordinates(a) = a.node_coordinates
 reference_faces(a) = a.reference_faces
@@ -27,11 +34,24 @@ has_physical_faces(a) = hasproperty(a,:physical_faces) && a.physical_faces !== n
 periodic_nodes(a) = a.periodic_nodes
 has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
 geometry(a) = a.geometry
+"""
+"""
 boundary(a) = a.boundary
+"""
+"""
 is_n_cube(a) = hasproperty(a,:is_n_cube) ? val_parameter(a.is_n_cube) : false
+"""
+"""
 is_simplex(a) = hasproperty(a,:is_simplex) ? val_parameter(a.is_simplex) : false
+
+"""
+"""
 is_axis_aligned(a) = a.is_axis_aligned
+"""
+"""
 bounding_box(a) = a.bounding_box
+"""
+"""
 vertex_permutations(a) = a.vertex_permutations
 face_own_dofs(a) = a.face_own_dofs
 face_own_dof_permutations(a) = a.face_own_dof_permutations
@@ -39,7 +59,11 @@ node_to_dofs(a) = a.node_to_dofs
 dof_to_node(a) = a.dof_to_node
 dof_to_index(a) = a.dof_to_index
 num_dofs(a) = a.num_dofs
+"""
+"""
 coordinates(a) = a.coordinates
+"""
+"""
 weights(a) = a.weights
 order_per_dir(a) = a.order_per_dir
 monomial_exponents(a) = a.monomial_exponents
@@ -49,7 +73,12 @@ face_permutation_ids(a) = a.face_permutation_ids
 face_permutation_ids(a,m,n) = face_permutation_ids(a)[m+1,n+1]
 local_nodes(a) = a.local_nodes
 local_node_colors(a) = a.local_node_colors
+"""
+
+"""
 real_type(a) = a.real_type
+"""
+"""
 int_type(a) = a.int_type
 outwards_normals(a) = a.outwards_normals
 
@@ -79,6 +108,34 @@ function face_dim(a)
     reduce(vcat,map(d->face_dim(a,d),0:D))
 end
 
+"""
+    abstract type AbstractFaceGeometry
+
+# Basic queries
+
+- [`num_dims`](@ref)
+- [`is_axis_aligned`](@ref)
+- [`is_simplex`](@ref)
+- [`is_n_cube`](@ref)
+- [`real_type`](@ref)
+- [`int_type`](@ref)
+- [`is_unit_n_cube`](@ref)
+- [`is_unit_simplex`](@ref)
+- [`is_unitary`](@ref)
+- [`bounding_box`](@ref)
+- [`boundary`](@ref)
+- [`vertex_permutations`](@ref)
+
+# Basic constructors
+
+- [`unit_simplex`](@ref)
+- [`unit_n_cube`](@ref)
+
+# Supertype hierarchy
+
+    AbstractFaceGeometry <: GalerkinToolkitDataType
+
+"""
 abstract type AbstractFaceGeometry <: GalerkinToolkitDataType end
 
 struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
@@ -87,6 +144,8 @@ struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
     int_type::Type{Ti}
 end
 
+"""
+"""
 function unit_simplex(num_dims;real_type=Float64,int_type=Int)
     D = val_parameter(num_dims)
     extrusion = ntuple(i->false,Val(D))
@@ -97,6 +156,8 @@ function unit_simplex(num_dims;real_type=Float64,int_type=Int)
     ExtrusionPolytope(extrusion,bounding_box,int_type)
 end
 
+"""
+"""
 function unit_n_cube(num_dims;real_type=Float64,int_type=Int)
     D = val_parameter(num_dims)
     extrusion = ntuple(i->true,Val(D))
@@ -107,6 +168,7 @@ function unit_n_cube(num_dims;real_type=Float64,int_type=Int)
     ExtrusionPolytope(extrusion,bounding_box,int_type)
 end
 
+
 num_dims(p::ExtrusionPolytope{D}) where D = D
 is_axis_aligned(p::ExtrusionPolytope) = true
 is_simplex(geom::ExtrusionPolytope) = all(i->i==false,geom.extrusion)
@@ -114,21 +176,45 @@ is_n_cube(geom::ExtrusionPolytope) = all(geom.extrusion)
 real_type(p::ExtrusionPolytope{D,Tv}) where {D,Tv} = Tv
 int_type(p::ExtrusionPolytope{D,Tv,Ti}) where {D,Tv,Ti} = Ti
 
+"""
+"""
 function is_unit_n_cube(geo)
     is_n_cube(geo) && is_unitary(geo)
 end
 
+"""
+"""
 function is_unit_simplex(geo)
     is_simplex(geo) && is_unitary(geo)
 end
 
+"""
+"""
 function is_unitary(geom)
     ! is_axis_aligned(geom) && return false
     my_bounding_box = bounding_box(geom)
     all(i->i==0,first(my_bounding_box)) && all(i->i==1,last(my_bounding_box))
 end
 
-struct GenericCuadrature{A,B} <: GalerkinToolkitDataType
+"""
+    abstract type AbstractQuadrature
+
+# Basic queries
+
+- [`coordinates`](@ref)
+- [`weights`](@ref)
+
+# Basic constructors
+
+- [`default_quadrature`](@ref)
+
+# Supertype hierarchy
+
+    AbstractQuadrature <: GalerkinToolkitDataType
+"""
+abstract type AbstractQuadrature <: GalerkinToolkitDataType end
+
+struct GenericCuadrature{A,B} <: AbstractQuadrature
     coordinates::A
     weights::B
 end
@@ -240,6 +326,8 @@ function repeat_per_dir(geo,a)
 end
 repeat_per_dir(geo,a::NTuple) = a
 
+"""
+"""
 function default_quadrature(geo,degree)
     if is_n_cube(geo) && is_axis_aligned(geo)
         D = num_dims(geo)
@@ -784,7 +872,7 @@ function vtk_cells(mesh,d)
 end
 
 """
-    args = vtk_args(mesh,d)
+    args = vtk_args(mesh[,d])
 
 Return the arguments `args` to be passed in final position
 to functions like `WriteVTK.vtk_grid`.

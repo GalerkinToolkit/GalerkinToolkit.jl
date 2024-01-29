@@ -14,6 +14,9 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Reference" =>[
+                       "Mesh interface" => "reference/mesh_interface.md"
+                      ]
     ],
 )
 
