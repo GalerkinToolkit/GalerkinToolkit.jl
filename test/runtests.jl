@@ -92,7 +92,7 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = gt.mesh_from_gmsh(msh;complexify=false)
 vtk_grid(joinpath(outdir,"demo"),gt.vtk_args(mesh)...) do vtk
-    gt.vtk_physical_groups!(vtk,mesh)
+    gt.vtk_physical_faces!(vtk,mesh)
 end
 
 @show gt.unit_simplex(0) |> gt.boundary
@@ -122,6 +122,7 @@ mesh = gt.cartesian_mesh(domain,cells,simplexify=true)
 mesh = gt.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
 mesh = gt.mesh_from_gmsh(msh)
+face_groups = gt.physical_faces(mesh)
 node_groups = gt.physical_nodes(mesh)
 node_groups = gt.physical_nodes(mesh;disjoint=true)
 node_groups = gt.physical_nodes(mesh;merge_dims=true)

@@ -33,8 +33,8 @@ reference_faces(a) = a.reference_faces
 face_nodes(a) = a.face_nodes
 face_incidence(a) = a.face_incidence
 face_reference_id(a) = a.face_reference_id
-physical_groups(a) = a.physical_groups
-has_physical_groups(a) = hasproperty(a,:physical_groups) && a.physical_groups !== nothing
+physical_faces(a) = a.physical_faces
+has_physical_faces(a) = hasproperty(a,:physical_faces) && a.physical_faces !== nothing
 periodic_nodes(a) = a.periodic_nodes
 has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
 geometry(a) = a.geometry
@@ -70,7 +70,7 @@ face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2
 face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
 num_faces(a) = map(length,face_reference_id(a))
 num_faces(a,d) = length(face_reference_id(a,d))
-physical_groups(a,d) = physical_groups(a)[val_parameter(d)+1]
+physical_faces(a,d) = physical_faces(a)[val_parameter(d)+1]
 num_nodes(a) = length(node_coordinates(a))
 num_ambient_dims(a) = length(eltype(node_coordinates(a)))
 function face_offsets(a)
@@ -469,7 +469,7 @@ struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     face_reference_id::C
     reference_faces::D
     periodic_nodes::E
-    physical_groups::F
+    physical_faces::F
     outwards_normals::G
 end
 
@@ -483,7 +483,7 @@ function fe_mesh(
     face_reference_id,
     reference_faces;
     periodic_nodes = eltype(eltype(face_reference_id))[],
-    physical_groups = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
+    physical_faces = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
     outwards_normals = nothing
     )
     fe_mesh(
@@ -492,7 +492,7 @@ function fe_mesh(
             face_reference_id,
             reference_faces,
             periodic_nodes,
-            physical_groups,
+            physical_faces,
             outwards_normals)
 end
 
@@ -708,7 +708,7 @@ function mesh_from_gmsh_module(;complexify=true)
             my_face_nodes,
             my_face_reference_id,
             my_reference_faces;
-            physical_groups = my_groups,
+            physical_faces = my_groups,
             periodic_nodes,)
 
     if complexify
@@ -814,9 +814,9 @@ function vtk_args(mesh)
     points, cells
 end
 
-function vtk_physical_groups!(vtk,mesh,d;physical_groups=physical_groups(mesh,d))
+function vtk_physical_faces!(vtk,mesh,d;physical_faces=physical_faces(mesh,d))
     ndfaces = num_faces(mesh,d)
-    for group in physical_groups
+    for group in physical_faces
         name,faces = group
         face_mask = zeros(Int,ndfaces)
         face_mask[faces] .= 1
@@ -825,13 +825,13 @@ function vtk_physical_groups!(vtk,mesh,d;physical_groups=physical_groups(mesh,d)
     vtk
 end
 
-function vtk_physical_groups!(vtk,mesh;physical_groups=physical_groups(mesh))
+function vtk_physical_faces!(vtk,mesh;physical_faces=physical_faces(mesh))
     nfaces = sum(num_faces(mesh))
     offsets = face_offsets(mesh)
     D = num_dims(mesh)
     data = Dict{String,Vector{Int}}()
     for d in 0:D
-        for group in physical_groups[d+1]
+        for group in physical_faces[d+1]
             name, = group
             if !haskey(data,name)
                 face_mask = zeros(Int,nfaces)
@@ -840,7 +840,7 @@ function vtk_physical_groups!(vtk,mesh;physical_groups=physical_groups(mesh))
         end
     end
     for d in 0:D
-        for group in physical_groups[d+1]
+        for group in physical_faces[d+1]
             offset = offsets[d+1]
             name,faces = group
             face_mask = data[name]
@@ -1644,14 +1644,14 @@ function complexify_mesh(mesh)
         old_to_new[d+1] = old_dface_to_new_dface
     end
     node_to_coords = node_coordinates(mesh)
-    old_physical_groups = physical_groups(mesh)
-    new_physical_groups = [ Dict{String,Vector{Int32}}() for d in 0:D] # TODO hardcoded
+    old_physical_faces = physical_faces(mesh)
+    new_physical_faces = [ Dict{String,Vector{Int32}}() for d in 0:D] # TODO hardcoded
     for d in 0:D
-        old_groups = old_physical_groups[d+1]
+        old_groups = old_physical_faces[d+1]
         for (group_name,old_group_faces) in old_groups
             new_group_faces = similar(old_group_faces)
             new_group_faces .= old_to_new[d+1][old_group_faces]
-            new_physical_groups[d+1][group_name] = new_group_faces
+            new_physical_faces[d+1][group_name] = new_group_faces
         end
     end
     new_mesh = fe_mesh(
@@ -1659,7 +1659,7 @@ function complexify_mesh(mesh)
             newface_nodes,
             newface_refid,
             Tuple(newreffaces);
-            physical_groups = new_physical_groups,
+            physical_faces = new_physical_faces,
             periodic_nodes = periodic_nodes(mesh),
             outwards_normals = outwards_normals(mesh)
            )
@@ -1995,7 +1995,7 @@ function physical_nodes(mesh,d)
     node_to_touched = fill(false,nnodes)
     node_groups = Dict{String,Vector{Int32}}()
     face_to_nodes = face_nodes(mesh,d)
-    for (name,faces) in physical_groups(mesh,d)
+    for (name,faces) in physical_faces(mesh,d)
         fill!(node_to_touched,false)
         for face in faces
             nodes = face_to_nodes[face]
@@ -2052,7 +2052,7 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     fill!(node_to_tag,zero(eltype(node_to_tag)))
     for d in dmax:-1:0
         face_to_nodes = face_nodes(mesh,d)
-        face_groups = physical_groups(mesh,d)
+        face_groups = physical_faces(mesh,d)
         for (tag,name) in enumerate(tag_to_name)
             for (name2,faces) in face_groups
                 if name != name2
@@ -2076,7 +2076,7 @@ struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
     face_reference_id::C
     reference_faces::D
     periodic_nodes::E
-    physical_groups::F
+    physical_faces::F
     outwards_normals::G
 end
 
@@ -2090,7 +2090,7 @@ function fe_chain(
     face_reference_id,
     reference_faces;
     periodic_nodes = eltype(eltype(face_reference_id))[],
-    physical_groups = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
+    physical_faces = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
     outwards_normals = nothing
     )
     fe_chain(
@@ -2099,7 +2099,7 @@ function fe_chain(
             face_reference_id,
             reference_faces,
             periodic_nodes,
-            physical_groups,
+            physical_faces,
             outwards_normals)
 end
 
@@ -2126,7 +2126,7 @@ function mesh_from_chain(chain)
     ref_cell = first(reference_cells)
     ref_faces = reference_faces(boundary(ref_cell))
     refid_to_refface = push(ref_faces,reference_cells)
-    cell_groups = physical_groups(chain)
+    cell_groups = physical_faces(chain)
     groups = [ typeof(cell_groups)() for d in 0:D]
     groups[end] = cell_groups
     pnodes = periodic_nodes(chain)
@@ -2137,7 +2137,7 @@ function mesh_from_chain(chain)
       face_to_refid,
       refid_to_refface;
       periodic_nodes = pnodes,
-      physical_groups = groups,
+      physical_faces = groups,
       outwards_normals = onormals)
 end
 
@@ -2210,7 +2210,7 @@ function simplexify_unit_n_cube(geo)
         sface_is_boundary[sfaces] .= true
     end
     groups[end-1]["boundary"] = findall(sface_is_boundary)
-    physical_groups(mesh_complex) .= groups
+    physical_faces(mesh_complex) .= groups
     mesh_complex
 end
 
@@ -2282,8 +2282,8 @@ function simplexify_reference_face(ref_face)
     )
     mesh = mesh_from_chain(chain)
     mesh_complex, = complexify(mesh)
-    pg = physical_groups(mesh_complex)
-    pg .= physical_groups(mesh_geom)
+    pg = physical_faces(mesh_complex)
+    pg .= physical_faces(mesh_geom)
     mesh_complex
 end
 
@@ -2427,13 +2427,13 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_nodes = push(face_to_nodes,face_nodes(interior_mesh,D))
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
-    mesh_groups = push(groups,physical_groups(interior_mesh,D))
+    mesh_groups = push(groups,physical_faces(interior_mesh,D))
     fe_mesh(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
      mesh_reference_faces;
-     physical_groups=mesh_groups,
+     physical_faces=mesh_groups,
     )
 end
 
@@ -2484,7 +2484,7 @@ function cartesian_chain(domain,cells_per_dir)
         cell_nodes,
         cell_reference_id,
         reference_cells;
-        physical_groups=groups,
+        physical_faces=groups,
        )
     chain
 end
@@ -2549,7 +2549,7 @@ function structured_simplex_chain(domain,cells_per_dir)
         cell_nodes,
         cell_reference_id,
         reference_cells;
-        physical_groups=groups,
+        physical_faces=groups,
        )
     chain
 end
@@ -2657,7 +2657,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     cell_geometry = unit_n_cube(Val(D))
     ref_simplex_mesh = simplexify(cell_geometry)
     d_to_ldface_to_sldface_to_lnodes = [
-      [ face_nodes(ref_simplex_mesh,d)[physical_groups(ref_simplex_mesh,d)["$d-face-$ldface"]]
+      [ face_nodes(ref_simplex_mesh,d)[physical_faces(ref_simplex_mesh,d)["$d-face-$ldface"]]
       for ldface in 1:num_faces(boundary(ref_cell),d) ] for d in 0:(D-1)]
     d_to_ldface_to_lnodes = [face_nodes(boundary(ref_cell),d) for d in 0:(D-1)]
     groups, face_to_nodes = barrier(
@@ -2673,13 +2673,13 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_nodes = push(face_to_nodes,face_nodes(simplex_chain))
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
-    mesh_groups = push(groups,physical_groups(simplex_chain))
+    mesh_groups = push(groups,physical_faces(simplex_chain))
     fe_mesh(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
      mesh_reference_faces;
-     physical_groups=mesh_groups,
+     physical_faces=mesh_groups,
     )
 end
 
