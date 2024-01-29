@@ -34,49 +34,27 @@ quad = gk.default_quadrature(cube3,degree)
 
 
 order = 1
-fe = gk.lagrangian_fe(spx0,order)
-fe = gk.lagrangian_fe(spx1,order)
-fe = gk.lagrangian_fe(spx2,order)
-fe = gk.lagrangian_fe(spx3,order)
+fe = gk.lagrange_mesh_face(spx0,order)
+fe = gk.lagrange_mesh_face(spx1,order)
+fe = gk.lagrange_mesh_face(spx2,order)
+fe = gk.lagrange_mesh_face(spx3,order)
 display(fe)
 
-fe = gk.lagrangian_fe(cube0,order)
-fe = gk.lagrangian_fe(cube1,order)
-fe = gk.lagrangian_fe(cube2,order)
-fe = gk.lagrangian_fe(cube3,order)
+fe = gk.lagrange_mesh_face(cube0,order)
+fe = gk.lagrange_mesh_face(cube1,order)
+fe = gk.lagrange_mesh_face(cube2,order)
+fe = gk.lagrange_mesh_face(cube3,order)
 display(fe)
 
-fe = gk.lagrangian_fe(cube0,order)
+fe = gk.lagrange_mesh_face(cube0,order)
 @show gk.monomial_exponents(fe)
 @show gk.node_coordinates(fe)
-fe = gk.lagrangian_fe(cube2,order)
+fe = gk.lagrange_mesh_face(cube2,order)
 @show gk.node_coordinates(fe)
 
 spx2 = gk.unit_simplex(2)
 quad = gk.default_quadrature(spx2,degree)
-fe = gk.lagrangian_fe(spx2,order)
-funs = gk.shape_functions(fe)
-x = gk.coordinates(quad)
-B = broadcast(gk.value,permutedims(funs),x)
-display(B)
-tabulator = gk.tabulator(fe)
-A = tabulator(gk.value,x)
-@test A≈B
-x = gk.node_coordinates(fe)
-A = tabulator(gk.value,x)
-
-fe = gk.lagrangian_fe(spx2,order;shape=(3,))
-funs = gk.shape_functions(fe)
-x = gk.coordinates(quad)
-B = broadcast(gk.value,permutedims(funs),x)
-display(B)
-tabulator = gk.tabulator(fe)
-A = tabulator(gk.value,x)
-@test A≈B
-x = gk.node_coordinates(fe)
-A = tabulator(gk.value,x)
-
-fe = gk.lagrangian_fe(spx2,order;shape=())
+fe = gk.lagrange_mesh_face(spx2,order)
 funs = gk.shape_functions(fe)
 x = gk.coordinates(quad)
 B = broadcast(gk.value,permutedims(funs),x)
@@ -106,7 +84,7 @@ end
 @show gk.unit_n_cube(3) |> gk.boundary
 
 order = 2
-gk.lagrangian_fe(spx1,order) |> gk.boundary |> gk.topology
+gk.lagrange_mesh_face(spx1,order) |> gk.boundary |> gk.topology
 
 mesh = gk.mesh_from_gmsh(msh;complexify=false)
 

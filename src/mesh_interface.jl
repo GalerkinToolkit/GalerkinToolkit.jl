@@ -146,6 +146,12 @@ end
 
 """
 """
+function num_dims(a::AbstractFaceGeometry)
+    val_parameter(a.num_dims)
+end
+
+"""
+"""
 function unit_simplex(num_dims;real_type=Float64,int_type=Int)
     D = val_parameter(num_dims)
     extrusion = ntuple(i->false,Val(D))
@@ -344,36 +350,58 @@ abstract type AbstractMeshFace <: GalerkinToolkitDataType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
-abstract type AbstractLagrangeFE <: AbstractMeshFace end
+abstract type AbstractLagrangeMeshFace <: AbstractMeshFace end
 
-struct GenericLagrangeFE{A,B,C,D} <: AbstractLagrangeFE
+struct GenericLagrangeMeshFace{A,B,C} <: AbstractLagrangeMeshFace
     geometry::A
     order_per_dir::B
     space::Symbol
     lib_to_user_nodes::C
-    major::Symbol
-    shape::D
 end
 
-struct ScalarShape end
-const SCALAR_SHAPE = ScalarShape()
+lagrange_mesh_face(args...) = GenericLagrangeMeshFace(args...)
 
-lagrangian_fe(args...) = GenericLagrangeFE(args...)
-
-function lagrangian_fe(geometry,order;
+function lagrange_mesh_face(geometry,order;
         space = default_space(geometry),
-        lib_to_user_nodes = int_type(geometry)[],
-        major = :component,
-        shape = SCALAR_SHAPE)
+        lib_to_user_nodes = int_type(geometry)[])
     D = num_dims(geometry)
     order_per_dir = repeat_per_dir(geometry,order)
-    lagrangian_fe(
+    lagrange_mesh_face(
                geometry,
                order_per_dir,
                space,
-               lib_to_user_nodes,
-               major,
-               shape)
+               lib_to_user_nodes)
+end
+
+order(fe::AbstractLagrangeMeshFace) = maximum(order_per_dir(fe),init=0)
+
+function lib_to_user_nodes(fe::AbstractLagrangeMeshFace)
+    if length(fe.lib_to_user_nodes) == 0
+        nnodes = num_nodes(fe)
+        Ti = int_type(geometry(fe))
+        collect(Ti.(1:nnodes))
+    else
+        fe.lib_to_user_nodes
+    end
+end
+
+function monomial_exponents(fe::AbstractLagrangeMeshFace)
+    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> int_type)
+end
+
+function node_coordinates(fe::AbstractLagrangeMeshFace)
+    @assert fe |> geometry |> is_unitary
+    mexps = monomial_exponents(fe)
+    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+end
+
+function primal_basis(fe::AbstractLagrangeMeshFace)
+    map(e->(x-> prod(x.^e)),fe|>monomial_exponents)
+end
+
+function dual_basis(fe::AbstractLagrangeMeshFace)
+    node_coordinates_reffe = fe|>node_coordinates
+    map(x->(f->f(x)),node_coordinates_reffe)
 end
 
 function default_space(geom)
@@ -384,28 +412,6 @@ function default_space(geom)
     else
         error("Not implemented")
     end
-end
-
-order(fe::AbstractLagrangeFE) = maximum(order_per_dir(fe),init=0)
-
-function lib_to_user_nodes(fe::AbstractLagrangeFE)
-    if length(fe.lib_to_user_nodes) == 0
-        nnodes = num_nodes(fe)
-        Ti = int_type(geometry(fe))
-        collect(Ti.(1:nnodes))
-    else
-        fe.lib_to_user_nodes
-    end
-end
-
-function monomial_exponents(fe::AbstractLagrangeFE)
-    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> int_type)
-end
-
-function node_coordinates(fe::AbstractLagrangeFE)
-    @assert fe |> geometry |> is_unitary
-    mexps = monomial_exponents(fe)
-    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
 end
 
 function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,real_type)
@@ -453,60 +459,6 @@ function monomial_exponents_from_filter(f,order_per_dir,int_type)
     result
 end
 
-function tensor_basis(fe::AbstractLagrangeFE)
-    Tv = fe |> geometry |> real_type
-    if fe.shape == SCALAR_SHAPE
-        return Tv(1)
-    else
-        cis = CartesianIndices(val_parameter(fe.shape))
-        l = prod(val_parameter(fe.shape))
-        init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Tv}
-        cis_flat = cis[:]
-        return map(cis_flat) do ci
-            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
-        end
-    end
-end
-
-function primal_basis(fe::AbstractLagrangeFE)
-    scalar_basis = map(e->(x-> prod(x.^e)),fe|>monomial_exponents)
-    if fe.shape == SCALAR_SHAPE
-        return scalar_basis
-    else
-        primal_nested = map(scalar_basis) do monomial
-            map(tensor_basis(fe))  do e
-                x -> monomial(x)*e
-            end
-        end
-        return reduce(vcat,primal_nested)
-    end
-end
-
-function dual_basis(fe::AbstractLagrangeFE)
-    node_coordinates_reffe = fe|>node_coordinates
-    scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
-    if fe.shape == SCALAR_SHAPE
-        return scalar_basis
-    else
-        if fe.major === :component
-            dual_nested = map(node_coordinates_reffe) do x
-                map(tensor_basis(fe)) do e
-                    f->inner(e,f(x))
-                end
-            end
-        elseif fe.major === :node
-            dual_nested = map(tensor_basis(fe)) do e
-                map(node_coordinates_reffe) do x
-                    f->inner(e,f(x))
-                end
-            end
-        else
-            error("Not Implemented")
-        end
-        return reduce(vcat,dual_nested)
-    end
-end
-
 inner(a,b) = sum(map(*,a,b))
 value(f,x) = f(x)
 
@@ -537,6 +489,115 @@ function tabulator(fe)
         C*B
     end
 end
+
+#abstract type AbstractLagrangeFE <: AbstractMeshFace end
+#
+#struct GenericLagrangeFE{A,B,C,D} <: AbstractLagrangeFE
+#    geometry::A
+#    order_per_dir::B
+#    space::Symbol
+#    lib_to_user_nodes::C
+#    major::Symbol
+#    shape::D
+#end
+#
+#struct ScalarShape end
+#const SCALAR_SHAPE = ScalarShape()
+#
+#lagrangian_fe(args...) = GenericLagrangeFE(args...)
+#
+#function lagrangian_fe(geometry,order;
+#        space = default_space(geometry),
+#        lib_to_user_nodes = int_type(geometry)[],
+#        major = :component,
+#        shape = SCALAR_SHAPE)
+#    D = num_dims(geometry)
+#    order_per_dir = repeat_per_dir(geometry,order)
+#    lagrangian_fe(
+#               geometry,
+#               order_per_dir,
+#               space,
+#               lib_to_user_nodes,
+#               major,
+#               shape)
+#end
+#
+#
+#order(fe::AbstractLagrangeFE) = maximum(order_per_dir(fe),init=0)
+#
+#function lib_to_user_nodes(fe::AbstractLagrangeFE)
+#    if length(fe.lib_to_user_nodes) == 0
+#        nnodes = num_nodes(fe)
+#        Ti = int_type(geometry(fe))
+#        collect(Ti.(1:nnodes))
+#    else
+#        fe.lib_to_user_nodes
+#    end
+#end
+#
+#function monomial_exponents(fe::AbstractLagrangeFE)
+#    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> int_type)
+#end
+#
+#function node_coordinates(fe::AbstractLagrangeFE)
+#    @assert fe |> geometry |> is_unitary
+#    mexps = monomial_exponents(fe)
+#    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+#end
+#
+#function tensor_basis(fe::AbstractLagrangeFE)
+#    Tv = fe |> geometry |> real_type
+#    if fe.shape == SCALAR_SHAPE
+#        return Tv(1)
+#    else
+#        cis = CartesianIndices(val_parameter(fe.shape))
+#        l = prod(val_parameter(fe.shape))
+#        init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Tv}
+#        cis_flat = cis[:]
+#        return map(cis_flat) do ci
+#            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
+#        end
+#    end
+#end
+#
+#function primal_basis(fe::AbstractLagrangeFE)
+#    scalar_basis = map(e->(x-> prod(x.^e)),fe|>monomial_exponents)
+#    if fe.shape == SCALAR_SHAPE
+#        return scalar_basis
+#    else
+#        primal_nested = map(scalar_basis) do monomial
+#            map(tensor_basis(fe))  do e
+#                x -> monomial(x)*e
+#            end
+#        end
+#        return reduce(vcat,primal_nested)
+#    end
+#end
+#
+#function dual_basis(fe::AbstractLagrangeFE)
+#    node_coordinates_reffe = fe|>node_coordinates
+#    scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
+#    if fe.shape == SCALAR_SHAPE
+#        return scalar_basis
+#    else
+#        if fe.major === :component
+#            dual_nested = map(node_coordinates_reffe) do x
+#                map(tensor_basis(fe)) do e
+#                    f->inner(e,f(x))
+#                end
+#            end
+#        elseif fe.major === :node
+#            dual_nested = map(tensor_basis(fe)) do e
+#                map(node_coordinates_reffe) do x
+#                    f->inner(e,f(x))
+#                end
+#            end
+#        else
+#            error("Not Implemented")
+#        end
+#        return reduce(vcat,dual_nested)
+#    end
+#end
 
 abstract type AbstractFEMesh <: GalerkinToolkitDataType end
 
@@ -830,7 +891,7 @@ function reference_face_from_gmsh_eltype(eltype)
         en, = gmsh.model.mesh.getElementProperties(eltype)
         error("Unsupported element type. elemType: $eltype ($en)")
     end
-    lagrangian_fe(geom,order;lib_to_user_nodes=lib_to_gmsh)
+    lagrange_mesh_face(geom,order;lib_to_user_nodes=lib_to_gmsh)
 end
 
 function vtk_points(mesh)
@@ -984,7 +1045,7 @@ function boundary(geom::ExtrusionPolytope{1})
         error("Not implemented")
     end
     order = 1
-    fe = lagrangian_fe(vertex,order)
+    fe = lagrange_mesh_face(vertex,order)
     node_coordinates = SVector{1,Tv}[(0,),(1,)]
     face_nodes = [Vector{Ti}[[1],[2]]]
     face_reference_id = [Ti[1,1]]
@@ -1020,8 +1081,8 @@ function boundary(geom::ExtrusionPolytope{2})
         error("Not implemented")
     end
     order = 1
-    fe0 = lagrangian_fe(g0,order)
-    fe1 = lagrangian_fe(g1,order)
+    fe0 = lagrange_mesh_face(g0,order)
+    fe1 = lagrange_mesh_face(g1,order)
     reference_faces = ([fe0],[fe1])
     fe_mesh(
             node_coordinates,
@@ -1063,9 +1124,9 @@ function boundary(geom::ExtrusionPolytope{3})
         error("Not implemented")
     end
     order = 1
-    fe0 = lagrangian_fe(g0,order)
-    fe1 = lagrangian_fe(g1,order)
-    fe2 = lagrangian_fe(g2,order)
+    fe0 = lagrange_mesh_face(g0,order)
+    fe1 = lagrange_mesh_face(g1,order)
+    fe2 = lagrange_mesh_face(g2,order)
     reference_faces = ([fe0,],[fe1],[fe2])
     fe_mesh(
             node_coordinates,
@@ -1094,7 +1155,7 @@ function boundary_from_mesh_face(refface)
     node_coordinates_aux = map(xi->map(xii->round(Int,order_inter*xii),xi),node_coordinates_inter)
     ref_faces_geom = reference_faces(mesh_geom)
     ref_faces = map(ref_faces_geom) do ref_faces_geom_d
-        map(r->lagrangian_fe(geometry(r),order_inter),ref_faces_geom_d)
+        map(r->lagrange_mesh_face(geometry(r),order_inter),ref_faces_geom_d)
     end
     face_ref_id_geom = face_reference_id(mesh_geom)
     for d in 0:(D-1)
@@ -1181,7 +1242,7 @@ function vertex_permutations_from_face_geometry(geo)
     end
     admissible_permutations = Vector{Int}[]
     order = 1
-    ref_face = lagrangian_fe(geo,order)
+    ref_face = lagrange_mesh_face(geo,order)
     fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
@@ -2264,7 +2325,7 @@ function simplexify_unit_n_cube(geo)
     end
     simplex = unit_simplex(Val(D))
     order = 1
-    ref_cell = lagrangian_fe(simplex,order)
+    ref_cell = lagrange_mesh_face(simplex,order)
     node_coords = node_coordinates(boundary(geo))
     cell_nodes = simplex_node_ids_n_cube(geo)
     ncells = length(cell_nodes)
@@ -2570,7 +2631,7 @@ function cartesian_chain(domain,cells_per_dir)
     cell_reference_id = fill(Int32(1),ncells)
     cell_geometry = unit_n_cube(Val(D))
     order = 1
-    ref_cell = lagrangian_fe(cell_geometry,order)
+    ref_cell = lagrange_mesh_face(cell_geometry,order)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
@@ -3029,7 +3090,7 @@ function refine_reference_geometry(geo,resolution)
             end
           end
         end
-        refface = lagrangian_fe(geo,1)
+        refface = lagrange_mesh_face(geo,1)
         chain = fe_chain(
                        X,
                        T,
