@@ -130,13 +130,24 @@ physical_faces(a,d) = physical_faces(a)[val_parameter(d)+1]
 """
 num_nodes(a) = length(node_coordinates(a))
 num_ambient_dims(a) = length(eltype(node_coordinates(a)))
-function face_offsets(a)
+function face_offset(a)
     D = num_dims(a)
     offsets = zeros(Int,D+1)
     for d in 1:D
         offsets[d+1] = offsets[d] + num_faces(a,d-1)
     end
     offsets
+end
+function face_offset(a,d)
+    face_offset(a)[d+1]
+end
+function face_range(a,d)
+    o = face_offset(a,d)
+    o .+ (1:num_faces(a,d))
+end
+function face_range(a)
+    D = num_dims(a)
+    map(d->face_range(a,d),0:D)
 end
 function face_dim(a,d)
     n = num_faces(a,d)
@@ -713,7 +724,7 @@ function fe_mesh(
     face_nodes,
     face_reference_id,
     reference_faces;
-    periodic_nodes = eltype(eltype(face_reference_id))[],
+    periodic_nodes = eltype(eltype(face_reference_id))[] => eltype(eltype(face_reference_id))[],
     physical_faces = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
     outwards_normals = nothing
     )
@@ -1062,7 +1073,7 @@ end
 
 function vtk_physical_faces!(vtk,mesh;physical_faces=physical_faces(mesh))
     nfaces = sum(num_faces(mesh))
-    offsets = face_offsets(mesh)
+    offsets = face_offset(mesh)
     D = num_dims(mesh)
     data = Dict{String,Vector{Int}}()
     for d in 0:D
@@ -1084,6 +1095,25 @@ function vtk_physical_faces!(vtk,mesh;physical_faces=physical_faces(mesh))
     end
     for (name,face_mask) in data
         vtk[name,WriteVTK.VTKCellData()] = face_mask
+    end
+    vtk
+end
+
+function vtk_physical_nodes!(vtk,mesh,d;physical_nodes=physical_nodes(mesh,d))
+    nnodes = num_nodes(mesh)
+    for group in physical_nodes
+        name,nodes = group
+        nodes_mask = zeros(Int,nnodes)
+        nodes_mask[nodes] .= 1
+        vtk[name,WriteVTK.VTKPointData()] = nodes_mask
+    end
+    vtk
+end
+
+function vtk_physical_nodes!(vtk,mesh;physical_nodes=physical_nodes(mesh))
+    D = num_dims(mesh)
+    for d in 0:D
+        vtk_physical_nodes!(vtk,mesh,d,physical_nodes=physical_nodes[d+1])
     end
     vtk
 end
@@ -2312,7 +2342,7 @@ function physical_nodes(mesh;
         end
     else
         if name_priority === nothing
-            tag_to_name = sort(collect(names))
+            tag_to_name = reverse(sort(collect(names)))
         else
             tag_to_name = name_priority
         end
@@ -2649,12 +2679,15 @@ function domain_from_bounding_box(box)
 end
 
 function cartesian_mesh_with_boundary(domain,cells_per_dir)
+    if any(i->i!=1,cells_per_dir) && any(i->i<2,cells_per_dir)
+        error("At least 2 cells in any direction (or 1 cell in all directions)")
+    end
     function barrier(
       D,
       cell_to_nodes,
       nnodes,
       d_to_ldface_to_lnodes)
-    
+
       node_to_n = zeros(Int32,nnodes)
       for nodes in cell_to_nodes
         for node in nodes
@@ -2878,6 +2911,9 @@ function structured_simplex_chain(domain,cells_per_dir)
 end
 
 function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
+    if any(i->i!=1,cells_per_dir) && any(i->i<2,cells_per_dir)
+        error("At least 2 cells in any direction (or 1 cell in all directions)")
+    end
     function barrier(
       D,
       cell_to_nodes,
@@ -3330,5 +3366,288 @@ function Base.getindex(a::TwoWayPartition,i::Int)
     else
         a.last
     end
+end
+
+function restrict(mesh::AbstractFEMesh,args...)
+    restrict_mesh(mesh,args...)
+end
+
+function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+    nnodes = num_nodes(mesh)
+    node_to_lnode = zeros(Int32,nnodes)
+    node_to_lnode[lnode_to_node] = 1:length(lnode_to_node)
+    lnode_to_coords = node_coordinates(mesh)[lnode_to_node]
+    lface_to_lnodes_mesh = map(lface_to_face_mesh,face_nodes(mesh)) do lface_to_face,face_to_nodes
+        lface_to_nodes = view(face_to_nodes,lface_to_face)
+        lface_to_lnodes = JaggedArray(lface_to_nodes)
+        f = node->node_to_lnode[node]
+        lface_to_lnodes.data .= f.(lface_to_lnodes.data)
+        lface_to_lnodes
+    end
+    lface_to_refid_mesh = map((a,b)->b[a],lface_to_face_mesh,face_reference_id(mesh))
+    D = num_dims(mesh)
+    lgroups_mesh = map(lface_to_face_mesh,num_faces(mesh),physical_faces(mesh)) do lface_to_face, nfaces, groups
+        lgroups = Dict{String,Vector{Int32}}()
+        face_to_lface = zeros(Int32,nfaces)
+        face_to_lface[lface_to_face] = 1:length(lface_to_face)
+        for (k,faces) in groups
+            lgroups[k] = filter(i->i!=0,face_to_lface[faces])
+        end
+        lgroups
+    end
+    pnode_to_node,pnode_to_master = periodic_nodes(mesh)
+    plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
+    plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
+    if outwards_normals(mesh) !== nothing
+        lnormals = outwards_normals(mesh)[lface_to_face_mesh[end]]
+    else
+        lnormals = nothing
+    end
+
+    lmesh = fe_mesh(
+        lnode_to_coords,
+        lface_to_lnodes_mesh,
+        lface_to_refid_mesh,
+        reference_faces(mesh);
+        physical_faces = lgroups_mesh,
+        periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
+        outwards_normals = lnormals
+        )
+
+    lmesh
+end
+
+function fe_assembly_graph(nnodes,d_to_cell_to_nodes)
+    ndata = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            ndata += nlnodes*nlnodes
+        end
+    end
+    I = zeros(Int32,ndata)
+    J = zeros(Int32,ndata)
+    p = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            for j in 1:nlnodes
+                for i in 1:nlnodes
+                    p += 1
+                    I[p] = nodes[i]
+                    J[p] = nodes[j]
+                end
+            end
+        end
+    end
+    V = ones(Int8,ndata)
+    g = sparse(I,J,V,nnodes,nnodes)
+    fill!(g.nzval,Int8(1))
+    g
+end
+
+function fe_assembly_graph(mesh::AbstractFEMesh;via=:nodes)
+    if via === :nodes
+        face_nodes_mesh = face_nodes(mesh)
+        nnodes = num_nodes(mesh)
+        return fe_assembly_graph(nnodes,face_nodes_mesh)
+    elseif via === :cells
+        D = num_dims(mesh)
+        cell_to_nodes = face_nodes(mesh,D)
+        nnodes = num_nodes(mesh)
+        node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
+        ncells = length(cell_to_nodes)
+        return fe_assembly_graph(ncells,[node_to_cells])
+    else
+        error("case not implemented")
+    end
+end
+struct PMesh{A,B,C} <: GalerkinToolkitDataType
+    mesh_partition::A
+    node_partition::B
+    face_partition::C
+end
+PartitionedArrays.partition(m::PMesh) = m.mesh_partition
+face_partition(a::PMesh,d) = a.face_partition[d+1]
+node_partition(a::PMesh) = a.node_partition
+function index_partition(a::PMesh)
+    function setup(nodes,faces...)
+        PMeshLocalIds(nodes,faces)
+    end
+    map(setup,a.node_partition,a.face_partition...)
+end
+
+struct PMeshLocalIds{A,B} <: GalerkinToolkitDataType
+    node_indices::A
+    face_indices::B
+end
+node_indices(a::PMeshLocalIds) = a.node_indices
+face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
+
+function partition_mesh(colorize,ranks,mesh;via=:nodes,renumber=true)
+    root = 1
+    colors_root = map(ranks) do part
+        if part == root
+            g = fe_assembly_graph(mesh;via)
+            colors::Vector{Int32} = colorize(g,length(ranks))
+        else
+            colors = Int32[]
+        end
+        colors
+    end
+    x_to_colors = PartitionedArrays.getany(multicast(colors_root;source=root))
+    if via === :nodes
+        partition_mesh_via_nodes(x_to_colors,ranks,mesh;renumber)
+    elseif via === :cells
+        partition_mesh_via_cells(x_to_colors,ranks,mesh;renumber)
+    else
+        error("case not implemented")
+    end
+end
+
+function partition_mesh_via_nodes(node_to_color,ranks,mesh;renumber)
+    face_nodes_mesh = face_nodes(mesh)
+    nnodes = num_nodes(mesh)
+    node_faces_mesh = map(face_nodes_mesh) do face_to_nodes
+        generate_face_coboundary(face_to_nodes,nnodes)
+    end
+    function setup(part)
+        onode_to_node = findall(color->color==part,node_to_color)
+        node_to_mask = fill(false,nnodes)
+        local_faces = map(face_nodes_mesh,node_faces_mesh) do face_to_nodes, node_to_faces
+            nfaces = length(face_to_nodes)
+            face_to_mask = fill(false,nfaces)
+            for node in onode_to_node
+                for face in node_to_faces[node]
+                    face_to_mask[face] = true
+                end
+            end
+            lface_to_face = findall(face_to_mask)
+            nlfaces = length(lface_to_face)
+            lface_to_color = zeros(Int32,nlfaces)
+            for (lface,face) in enumerate(lface_to_face)
+                nodes = face_to_nodes[face]
+                color = maximum(node->node_to_color[node],nodes)
+                lface_to_color[lface] = color
+                node_to_mask[nodes] .= true
+            end
+            oface_to_lface = findall(color->color==part,lface_to_color)
+            hface_to_lface = findall(color->color!=part,lface_to_color)
+            oface_to_face = lface_to_face[oface_to_lface]
+            hface_to_face = lface_to_face[hface_to_lface]
+            hface_to_color = lface_to_color[hface_to_lface]
+            own = OwnIndices(nfaces,part,oface_to_face)
+            ghost = GhostIndices(nfaces,hface_to_face,hface_to_color)
+            OwnAndGhostIndices(own,ghost)
+        end
+        lnode_to_node = findall(node_to_mask)
+        lnode_to_color = node_to_color[lnode_to_node]
+        onode_to_lnode = findall(color->color==part,lnode_to_color)
+        hnode_to_lnode = findall(color->color!=part,lnode_to_color)
+        onode_to_node = lnode_to_node[onode_to_lnode]
+        hnode_to_node = lnode_to_node[hnode_to_lnode]
+        hnode_to_color = lnode_to_color[hnode_to_lnode]
+        own = OwnIndices(nnodes,part,onode_to_node)
+        ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
+        local_nodes = OwnAndGhostIndices(own,ghost,node_to_color)
+        lface_to_face_mesh = map(local_to_global,local_faces)
+        lmesh = restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+        lmesh, local_nodes, Tuple(local_faces)
+    end
+    mesh_partition, node_partition, face_partition_array = map(setup,ranks) |> tuple_of_arrays
+    face_partition = face_partition_array |> tuple_of_arrays
+    if renumber
+        node_partition = renumber_partition(node_partition)
+        face_partition = map(renumber_partition,face_partition)
+    end
+    # TODO here we have the opportunity to provide the parts rcv
+    assembly_graph(node_partition)
+    map(assembly_graph,face_partition)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    pmesh
+end
+
+function partition_mesh_via_cells(cell_to_color,ranks,mesh;renumber)
+    D = num_dims(mesh)
+    cell_to_nodes = face_nodes(mesh,D)
+    nnodes = num_nodes(mesh)
+    node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
+    ncells = length(cell_to_nodes)
+    function setup(part)
+        ocell_to_cell = findall(color->color==part,cell_to_color)
+        own = OwnIndices(ncells,part,ocell_to_cell)
+        ghost = GhostIndices(ncells,Int[],Int32[])
+        local_cells = OwnAndGhostIndices(own,ghost)
+        node_to_mask = fill(false,nnodes)
+        for cell in ocell_to_cell
+            nodes = cell_to_nodes[cell]
+            node_to_mask[nodes] .= true
+        end
+        lnode_to_node = findall(node_to_mask)
+        nlnodes = length(lnode_to_node)
+        lnode_to_color = zeros(Int32,nlnodes)
+        for (lnode, node) in enumerate(lnode_to_node)
+            cells = node_to_cells[node]
+            color = maximum(cell->cell_to_color[cell],cells)
+            lnode_to_color[lnode] = color
+        end
+        onode_to_lnode = findall(color->color==part,lnode_to_color)
+        hnode_to_lnode = findall(color->color!=part,lnode_to_color)
+        onode_to_node = lnode_to_node[onode_to_lnode]
+        hnode_to_node = lnode_to_node[hnode_to_lnode]
+        hnode_to_color = lnode_to_color[hnode_to_lnode]
+        own = OwnIndices(nnodes,part,onode_to_node)
+        ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
+        local_nodes = OwnAndGhostIndices(own,ghost)
+        topo = topology(mesh)
+        D = num_dims(mesh)
+        local_faces = map(0:(D-1)) do d
+            face_to_cells = face_incidence(topo,d,D)
+            nfaces = length(face_to_cells)
+            face_to_mask = fill(false,nfaces)
+            for face in 1:nfaces
+                cells = face_to_cells[face]
+                if any(cell->cell_to_color[cell]==part,cells)
+                    face_to_mask[face] = true
+                end
+            end
+            lface_to_face = findall(face_to_mask)
+            nlfaces = length(lface_to_face)
+            lface_to_color = zeros(Int32,nlfaces)
+            for (lface,face) in enumerate(lface_to_face)
+                cells = face_to_cells[face]
+                color = maximum(cell->cell_to_color[cell],cells)
+                lface_to_color[lface] = color
+            end
+            oface_to_lface = findall(color->color==part,lface_to_color)
+            hface_to_lface = findall(color->color!=part,lface_to_color)
+            oface_to_face = lface_to_face[oface_to_lface]
+            hface_to_face = lface_to_face[hface_to_lface]
+            hface_to_color = lface_to_color[hface_to_lface]
+            own = OwnIndices(nfaces,part,oface_to_face)
+            ghost = GhostIndices(nfaces,hface_to_face,hface_to_color)
+            OwnAndGhostIndices(own,ghost)
+        end
+        push!(local_faces,local_cells)
+        lnode_to_node_mesh = local_to_global(local_nodes)
+        lface_to_face_mesh = map(local_to_global,local_faces)
+        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
+        lmesh, local_nodes, Tuple(local_faces)
+    end
+    mesh_partition, node_partition, face_partition_array = map(setup,ranks) |> tuple_of_arrays
+    face_partition = face_partition_array |> tuple_of_arrays
+    if renumber
+        node_partition = renumber_partition(node_partition)
+        face_partition = map(renumber_partition,face_partition)
+    end
+    # TODO here we have the opportunity to provide the parts rcv
+    assembly_graph(node_partition)
+    map(assembly_graph,face_partition)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    pmesh
 end
 

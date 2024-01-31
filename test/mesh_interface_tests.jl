@@ -3,6 +3,8 @@ module MeshInterfaceTests
 using Test
 import GalerkinToolkit as gk
 using WriteVTK
+using PartitionedArrays
+using Metis
 
 spx0 = gk.unit_simplex(0)
 spx1 = gk.unit_simplex(1)
@@ -31,7 +33,6 @@ quad = gk.default_quadrature(cube0,degree)
 quad = gk.default_quadrature(cube1,degree)
 quad = gk.default_quadrature(cube2,degree)
 quad = gk.default_quadrature(cube3,degree)
-
 
 order = 1
 fe = gk.lagrange_mesh_face(spx0,order)
@@ -71,6 +72,13 @@ msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = gk.mesh_from_gmsh(msh;complexify=false)
 vtk_grid(joinpath(outdir,"demo"),gk.vtk_args(mesh)...) do vtk
     gk.vtk_physical_faces!(vtk,mesh)
+    gk.vtk_physical_nodes!(vtk,mesh)
+end
+for d in 0:gk.num_dims(mesh)
+    vtk_grid(joinpath(outdir,"demo_$d"),gk.vtk_args(mesh,d)...) do vtk
+        gk.vtk_physical_faces!(vtk,mesh,d)
+        gk.vtk_physical_nodes!(vtk,mesh,d)
+    end
 end
 
 @show gk.unit_simplex(0) |> gk.boundary
@@ -99,6 +107,18 @@ mesh = gk.cartesian_mesh(domain,cells,boundary=false)
 mesh = gk.cartesian_mesh(domain,cells,simplexify=true)
 mesh = gk.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
+mesh = gk.cartesian_mesh(domain,cells)
+vtk_grid(joinpath(outdir,"cartesian"),gk.vtk_args(mesh)...) do vtk
+    gk.vtk_physical_faces!(vtk,mesh)
+    gk.vtk_physical_nodes!(vtk,mesh)
+end
+for d in 0:gk.num_dims(mesh)
+    vtk_grid(joinpath(outdir,"cartesian_$d"),gk.vtk_args(mesh,d)...) do vtk
+        gk.vtk_physical_faces!(vtk,mesh,d)
+        gk.vtk_physical_nodes!(vtk,mesh,d)
+    end
+end
+
 mesh = gk.mesh_from_gmsh(msh)
 face_groups = gk.physical_faces(mesh)
 group_names = gk.physical_names(mesh,2)
@@ -109,10 +129,24 @@ node_groups = gk.physical_nodes(mesh;merge_dims=true,disjoint=true)
 
 vmesh, vglue = gk.visualization_mesh(mesh)
 
-#∂spx0 = gk.boundary(spx0)
-#∂spx0 = gk.boundary(spx1)
-#∂cube0 = gk.boundary(cube0)
-
-
+np = 4
+ranks = DebugArray(LinearIndices((np,)))
+mesh = gk.mesh_from_gmsh(msh)
+pmesh = gk.partition_mesh(Metis.partition,ranks,mesh,via=:nodes)
+function setup(mesh,ids,rank)
+    face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
+    D = gk.num_dims(mesh)
+    for d in 0:D
+        face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
+    end
+    pvtk_grid(joinpath(outdir,"pmesh"),gk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+        gk.vtk_physical_faces!(vtk,mesh)
+        gk.vtk_physical_nodes!(vtk,mesh)
+        vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
+        vtk["owner"] = local_to_owner(gk.node_indices(ids))
+        vtk["owner"] = face_to_owner
+    end
+end
+map(setup,partition(pmesh),gk.index_partition(pmesh),ranks)
 
 end # module
