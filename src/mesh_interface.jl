@@ -3417,55 +3417,78 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
-function fe_assembly_graph(nnodes,d_to_cell_to_nodes)
-    ndata = 0
-    for cell_to_nodes in d_to_cell_to_nodes
-        ncells = length(cell_to_nodes)
-        for cell in 1:ncells
-            nodes = cell_to_nodes[cell]
-            nlnodes = length(nodes)
-            ndata += nlnodes*nlnodes
+function mesh_graph(mesh::AbstractFEMesh;
+    graph_nodes,
+    graph_edges= graph_nodes === :nodes ? (:cells) : (:nodes),
+    d=num_dims(mesh))
+    function barrier(nnodes,d_to_cell_to_nodes)
+        ndata = 0
+        for cell_to_nodes in d_to_cell_to_nodes
+            ncells = length(cell_to_nodes)
+            for cell in 1:ncells
+                nodes = cell_to_nodes[cell]
+                nlnodes = length(nodes)
+                ndata += nlnodes*nlnodes
+            end
         end
-    end
-    I = zeros(Int32,ndata)
-    J = zeros(Int32,ndata)
-    p = 0
-    for cell_to_nodes in d_to_cell_to_nodes
-        ncells = length(cell_to_nodes)
-        for cell in 1:ncells
-            nodes = cell_to_nodes[cell]
-            nlnodes = length(nodes)
-            for j in 1:nlnodes
-                for i in 1:nlnodes
-                    p += 1
-                    I[p] = nodes[i]
-                    J[p] = nodes[j]
+        I = zeros(Int32,ndata)
+        J = zeros(Int32,ndata)
+        p = 0
+        for cell_to_nodes in d_to_cell_to_nodes
+            ncells = length(cell_to_nodes)
+            for cell in 1:ncells
+                nodes = cell_to_nodes[cell]
+                nlnodes = length(nodes)
+                for j in 1:nlnodes
+                    for i in 1:nlnodes
+                        p += 1
+                        I[p] = nodes[i]
+                        J[p] = nodes[j]
+                    end
                 end
             end
         end
+        V = ones(Int8,ndata)
+        g = sparse(I,J,V,nnodes,nnodes)
+        fill!(g.nzval,Int8(1))
+        g
     end
-    V = ones(Int8,ndata)
-    g = sparse(I,J,V,nnodes,nnodes)
-    fill!(g.nzval,Int8(1))
-    g
-end
 
-function fe_assembly_graph(mesh::AbstractFEMesh;via=:nodes)
-    if via === :nodes
-        face_nodes_mesh = face_nodes(mesh)
+    if graph_nodes === :nodes
         nnodes = num_nodes(mesh)
-        return fe_assembly_graph(nnodes,face_nodes_mesh)
-    elseif via === :cells
+        if graph_edges === :cells
+            d = num_dims(mesh)
+            face_nodes_mesh = face_nodes(mesh,d)
+            return barrier(nnodes,[face_nodes_mesh])
+        elseif graph_edges === :faces
+            face_nodes_mesh = face_nodes(mesh,d)
+            return barrier(nnodes,[face_nodes_mesh])
+        elseif graph_edges === :allfaces
+            face_nodes_mesh = face_nodes(mesh)
+            return barrier(nnodes,face_nodes_mesh)
+        else
+            error("case not implemented")
+        end
+    elseif graph_nodes === :cells
         D = num_dims(mesh)
-        cell_to_nodes = face_nodes(mesh,D)
-        nnodes = num_nodes(mesh)
-        node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
-        ncells = length(cell_to_nodes)
-        return fe_assembly_graph(ncells,[node_to_cells])
+        ndfaces = num_faces(mesh,D)
+        if graph_edges === :nodes
+            dface_to_nodes = face_nodes(mesh,D)
+            nnodes = num_nodes(mesh)
+            node_to_dfaces = generate_face_coboundary(dface_to_nodes,nnodes)
+            return barrier(ndfaces,[node_to_dfaces])
+        elseif graph_edges === :faces
+            topo = topology(mesh)
+            node_to_dfaces = face_incidence(topo,d,D)
+            return barrier(ndfaces,[node_to_dfaces])
+        else
+            error("case not implemented")
+        end
     else
         error("case not implemented")
     end
 end
+
 struct PMesh{A,B,C} <: GalerkinToolkitDataType
     mesh_partition::A
     node_partition::B
@@ -3488,61 +3511,49 @@ end
 node_indices(a::PMeshLocalIds) = a.node_indices
 face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
-function partition_mesh(colorize,ranks,mesh;via=:nodes,renumber=true)
-    root = 1
-    colors_root = map(ranks) do part
-        if part == root
-            g = fe_assembly_graph(mesh;via)
-            colors::Vector{Int32} = colorize(g,length(ranks))
-        else
-            colors = Int32[]
-        end
-        colors
-    end
-    x_to_colors = PartitionedArrays.getany(multicast(colors_root;source=root))
-    if via === :nodes
-        partition_mesh_via_nodes(x_to_colors,ranks,mesh;renumber)
-    elseif via === :cells
-        partition_mesh_via_cells(x_to_colors,ranks,mesh;renumber)
+function partition_mesh(
+    graph_node_to_color,ranks,mesh;
+    graph_nodes,
+    renumber=true,
+    ghost_layers=1,
+    graph= ghost_layers == 0 ? nothing : mesh_graph(mesh;graph_nodes),
+    multicast=false,
+    source=MAIN)
+
+    if multicast == true
+        global_to_owner = PartitionedArrays.getany(PartitionedArrays.multicast(graph_node_to_color;source))
     else
-        error("case not implemented")
+        global_to_owner = graph_node_to_color
+    end
+
+    if graph_nodes === :nodes
+        partition_mesh_nodes(global_to_owner,ranks,mesh,graph,ghost_layers,renumber)
+    elseif graph_nodes === :cells
+        partition_mesh_cells(global_to_owner,ranks,mesh,graph,ghost_layers,renumber)
+    else
+        error("Case not implemented")
     end
 end
 
-function partition_mesh_via_nodes(node_to_color,ranks,mesh;renumber)
+function partition_mesh_nodes(node_to_color,ranks,mesh,graph,ghost_layers,renumber)
     face_nodes_mesh = face_nodes(mesh)
     nnodes = num_nodes(mesh)
-    node_faces_mesh = map(face_nodes_mesh) do face_to_nodes
-        generate_face_coboundary(face_to_nodes,nnodes)
-    end
     function setup(part)
         onode_to_node = findall(color->color==part,node_to_color)
         node_to_mask = fill(false,nnodes)
-        local_faces = map(face_nodes_mesh,node_faces_mesh) do face_to_nodes, node_to_faces
-            nfaces = length(face_to_nodes)
-            face_to_mask = fill(false,nfaces)
+        if ghost_layers == 0
+            node_to_mask[onode_to_node] .= true
+        elseif ghost_layers == 1
             for node in onode_to_node
-                for face in node_to_faces[node]
-                    face_to_mask[face] = true
+                pini = graph.colptr[node]
+                pend = graph.colptr[node+1]-1
+                for p in pini:pend
+                    node2 = graph.rowval[p]
+                    node_to_mask[node2] = true
                 end
             end
-            lface_to_face = findall(face_to_mask)
-            nlfaces = length(lface_to_face)
-            lface_to_color = zeros(Int32,nlfaces)
-            for (lface,face) in enumerate(lface_to_face)
-                nodes = face_to_nodes[face]
-                color = maximum(node->node_to_color[node],nodes)
-                lface_to_color[lface] = color
-                node_to_mask[nodes] .= true
-            end
-            oface_to_lface = findall(color->color==part,lface_to_color)
-            hface_to_lface = findall(color->color!=part,lface_to_color)
-            oface_to_face = lface_to_face[oface_to_lface]
-            hface_to_face = lface_to_face[hface_to_lface]
-            hface_to_color = lface_to_color[hface_to_lface]
-            own = OwnIndices(nfaces,part,oface_to_face)
-            ghost = GhostIndices(nfaces,hface_to_face,hface_to_color)
-            OwnAndGhostIndices(own,ghost)
+        else
+            error("case not implemented")
         end
         lnode_to_node = findall(node_to_mask)
         lnode_to_color = node_to_color[lnode_to_node]
@@ -3554,6 +3565,32 @@ function partition_mesh_via_nodes(node_to_color,ranks,mesh;renumber)
         own = OwnIndices(nnodes,part,onode_to_node)
         ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
         local_nodes = OwnAndGhostIndices(own,ghost,node_to_color)
+        local_faces = map(face_nodes_mesh) do face_to_nodes
+            nfaces = length(face_to_nodes)
+            face_to_mask = fill(false,nfaces)
+            for face in 1:nfaces
+                nodes = face_to_nodes[face]
+                if all(node->node_to_mask[node],nodes)
+                    face_to_mask[face] = true
+                end
+            end
+            lface_to_face = findall(face_to_mask)
+            nlfaces = length(lface_to_face)
+            lface_to_color = zeros(Int32,nlfaces)
+            for (lface,face) in enumerate(lface_to_face)
+                nodes = face_to_nodes[face]
+                color = maximum(node->node_to_color[node],nodes)
+                lface_to_color[lface] = color
+            end
+            oface_to_lface = findall(color->color==part,lface_to_color)
+            hface_to_lface = findall(color->color!=part,lface_to_color)
+            oface_to_face = lface_to_face[oface_to_lface]
+            hface_to_face = lface_to_face[hface_to_lface]
+            hface_to_color = lface_to_color[hface_to_lface]
+            own = OwnIndices(nfaces,part,oface_to_face)
+            ghost = GhostIndices(nfaces,hface_to_face,hface_to_color)
+            OwnAndGhostIndices(own,ghost)
+        end
         lface_to_face_mesh = map(local_to_global,local_faces)
         lmesh = restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         lmesh, local_nodes, Tuple(local_faces)
@@ -3571,53 +3608,49 @@ function partition_mesh_via_nodes(node_to_color,ranks,mesh;renumber)
     pmesh
 end
 
-function partition_mesh_via_cells(cell_to_color,ranks,mesh;renumber)
+function partition_mesh_cells(cell_to_color,ranks,mesh,graph,ghost_layers,renumber)
     D = num_dims(mesh)
-    cell_to_nodes = face_nodes(mesh,D)
-    nnodes = num_nodes(mesh)
-    node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
-    ncells = length(cell_to_nodes)
+    ncells = num_faces(mesh,D)
+    topo = topology(mesh)
     function setup(part)
         ocell_to_cell = findall(color->color==part,cell_to_color)
-        own = OwnIndices(ncells,part,ocell_to_cell)
-        ghost = GhostIndices(ncells,Int[],Int32[])
-        local_cells = OwnAndGhostIndices(own,ghost)
-        node_to_mask = fill(false,nnodes)
-        for cell in ocell_to_cell
-            nodes = cell_to_nodes[cell]
-            node_to_mask[nodes] .= true
-        end
-        lnode_to_node = findall(node_to_mask)
-        nlnodes = length(lnode_to_node)
-        lnode_to_color = zeros(Int32,nlnodes)
-        for (lnode, node) in enumerate(lnode_to_node)
-            cells = node_to_cells[node]
-            color = maximum(cell->cell_to_color[cell],cells)
-            lnode_to_color[lnode] = color
-        end
-        onode_to_lnode = findall(color->color==part,lnode_to_color)
-        hnode_to_lnode = findall(color->color!=part,lnode_to_color)
-        onode_to_node = lnode_to_node[onode_to_lnode]
-        hnode_to_node = lnode_to_node[hnode_to_lnode]
-        hnode_to_color = lnode_to_color[hnode_to_lnode]
-        own = OwnIndices(nnodes,part,onode_to_node)
-        ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
-        local_nodes = OwnAndGhostIndices(own,ghost)
-        topo = topology(mesh)
-        D = num_dims(mesh)
-        local_faces = map(0:(D-1)) do d
-            face_to_cells = face_incidence(topo,d,D)
-            nfaces = length(face_to_cells)
-            face_to_mask = fill(false,nfaces)
-            for face in 1:nfaces
-                cells = face_to_cells[face]
-                if any(cell->cell_to_color[cell]==part,cells)
-                    face_to_mask[face] = true
+        cell_to_mask = fill(false,ncells)
+        if ghost_layers == 0
+            cell_to_mask[ocell_to_cell] .= true
+        elseif ghost_layers == 1
+            for cell in ocell_to_cell
+                pini = graph.colptr[cell]
+                pend = graph.colptr[cell+1]-1
+                for p in pini:pend
+                    cell2 = graph.rowval[p]
+                    cell_to_mask[cell2] = true
                 end
+            end
+        else
+            error("case not implemented")
+        end
+        lcell_to_cell = findall(cell_to_mask)
+        lcell_to_color = cell_to_color[lcell_to_cell]
+        ocell_to_lcell = findall(color->color==part,lcell_to_color)
+        hcell_to_lcell = findall(color->color!=part,lcell_to_color)
+        ocell_to_cell = lcell_to_cell[ocell_to_lcell]
+        hcell_to_cell = lcell_to_cell[hcell_to_lcell]
+        hcell_to_color = lcell_to_color[hcell_to_lcell]
+        own = OwnIndices(ncells,part,ocell_to_cell)
+        ghost = GhostIndices(ncells,hcell_to_cell,hcell_to_color)
+        local_cells = OwnAndGhostIndices(own,ghost)
+        local_faces = map(0:(D-1)) do d
+            cell_to_faces = face_incidence(topo,D,d)
+            nfaces = num_faces(mesh,d)
+            face_to_mask = fill(false,nfaces)
+            for cell in lcell_to_cell
+                faces = cell_to_faces[cell]
+                face_to_mask[faces] .= true
             end
             lface_to_face = findall(face_to_mask)
             nlfaces = length(lface_to_face)
             lface_to_color = zeros(Int32,nlfaces)
+            face_to_cells = face_incidence(topo,d,D)
             for (lface,face) in enumerate(lface_to_face)
                 cells = face_to_cells[face]
                 color = maximum(cell->cell_to_color[cell],cells)
@@ -3633,6 +3666,30 @@ function partition_mesh_via_cells(cell_to_color,ranks,mesh;renumber)
             OwnAndGhostIndices(own,ghost)
         end
         push!(local_faces,local_cells)
+        nnodes = num_nodes(mesh)
+        cell_to_nodes = face_nodes(mesh,D)
+        node_to_mask = fill(false,nnodes)
+        for cell in lcell_to_cell
+            nodes = cell_to_nodes[cell]
+            node_to_mask[nodes] .= true
+        end
+        lnode_to_node = findall(node_to_mask)
+        nlnodes = length(lnode_to_node)
+        lnode_to_color = zeros(Int32,nlnodes)
+        node_to_cells = generate_face_coboundary(cell_to_nodes,nnodes)
+        for (lnode,node) in enumerate(lnode_to_node)
+            cells = node_to_cells[node]
+            color = maximum(cell->cell_to_color[cell],cells)
+            lnode_to_color[lnode] = color
+        end
+        onode_to_lnode = findall(color->color==part,lnode_to_color)
+        hnode_to_lnode = findall(color->color!=part,lnode_to_color)
+        onode_to_node = lnode_to_node[onode_to_lnode]
+        hnode_to_node = lnode_to_node[hnode_to_lnode]
+        hnode_to_color = lnode_to_color[hnode_to_lnode]
+        own = OwnIndices(nnodes,part,onode_to_node)
+        ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
+        local_nodes = OwnAndGhostIndices(own,ghost)
         lnode_to_node_mesh = local_to_global(local_nodes)
         lface_to_face_mesh = map(local_to_global,local_faces)
         lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
@@ -3650,4 +3707,5 @@ function partition_mesh_via_cells(cell_to_color,ranks,mesh;renumber)
     pmesh = PMesh(mesh_partition,node_partition,face_partition)
     pmesh
 end
+
 

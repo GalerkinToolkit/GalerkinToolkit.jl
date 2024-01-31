@@ -129,10 +129,24 @@ node_groups = gk.physical_nodes(mesh;merge_dims=true,disjoint=true)
 
 vmesh, vglue = gk.visualization_mesh(mesh)
 
-np = 4
+mesh = gk.cartesian_mesh(domain,cells)
+gk.mesh_graph(mesh;graph_nodes=:nodes)
+gk.mesh_graph(mesh;graph_nodes=:cells)
+gk.mesh_graph(mesh;graph_nodes=:nodes,graph_edges=:cells)
+gk.mesh_graph(mesh;graph_nodes=:nodes,graph_edges=:faces)
+gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:nodes)
+gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:faces)
+
+np = 2
 ranks = DebugArray(LinearIndices((np,)))
-mesh = gk.mesh_from_gmsh(msh)
-pmesh = gk.partition_mesh(Metis.partition,ranks,mesh,via=:nodes)
+mesh = gk.cartesian_mesh((0,1,0,1),(2,2))
+cell_to_color = [1,1,2,2]
+pmesh = gk.partition_mesh(cell_to_color,ranks,mesh;graph_nodes=:cells,ghost_layers=0)
+pmesh = gk.partition_mesh(cell_to_color,ranks,mesh;graph_nodes=:cells,ghost_layers=1)
+node_to_color = [1,1,1,1,2,2,2,2,2]
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:nodes,ghost_layers=0)
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:nodes,ghost_layers=1)
+
 function setup(mesh,ids,rank)
     face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
     D = gk.num_dims(mesh)
@@ -148,5 +162,24 @@ function setup(mesh,ids,rank)
     end
 end
 map(setup,partition(pmesh),gk.index_partition(pmesh),ranks)
+
+np = 4
+ranks = DebugArray(LinearIndices((np,)))
+
+mesh = gk.mesh_from_gmsh(msh)
+graph = gk.mesh_graph(mesh;graph_nodes=:nodes)
+node_to_color = map_main(ranks) do ranks
+     Metis.partition(graph,np)
+end
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:nodes,ghost_layers=0,graph,multicast=true)
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:nodes,ghost_layers=1,graph,multicast=true)
+
+mesh = gk.mesh_from_gmsh(msh)
+graph = gk.mesh_graph(mesh;graph_nodes=:cells)
+node_to_color = map_main(ranks) do ranks
+     Metis.partition(graph,np)
+end
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:cells,ghost_layers=0,graph,multicast=true)
+pmesh = gk.partition_mesh(node_to_color,ranks,mesh;graph_nodes=:cells,ghost_layers=1,graph,multicast=true)
 
 end # module
