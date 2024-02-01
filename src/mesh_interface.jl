@@ -3418,7 +3418,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
 end
 
 function mesh_graph(mesh::AbstractFEMesh;
-    graph_nodes,
+    graph_nodes = :cells,
     graph_edges= graph_nodes === :nodes ? (:cells) : (:nodes),
     d=num_dims(mesh))
     function barrier(nnodes,d_to_cell_to_nodes)
@@ -3511,28 +3511,31 @@ end
 node_indices(a::PMeshLocalIds) = a.node_indices
 face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
-function partition_mesh(
-    graph_node_to_color,ranks,mesh;
-    graph_nodes,
-    renumber=true,
+function partition_mesh(mesh,np;
+    ranks = LinearIndices((np,)),
+    graph_nodes = :cells,
+    graph = mesh_graph(mesh;graph_nodes),
+    graph_partition = Metis.partition(graph,np),
     ghost_layers=1,
-    graph= ghost_layers == 0 ? nothing : mesh_graph(mesh;graph_nodes),
-    multicast=false,
-    source=MAIN)
-
-    if multicast == true
-        global_to_owner = PartitionedArrays.getany(PartitionedArrays.multicast(graph_node_to_color;source))
-    else
-        global_to_owner = graph_node_to_color
-    end
-
+    renumber = true,
+    )
     if graph_nodes === :nodes
-        partition_mesh_nodes(global_to_owner,ranks,mesh,graph,ghost_layers,renumber)
+        partition_mesh_nodes(graph_partition,ranks,mesh,graph,ghost_layers,renumber)
     elseif graph_nodes === :cells
-        partition_mesh_cells(global_to_owner,ranks,mesh,graph,ghost_layers,renumber)
+        partition_mesh_cells(graph_partition,ranks,mesh,graph,ghost_layers,renumber)
     else
         error("Case not implemented")
     end
+end
+
+function scatter_mesh(pmeshes_on_main;source=MAIN)
+    snd = map_main(pmeshes_on_main;main=source) do pmesh
+        map(tuple,pmesh.mesh_partition,pmesh.node_partition,map(tuple,pmesh.face_partition...))
+    end
+    rcv = scatter(snd;source)
+    mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
+    face_partition = face_partition_array |> tuple_of_arrays
+    PMesh(mesh_partition,node_partition,face_partition)
 end
 
 function partition_mesh_nodes(node_to_color,ranks,mesh,graph,ghost_layers,renumber)
