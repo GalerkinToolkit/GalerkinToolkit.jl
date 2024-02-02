@@ -2640,7 +2640,15 @@ end
 
 """
 """
-function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simplexify=false)
+function cartesian_mesh(
+    domain,cells_per_dir,parts_per_dir=nothing;
+    boundary=true,
+    complexify=true,
+    simplexify=false,
+    parts = parts_per_dir === nothing ? nothing : LinearIndices((prod(parts_per_dir),)),
+    graph_nodes=:cells,
+    ghost_layers=1,
+    )
     mesh = if boundary
         if simplexify
             structured_simplex_mesh_with_boundary(domain,cells_per_dir)
@@ -2658,7 +2666,19 @@ function cartesian_mesh(domain,cells_per_dir;boundary=true,complexify=true,simpl
     if complexify
         mesh, = GalerkinToolkit.complexify(mesh)
     end
-    mesh
+    if parts_per_dir === nothing
+        return mesh
+    end
+    # TODO this can (and should!) be heavily optimized
+    @assert graph_nodes === :cells
+    np = prod(parts_per_dir)
+    graph = mesh_graph(mesh;graph_nodes)
+    parts_seq = LinearIndices((np,))
+    graph_partition = zeros(Int,prod(cells_per_dir))
+    for ids in uniform_partition(LinearIndices((np,)),parts_per_dir,cells_per_dir)
+        graph_partition[local_to_global(ids)] = local_to_owner(ids)
+    end
+    partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers)
 end
 
 function bounding_box_from_domain(domain)
@@ -3512,7 +3532,7 @@ node_indices(a::PMeshLocalIds) = a.node_indices
 face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
 function partition_mesh(mesh,np;
-    ranks = LinearIndices((np,)),
+    parts = LinearIndices((np,)),
     graph_nodes = :cells,
     graph = mesh_graph(mesh;graph_nodes),
     graph_partition = Metis.partition(graph,np),
@@ -3520,9 +3540,9 @@ function partition_mesh(mesh,np;
     renumber = true,
     )
     if graph_nodes === :nodes
-        partition_mesh_nodes(graph_partition,ranks,mesh,graph,ghost_layers,renumber)
+        partition_mesh_nodes(graph_partition,parts,mesh,graph,ghost_layers,renumber)
     elseif graph_nodes === :cells
-        partition_mesh_cells(graph_partition,ranks,mesh,graph,ghost_layers,renumber)
+        partition_mesh_cells(graph_partition,parts,mesh,graph,ghost_layers,renumber)
     else
         error("Case not implemented")
     end
@@ -3538,7 +3558,7 @@ function scatter_mesh(pmeshes_on_main;source=MAIN)
     PMesh(mesh_partition,node_partition,face_partition)
 end
 
-function partition_mesh_nodes(node_to_color,ranks,mesh,graph,ghost_layers,renumber)
+function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumber)
     face_nodes_mesh = face_nodes(mesh)
     nnodes = num_nodes(mesh)
     function setup(part)
@@ -3598,7 +3618,7 @@ function partition_mesh_nodes(node_to_color,ranks,mesh,graph,ghost_layers,renumb
         lmesh = restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         lmesh, local_nodes, Tuple(local_faces)
     end
-    mesh_partition, node_partition, face_partition_array = map(setup,ranks) |> tuple_of_arrays
+    mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
     if renumber
         node_partition = renumber_partition(node_partition)
@@ -3611,7 +3631,7 @@ function partition_mesh_nodes(node_to_color,ranks,mesh,graph,ghost_layers,renumb
     pmesh
 end
 
-function partition_mesh_cells(cell_to_color,ranks,mesh,graph,ghost_layers,renumber)
+function partition_mesh_cells(cell_to_color,parts,mesh,graph,ghost_layers,renumber)
     D = num_dims(mesh)
     ncells = num_faces(mesh,D)
     topo = topology(mesh)
@@ -3698,7 +3718,7 @@ function partition_mesh_cells(cell_to_color,ranks,mesh,graph,ghost_layers,renumb
         lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
         lmesh, local_nodes, Tuple(local_faces)
     end
-    mesh_partition, node_partition, face_partition_array = map(setup,ranks) |> tuple_of_arrays
+    mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
     if renumber
         node_partition = renumber_partition(node_partition)

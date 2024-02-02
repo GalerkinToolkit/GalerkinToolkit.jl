@@ -138,17 +138,17 @@ gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:nodes)
 gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:faces)
 
 np = 2
-ranks = DebugArray(LinearIndices((np,)))
+parts = DebugArray(LinearIndices((np,)))
 mesh = gk.cartesian_mesh((0,1,0,1),(2,2))
 cell_to_color = [1,1,2,2]
 pmesh = gk.partition_mesh(mesh,np)
-pmesh = gk.partition_mesh(mesh,np;ranks)
-pmesh = gk.partition_mesh(mesh,np;ranks,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;ranks,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;parts)
+pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=0)
+pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=1)
 
 node_to_color = [1,1,1,1,2,2,2,2,2]
-pmesh = gk.partition_mesh(mesh,np;ranks,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;ranks,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=0)
+pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=1)
 
 function setup(mesh,ids,rank)
     face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
@@ -164,12 +164,12 @@ function setup(mesh,ids,rank)
         vtk["owner"] = face_to_owner
     end
 end
-map(setup,partition(pmesh),gk.index_partition(pmesh),ranks)
+map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
 ## In this case, we do the hard work only on the main proc
 np = 4
-ranks = DebugArray(LinearIndices((np,)))
-pmesh = map_main(ranks) do ranks
+parts = DebugArray(LinearIndices((np,)))
+pmesh = map_main(parts) do parts
     mesh = gk.mesh_from_gmsh(msh)
     graph_nodes = :nodes
     graph = gk.mesh_graph(mesh;graph_nodes=:nodes)
@@ -191,25 +191,50 @@ function setup(mesh,ids,rank)
         vtk["owner"] = face_to_owner
     end
 end
-map(setup,partition(pmesh),gk.index_partition(pmesh),ranks)
+map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
 # In this one, we do only the graph partition on the main
 # but we load the mesh everywhere
 mesh = gk.mesh_from_gmsh(msh)
 graph_nodes = :nodes
 graph = gk.mesh_graph(mesh;graph_nodes)
-graph_partition = map_main(ranks) do ranks
+graph_partition = map_main(parts) do parts
      Metis.partition(graph,np)
 end |> multicast |> PartitionedArrays.getany
-pmesh = gk.partition_mesh(mesh,np;ranks,graph,graph_nodes,graph_partition,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;ranks,graph,graph_nodes,graph_partition,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=0)
+pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=1)
 
 graph_nodes = :cells
 graph = gk.mesh_graph(mesh;graph_nodes)
-graph_partition = map_main(ranks) do ranks
+graph_partition = map_main(parts) do parts
      Metis.partition(graph,np)
 end |> multicast |> PartitionedArrays.getany
-pmesh = gk.partition_mesh(mesh,np;ranks,graph,graph_nodes,graph_partition,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;ranks,graph,graph_nodes,graph_partition,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=0)
+pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=1)
+
+domain = (0,1,0,1)
+cells_per_dir = (4,4)
+parts_per_dir = (2,2)
+pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir)
+pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;ghost_layers=0)
+np = prod(parts_per_dir)
+parts = DebugArray(LinearIndices((np,)))
+pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers=0)
+
+function setup(mesh,ids,rank)
+    face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
+    D = gk.num_dims(mesh)
+    for d in 0:D
+        face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
+    end
+    pvtk_grid(joinpath(outdir,"pmesh-cartesian"),gk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+        gk.vtk_physical_faces!(vtk,mesh)
+        gk.vtk_physical_nodes!(vtk,mesh)
+        vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
+        vtk["owner"] = local_to_owner(gk.node_indices(ids))
+        vtk["owner"] = face_to_owner
+    end
+end
+map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
 end # module
