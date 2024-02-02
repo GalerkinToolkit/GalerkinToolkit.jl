@@ -237,4 +237,22 @@ function setup(mesh,ids,rank)
 end
 map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
+
+domain = (0,1,0,1)
+cells = (10,10)
+fine_mesh = gk.cartesian_mesh(domain,cells)
+
+domain = (0,30,0,10)
+cells = (2,2)
+coarse_mesh = gk.cartesian_mesh(domain,cells)
+
+final_mesh, glue = gk.two_level_mesh(coarse_mesh,fine_mesh)
+
+vtk_grid(joinpath(outdir,"two-level-mesh"),gk.vtk_args(final_mesh)...) do vtk
+    gk.vtk_physical_faces!(vtk,final_mesh)
+    gk.vtk_physical_nodes!(vtk,final_mesh)
+    vtk["node_ids"] = 1:gk.num_nodes(final_mesh)
+end
+
+
 end # module

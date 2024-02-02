@@ -3731,4 +3731,168 @@ function partition_mesh_cells(cell_to_color,parts,mesh,graph,ghost_layers,renumb
     pmesh
 end
 
+function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
+
+    D = num_dims(fine_mesh)
+    n_fine_cells = num_faces(fine_mesh,D)
+    n_fine_nodes = num_nodes(fine_mesh)
+    refcell = first(reference_faces(fine_mesh,D))
+    n_coarse_cells = num_faces(coarse_mesh,D)
+    fine_cell_local_node_to_fine_node = face_nodes(fine_mesh,D)
+    coarse_cell_lnode_to_coarse_node = face_nodes(coarse_mesh,D)
+    coarse_node_to_x = node_coordinates(coarse_mesh)
+    topo = topology(coarse_mesh)
+
+    # The user can provide custom names for physical groups on the boundary
+    # but we give some default value
+    if boundary_names === nothing
+        boundary_names = [
+            [ "$d-face-$face" for face in 1:num_faces(boundary(refcell),d)] for d in 0:(D-1)]
+    end
+    name_priority = reduce(vcat,boundary_names)
+    fine_node_groups = physical_nodes(fine_mesh;merge_dims=true,disjoint=true,name_priority)
+
+    # Recover boundary info
+    d_to_local_dface_to_fine_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
+    fine_node_mask = fill(true,n_fine_nodes)
+    for d in 0:(D-1)
+        n_local_dfaces = num_faces(boundary(refcell),d)
+        local_dface_to_fine_nodes = Vector{Vector{Int}}(undef,n_local_dfaces)
+        for local_dface in 1:n_local_dfaces
+            fine_nodes = fine_node_groups[boundary_names[d+1][local_dface]]
+            local_dface_to_fine_nodes[local_dface] = fine_nodes
+            fine_node_mask[fine_nodes] .= false
+        end
+        d_to_local_dface_to_fine_nodes[d+1] = local_dface_to_fine_nodes
+    end
+    d_to_local_dface_to_fine_nodes[D+1] = [findall(fine_node_mask)]
+
+    # Coordinates
+    fine_node_to_x = node_coordinates(fine_mesh)
+    A = tabulator(refcell)(value,fine_node_to_x)
+    coarse_cell_fine_node_to_x = Vector{Vector{SVector{D,Float64}}}(undef,n_coarse_cells)
+    for coarse_cell in 1:n_coarse_cells
+        lnode_to_coarse_node = coarse_cell_lnode_to_coarse_node[coarse_cell]
+        lnode_to_x = coarse_node_to_x[lnode_to_coarse_node]
+        coarse_cell_fine_node_to_x[coarse_cell] = A*lnode_to_x
+    end
+
+    # Glue fine node ids
+    # TODO ordering in the physical group
+    # start with a 2x2 unit cell
+    final_node = 0
+    d_coarse_dface_to_offset = Vector{Vector{Int}}(undef,D+1)
+    for d in 0:D
+        local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
+        coarse_dface_to_coarse_cells = face_incidence(topo,d,D)
+        coarse_cell_to_coarse_dfaces = face_incidence(topo,D,d)
+        n_coarse_dfaces = num_faces(coarse_mesh,d)
+        coarse_dface_to_offset = zeros(Int,n_coarse_dfaces)
+        for coarse_dface in 1:n_coarse_dfaces
+            coarse_cells = coarse_dface_to_coarse_cells[coarse_dface]
+            for coarse_cell in coarse_cells
+                coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
+                local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
+                fine_nodes = local_dface_to_fine_nodes[local_dface]
+                if coarse_dface_to_offset[coarse_dface] == 0
+                    coarse_dface_to_offset[coarse_dface] = final_node
+                    final_node += length(fine_nodes)
+                end
+            end    
+        end
+        d_coarse_dface_to_offset[d+1] = coarse_dface_to_offset
+    end
+    n_final_nodes = final_node
+    coarse_cell_fine_node_to_final_node = Vector{Vector{Int}}(undef,n_coarse_cells)
+    for coarse_cell in 1:n_coarse_cells
+        coarse_cell_fine_node_to_final_node[coarse_cell] = zeros(Int,n_fine_nodes)
+    end
+    n_coarse_nodes = num_nodes(coarse_mesh)
+    for d in 0:D
+        local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
+        coarse_dface_to_coarse_cells = face_incidence(topo,d,D)
+        coarse_cell_to_coarse_dfaces = face_incidence(topo,D,d)
+        n_coarse_dfaces = num_faces(coarse_mesh,d)
+        for coarse_dface in 1:n_coarse_dfaces
+            offset = d_coarse_dface_to_offset[d+1][coarse_dface]
+            coarse_cells = coarse_dface_to_coarse_cells[coarse_dface]
+            for coarse_cell in coarse_cells
+                coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
+                local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
+                fine_nodes = local_dface_to_fine_nodes[local_dface]
+                final_nodes =  offset .+ (1:length(fine_nodes)) # TODO, we need a permutation here defined by the boundary conditions
+                coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
+            end    
+        end
+    end
+
+    final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
+    for coarse_cell in 1:n_coarse_cells
+        fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]
+        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell]
+        final_node_to_x[fine_node_to_final_node] = fine_node_to_x
+    end
+
+    n_final_cells = n_coarse_cells*n_fine_cells
+    final_cell_local_node_to_final_node = Vector{Vector{Int}}(undef,n_final_cells)
+    for final_cell in 1:n_final_cells
+        final_cell_local_node_to_final_node[final_cell] = zeros(Int,n_final_nodes)
+    end
+    final_cell = 0
+    for coarse_cell in 1:n_coarse_cells
+        for fine_cell in 1:n_fine_cells
+            local_node_to_fine_node = fine_cell_local_node_to_fine_node[fine_cell]
+            local_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell][local_node_to_fine_node]
+            final_cell += 1
+            final_cell_local_node_to_final_node[final_cell] = local_node_to_final_node
+        end
+    end
+    final_cell_to_refid = fill(1,n_final_cells)
+    refid_to_refcell = [refcell]
+
+    chain = fe_chain(
+                        final_node_to_x,
+                        JaggedArray(final_cell_local_node_to_final_node),
+                        final_cell_to_refid,
+                        refid_to_refcell)
+
+    # TODO we could avoid this call to complexify by using
+    # the fine faces (just as we did with the fine nodes)
+    # TODO maybe we don't need to simplexify and only find the faces
+    # needed for the physical groups
+    final_mesh, = mesh_from_chain(chain) |> complexify
+
+    # Refine physical groups
+    final_node_to_mask = fill(false,n_final_nodes)
+    for d in 0:D
+        final_physical_dfaces = physical_faces(final_mesh,d)
+        coarse_phsycial_dfaces = physical_faces(coarse_mesh,d)
+        final_dfaces_to_final_nodes = face_nodes(final_mesh,d)
+        for (name,coarse_dfaces_in_group) in coarse_phsycial_dfaces
+            fill!(final_node_to_mask,false)
+            for n in 0:d
+                coarse_dface_to_coarse_nfaces = face_incidence(topo,d,n)
+                coarse_cell_to_coarse_nfaces = face_incidence(topo,D,n)
+                coarse_nface_to_coarse_cells = face_incidence(topo,n,D)
+                local_nface_to_fine_nodes = d_to_local_dface_to_fine_nodes[n+1]
+                for coarse_dface in coarse_dfaces_in_group
+                    for coarse_nface  in coarse_dface_to_coarse_nfaces[coarse_dface]
+                        coarse_cells = coarse_nface_to_coarse_cells[coarse_nface]
+                        coarse_cell = first(coarse_cells)
+                        coarse_nfaces = coarse_cell_to_coarse_nfaces[coarse_cell]
+                        local_nface = findfirst(i->coarse_nface==i,coarse_nfaces)
+                        fine_nodes = local_nface_to_fine_nodes[local_nface]
+                        final_nodes = coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes]
+                        final_node_to_mask[final_nodes] .=true
+                    end
+                end
+                final_faces_in_group = findall(final_nodes->all(final_node->final_node_to_mask[final_node],final_nodes),final_dfaces_to_final_nodes)
+                final_physical_dfaces[name] = final_faces_in_group
+            end
+        end
+    end
+
+    glue = (;coarse_cell_fine_node_to_final_node,d_to_local_dface_to_fine_nodes)
+    final_mesh, glue
+end
 
