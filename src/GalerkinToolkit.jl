@@ -11,6 +11,8 @@ using Combinatorics
 using SparseArrays
 using Metis
 
-include("mesh_interface.jl")
+include("geometry.jl")
+include("integration.jl")
+include("interpolation.jl")
 
 end # module

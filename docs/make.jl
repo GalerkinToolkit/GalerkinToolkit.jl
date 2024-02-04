@@ -15,7 +15,9 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "Reference" =>[
-                       "Mesh interface" => "reference/mesh_interface.md"
+                       "Geometry" => "reference/geometry.md",
+                       "Integration" => "reference/integration.md",
+                       "Interpolation" => "reference/interpolation.md",
                       ]
     ],
 )
