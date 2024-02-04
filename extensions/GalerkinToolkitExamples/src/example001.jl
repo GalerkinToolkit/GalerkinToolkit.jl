@@ -13,21 +13,21 @@ using WriteVTK
 function main(params_in)
 
     # Process params
-    params_default = default_params_poisson()
+    params_default = default_params()
     params = add_default_params(params_in,params_default)
+    results = Dict{Symbol,Any}()
 
     # Setup main data structures
     state = setup(params)
+    add_basic_info(results,params,state)
 
     # Assemble system and solve it
     A,b = assemble_system(state)
-    add_neumann_bcs!(b,state)
-    uh = solve_system(A,b,state)
+    x = solve_system(A,b,params)
 
     # Post process
-    results = Dict{Symbol,Any}()
-    add_basic_info!(results,state)
-    integrate_error_norms!(results,uh,state)
+    uh = setup_uh(x,state)
+    integrate_error_norms(results,uh,state)
     export_results(uh,params,state)
 
     results
@@ -45,7 +45,7 @@ function add_default_params(params_in,params_default)
     Dict(vcat(a,b))
 end
 
-function default_params_poisson()
+function default_params()
     outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
     params[:mesh] = gk.cartesian_mesh((0,1,0,1),(10,10))
@@ -56,7 +56,7 @@ function default_params_poisson()
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
     params[:solver] = lu_solver()
-    params[:example_path] = joinpath(outdir,"poisson")
+    params[:example_path] = joinpath(outdir,"example001")
     params
 end
 
@@ -154,7 +154,20 @@ function setup(params)
     state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
 end
 
-function assemble_system(state)
+function add_basic_info(results,params,state)
+    node_to_x = state.cell_isomap.node_to_coords
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    nfree = length(first(free_and_dirichlet_nodes))
+    nnodes = length(node_to_x)
+    ncells = length(cell_to_rid)
+    results[:nnodes] = nnodes
+    results[:nfree] = nfree
+    results[:ncells] = ncells
+    results
+end
+
+function assemble_system_loop(state)
 
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -285,10 +298,8 @@ function assemble_system(state)
             end
         end
     end
-
-    A = sparse(I_coo,J_coo,V_coo,nfree,nfree)
-
-    A,b
+    add_neumann_bcs!(b,state)
+    I_coo,J_coo,V_coo,b
 end
 
 function add_neumann_bcs!(b,state)
@@ -353,15 +364,27 @@ function add_neumann_bcs!(b,state)
     nothing
 end
 
-function solve_system(A,b,state)
-    solver = state.solver
-    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
-    u_dirichlet = state.dirichlet_bcs.u_dirichlet
-    node_to_x = state.cell_isomap.node_to_coords
-    u_free = similar(b,axes(A,2))
-    setup = solver.setup(u_free,A,b)
-    solver.solve!(u_free,setup,b)
+function assemble_system(state)
+    I,J,V,b = assemble_system_loop(state)
+    nfree = length(b)
+    A = sparse(I,J,V,nfree,nfree)
+    A,b
+end
+
+function solve_system(A,b,params)
+    solver = params[:solver]
+    x = similar(b,axes(A,2))
+    setup = solver.setup(x,A,b)
+    solver.solve!(x,setup,b)
     solver.finalize!(setup)
+    x
+end
+
+function setup_uh(x,state)
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    u_free = x
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
     nnodes = length(node_to_x)
     uh = zeros(nnodes)
     uh[first(free_and_dirichlet_nodes)] = u_free
@@ -369,20 +392,7 @@ function solve_system(A,b,state)
     uh
 end
 
-function add_basic_info!(results,state)
-    node_to_x = state.cell_isomap.node_to_coords
-    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
-    cell_to_rid = state.cell_isomap.face_to_rid
-    nfree = length(first(free_and_dirichlet_nodes))
-    nnodes = length(node_to_x)
-    ncells = length(cell_to_rid)
-    results[:nnodes] = nnodes
-    results[:nfree] = nfree
-    results[:ncells] = ncells
-    results
-end
-
-function integrate_error_norms!(results,uh,state)
+function integrate_error_norms_loop(uh,state)
 
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -447,9 +457,13 @@ function integrate_error_norms!(results,uh,state)
             el2 += ex*ex*dV
         end
     end
+    eh1, el2
+end
 
-    eh1 = sqrt(eh1)
-    el2 = sqrt(el2)
+function integrate_error_norms(results,uh,state)
+    eh1², el2² = integrate_error_norms_loop(uh,state)
+    eh1 = sqrt(eh1²)
+    el2 = sqrt(el2²)
     results[:eh1] = eh1
     results[:el2] = el2
     results

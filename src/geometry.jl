@@ -3272,6 +3272,18 @@ function index_partition(a::PMesh)
     map(setup,a.node_partition,a.face_partition...)
 end
 
+function num_nodes(mesh::PMesh)
+    length(PRange(mesh.node_partition))
+end
+
+function num_faces(mesh::PMesh,d)
+    length(PRange(mesh.face_partition[d+1]))
+end
+
+function num_dims(mesh::PMesh)
+    length(mesh.face_partition) - 1
+end
+
 struct PMeshLocalIds{A,B} <: GalerkinToolkitDataType
     node_indices::A
     face_indices::B
