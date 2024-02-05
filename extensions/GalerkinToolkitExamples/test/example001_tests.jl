@@ -5,8 +5,15 @@ using GalerkinToolkitExamples: Example001
 using Test
 
 tol = 1.0e-10
+
 params = Dict{Symbol,Any}()
-params[:mesh] = gk.cartesian_mesh((0,3,0,2),(10,5),complexify=false)
+params[:mesh] = gk.cartesian_mesh((0,1,0,1),(3,3))
+results = Example001.main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
+
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2),(5,10),complexify=false)
 params[:dirichlet_tags] = ["1-face-1","1-face-3","1-face-4"]
 params[:neumann_tags] = ["1-face-2"]
 params[:u] = (x) -> sum(x)
