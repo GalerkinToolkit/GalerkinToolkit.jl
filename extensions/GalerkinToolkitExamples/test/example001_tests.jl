@@ -42,5 +42,19 @@ results = Example001.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 
+domain = (0,1,0,1)
+cells = (10,10)
+fine_mesh = gk.cartesian_mesh(domain,cells)
+domain = (0,30,0,10)
+cells = (2,2)
+coarse_mesh = gk.cartesian_mesh(domain,cells)
+mesh, = gk.two_level_mesh(coarse_mesh,fine_mesh)
+
+params = Dict{Symbol,Any}()
+params[:mesh] = mesh
+results = Example001.main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
+
 
 end # module

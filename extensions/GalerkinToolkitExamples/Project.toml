@@ -11,7 +11,6 @@ PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
-prrte_jll = "eb928a42-fffd-568d-ab9c-3f5d54fc65b9"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
