@@ -91,6 +91,16 @@ end
 @show gk.unit_n_cube(2) |> gk.boundary
 @show gk.unit_n_cube(3) |> gk.boundary
 
+gk.unit_n_cube(0) |> gk.opposite_faces
+gk.unit_n_cube(1) |> gk.opposite_faces
+gk.unit_n_cube(2) |> gk.opposite_faces
+gk.unit_n_cube(3) |> gk.opposite_faces
+
+gk.opposite_faces(cube3,0)
+gk.opposite_faces(cube3,1)
+gk.opposite_faces(cube3,2)
+gk.opposite_faces(cube3,3)
+
 order = 2
 gk.lagrange_mesh_face(spx1,order) |> gk.boundary |> gk.topology
 

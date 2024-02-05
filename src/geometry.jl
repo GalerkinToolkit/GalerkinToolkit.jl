@@ -906,11 +906,18 @@ function vtk_mesh_cell(ref_face)
     nodes -> WriteVTK.MeshCell(cell_type,(nodes[lib_to_user])[vtk_to_lib])
 end
 
+opposite_faces(geom,d) = opposite_faces(geom)[d+1]
+
 # TODO use the same convention than in Gridap
 # allow the user to customize the boundary object ids
 function boundary(geom::ExtrusionPolytope{0})
     nothing
 end
+
+function opposite_faces(geom::ExtrusionPolytope{0})
+    [[1]]
+end
+
 function boundary(geom::ExtrusionPolytope{1})
     Tv = real_type(geom)
     Ti = int_type(geom)
@@ -936,6 +943,11 @@ function boundary(geom::ExtrusionPolytope{1})
             outwards_normals
            )
 end
+
+function opposite_faces(geom::ExtrusionPolytope{1})
+    [[2,1],[1]]
+end
+
 function boundary(geom::ExtrusionPolytope{2})
     Tv = real_type(geom)
     Ti = int_type(geom)
@@ -969,6 +981,12 @@ function boundary(geom::ExtrusionPolytope{2})
             outwards_normals
            )
 end
+
+function opposite_faces(geom::ExtrusionPolytope{2})
+    @assert is_n_cube(geom)
+    [[4,3,2,1],[2,1,4,3],[1]]
+end
+
 function boundary(geom::ExtrusionPolytope{3})
     Tv = real_type(geom)
     Ti = int_type(geom)
@@ -1012,6 +1030,11 @@ function boundary(geom::ExtrusionPolytope{3})
             reference_faces;
             outwards_normals
            )
+end
+
+function opposite_faces(geom::ExtrusionPolytope{3})
+    @assert is_n_cube(geom)
+    [[8,7,6,5,4,3,2,1],[6,5,8,7,2,1,4,3,12,11,10,9],[2,1,4,3,6,5],[1]]
 end
 
 function boundary(refface::AbstractMeshFace)
