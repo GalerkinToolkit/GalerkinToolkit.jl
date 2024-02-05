@@ -59,7 +59,7 @@ jobs:
       - run: |
           julia --project=extensions/GalerkinToolkitExamples -e '
             using Pkg
-            Pkg.dev(".")
+            Pkg.develop(".")
             Pkg.test("GalerkinToolkitExamples")'
   docs:
     name: Documentation
