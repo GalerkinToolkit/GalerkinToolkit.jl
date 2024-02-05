@@ -1,33 +1,33 @@
-module PoissonBDDC
+module Example001
 
-import GalerkinToolkit as glk
+import GalerkinToolkit as gk
 import ForwardDiff
 using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
-using PartitionedArrays
-using Metis
-using IterativeSolvers
+
+# This one implements a vanilla sequential iso-parametric Poisson solver by only
+# using the mesh interface.
 
 function main(params_in)
-
-    # Dict to collect results
-    results = Dict{Symbol,Any}()
 
     # Process params
     params_default = default_params()
     params = add_default_params(params_in,params_default)
+    results = Dict{Symbol,Any}()
 
     # Setup main data structures
     state = setup(params)
+    add_basic_info(results,params,state)
 
     # Assemble system and solve it
     A,b = assemble_system(state)
-    uh = solve_system(results,A,b,state,params)
+    x = solve_system(A,b,params)
 
     # Post process
-    integrate_error_norms!(results,uh,state)
+    uh = setup_uh(x,state)
+    integrate_error_norms(results,uh,state)
     export_results(uh,params,state)
 
     results
@@ -46,41 +46,47 @@ function add_default_params(params_in,params_default)
 end
 
 function default_params()
-    mesh = glk.cartesian_mesh((0,1,0,1),(10,10),complexify=false)
-    np = 4
-    ranks = DebugArray(LinearIndices((np,)))
-    pmesh = glk.partition_mesh(Metis.partition,ranks,mesh,via=:cells)
     outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
-    params[:pmesh] = glk.cartesian_mesh((0,1,0,1),(10,10))
+    params[:mesh] = gk.cartesian_mesh((0,1,0,1),(10,10))
     params[:u] = (x) -> sum(x)
     params[:f] = (x) -> 0.0
     params[:g] = (x) -> 0.0
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:example_path] = joinpath(outdir,"poisson_bddc")
-    params[:bddc_type] = glk.bddc_cef()
+    params[:solver] = lu_solver()
+    params[:example_path] = joinpath(outdir,"example001")
     params
 end
 
-function setup_dirichlet_bcs(mesh,params)
+function lu_solver()
+    setup(x,A,b) = lu(A)
+    setup! = lu!
+    solve! = ldiv!
+    finalize!(S) = nothing
+    (;setup,setup!,solve!,finalize!)
+end
+
+function setup_dirichlet_bcs(params)
+    mesh = params[:mesh]
     u = params[:u]
     dirichlet_tags = params[:dirichlet_tags]
-    node_to_tag = zeros(glk.num_nodes(mesh))
+    node_to_tag = zeros(gk.num_nodes(mesh))
     tag_to_name = dirichlet_tags
-    glk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-    free_and_dirichlet_nodes = glk.partition_from_mask(i->i==0,node_to_tag)
-    node_to_x = glk.node_coordinates(mesh)
+    gk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
+    free_and_dirichlet_nodes = gk.partition_from_mask(i->i==0,node_to_tag)
+    node_to_x = gk.node_coordinates(mesh)
     dirichlet_nodes = last(free_and_dirichlet_nodes)
     x_dirichlet = view(node_to_x,dirichlet_nodes)
     u_dirichlet = u.(x_dirichlet)
     dirichlet_bcs = (;free_and_dirichlet_nodes,u_dirichlet,node_to_tag)
 end
 
-function setup_integration(mesh,params,objects)
+function setup_integration(params,objects)
+    mesh = params[:mesh]
     degree = params[:integration_degree]
-    D = glk.num_dims(mesh)
+    D = gk.num_dims(mesh)
     if objects === :cells
         d = D
     elseif objects === :faces
@@ -89,40 +95,41 @@ function setup_integration(mesh,params,objects)
         error("")
     end
     # Integration
-    ref_cells = glk.reference_faces(mesh,d)
-    face_to_rid = glk.face_reference_id(mesh,d)
+    ref_cells = gk.reference_faces(mesh,d)
+    face_to_rid = gk.face_reference_id(mesh,d)
     integration_rules = map(ref_cells) do ref_cell
-        glk.quadrature(glk.geometry(ref_cell),degree)
+        gk.default_quadrature(gk.geometry(ref_cell),degree)
     end
-    rid_to_weights = map(glk.weights,integration_rules)
-    rid_to_coords = map(glk.coordinates,integration_rules)
+    rid_to_weights = map(gk.weights,integration_rules)
+    rid_to_coords = map(gk.coordinates,integration_rules)
     integration = (;rid_to_weights,rid_to_coords,face_to_rid,d)
 end
 
-function setup_isomap(mesh,params,integration)
+function setup_isomap(params,integration)
     rid_to_coords = integration.rid_to_coords
     face_to_rid = integration.face_to_rid
     d = integration.d
-    ref_cells = glk.reference_faces(mesh,d)
+    mesh = params[:mesh]
+    ref_cells = gk.reference_faces(mesh,d)
     shape_funs = map(rid_to_coords,ref_cells) do q,ref_cell
-        shape_functions = glk.shape_functions(ref_cell)
-        shape_vals = glk.tabulation_matrix(shape_functions)(glk.value,q)
-        shape_grads = glk.tabulation_matrix(shape_functions)(ForwardDiff.gradient,q)
+        shape_vals = gk.tabulator(ref_cell)(gk.value,q)
+        shape_grads = gk.tabulator(ref_cell)(ForwardDiff.gradient,q)
         shape_vals, shape_grads
     end
     rid_to_shape_vals = map(first,shape_funs)
     rid_to_shape_grads = map(last,shape_funs)
-    face_to_nodes = glk.face_nodes(mesh,d)
-    node_to_coords = glk.node_coordinates(mesh)
+    face_to_nodes = gk.face_nodes(mesh,d)
+    node_to_coords = gk.node_coordinates(mesh)
     isomap = (;face_to_nodes,node_to_coords,face_to_rid,rid_to_shape_vals,rid_to_shape_grads,d)
 end
 
-function setup_neumann_bcs(mesh,params)
+function setup_neumann_bcs(params)
+    mesh = params[:mesh]
     neumann_tags = params[:neumann_tags]
     neum_face_to_face = Int[]
     if length(neumann_tags) != 0
-        D = glk.num_dims(mesh)
-        tag_to_groups = glk.physical_groups(mesh,D-1)
+        D = gk.num_dims(mesh)
+        tag_to_groups = gk.physical_faces(mesh,D-1)
         neum_face_to_face = reduce(union,map(tag->tag_to_groups[tag],neumann_tags))
     end
     (;neum_face_to_face)
@@ -136,93 +143,31 @@ function setup_user_funs(params)
 end
 
 function setup(params)
-    pmesh = params[:pmesh]
-    bddc_type = params[:bddc_type]
-    ranks = linear_indices(pmesh)
-    state1 = map(ranks,pmesh) do rank,mesh
-        dirichlet_bcs = setup_dirichlet_bcs(mesh,params)
-        neumann_bcs = setup_neumann_bcs(mesh,params)
-        cell_integration = setup_integration(mesh,params,:cells)
-        face_integration = setup_integration(mesh,params,:faces)
-        cell_isomap = setup_isomap(mesh,params,cell_integration)
-        face_isomap = setup_isomap(mesh,params,face_integration)
-        user_funs = setup_user_funs(params)
-        lnodes = glk.local_nodes(mesh)
-        (;
-         dirichlet_bcs,
-         neumann_bcs,
-         cell_integration,
-         cell_isomap,
-         face_integration,
-         face_isomap,
-         user_funs,
-         rank,
-         bddc_type,
-         lnodes)
-    end
-    state2 = setup_dof_partition(state1)
-    state2
+    dirichlet_bcs = setup_dirichlet_bcs(params)
+    neumann_bcs = setup_neumann_bcs(params)
+    cell_integration = setup_integration(params,:cells)
+    face_integration = setup_integration(params,:faces)
+    cell_isomap = setup_isomap(params,cell_integration)
+    face_isomap = setup_isomap(params,face_integration)
+    user_funs = setup_user_funs(params)
+    solver = params[:solver]
+    state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
 end
 
-function setup_dof_partition(state1)
-    nodofs = map(state1) do state1
-        rank = state1.rank
-        dirichlet_bcs = state1.dirichlet_bcs
-        free_and_dirichlet_lnodes = dirichlet_bcs.free_and_dirichlet_nodes
-        lnodes = state1.lnodes
-        lnode_to_owner = local_to_owner(lnodes)
-        ldof_to_lnode = first(free_and_dirichlet_lnodes)
-        count(lnode->lnode_to_owner[lnode]==rank,ldof_to_lnode)
-    end
-    ndofs = sum(nodofs)
-    dof_partition = variable_partition(nodofs,ndofs)
-    node_partition = map(i->i.lnodes,state1)
-    v = PVector{Vector{Int}}(undef,node_partition)
-    fill!(v,0)
-    map(local_values(v),dof_partition,state1) do lnode_to_dof, odofs, state1
-        rank = state1.rank
-        lnodes = state1.lnodes
-        dirichlet_bcs = state1.dirichlet_bcs
-        ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
-        odof_to_dof = own_to_global(odofs)
-        lnode_to_owner = local_to_owner(lnodes)
-        nldofs = length(ldof_to_lnode)
-        odof = 0
-        for ldof in 1:nldofs
-            lnode = ldof_to_lnode[ldof]
-            if lnode_to_owner[lnode] == rank
-                odof += 1
-                dof = odof_to_dof[odof]
-                lnode_to_dof[lnode] = dof
-            end
-        end
-    end
-    consistent!(v) |> wait
-    state2 = map(local_values(v),state1) do lnode_to_dof,state1
-        rank = state1.rank
-        lnodes = state1.lnodes
-        dirichlet_bcs = state1.dirichlet_bcs
-        lnode_to_owner = local_to_owner(lnodes)
-        ldof_to_lnode = first(dirichlet_bcs.free_and_dirichlet_nodes)
-        ldof_to_dof = lnode_to_dof[ldof_to_lnode]
-        ldof_to_owner = lnode_to_owner[ldof_to_lnode]
-        ldofs = LocalIndices(ndofs,rank,ldof_to_dof,ldof_to_owner)
-        (;ldofs,state1...)
-    end
-    state2
+function add_basic_info(results,params,state)
+    node_to_x = state.cell_isomap.node_to_coords
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    nfree = length(first(free_and_dirichlet_nodes))
+    nnodes = length(node_to_x)
+    ncells = length(cell_to_rid)
+    results[:nnodes] = nnodes
+    results[:nfree] = nfree
+    results[:ncells] = ncells
+    results
 end
 
-function assemble_system(state)
-    Alocal,blocal = map(assemble_system_locally,state) |> tuple_of_arrays
-    map(add_neumann_bcs_locally!,blocal,state)
-    dof_partition = map(i->i.ldofs,state)
-    b = PVector(blocal,dof_partition)
-    assemble!(b) |> wait # do not forget this
-    A = glk.DDOperator(Alocal,axes(b,1))
-    A,b
-end
-
-function assemble_system_locally(state)
+function assemble_system_loop(state)
 
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -238,7 +183,7 @@ function assemble_system_locally(state)
     # Count coo entries
     n_coo = 0
     ncells = length(cell_to_nodes)
-    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
     nfree = length(first(free_and_dirichlet_nodes))
     for cell in 1:ncells
         nodes = cell_to_nodes[cell]
@@ -256,8 +201,8 @@ function assemble_system_locally(state)
     end
 
     # Allocate coo values
-    I_coo = zeros(Int,n_coo)
-    J_coo = zeros(Int,n_coo)
+    I_coo = zeros(Int32,n_coo)
+    J_coo = zeros(Int32,n_coo)
     V_coo = zeros(Float64,n_coo)
     b = zeros(nfree)
 
@@ -353,13 +298,11 @@ function assemble_system_locally(state)
             end
         end
     end
-
-    A = sparse(I_coo,J_coo,V_coo,nfree,nfree)
-
-    A,b
+    add_neumann_bcs!(b,state)
+    I_coo,J_coo,V_coo,b
 end
 
-function add_neumann_bcs_locally!(b,state)
+function add_neumann_bcs!(b,state)
 
     neum_face_to_face = state.neumann_bcs.neum_face_to_face
     if length(neum_face_to_face) == 0
@@ -378,7 +321,7 @@ function add_neumann_bcs_locally!(b,state)
     fes = map(i->zeros(size(i,2)),s_f)
     Tx = SVector{d,Float64}
     Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
-    node_to_free_node = glk.permutation(free_and_dirichlet_nodes)
+    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
     nfree = length(first(free_and_dirichlet_nodes))
 
     for face in neum_face_to_face
@@ -421,55 +364,35 @@ function add_neumann_bcs_locally!(b,state)
     nothing
 end
 
-function solve_system(results,A,b,state,params)
-    M = glk.bddc_preconditioner(A;bddc_type=params[:bddc_type])
-    x = similar(b)
-    fill!(x,zero(eltype(b)))
-    IterativeSolvers.cg!(copy(x),A,b,Pl=M,verbose=i_am_main(state))
-    ranks = linear_indices(state)
-    t = PTimer(ranks)
-    tic!(t,barrier=true)
-    IterativeSolvers.cg!(x,A,b,Pl=M)
-    toc!(t,"cg!")
-    display(t)
-    consistent!(x) |> wait
-    node_partition = map(i->i.lnodes,state)
-    uh = pzeros(node_partition)
-    map(state,local_values(uh),local_values(x)) do state, uh, u_free
-        free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
-        u_dirichlet = state.dirichlet_bcs.u_dirichlet
-        uh[first(free_and_dirichlet_nodes)] = u_free
-        uh[last(free_and_dirichlet_nodes)] = u_dirichlet
-    end
+function assemble_system(state)
+    I,J,V,b = assemble_system_loop(state)
+    nfree = length(b)
+    A = sparse(I,J,V,nfree,nfree)
+    A,b
+end
+
+function solve_system(A,b,params)
+    solver = params[:solver]
+    x = similar(b,axes(A,2))
+    setup = solver.setup(x,A,b)
+    solver.solve!(x,setup,b)
+    solver.finalize!(setup)
+    x
+end
+
+function setup_uh(x,state)
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    u_free = x
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    nnodes = length(node_to_x)
+    uh = zeros(nnodes)
+    uh[first(free_and_dirichlet_nodes)] = u_free
+    uh[last(free_and_dirichlet_nodes)] = u_dirichlet
     uh
 end
 
-function export_results(uh,params,state)
-    example_path = params[:example_path]
-    pmesh = params[:pmesh]
-    ranks = linear_indices(pmesh)
-    np = length(ranks)
-    map(pmesh,ranks,local_values(uh)) do mesh,rank,uh
-        pvtk_grid(example_path,glk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
-            glk.vtk_physical_groups!(vtk,mesh)
-            vtk["piece",VTKCellData()] = fill(rank,sum(glk.num_faces(mesh)))
-            vtk["owner",VTKPointData()] = local_to_owner(glk.local_nodes(mesh))
-            vtk["uh",VTKPointData()] = uh
-            vtk["interface",VTKPointData()] = map(colors->Int(length(colors)!=1),glk.local_node_colors(mesh))
-        end
-    end
-end
-
-function integrate_error_norms!(results,uh,state)
-    errs = map(integrate_error_norms_local,local_values(uh),state)
-    eh1 = sum(map(i->i.eh1,errs)) |> sqrt
-    el2 = sum(map(i->i.el2,errs)) |> sqrt
-    results[:eh1] = eh1
-    results[:el2] = el2
-    results
-end
-
-function integrate_error_norms_local(uh,state)
+function integrate_error_norms_loop(uh,state)
 
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -534,8 +457,28 @@ function integrate_error_norms_local(uh,state)
             el2 += ex*ex*dV
         end
     end
+    eh1, el2
+end
 
-    (;eh1,el2)
+function integrate_error_norms(results,uh,state)
+    eh1², el2² = integrate_error_norms_loop(uh,state)
+    eh1 = sqrt(eh1²)
+    el2 = sqrt(el2²)
+    results[:eh1] = eh1
+    results[:el2] = el2
+    results
+end
+
+function export_results(uh,params,state)
+    mesh = params[:mesh]
+    example_path = params[:example_path]
+    node_to_tag = state.dirichlet_bcs.node_to_tag
+    vtk_grid(example_path,gk.vtk_args(mesh)...) do vtk
+        gk.vtk_physical_faces!(vtk,mesh)
+        vtk["tag"] = node_to_tag
+        vtk["uh"] = uh
+        vtk["dim"] = gk.face_dim(mesh)
+    end
 end
 
 end # module

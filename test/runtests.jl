@@ -2,8 +2,10 @@ module GalerkinToolkitTests
 
 using Test
 
-@time @testset "unittests.jl" begin include("unittests.jl") end
-
-@time @testset "poisson_test.jl" begin include("poisson_test.jl") end
+@testset "GalerkinToolkit" begin
+    @testset "Geometry" begin include("geometry_tests.jl") end
+    @testset "Integration" begin include("integration_tests.jl") end
+    @testset "Interpolation" begin include("interpolation_tests.jl") end
+end
 
 end # module
