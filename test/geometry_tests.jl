@@ -265,4 +265,15 @@ vtk_grid(joinpath(outdir,"two-level-mesh"),gk.vtk_args(final_mesh)...) do vtk
 end
 
 
+domain = (0,30,0,10)
+cells = (4,4)
+parts_per_dir = (2,2)
+np = prod(parts_per_dir)
+parts = DebugArray(LinearIndices((np,)))
+coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir;parts)
+
+final_mesh, glue = gk.two_level_mesh(coarse_mesh,fine_mesh)
+
+
+
 end # module

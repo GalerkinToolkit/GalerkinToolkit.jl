@@ -3679,3 +3679,17 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     final_mesh, glue
 end
 
+function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
+    # TODO for the moment we assume a cell-based partition without ghosts
+    D = num_dims(fine_mesh)
+    function setup_local_meshes(my_coarse_mesh)
+        two_level_mesh(my_coarse_mesh,fine_mesh;kwargs...)
+    end
+    mesh_partition, glue = map(setup_local_meshes,partition(coarse_mesh)) |> tuple_of_arrays
+    node_partition = nothing
+    cell_partition = nothing
+    face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
+    PMesh(mesh_partition,node_partition,face_partition)
+    error("Not implemented yet")
+end
+
