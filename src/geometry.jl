@@ -3591,11 +3591,13 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         coarse_cell_fine_node_to_final_node[coarse_cell] = zeros(Int,n_fine_nodes)
     end
     n_coarse_nodes = num_nodes(coarse_mesh)
+    d_to_coarse_dface_to_final_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     for d in 0:D
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         coarse_dface_to_coarse_cells = face_incidence(topo,d,D)
         coarse_cell_to_coarse_dfaces = face_incidence(topo,D,d)
         n_coarse_dfaces = num_faces(coarse_mesh,d)
+        coarse_dface_to_final_nodes = Vector{Vector{Int}}(undef,n_coarse_dfaces)
         for coarse_dface in 1:n_coarse_dfaces
             offset = d_coarse_dface_to_offset[d+1][coarse_dface]
             coarse_cells = coarse_dface_to_coarse_cells[coarse_dface]
@@ -3605,8 +3607,10 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
                 fine_nodes = local_dface_to_fine_nodes[local_dface]
                 final_nodes =  offset .+ (1:length(fine_nodes)) # TODO, we need a permutation here defined by the boundary conditions
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
+                coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    
         end
+        d_to_coarse_dface_to_final_nodes[d+1] = coarse_dface_to_final_nodes
     end
 
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
@@ -3641,7 +3645,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
 
     # TODO we could avoid this call to complexify by using
     # the fine faces (just as we did with the fine nodes)
-    # TODO maybe we don't need to simplexify and only find the faces
+    # TODO maybe we don't need to complexify and only find the faces
     # needed for the physical groups
     final_mesh, = mesh_from_chain(chain) |> complexify
 
@@ -3675,7 +3679,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
     end
 
-    glue = (;coarse_cell_fine_node_to_final_node,d_to_local_dface_to_fine_nodes)
+    glue = (;d_to_coarse_dface_to_final_nodes,coarse_cell_fine_node_to_final_node,d_to_local_dface_to_fine_nodes)
     final_mesh, glue
 end
 
