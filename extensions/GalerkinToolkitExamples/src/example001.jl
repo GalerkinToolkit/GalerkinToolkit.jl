@@ -7,11 +7,14 @@ using LinearAlgebra
 using SparseArrays
 using WriteVTK
 using PartitionedArrays: JaggedArray
+using TimerOutputs
 
 # This one implements a vanilla sequential iso-parametric Poisson solver by only
 # using the mesh interface.
 
 function main(params_in)
+
+    timer = TimerOutput()
 
     # Process params
     params_default = default_params()
@@ -19,17 +22,19 @@ function main(params_in)
     results = Dict{Symbol,Any}()
 
     # Setup main data structures
-    state = setup(params)
+    @timeit timer "setup" state = setup(params,timer)
     add_basic_info(results,params,state)
 
     # Assemble system and solve it
-    A,b = assemble_system(state)
-    x = solve_system(A,b,params)
+    @timeit timer "assemble_system" A,b = assemble_system(state)
+    @timeit timer "solve_system" x = solve_system(A,b,params,state)
 
     # Post process
-    uh = setup_uh(x,state)
-    integrate_error_norms(results,uh,state)
-    export_results(uh,params,state)
+    @timeit timer "setup_uh" uh = setup_uh(x,state)
+    @timeit timer "integrate_error_norms" integrate_error_norms(results,uh,state)
+    @timeit timer "export_results" export_results(uh,params,state)
+
+    display(timer)
 
     results
 end
@@ -165,17 +170,17 @@ function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
     dofs
 end
 
-function setup(params)
-    dirichlet_bcs = setup_dirichlet_bcs(params)
-    neumann_bcs = setup_neumann_bcs(params)
-    cell_integration = setup_integration(params,:cells)
-    face_integration = setup_integration(params,:faces)
-    cell_isomap = setup_isomap(params,cell_integration)
-    face_isomap = setup_isomap(params,face_integration)
-    dofs = setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
-    user_funs = setup_user_funs(params)
+function setup(params,timer)
+    @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
+    @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
+    @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
+    @timeit timer "face_integration" face_integration = setup_integration(params,:faces)
+    @timeit timer "cell_isomap" cell_isomap = setup_isomap(params,cell_integration)
+    @timeit timer "face_isomap" face_isomap = setup_isomap(params,face_integration)
+    @timeit timer "dofs" dofs = setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
+    @timeit timer "user_funs" user_funs = setup_user_funs(params)
     solver = params[:solver]
-    state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
+    state = (;timer,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
 end
 
 function add_basic_info(results,params,state)
@@ -192,17 +197,19 @@ function add_basic_info(results,params,state)
 end
 
 function assemble_system(state)
-    args = assemble_sytem_coo(state)
+    timer = state.timer
+    @timeit timer "assemble_sytem" args = assemble_sytem_coo(state)
     I,J,V,b = args
     n_dofs = state.dofs.n_dofs
-    A = sparse(I,J,V,n_dofs,n_dofs)
+    @timeit timer "sparse" A = sparse(I,J,V,n_dofs,n_dofs)
     A,b
 end
 
 function assemble_sytem_coo(state)
-    args = assemble_sybmolic(state)
-    assemble_numeric_cells!(args...,state)
-    assemble_numeric_faces!(args...,state)
+    timer = state.timer
+    @timeit timer "assemble_sybmolic" args = assemble_sybmolic(state)
+    @timeit timer "assemble_numeric_cells!" assemble_numeric_cells!(args...,state)
+    @timeit timer "assemble_numeric_faces!" assemble_numeric_faces!(args...,state)
     args
 end
 
@@ -398,12 +405,13 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
     end
 end
 
-function solve_system(A,b,params)
+function solve_system(A,b,params,state)
+    timer = state.timer
     solver = params[:solver]
     x = similar(b,axes(A,2))
-    setup = solver.setup(x,A,b)
-    solver.solve!(x,setup,b)
-    solver.finalize!(setup)
+    @timeit timer "solver.setup" setup = solver.setup(x,A,b)
+    @timeit timer "solver.solve!" solver.solve!(x,setup,b)
+    @timeit timer "solver.finalize!" solver.finalize!(setup)
     x
 end
 
