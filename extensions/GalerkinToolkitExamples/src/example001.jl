@@ -9,6 +9,9 @@ using WriteVTK
 using PartitionedArrays: JaggedArray
 using TimerOutputs
 
+using Preconditioners
+using IterativeSolvers: cg!
+
 # This one implements a vanilla sequential iso-parametric Poisson solver by only
 # using the mesh interface.
 
@@ -63,6 +66,7 @@ function default_params()
     params[:integration_degree] = 2
     params[:solver] = lu_solver()
     params[:example_path] = joinpath(outdir,"example001")
+    params[:export_vtu] = true
     params
 end
 
@@ -72,6 +76,26 @@ function lu_solver()
     solve! = ldiv!
     finalize!(S) = nothing
     (;setup,setup!,solve!,finalize!)
+end
+
+function cg_amg_solver(;reltol=1.0e-6,verbose=false)
+    function setup(x,A,b)
+        Pl = AMGPreconditioner{SmoothedAggregation}(A)
+        cache = (;Pl,A)
+        cache
+    end
+    function solve!(x,setup,b)
+        (;Pl,A) = setup
+        fill!(x,0)
+        cg!(x, A, b;Pl,reltol,verbose)
+    end
+    function setup!(setup,A)
+        error("not implemented")
+    end
+    function finalize!(setup)
+        nothing
+    end
+    (;setup,solve!,setup!,finalize!)
 end
 
 function setup_dirichlet_bcs(params)
@@ -198,7 +222,7 @@ end
 
 function assemble_system(state)
     timer = state.timer
-    @timeit timer "assemble_sytem" args = assemble_sytem_coo(state)
+    @timeit timer "assemble_sytem_coo" args = assemble_sytem_coo(state)
     I,J,V,b = args
     n_dofs = state.dofs.n_dofs
     @timeit timer "sparse" A = sparse(I,J,V,n_dofs,n_dofs)
@@ -234,9 +258,9 @@ function assemble_sybmolic(state)
         end
     end
 
-    I_coo = zeros(Int,n_coo)
-    J_coo = zeros(Int,n_coo)
-    V_coo = zeros(Float64,n_coo)
+    I_coo = Vector{Int32}(undef,n_coo)
+    J_coo = Vector{Int32}(undef,n_coo)
+    V_coo = Vector{Float64}(undef,n_coo)
     b = zeros(Float64,state.dofs.n_dofs)
 
     n_coo = 0
@@ -247,12 +271,13 @@ function assemble_sybmolic(state)
             if !(dofs[i]>0)
                 continue
             end
+            dofs_i = dofs[i]
             for j in 1:ndofs
                 if !(dofs[j]>0)
                     continue
                 end
                 n_coo += 1
-                I_coo[n_coo] = dofs[i]
+                I_coo[n_coo] = dofs_i
                 J_coo[n_coo] = dofs[j]
             end
         end
@@ -281,8 +306,10 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
     ∇x = map(i->similar(i,size(i,2)),∇s)
     Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
     fes = map(i->zeros(size(i,2)),∇s)
+    ∇st = map(m->collect(permutedims(m)),∇s)
+    st = map(m->collect(permutedims(m)),s)
 
-    Tx = SVector{d,Float64}
+    Tx = eltype(node_to_x)
     TJ = typeof(zero(Tx)*zero(Tx)')
 
     i_coo = 0
@@ -293,9 +320,9 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
         Ae = Aes[rid]
         fe = fes[rid]
         nl = length(nodes)
-        ∇se = ∇s[rid]
+        ∇ste = ∇st[rid]
         ∇xe = ∇x[rid]
-        se = s[rid]
+        ste = st[rid]
         we = w[rid]
         nq = length(we)
         fill!(Ae,zero(eltype(Ae)))
@@ -306,8 +333,8 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
             xint = zero(Tx)
             for k in 1:nl
                 x = node_to_x[nodes[k]]
-                ∇sqx = ∇se[iq,k]
-                sqx = se[iq,k]
+                ∇sqx = ∇ste[k,iq]
+                sqx = ste[k,iq]
                 Jt += ∇sqx*x'
                 xint += sqx*x
             end
@@ -315,16 +342,17 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
             invJt = inv(Jt)
             dV = abs(detJt)*we[iq]
             for k in 1:nl
-                ∇xe[k] = invJt*∇se[iq,k]
+                ∇xe[k] = invJt*∇ste[k,iq]
             end
             for j in 1:nl
+                ∇xej = ∇xe[j]
                 for i in 1:nl
-                    Ae[i,j] += ∇xe[i]⋅∇xe[j]*dV
+                    Ae[i,j] += ∇xe[i]⋅∇xej*dV
                 end
             end
             fx = f(xint)
             for k in 1:nl
-                fe[k] +=  fx*se[iq,k]*dV
+                fe[k] +=  fx*ste[k,iq]*dV
             end
         end
         # Set the result in the output array
@@ -445,7 +473,7 @@ function integrate_error_norms_loop(uh,state)
     ncells = length(cell_to_rid)
     ues = map(i->zeros(size(i,2)),∇s)
     ∇x = map(i->similar(i,size(i,2)),∇s)
-    Tx = SVector{d,Float64}
+    Tx = eltype(node_to_x)
     TJ = typeof(zero(Tx)*zero(Tx)')
     for cell in 1:ncells
         rid = cell_to_rid[cell]
@@ -505,6 +533,9 @@ function integrate_error_norms(results,uh,state)
 end
 
 function export_results(uh,params,state)
+    if ! params[:export_vtu]
+        return nothing
+    end
     mesh = params[:mesh]
     example_path = params[:example_path]
     node_to_tag = state.dirichlet_bcs.node_to_tag
@@ -514,6 +545,7 @@ function export_results(uh,params,state)
         vtk["uh"] = uh
         vtk["dim"] = gk.face_dim(mesh)
     end
+    nothing
 end
 
 ### From here, it is old stuff to to be deleted
