@@ -6,12 +6,15 @@ using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
-using PartitionedArrays: JaggedArray, dense_vector
+using PartitionedArrays: JaggedArray
+using TimerOutputs
 
 # This one implements a vanilla sequential iso-parametric Poisson solver by only
 # using the mesh interface.
 
 function main(params_in)
+
+    timer = TimerOutput()
 
     # Process params
     params_default = default_params()
@@ -19,17 +22,19 @@ function main(params_in)
     results = Dict{Symbol,Any}()
 
     # Setup main data structures
-    state = setup(params)
+    @timeit timer "setup" state = setup(params,timer)
     add_basic_info(results,params,state)
 
     # Assemble system and solve it
-    A,b = assemble_system(state)
-    x = solve_system(A,b,params)
+    @timeit timer "assemble_system" A,b = assemble_system(state)
+    @timeit timer "solve_system" x = solve_system(A,b,params,state)
 
     # Post process
-    uh = setup_uh(x,state)
-    integrate_error_norms(results,uh,state)
-    export_results(uh,params,state)
+    @timeit timer "setup_uh" uh = setup_uh(x,state)
+    @timeit timer "integrate_error_norms" integrate_error_norms(results,uh,state)
+    @timeit timer "export_results" export_results(uh,params,state)
+
+    display(timer)
 
     results
 end
@@ -165,17 +170,17 @@ function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
     dofs
 end
 
-function setup(params)
-    dirichlet_bcs = setup_dirichlet_bcs(params)
-    neumann_bcs = setup_neumann_bcs(params)
-    cell_integration = setup_integration(params,:cells)
-    face_integration = setup_integration(params,:faces)
-    cell_isomap = setup_isomap(params,cell_integration)
-    face_isomap = setup_isomap(params,face_integration)
-    dofs = setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
-    user_funs = setup_user_funs(params)
+function setup(params,timer)
+    @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
+    @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
+    @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
+    @timeit timer "face_integration" face_integration = setup_integration(params,:faces)
+    @timeit timer "cell_isomap" cell_isomap = setup_isomap(params,cell_integration)
+    @timeit timer "face_isomap" face_isomap = setup_isomap(params,face_integration)
+    @timeit timer "dofs" dofs = setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
+    @timeit timer "user_funs" user_funs = setup_user_funs(params)
     solver = params[:solver]
-    state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
+    state = (;timer,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
 end
 
 function add_basic_info(results,params,state)
@@ -192,79 +197,73 @@ function add_basic_info(results,params,state)
 end
 
 function assemble_system(state)
-    args = assemble_sytem_coo(state)
-    I,J,V,II,VV = args
+    timer = state.timer
+    @timeit timer "assemble_sytem" args = assemble_sytem_coo(state)
+    I,J,V,b = args
     n_dofs = state.dofs.n_dofs
-    A = sparse(I,J,V,n_dofs,n_dofs)
-    b = dense_vector(II,VV,n_dofs)
+    @timeit timer "sparse" A = sparse(I,J,V,n_dofs,n_dofs)
     A,b
 end
 
 function assemble_sytem_coo(state)
-    args = assemble_sybmolic(state)
-    ii_coo = assemble_numeric_cells!(args...,state)
-    assemble_numeric_faces!(args...,state,ii_coo)
-    set_dirichlet_bcs!(args...,state)
-    filter_dirichlet!(args...)
+    timer = state.timer
+    @timeit timer "assemble_sybmolic" args = assemble_sybmolic(state)
+    @timeit timer "assemble_numeric_cells!" assemble_numeric_cells!(args...,state)
+    @timeit timer "assemble_numeric_faces!" assemble_numeric_faces!(args...,state)
     args
 end
 
 function assemble_sybmolic(state)
     cell_to_dofs = state.dofs.cell_to_dofs
-    face_to_dofs = state.dofs.face_to_dofs
-    neum_face_to_face = state.neumann_bcs.neum_face_to_face
 
     n_coo = 0
-    nn_coo = 0
     ncells = length(cell_to_dofs)
-    nfaces = length(face_to_dofs)
     for cell in 1:ncells
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
-        n_coo += ndofs*ndofs
-        nn_coo += ndofs
-    end
-    for face in neum_face_to_face
-        dofs = face_to_dofs[face]
-        ndofs = length(dofs)
-        nn_coo += ndofs
+        for i in 1:ndofs
+            if !(dofs[i]>0)
+                continue
+            end
+            for j in 1:ndofs
+                if !(dofs[j]>0)
+                    continue
+                end
+                n_coo += 1
+            end
+        end
     end
 
     I_coo = zeros(Int,n_coo)
     J_coo = zeros(Int,n_coo)
     V_coo = zeros(Float64,n_coo)
-    II_coo = zeros(Int,nn_coo)
-    VV_coo = zeros(Float64,nn_coo)
+    b = zeros(Float64,state.dofs.n_dofs)
 
     n_coo = 0
-    nn_coo = 0
     for cell in 1:ncells
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
         for i in 1:ndofs
-           nn_coo += 1
-           II_coo[nn_coo] = dofs[i]
+            if !(dofs[i]>0)
+                continue
+            end
             for j in 1:ndofs
+                if !(dofs[j]>0)
+                    continue
+                end
                 n_coo += 1
                 I_coo[n_coo] = dofs[i]
                 J_coo[n_coo] = dofs[j]
             end
         end
     end
-    for face in neum_face_to_face
-        dofs = face_to_dofs[face]
-        ndofs = length(dofs)
-        for i in 1:ndofs
-           nn_coo += 1
-           II_coo[nn_coo] = dofs[i]
-       end
-    end
 
-    I_coo,J_coo,V_coo,II_coo,VV_coo
+    I_coo,J_coo,V_coo,b
 end
 
-function assemble_numeric_cells!(I_coo,J_coo,V_coo,II_coo,VV_coo,state)
+function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
 
+    cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
     free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
@@ -275,6 +274,7 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,II_coo,VV_coo,state)
     f = state.user_funs.f
     w = state.cell_integration.rid_to_weights
     d = state.cell_integration.d
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
     ncells = length(cell_to_nodes)
 
     # Allocate auxiliary buffers
@@ -286,10 +286,10 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,II_coo,VV_coo,state)
     TJ = typeof(zero(Tx)*zero(Tx)')
 
     i_coo = 0
-    ii_coo = 0
     for cell in 1:ncells
         rid = cell_to_rid[cell]
         nodes = cell_to_nodes[cell]
+        dofs = cell_to_dofs[cell]
         Ae = Aes[rid]
         fe = fes[rid]
         nl = length(nodes)
@@ -329,21 +329,25 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,II_coo,VV_coo,state)
         end
         # Set the result in the output array
         for i in 1:nl
-            ii_coo += 1
-            VV_coo[ii_coo] = fe[i]
-        end
-        for j in 1:nl
-            for i in 1:nl
+            if !(dofs[i]>0)
+                continue
+            end
+            b[dofs[i]] += fe[i]
+            for j in 1:nl
+                if !(dofs[j]>0)
+                    uj = u_dirichlet[-dofs[j]]
+                    b[dofs[i]] -= Ae[i,j]*uj
+                    continue
+                end
                 i_coo += 1
                 V_coo[i_coo] = Ae[i,j]
             end
         end
     end
 
-    ii_coo
 end
 
-function assemble_numeric_faces!(I_coo,J_coo,V_coo,II_coo,VV_coo,state,ii_coo)
+function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
 
     neum_face_to_face = state.neumann_bcs.neum_face_to_face
     if length(neum_face_to_face) == 0
@@ -351,6 +355,7 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,II_coo,VV_coo,state,ii_coo)
     end
 
     face_to_rid = state.face_isomap.face_to_rid
+    face_to_dofs = state.dofs.face_to_dofs
     face_to_nodes = state.face_isomap.face_to_nodes
     ∇s_f = state.face_isomap.rid_to_shape_grads
     s_f = state.face_isomap.rid_to_shape_vals
@@ -366,6 +371,7 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,II_coo,VV_coo,state,ii_coo)
     for face in neum_face_to_face
         rid = face_to_rid[face]
         nodes = face_to_nodes[face]
+        dofs = face_to_dofs[face]
         ∇se = ∇s_f[rid]
         se = s_f[rid]
         we = w_f[rid]
@@ -391,71 +397,21 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,II_coo,VV_coo,state,ii_coo)
             end
         end
         for i in 1:nl
-            ii_coo += 1
-            VV_coo[ii_coo] = fe[i]
-        end
-    end
-end
-
-function set_dirichlet_bcs!(I_coo,J_coo,V_coo,II_coo,VV_coo,state)
-
-    cell_to_dofs = state.dofs.cell_to_dofs
-    ncells = length(cell_to_dofs)
-    u_dirichlet = state.dirichlet_bcs.u_dirichlet
-    i_coo = 0
-    ii_coo = 0
-    for cell in 1:ncells
-        dofs = cell_to_dofs[cell]
-        ndofs = length(dofs)
-        for i in 1:ndofs
             if !(dofs[i]>0)
                 continue
             end
-            for j in 1:ndofs
-                if dofs[j]>0
-                    continue
-                end
-                uj = u_dirichlet[-dofs[j]]
-                ij = (j-1)*ndofs + i
-                Aij = V_coo[ij+i_coo]
-                VV_coo[i+ii_coo] -= Aij*uj
-            end
-        end
-        i_coo += ndofs*ndofs
-        ii_coo += ndofs
-    end
-
-end
-
-function filter_dirichlet!(I_coo,J_coo,V_coo,II_coo,VV_coo)
-    # TODO this is only needed when the functions in charge of
-    # compressing the matrix/vector are not able to skip negative
-    # values
-    # NB. It will not work for empty problems
-    for p in 1:length(I_coo)
-        i = I_coo[p]
-        j = J_coo[p]
-        if i<=0 || j<=0
-            I_coo[p] = 1
-            J_coo[p] = 1
-            V_coo[p] = 0
-        end
-    end
-    for p in 1:length(II_coo)
-        i = II_coo[p]
-        if i<=0
-            II_coo[p] = 1
-            VV_coo[p] = 0
+            b[dofs[i]] += fe[i]
         end
     end
 end
 
-function solve_system(A,b,params)
+function solve_system(A,b,params,state)
+    timer = state.timer
     solver = params[:solver]
     x = similar(b,axes(A,2))
-    setup = solver.setup(x,A,b)
-    solver.solve!(x,setup,b)
-    solver.finalize!(setup)
+    @timeit timer "solver.setup" setup = solver.setup(x,A,b)
+    @timeit timer "solver.solve!" solver.solve!(x,setup,b)
+    @timeit timer "solver.finalize!" solver.finalize!(setup)
     x
 end
 

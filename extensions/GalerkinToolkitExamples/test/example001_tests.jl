@@ -63,5 +63,10 @@ results = Example001.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
 
+params = Dict{Symbol,Any}()
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(30,30,30))
+results = Example001.main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
 
 end # module

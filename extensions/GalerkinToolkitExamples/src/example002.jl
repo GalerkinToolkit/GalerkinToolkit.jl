@@ -8,8 +8,11 @@ using LinearAlgebra
 using SparseArrays
 using WriteVTK
 using PartitionedArrays
+using TimerOutputs
 
 function main(params_in)
+
+    timer = TimerOutput()
 
     # Dict to collect results
     results = Dict{Symbol,Any}()
@@ -19,7 +22,7 @@ function main(params_in)
     params = add_default_params(params_in,params_default)
 
     # Setup main data structures
-    state = setup(params)
+    state = setup(params,timer)
     add_basic_info(results,params,state)
 
     # Assemble system and solve it
@@ -61,12 +64,12 @@ function default_params()
     params
 end
 
-function setup(params)
+function setup(params,timer)
     mesh = params[:mesh]
     local_states = map(partition(mesh)) do mesh
         local_params = copy(params)
         local_params[:mesh] = mesh
-        Example001.setup(local_params)
+        Example001.setup(local_params,timer)
     end
 
     node_partition = gk.node_partition(mesh)
