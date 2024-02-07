@@ -18,9 +18,13 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [compat]
+ForwardDiff = "0.10"
+Gmsh = "0.3"
 IterativeSolvers = "0.9"
+MPI = "0.20"
 Metis = "1"
 WriteVTK = "1"
+StaticArrays = "1"
 julia = "1"
 
 [extras]
