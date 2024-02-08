@@ -7,4 +7,6 @@ using Test
     @testset "example002" begin include("example002_tests.jl") end
 end
 
+include(joinpath("mpi_array","runtests.jl"))
+
 end # module
