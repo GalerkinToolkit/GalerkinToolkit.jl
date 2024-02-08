@@ -10,6 +10,7 @@ using PartitionedArrays: JaggedArray, nzindex
 using TimerOutputs
 using NLsolve
 using Random
+using GalerkinToolkitExamples: Example001
 
 using Preconditioners
 using IterativeSolvers: cg!
@@ -19,15 +20,15 @@ using IterativeSolvers: cg!
 
 function main(params_in)
 
-    timer = TimerOutput()
 
     # Process params
     params_default = default_params()
     params = add_default_params(params_in,params_default)
     results = Dict{Symbol,Any}()
+    timer = params[:timer]
 
     # Setup main data structures
-    @timeit timer "setup" state = setup(params,timer)
+    @timeit timer "setup" state = setup(params)
     add_basic_info(results,params,state)
 
     @timeit timer "solve_problem" x = solve_problem(params,state)
@@ -37,7 +38,7 @@ function main(params_in)
     @timeit timer "integrate_error_norms" integrate_error_norms(results,uh,state)
     @timeit timer "export_results" export_results(uh,params,state)
 
-    display(timer)
+    print_timer(timer,allocations=false)
 
     results
 end
@@ -68,49 +69,22 @@ function default_params()
     params[:solver] = nlsolve_solver()
     params[:example_path] = joinpath(outdir,"example003")
     params[:export_vtu] = true
+    params[:timer] = TimerOutput()
     params
 end
 
-function lu_solver()
-    setup(x,A,b) = lu(A)
-    setup! = lu!
-    solve! = ldiv!
-    finalize!(S) = nothing
-    (;setup,setup!,solve!,finalize!)
-end
-
-function cg_amg_solver(;reltol=1.0e-6,verbose=false)
-    function setup(x,A,b)
-        Pl = AMGPreconditioner{SmoothedAggregation}(A)
-        cache = (;Pl,A)
-        cache
-    end
-    function solve!(x,setup,b)
-        (;Pl,A) = setup
-        fill!(x,0)
-        cg!(x, A, b;Pl,reltol,verbose)
-    end
-    function setup!(setup,A)
-        error("not implemented")
-    end
-    function finalize!(setup)
-        nothing
-    end
-    (;setup,solve!,setup!,finalize!)
-end
-
-function nlsolve_solver(;linear_solver=lu_solver(),options...)
+function nlsolve_solver(;linear_solver=Example001.lu_solver(),timer=TimerOutput(),options...)
     function setup(x0,nlp)
-        r0,J0,cache = nlp.linearize(x0)
+        @timeit timer "linearize" r0,J0,cache = nlp.linearize(x0)
         dx = similar(r0,axes(J0,2)) # TODO is there any way of reusing this in the nonlinear solve?
-        ls_setup = linear_solver.setup(dx,J0,r0)
+        @timeit timer "linear_solver_setup" ls_setup = linear_solver.setup(dx,J0,r0)
         function linsolve(x,A,b)
             # TODO we dont need to re-setup for the first
             # linear solve.
             # This can be avoided with a Ref{Bool} shared
             # between this function and j!
-            linear_solver.setup!(ls_setup,A)
-            linear_solver.solve!(x,ls_setup,b)
+            @timeit timer "linear_solver_setup!"  linear_solver.setup!(ls_setup,A)
+            @timeit timer "linear_solver_solve!" linear_solver.solve!(x,ls_setup,b)
             x
         end
         f!(r,x) = nlp.residual!(r,x,cache)
@@ -229,7 +203,8 @@ function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
     dofs
 end
 
-function setup(params,timer)
+function setup(params)
+    timer = params[:timer]
     @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
     @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
     @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
@@ -257,31 +232,31 @@ function add_basic_info(results,params,state)
 end
 
 function nonlinear_problem(state)
+    timer = state.timer
     function initial()
         n = state.dofs.n_dofs
         Random.seed!(1)
         rand(Float64,n)
     end
     function linearize(u_dofs)
-        r,J,V,K = assemble_sybmolic(state)
+        @timeit timer "assemble_sybmolic" r,J,V,K = assemble_sybmolic(state)
         cache = (V,K)
-        residual_cells!(r,u_dofs,state)
-        residual_faces!(r,u_dofs,state)
-        jacobian_cells!(V,u_dofs,state)
-        setcoofast!(J,V,K)
+        @timeit timer "residual_cells!" residual_cells!(r,u_dofs,state)
+        @timeit timer "residual_faces!" residual_faces!(r,u_dofs,state)
+        @timeit timer "jacobian_cells!" jacobian_cells!(V,u_dofs,state)
+        @timeit timer "sparse_matrix!" setcoofast!(J,V,K)
         r,J,cache
     end
     function residual!(r,u_dofs,cache)
         fill!(r,0)
-        residual_cells!(r,u_dofs,state)
-        residual_faces!(r,u_dofs,state)
+        @timeit timer "residual_cells!" residual_cells!(r,u_dofs,state)
+        @timeit timer "residual_faces!" residual_faces!(r,u_dofs,state)
         r
     end
     function jacobian!(J,u_dofs,cache)
         (V,K) = cache 
-        LinearAlgebra.fillstored!(J,0)
-        jacobian_cells!(V,u_dofs,state)
-        setcoofast!(J,V,K)
+        @timeit timer "jacobian_cells!" jacobian_cells!(V,u_dofs,state)
+        @timeit timer "sparse_matrix!" setcoofast!(J,V,K)
         J
     end
     (;initial,linearize,residual!,jacobian!)

@@ -78,19 +78,21 @@ function lu_solver()
     (;setup,setup!,solve!,finalize!)
 end
 
-function cg_amg_solver(;reltol=1.0e-6,verbose=false)
+function cg_amg_solver(;reltol=1.0e-6,verbose=false,timer=TimerOutput())
     function setup(x,A,b)
         Pl = AMGPreconditioner{SmoothedAggregation}(A)
-        cache = (;Pl,A)
+        cache = Ref((;Pl,A))
         cache
     end
     function solve!(x,setup,b)
-        (;Pl,A) = setup
+        (;Pl,A) = setup[]
         fill!(x,0)
         cg!(x, A, b;Pl,reltol,verbose)
     end
     function setup!(setup,A)
-        error("not implemented")
+        Pl = AMGPreconditioner{SmoothedAggregation}(A)
+        setup[] = (;Pl,A)
+        setup
     end
     function finalize!(setup)
         nothing
