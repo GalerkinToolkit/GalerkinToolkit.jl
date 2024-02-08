@@ -6,7 +6,7 @@ using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
-using PartitionedArrays: JaggedArray, nzindex
+using PartitionedArrays: JaggedArray, nzindex, val_parameter
 using TimerOutputs
 using NLsolve
 using Random
@@ -244,7 +244,7 @@ function nonlinear_problem(state)
         @timeit timer "residual_cells!" residual_cells!(r,u_dofs,state)
         @timeit timer "residual_faces!" residual_faces!(r,u_dofs,state)
         @timeit timer "jacobian_cells!" jacobian_cells!(V,u_dofs,state)
-        @timeit timer "sparse_matrix!" setcoofast!(J,V,K)
+        @timeit timer "sparse_matrix!" sparse_matrix!(J,V,K)
         r,J,cache
     end
     function residual!(r,u_dofs,cache)
@@ -256,7 +256,7 @@ function nonlinear_problem(state)
     function jacobian!(J,u_dofs,cache)
         (V,K) = cache 
         @timeit timer "jacobian_cells!" jacobian_cells!(V,u_dofs,state)
-        @timeit timer "sparse_matrix!" setcoofast!(J,V,K)
+        @timeit timer "sparse_matrix!" sparse_matrix!(J,V,K)
         J
     end
     (;initial,linearize,residual!,jacobian!)
@@ -309,23 +309,77 @@ function assemble_sybmolic(state)
         end
     end
 
-    J = sparse(I_coo,J_coo,V_coo,n_dofs,n_dofs)
-    K = precompute_nzindex(J,I_coo,J_coo)
+    J,K = sparse_matrix(I_coo,J_coo,V_coo,n_dofs,n_dofs;reuse=true,skip_out_of_bounds=true)
     r,J,V_coo,K
+end
+
+struct FilteredCooVector{F,A,B,C,T} <: AbstractVector{T}
+    f::F
+    I::A
+    J::B
+    V::C
+    function FilteredCooVector(f::F,I::A,J::B,V::C) where {F,A,B,C}
+        T = eltype(C)
+        new{F,A,B,C,T}(f,I,J,V)
+    end
+end
+Base.size(a::FilteredCooVector) = size(a.V)
+Base.IndexStyle(::Type{<:FilteredCooVector}) = IndexLinear()
+Base.@propagate_inbounds function Base.getindex(a::FilteredCooVector,k::Int)
+    i = a.I[k]
+    j = a.J[k]
+    v = a.V[k]
+    if i < 1 || j < 1
+        return a.f(v)
+    end
+    v
+end
+
+function sparse_matrix(I,J,V,m,n;kwargs...)
+    sparse_matrix(sparse,I,J,V,m,n;kwargs...)
+end
+function sparse_matrix(f,I,J,V,m,n;reuse=Val(false),skip_out_of_bounds=true)
+    if !skip_out_of_bounds
+        I2 = I
+        J2 = J
+        V2 = V
+    elseif m*n == 0
+        Ti = eltype(I)
+        T = eltype(V)
+        I2 = Ti[]
+        J2 = Ti[]
+        V2 = Tv[]
+    else
+        I2 = FilteredCooVector(one,I,J,I)
+        J2 = FilteredCooVector(one,I,J,J)
+        V2 = FilteredCooVector(zero,I,J,V)
+    end
+    A = f(I2,J2,V2,m,n)
+    if val_parameter(reuse)
+        K = precompute_nzindex(A,I,J)
+        return A,K
+    end
+    A
 end
 
 function precompute_nzindex(A,I,J)
     K = zeros(Int32,length(I))
     for (p,(i,j)) in enumerate(zip(I,J))
+        if i < 1 || j < 1
+            continue
+        end
         K[p] = nzindex(A,i,j)
     end
     K
 end
 
-function setcoofast!(A,V,K)
+function sparse_matrix!(A,V,K)
     LinearAlgebra.fillstored!(A,0)
     A_nz = nonzeros(A)
     for (k,v) in zip(K,V)
+        if k < 1
+            continue
+        end
         A_nz[k] += v
     end
     A
