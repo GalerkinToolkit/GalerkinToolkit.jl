@@ -6,11 +6,20 @@ using StaticArrays
 using LinearAlgebra
 using SparseArrays
 using WriteVTK
+using PartitionedArrays: JaggedArray, nzindex
+using TimerOutputs
+using NLsolve
+using Random
 
-# This one implements a vanilla sequential iso-parametric Poisson solver
-# with FE assembly on GPUs
+using Preconditioners
+using IterativeSolvers: cg!
+
+# This one implements a vanilla sequential iso-parametric p-Laplacian solver by only
+# using the mesh interface.
 
 function main(params_in)
+
+    timer = TimerOutput()
 
     # Process params
     params_default = default_params()
@@ -18,17 +27,17 @@ function main(params_in)
     results = Dict{Symbol,Any}()
 
     # Setup main data structures
-    state = setup(params)
+    @timeit timer "setup" state = setup(params,timer)
     add_basic_info(results,params,state)
 
-    # Assemble system and solve it
-    A,b = assemble_system(state)
-    x = solve_system(A,b,params)
+    @timeit timer "solve_problem" x = solve_problem(params,state)
 
     # Post process
-    uh = setup_uh(x,state)
-    integrate_error_norms(results,uh,state)
-    export_results(uh,params,state)
+    @timeit timer "setup_uh" uh = setup_uh(x,state)
+    @timeit timer "integrate_error_norms" integrate_error_norms(results,uh,state)
+    @timeit timer "export_results" export_results(uh,params,state)
+
+    display(timer)
 
     results
 end
@@ -55,8 +64,10 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:solver] = lu_solver()
+    params[:p] = 2
+    params[:solver] = nlsolve_solver()
     params[:example_path] = joinpath(outdir,"example003")
+    params[:export_vtu] = true
     params
 end
 
@@ -66,6 +77,60 @@ function lu_solver()
     solve! = ldiv!
     finalize!(S) = nothing
     (;setup,setup!,solve!,finalize!)
+end
+
+function cg_amg_solver(;reltol=1.0e-6,verbose=false)
+    function setup(x,A,b)
+        Pl = AMGPreconditioner{SmoothedAggregation}(A)
+        cache = (;Pl,A)
+        cache
+    end
+    function solve!(x,setup,b)
+        (;Pl,A) = setup
+        fill!(x,0)
+        cg!(x, A, b;Pl,reltol,verbose)
+    end
+    function setup!(setup,A)
+        error("not implemented")
+    end
+    function finalize!(setup)
+        nothing
+    end
+    (;setup,solve!,setup!,finalize!)
+end
+
+function nlsolve_solver(;linear_solver=lu_solver(),options...)
+    function setup(x0,nlp)
+        r0,J0,cache = nlp.linearize(x0)
+        dx = similar(r0,axes(J0,2)) # TODO is there any way of reusing this in the nonlinear solve?
+        ls_setup = linear_solver.setup(dx,J0,r0)
+        function linsolve(x,A,b)
+            # TODO we dont need to re-setup for the first
+            # linear solve.
+            # This can be avoided with a Ref{Bool} shared
+            # between this function and j!
+            linear_solver.setup!(ls_setup,A)
+            linear_solver.solve!(x,ls_setup,b)
+            x
+        end
+        f!(r,x) = nlp.residual!(r,x,cache)
+        j!(J,x) = nlp.jacobian!(J,x,cache)
+        df = OnceDifferentiable(f!,j!,x0,r0,J0)
+        (;df,linsolve,J0,cache,ls_setup,linear_solver)
+    end
+    function solve!(x,setup)
+        (;df,linsolve) = setup
+        result = nlsolve(df,x;linsolve,options...)
+        x .= result.zero
+        nothing
+    end
+    function setup!(setup,x0,nlp)
+        error("todo")
+    end
+    function finalize!(setup)
+        setup.linear_solver.finalize!(setup)
+    end
+    (;setup,solve!,setup!,finalize!)
 end
 
 function setup_dirichlet_bcs(params)
@@ -118,7 +183,7 @@ function setup_isomap(params,integration)
     end
     rid_to_shape_vals = map(first,shape_funs)
     rid_to_shape_grads = map(last,shape_funs)
-    face_to_nodes = gk.face_nodes(mesh,d)
+    face_to_nodes = JaggedArray(gk.face_nodes(mesh,d))
     node_to_coords = gk.node_coordinates(mesh)
     isomap = (;face_to_nodes,node_to_coords,face_to_rid,rid_to_shape_vals,rid_to_shape_grads,d)
 end
@@ -142,16 +207,40 @@ function setup_user_funs(params)
     user_funs = (;u,f,g)
 end
 
-function setup(params)
-    dirichlet_bcs = setup_dirichlet_bcs(params)
-    neumann_bcs = setup_neumann_bcs(params)
-    cell_integration = setup_integration(params,:cells)
-    face_integration = setup_integration(params,:faces)
-    cell_isomap = setup_isomap(params,cell_integration)
-    face_isomap = setup_isomap(params,face_integration)
-    user_funs = setup_user_funs(params)
+function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
+    free_and_dirichlet_nodes = dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
+    n_free = length(first(free_and_dirichlet_nodes))
+    n_dofs = n_free
+    cell_to_nodes = cell_isomap.face_to_nodes
+    face_to_nodes = face_isomap.face_to_nodes
+    function node_to_dof(node)
+        free_node = node_to_free_node[node]
+        if free_node <= n_free
+            return Int(free_node)
+        end
+        Int(-(free_node-n_free))
+    end
+    cell_to_dofs_data = node_to_dof.(cell_to_nodes.data)
+    face_to_dofs_data = node_to_dof.(face_to_nodes.data)
+    cell_to_dofs = JaggedArray(cell_to_dofs_data,cell_to_nodes.ptrs)
+    face_to_dofs = JaggedArray(face_to_dofs_data,face_to_nodes.ptrs)
+    dofs = (;cell_to_dofs,face_to_dofs,n_dofs)
+    dofs
+end
+
+function setup(params,timer)
+    @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
+    @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
+    @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
+    @timeit timer "face_integration" face_integration = setup_integration(params,:faces)
+    @timeit timer "cell_isomap" cell_isomap = setup_isomap(params,cell_integration)
+    @timeit timer "face_isomap" face_isomap = setup_isomap(params,face_integration)
+    @timeit timer "dofs" dofs = setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
+    @timeit timer "user_funs" user_funs = setup_user_funs(params)
     solver = params[:solver]
-    state = (;solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
+    p = params[:p]
+    state = (;p,timer,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
 end
 
 function add_basic_info(results,params,state)
@@ -167,147 +256,119 @@ function add_basic_info(results,params,state)
     results
 end
 
-function integrate_matrix(state)
-
-    # We assume a single cell type
-    @assert length(state.cell_isomap.rid_to_shape_grads) == 1
-
-    cell_to_nodes = state.cell_isomap.face_to_nodes
-    node_to_x = state.cell_isomap.node_to_coords
-    ∇se = state.cell_isomap.rid_to_shape_grads[1]
-    se = state.cell_isomap.rid_to_shape_vals[1]
-    we = state.cell_integration.rid_to_weights[1]
-    d = state.cell_integration.d
-    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
-    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
-    nfree = length(first(free_and_dirichlet_nodes))
-
-    cell
-
-    n_local_nodes = size(∇se,2)
-    n_int_points = size(∇se,1)
-    n_cells = length(cell_to_nodes)
-    n_coo = n_cells*n_local_nodes
-
-    Tx = SVector{d,Float64}
-    TJ = typeof(zero(Tx)*zero(Tx)')
-
-    # Assemble
-    # This one should be good enough on the CPU
-    Ie = zeros(Float64,n_local_nodes*n_cells)
-    Je = zeros(Float64,n_local_nodes*n_cells)
-    for cell in 1:n_cells
-        nodes = cell_to_nodes[cell]
-        for i in 1:n_local_nodes
-            for j in 1:n_local_nodes
-                p_ij = (cell-1)*n_local_nodes*n_local_nodes + (j-1)*n_local_nodes + i
-                Ie[p_ij] = 
-                Je[p_ij] = nodes[J]
-            end
-        end
+function nonlinear_problem(state)
+    function initial()
+        n = state.dofs.n_dofs
+        Random.seed!(1)
+        rand(Float64,n)
     end
-
-    # Convert data to a format more suitable for gpus
-    # Perhaps more date is needed, and with appropriate reordering
-    nodese = JaggedArray(cell_to_nodes).data
-    cell_to_is_dirichlet = fill(false,n_cells)
-    for cell in 1:n_cells
-        nodes = cell_to_nodes[cell]
-        if any(node-> node_to_free_node[node]>nfree,nodes)
-            cell_to_is_dirichlet[cell] = true
-        end
+    function linearize(u_dofs)
+        r,J,V,K = assemble_sybmolic(state)
+        cache = (V,K)
+        residual_cells!(r,u_dofs,state)
+        residual_faces!(r,u_dofs,state)
+        jacobian_cells!(V,u_dofs,state)
+        setcoofast!(J,V,K)
+        r,J,cache
     end
-
-    # TODO move to the GPU
-    # The code below runs on the CPU
-    # but it is implemented in a way close of what
-    # one will implement on the GPU
-    Ae = zeros(Float64,n_local_nodes*n_local_nodes*n_cells)
-    fe = zeros(Float64,n_local_nodes*n_cells)
-
-    # Auxiliary memory
-    # can we get rid of this?
-    ∇xe = zeros(Tx,n_local_nodes*n_cells)
-    for cell in 1:n_cells
-        for iq in 1:n_int_points
-            Jt = zero(TJ) 
-            xint = zero(Tx)
-            for k in 1:n_local_nodes
-                p_k = (cell-1)*n_local_nodes + k
-                node = nodese[p_k]
-                x = node_to_x[nodes[k]]
-                ∇sqx = ∇se[iq,k]
-                sqx = se[iq,k]
-                Jt += ∇sqx*x'
-                xint += sqx*x
-            end
-            detJt = det(Jt)
-            invJt = inv(Jt)
-            dV = abs(detJt)*we[iq]
-            for k in 1:n_local_nodes
-                p_k = (cell-1)*n_local_nodes + k
-                ∇xe[p_k] = invJt*∇se[iq,k]
-            end
-            # Matrix
-            for j in 1:n_local_nodes
-                p_j = (cell-1)*n_local_nodes + j
-                for i in 1:n_local_nodes
-                    p_ij = (cell-1)*n_local_nodes*n_local_nodes + (j-1)*n_local_nodes + i
-                    p_i = (cell-1)*n_local_nodes + i
-                    V_coo[p_ij] += ∇xe[p_i]⋅∇xe[p_j]*dV
-                end
-            end
-            # Vector
-            fx = f(xint)
-            for k in 1:n_local_nodes
-                p_k = (cell-1)*n_local_nodes + k
-                b_coo[p_k] +=  fx*se[iq,k]*dV
-            end
-        end
+    function residual!(r,u_dofs,cache)
+        fill!(r,0)
+        residual_cells!(r,u_dofs,state)
+        residual_faces!(r,u_dofs,state)
+        r
     end
-
-    # Add boundary conditions to fe
-    # We provably don't want to merge this and the previous one
-    # since this will lead to branching but it will be shorter
-    for cell in 1:n_cells
-        if !cell_to_is_dirichlet[cell]
-            continue
-        end
-        for i in 1:n_local_nodes
-            p_i = (cell-1)*n_local_nodes + i
-            ni = nodese[p_i]
-            gi = node_to_free_node[ni]
-            if gi > nfree # Not really needed
-                continue
-            end
-            for j in 1:n_local_nodes
-                p_j = (cell-1)*n_local_nodes + j
-                nj = nodese[p_j]
-                gj = node_to_free_node[nj]
-                if gj <= nfree
-                    continue
-                end
-                p_ij = (cell-1)*n_local_nodes*n_local_nodes + (j-1)*n_local_nodes + i
-                Aij = Ae[p_ij]
-                uj = u_dirichlet[gj-nfree]
-                be[p_i] -= Aij*uj
-            end
-        end
+    function jacobian!(J,u_dofs,cache)
+        (V,K) = cache 
+        LinearAlgebra.fillstored!(J,0)
+        jacobian_cells!(V,u_dofs,state)
+        setcoofast!(J,V,K)
+        J
     end
-
-
-
-
-
-   
-
-
-
-
+    (;initial,linearize,residual!,jacobian!)
 end
 
-function assemble_system_loop(state)
+function assemble_sybmolic(state)
+    cell_to_dofs = state.dofs.cell_to_dofs
+    n_dofs = state.dofs.n_dofs
 
+    n_coo = 0
+    ncells = length(cell_to_dofs)
+    for cell in 1:ncells
+        dofs = cell_to_dofs[cell]
+        ndofs = length(dofs)
+        for i in 1:ndofs
+            if !(dofs[i]>0)
+                continue
+            end
+            for j in 1:ndofs
+                if !(dofs[j]>0)
+                    continue
+                end
+                n_coo += 1
+            end
+        end
+    end
+
+    I_coo = Vector{Int32}(undef,n_coo)
+    J_coo = Vector{Int32}(undef,n_coo)
+    V_coo = Vector{Float64}(undef,n_coo)
+    r = zeros(Float64,state.dofs.n_dofs)
+
+    n_coo = 0
+    for cell in 1:ncells
+        dofs = cell_to_dofs[cell]
+        ndofs = length(dofs)
+        for i in 1:ndofs
+            if !(dofs[i]>0)
+                continue
+            end
+            dofs_i = dofs[i]
+            for j in 1:ndofs
+                if !(dofs[j]>0)
+                    continue
+                end
+                n_coo += 1
+                I_coo[n_coo] = dofs_i
+                J_coo[n_coo] = dofs[j]
+            end
+        end
+    end
+
+    J = sparse(I_coo,J_coo,V_coo,n_dofs,n_dofs)
+    K = precompute_nzindex(J,I_coo,J_coo)
+    r,J,V_coo,K
+end
+
+function precompute_nzindex(A,I,J)
+    K = zeros(Int32,length(I))
+    for (p,(i,j)) in enumerate(zip(I,J))
+        K[p] = nzindex(A,i,j)
+    end
+    K
+end
+
+function setcoofast!(A,V,K)
+    LinearAlgebra.fillstored!(A,0)
+    A_nz = nonzeros(A)
+    for (k,v) in zip(K,V)
+        A_nz[k] += v
+    end
+    A
+end
+
+@inline function p_laplace_residual(∇u,∇dv,dv,f,p)
+    ∇dv⋅((norm(∇u)^(p-2))*∇u) - f*dv
+end
+
+@inline function p_laplace_jacobian(∇u,∇du,∇dv,p)
+    pm2 = p-2
+    pm4 = p-4
+    ∇dv⋅((norm(∇u)^pm2)*∇du) + ∇dv⋅(pm2*(norm(∇u)^pm4)*(∇u⋅∇du)*∇u)
+end
+
+function residual_cells!(r,u_dofs,state)
+
+    cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
     free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
@@ -318,74 +379,46 @@ function assemble_system_loop(state)
     f = state.user_funs.f
     w = state.cell_integration.rid_to_weights
     d = state.cell_integration.d
-
-    # Count coo entries
-    n_coo = 0
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
     ncells = length(cell_to_nodes)
-    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
-    nfree = length(first(free_and_dirichlet_nodes))
-    for cell in 1:ncells
-        nodes = cell_to_nodes[cell]
-        for nj in nodes
-            if node_to_free_node[nj] > nfree
-                continue
-            end
-            for ni in nodes
-                if node_to_free_node[ni] > nfree
-                    continue
-                end
-                n_coo += 1
-            end
-        end
-    end
-
-    # Allocate coo values
-    I_coo = zeros(Int32,n_coo)
-    J_coo = zeros(Int32,n_coo)
-    V_coo = zeros(Float64,n_coo)
-    b = zeros(nfree)
+    p = state.p
 
     # Allocate auxiliary buffers
     ∇x = map(i->similar(i,size(i,2)),∇s)
     Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
     fes = map(i->zeros(size(i,2)),∇s)
     ues = map(i->zeros(size(i,2)),∇s)
+    ∇st = map(m->collect(permutedims(m)),∇s)
+    st = map(m->collect(permutedims(m)),s)
 
-    Tx = SVector{d,Float64}
+    Tx = eltype(node_to_x)
     TJ = typeof(zero(Tx)*zero(Tx)')
+    T = eltype(Tx)
 
-    # Fill coo values
     i_coo = 0
     for cell in 1:ncells
         rid = cell_to_rid[cell]
         nodes = cell_to_nodes[cell]
+        dofs = cell_to_dofs[cell]
         Ae = Aes[rid]
-        ue = ues[rid]
         fe = fes[rid]
+        ue = ues[rid]
         nl = length(nodes)
-        ∇se = ∇s[rid]
+        ∇ste = ∇st[rid]
         ∇xe = ∇x[rid]
-        se = s[rid]
+        ste = st[rid]
         we = w[rid]
         nq = length(we)
         fill!(Ae,zero(eltype(Ae)))
         fill!(fe,zero(eltype(Ae)))
-        fill!(ue,zero(eltype(Ae)))
-        for k in 1:nl
-            nk = nodes[k]
-            gk = node_to_free_node[nk]
-            if  gk <= nfree
-                continue
-            end
-            ue[k] = u_dirichlet[gk-nfree]
-        end
+        # Integrate
         for iq in 1:nq
             Jt = zero(TJ) 
             xint = zero(Tx)
             for k in 1:nl
                 x = node_to_x[nodes[k]]
-                ∇sqx = ∇se[iq,k]
-                sqx = se[iq,k]
+                ∇sqx = ∇ste[k,iq]
+                sqx = ste[k,iq]
                 Jt += ∇sqx*x'
                 xint += sqx*x
             end
@@ -393,66 +426,147 @@ function assemble_system_loop(state)
             invJt = inv(Jt)
             dV = abs(detJt)*we[iq]
             for k in 1:nl
-                ∇xe[k] = invJt*∇se[iq,k]
-            end
-            for j in 1:nl
-                for i in 1:nl
-                    Ae[i,j] += ∇xe[i]⋅∇xe[j]*dV
+                dof_k = dofs[k]
+                if dof_k < 1
+                    uk = u_dirichlet[-dof_k]
+                    ue[k] = uk
+                    continue
                 end
+                ue[k] = u_dofs[dof_k]
+            end
+            ∇u = zero(Tx)
+            for k in 1:nl
+                uek = ue[k] 
+                ∇xek = invJt*∇ste[k,iq]
+                ∇u += ∇xek*uek
+                ∇xe[k] = ∇xek
             end
             fx = f(xint)
             for k in 1:nl
-                fe[k] +=  fx*se[iq,k]*dV
+                dv = ste[k,iq]
+                ∇dv = ∇xe[k]
+                fe[k] += ( p_laplace_residual(∇u,∇dv,dv,fx,p) )*dV
             end
         end
         for i in 1:nl
+            if !(dofs[i]>0)
+                continue
+            end
+            r[dofs[i]] += fe[i]
+        end
+    end
+end
+
+function jacobian_cells!(V_coo,u_dofs,state)
+
+    cell_to_dofs = state.dofs.cell_to_dofs
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    f = state.user_funs.f
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    ncells = length(cell_to_nodes)
+    p = state.p
+
+    # Allocate auxiliary buffers
+    ∇x = map(i->similar(i,size(i,2)),∇s)
+    Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
+    fes = map(i->zeros(size(i,2)),∇s)
+    ues = map(i->zeros(size(i,2)),∇s)
+    ∇st = map(m->collect(permutedims(m)),∇s)
+    st = map(m->collect(permutedims(m)),s)
+
+    Tx = eltype(node_to_x)
+    TJ = typeof(zero(Tx)*zero(Tx)')
+    T = eltype(Tx)
+
+    i_coo = 0
+    for cell in 1:ncells
+        rid = cell_to_rid[cell]
+        nodes = cell_to_nodes[cell]
+        dofs = cell_to_dofs[cell]
+        Ae = Aes[rid]
+        fe = fes[rid]
+        ue = ues[rid]
+        nl = length(nodes)
+        ∇ste = ∇st[rid]
+        ∇xe = ∇x[rid]
+        ste = st[rid]
+        we = w[rid]
+        nq = length(we)
+        fill!(Ae,zero(eltype(Ae)))
+        fill!(fe,zero(eltype(Ae)))
+        # Integrate
+        for iq in 1:nq
+            Jt = zero(TJ) 
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇ste[k,iq]
+                sqx = ste[k,iq]
+                Jt += ∇sqx*x'
+            end
+            detJt = det(Jt)
+            invJt = inv(Jt)
+            dV = abs(detJt)*we[iq]
+            for k in 1:nl
+                dof_k = dofs[k]
+                if dof_k < 1
+                    uk = u_dirichlet[-dof_k]
+                    ue[k] = uk
+                    continue
+                end
+                ue[k] = u_dofs[dof_k]
+            end
+            ∇u = zero(Tx)
+            for k in 1:nl
+                uek = ue[k]
+                ∇xek = invJt*∇ste[k,iq]
+                ∇u += ∇xek*uek
+                ∇xe[k] = ∇xek
+            end
             for j in 1:nl
-                fe[i] -= Ae[i,j]*ue[j]
+                ∇du = ∇xe[j]
+                for i in 1:nl
+                    ∇dv = ∇xe[i]
+                    Ae[i,j] += ( p_laplace_jacobian(∇u,∇du,∇dv,p) )*dV
+                end
             end
         end
+        # Set the result in the output array
         for i in 1:nl
-            ni = nodes[i]
-            gi = node_to_free_node[ni]
-            if gi > nfree
+            if !(dofs[i]>0)
                 continue
             end
-            b[gi] += fe[i]
-        end
-        for j in 1:nl
-            nj = nodes[j]
-            gj = node_to_free_node[nj]
-            if  gj > nfree
-                continue
-            end
-            for i in 1:nl
-                ni = nodes[i]
-                gi = node_to_free_node[ni]
-                if gi > nfree
+            for j in 1:nl
+                if !(dofs[j]>0)
                     continue
                 end
                 i_coo += 1
-                I_coo[i_coo] = gi
-                J_coo[i_coo] = gj
                 V_coo[i_coo] = Ae[i,j]
             end
         end
     end
-    add_neumann_bcs!(b,state)
-    I_coo,J_coo,V_coo,b
 end
 
-function add_neumann_bcs!(b,state)
+function residual_faces!(r,u_dofs,state)
 
     neum_face_to_face = state.neumann_bcs.neum_face_to_face
     if length(neum_face_to_face) == 0
         return nothing
     end
+
     face_to_rid = state.face_isomap.face_to_rid
+    face_to_dofs = state.dofs.face_to_dofs
     face_to_nodes = state.face_isomap.face_to_nodes
     ∇s_f = state.face_isomap.rid_to_shape_grads
     s_f = state.face_isomap.rid_to_shape_vals
     node_to_x = state.face_isomap.node_to_coords
-    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
     g = state.user_funs.g
     w_f = state.face_integration.rid_to_weights
     d = state.cell_integration.d
@@ -460,12 +574,11 @@ function add_neumann_bcs!(b,state)
     fes = map(i->zeros(size(i,2)),s_f)
     Tx = SVector{d,Float64}
     Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
-    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
-    nfree = length(first(free_and_dirichlet_nodes))
 
     for face in neum_face_to_face
         rid = face_to_rid[face]
         nodes = face_to_nodes[face]
+        dofs = face_to_dofs[face]
         ∇se = ∇s_f[rid]
         se = s_f[rid]
         we = w_f[rid]
@@ -491,31 +604,22 @@ function add_neumann_bcs!(b,state)
             end
         end
         for i in 1:nl
-            ni = nodes[i]
-            gi = node_to_free_node[ni]
-            if gi > nfree
+            if !(dofs[i]>0)
                 continue
             end
-            b[gi] += fe[i]
+            r[dofs[i]] -= fe[i]
         end
     end
-
-    nothing
 end
 
-function assemble_system(state)
-    I,J,V,b = assemble_system_loop(state)
-    nfree = length(b)
-    A = sparse(I,J,V,nfree,nfree)
-    A,b
-end
-
-function solve_system(A,b,params)
+function solve_problem(params,state)
+    timer = state.timer
+    problem = nonlinear_problem(state)
     solver = params[:solver]
-    x = similar(b,axes(A,2))
-    setup = solver.setup(x,A,b)
-    solver.solve!(x,setup,b)
-    solver.finalize!(setup)
+    x = problem.initial()
+    @timeit timer "solver.setup" setup = solver.setup(x,problem)
+    @timeit timer "solver.solve!" solver.solve!(x,setup)
+    @timeit timer "solver.finalize!" solver.finalize!(setup)
     x
 end
 
@@ -549,7 +653,7 @@ function integrate_error_norms_loop(uh,state)
     ncells = length(cell_to_rid)
     ues = map(i->zeros(size(i,2)),∇s)
     ∇x = map(i->similar(i,size(i,2)),∇s)
-    Tx = SVector{d,Float64}
+    Tx = eltype(node_to_x)
     TJ = typeof(zero(Tx)*zero(Tx)')
     for cell in 1:ncells
         rid = cell_to_rid[cell]
@@ -609,6 +713,9 @@ function integrate_error_norms(results,uh,state)
 end
 
 function export_results(uh,params,state)
+    if ! params[:export_vtu]
+        return nothing
+    end
     mesh = params[:mesh]
     example_path = params[:example_path]
     node_to_tag = state.dirichlet_bcs.node_to_tag
@@ -618,6 +725,7 @@ function export_results(uh,params,state)
         vtk["uh"] = uh
         vtk["dim"] = gk.face_dim(mesh)
     end
+    nothing
 end
 
 end # module
