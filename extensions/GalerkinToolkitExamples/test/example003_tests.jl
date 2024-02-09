@@ -41,6 +41,7 @@ linear_solver = Example001.cg_amg_solver(;verbose=true)
 params[:solver] = Example003.nlsolve_solver(;timer,linear_solver,show_trace=true,method=:newton)
 params[:export_vtu] = false
 params[:timer] = timer
+params[:p] = 2
 Example003.main(params)
 
 end # module
