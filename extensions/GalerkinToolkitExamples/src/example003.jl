@@ -68,6 +68,7 @@ function default_params()
     params[:solver] = nlsolve_solver()
     params[:example_path] = joinpath(outdir,"example003")
     params[:export_vtu] = true
+    params[:autodiff] = :hand
     params[:timer] = TimerOutput()
     params
 end
@@ -214,7 +215,19 @@ function setup(params)
     @timeit timer "user_funs" user_funs = setup_user_funs(params)
     solver = params[:solver]
     p = params[:p]
-    state = (;p,timer,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
+    if params[:autodiff] === :hand
+        flux = flux_hand
+        dflux = dflux_hand
+    elseif params[:autodiff] === :flux
+        flux = flux_hand
+        dflux = dflux_from_flux
+    elseif params[:autodiff] === :energy
+        flux = flux_from_energy
+        dflux = dflux_from_energy
+    else
+        error("not implemented: autodiff == $autodiff")
+    end
+    state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs)
 end
 
 function add_basic_info(results,params,state)
@@ -296,18 +309,38 @@ function assemble_sybmolic(state)
     r,J,V_coo,K
 end
 
-@inline function p_laplace_residual(∇u,∇dv,dv,f,p)
-    ∇dv⋅((norm(∇u)^(p-2))*∇u) - f*dv
-end
-
-@inline function p_laplace_jacobian(∇u,∇du,∇dv,p)
+@inline flux_hand(∇u,p) = (norm(∇u)^(p-2))*∇u
+@inline function dflux_hand(∇u,∇du,p)
     pm2 = p-2
     pm4 = p-4
-    ∇dv⋅((norm(∇u)^pm2)*∇du) + ∇dv⋅(pm2*(norm(∇u)^pm4)*(∇u⋅∇du)*∇u)
+    ((norm(∇u)^pm2)*∇du) + (pm2*(norm(∇u)^pm4)*(∇u⋅∇du)*∇u)
+end
+@inline function dflux_from_flux(∇u,∇du,p)
+    f(x) = flux_hand(x,p)
+    x = ∇u
+    dx = ∇du
+    dfdx = ForwardDiff.jacobian(f,x)
+    dfdx*dx
+end
+
+@inline energy(∇u,p) = (1/p)*(norm(∇u)^p)
+@inline function flux_from_energy(∇u,p)
+    f(x) = energy(x,p)
+    x = ∇u
+    dfdx = ForwardDiff.gradient(f,x)
+    dfdx
+end
+@inline function dflux_from_energy(∇u,∇du,p)
+    f(x) = energy(x,p)
+    x = ∇u
+    dx = ∇du
+    dfdx = ForwardDiff.hessian(f,x)
+    dfdx*dx
 end
 
 function residual_cells!(r,u_dofs,state)
 
+    flux = state.flux
     cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -385,7 +418,7 @@ function residual_cells!(r,u_dofs,state)
             for k in 1:nl
                 dv = ste[k,iq]
                 ∇dv = ∇xe[k]
-                fe[k] += ( p_laplace_residual(∇u,∇dv,dv,fx,p) )*dV
+                fe[k] += ( ∇dv⋅flux(∇u,p) - fx*dv )*dV
             end
         end
         for i in 1:nl
@@ -399,6 +432,7 @@ end
 
 function jacobian_cells!(V_coo,u_dofs,state)
 
+    dflux = state.dflux
     cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -474,7 +508,7 @@ function jacobian_cells!(V_coo,u_dofs,state)
                 ∇du = ∇xe[j]
                 for i in 1:nl
                     ∇dv = ∇xe[i]
-                    Ae[i,j] += ( p_laplace_jacobian(∇u,∇du,∇dv,p) )*dV
+                    Ae[i,j] += ( ∇dv⋅dflux(∇u,∇du,p) )*dV
                 end
             end
         end
