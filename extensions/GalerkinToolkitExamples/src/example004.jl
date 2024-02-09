@@ -111,7 +111,7 @@ function nlsolve_solver(;linear_solver=Example001.lu_solver(),timer=TimerOutput(
         error("todo")
     end
     function finalize!(setup)
-        setup.linear_solver.finalize!(setup)
+        setup.linear_solver.finalize!(setup.ls_setup)
     end
     (;setup,solve!,setup!,finalize!)
 end
