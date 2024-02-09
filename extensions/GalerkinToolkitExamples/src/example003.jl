@@ -271,17 +271,7 @@ function assemble_sybmolic(state)
     for cell in 1:ncells
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
-        for i in 1:ndofs
-            if !(dofs[i]>0)
-                continue
-            end
-            for j in 1:ndofs
-                if !(dofs[j]>0)
-                    continue
-                end
-                n_coo += 1
-            end
-        end
+        n_coo += ndofs*ndofs
     end
 
     I_coo = Vector{Int32}(undef,n_coo)
@@ -294,14 +284,8 @@ function assemble_sybmolic(state)
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
         for i in 1:ndofs
-            if !(dofs[i]>0)
-                continue
-            end
             dofs_i = dofs[i]
             for j in 1:ndofs
-                if !(dofs[j]>0)
-                    continue
-                end
                 n_coo += 1
                 I_coo[n_coo] = dofs_i
                 J_coo[n_coo] = dofs[j]
@@ -309,7 +293,7 @@ function assemble_sybmolic(state)
         end
     end
 
-    J,K = sparse_matrix(I_coo,J_coo,V_coo,n_dofs,n_dofs;reuse=true,skip_out_of_bounds=true)
+    J,K = sparse_matrix(I_coo,J_coo,V_coo,n_dofs,n_dofs;reuse=true)
     r,J,V_coo,K
 end
 
@@ -569,13 +553,7 @@ function jacobian_cells!(V_coo,u_dofs,state)
         end
         # Set the result in the output array
         for i in 1:nl
-            if !(dofs[i]>0)
-                continue
-            end
             for j in 1:nl
-                if !(dofs[j]>0)
-                    continue
-                end
                 i_coo += 1
                 V_coo[i_coo] = Ae[i,j]
             end
