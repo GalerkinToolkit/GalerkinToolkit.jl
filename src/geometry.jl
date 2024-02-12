@@ -3686,14 +3686,28 @@ end
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # TODO for the moment we assume a cell-based partition without ghosts
     D = num_dims(fine_mesh)
+
     function setup_local_meshes(my_coarse_mesh)
-        two_level_mesh(my_coarse_mesh,fine_mesh;kwargs...)
+        two_level_mesh(my_coarse_mesh,fine_mesh; kwargs...)
     end
-    mesh_partition, glue = map(setup_local_meshes,partition(coarse_mesh)) |> tuple_of_arrays
+    mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
     node_partition = nothing
-    cell_partition = nothing
+
+    # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
+    # also why use `variable_partition` since cell-based partition implies num final cells 
+    # per coarse mesh on a partition is the same?
+    @show n_fine_cells = num_faces(fine_mesh, D)
+    function get_n_owned_cells(my_coarse_mesh)
+        @show n_coarse_cells = num_faces(my_coarse_mesh, D) # TODO: why 9 in test?
+        @show n_final_cells = n_fine_cells*n_coarse_cells
+        return n_final_cells
+    end 
+    @show n_own_cells = map(get_n_owned_cells, partition(coarse_mesh)) 
+    @show n_cells = sum(n_own_cells)
+    cell_partition = variable_partition(n_own_cells, n_cells) 
+
     face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
-    PMesh(mesh_partition,node_partition,face_partition)
-    error("Not implemented yet")
+    #PMesh(mesh_partition,node_partition,face_partition) ## TODO: THROWS ERROR!
+    #error("Not implemented yet")
 end
 

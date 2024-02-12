@@ -264,14 +264,15 @@ vtk_grid(joinpath(outdir,"two-level-mesh"),gk.vtk_args(final_mesh)...) do vtk
     vtk["node_ids"] = 1:gk.num_nodes(final_mesh)
 end
 
-
+# Construct partitioned two level mesh using coarse mesh that is pmesh and 
+# a single fine mesh that is duplicated in each coarse cell 
+fine_mesh = gk.cartesian_mesh((0, 1, 0, 1), (2, 2)) # very simple fine mesh
 domain = (0,30,0,10)
 cells = (4,4)
 parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir;parts)
-
 final_mesh, glue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 
 
