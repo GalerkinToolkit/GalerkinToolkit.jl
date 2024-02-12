@@ -3694,13 +3694,10 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     node_partition = nothing
 
     # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
-    @show n_fine_cells = num_faces(fine_mesh, D)
-    function get_n_owned_cells(my_coarse_mesh)
-        @show n_coarse_cells = num_faces(my_coarse_mesh, D) # TODO: why 9 in test?
-        @show n_final_cells = n_fine_cells*n_coarse_cells
-        return n_final_cells
+    function get_n_owned_cells(final_mesh)
+        return num_faces(final_mesh, D)
     end 
-    @show n_own_cells = map(get_n_owned_cells, partition(coarse_mesh)) 
+    @show n_own_cells = map(get_n_owned_cells, mesh_partition) 
     @show n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
