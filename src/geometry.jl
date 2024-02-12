@@ -3702,7 +3702,9 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
     face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
-    #PMesh(mesh_partition,node_partition,face_partition) ## TODO: THROWS ERROR!
+
+    glue = nothing
+    PMesh(mesh_partition,node_partition,face_partition), glue ## TODO: THROWS ERROR!
     #error("Not implemented yet")
 end
 
