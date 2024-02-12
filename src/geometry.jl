@@ -3693,6 +3693,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
     node_partition = nothing
 
+    # mark owernship of nodes using a local final mesh and local glue
     function mark_nodes(final_mesh,local_glue,coarse_indices)
         d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
         my_final_node_to_owner = fill(false,num_nodes(final_mesh))
@@ -3710,10 +3711,15 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         my_final_node_to_owner
     end
     final_node_to_owner = map(mark_nodes,mesh_partition,glue,index_partition(coarse_mesh))
+    
     parts = linear_indices(final_node_to_owner)
+
+    # for owner in owners: if owner == partition, then accumulate 
     n_own_final_nodes = map((owners,part)->count(owner->owner==part,owners),final_node_to_owner,parts)
     n_final_nodes = sum(n_own_final_nodes)
     own_node_partition = variable_partition(n_own_final_nodes,n_final_nodes)
+
+    # global ids need to have unique id if they are owned by a particular process
     final_node_to_gid = map(v->zeros(Int,length(v)),final_node_to_owner)
     map(final_node_to_gid,final_node_to_owner,own_node_partition,parts) do gids,owners,own_nodes,part
         own = 0
@@ -3725,6 +3731,8 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
             end
         end
     end
+
+    # for each dimension of the coarse d-face, handle ownership and ensure consistent data
     for d in 0:D
         function fun1(coarse_dfaces,local_glue,gids)
             coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
@@ -3751,22 +3759,24 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         map(fun2!,coarse_dface_to_gids_data,final_node_to_gid)
     end
 
+    # Use custom partitioned arrays indexing 
     function finalize_node_partition(part,gids,owners)
         LocalIndices(n_final_nodes,part,gids,owners)
     end
     node_partition = map(finalize_node_partition,parts,final_node_to_gid,final_node_to_owner)
+
     # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
     function get_n_owned_cells(final_mesh)
         return num_faces(final_mesh, D)
     end 
-    @show n_own_cells = map(get_n_owned_cells, mesh_partition) 
-    @show n_cells = sum(n_own_cells)
+    n_own_cells = map(get_n_owned_cells, mesh_partition) 
+    n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
     face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
 
     glue = nothing
-    PMesh(mesh_partition,node_partition,face_partition), glue ## TODO: THROWS ERROR!
+    PMesh(mesh_partition,node_partition,face_partition), glue 
     #error("Not implemented yet")
 end
 
