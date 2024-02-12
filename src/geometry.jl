@@ -3693,6 +3693,68 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
     node_partition = nothing
 
+    function mark_nodes(final_mesh,local_glue,coarse_indices)
+        d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
+        my_final_node_to_owner = fill(false,num_nodes(final_mesh))
+        for d in 0:D
+            coarse_dface_to_final_nodes = d_to_coarse_dface_to_final_nodes[d+1]
+            coarse_dfaces = face_indices(coarse_indices,d)
+            coarse_dface_to_owner = local_to_owner(coarse_dfaces)
+            n_coarse_dfaces = length(coarse_dface_to_owner)
+            for coarse_dface in 1:n_coarse_dfaces
+                owner = coarse_dface_to_owner[coarse_dface]
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                my_final_node_to_owner[final_nodes] .= owner
+            end
+        end
+        my_final_node_to_owner
+    end
+    final_node_to_owner = map(mark_nodes,mesh_partition,glue,index_partition(coarse_mesh))
+    parts = linear_indices(final_node_to_owner)
+    n_own_final_nodes = map((owners,part)->count(owner->owner==part,owners),final_node_to_owner,parts)
+    n_final_nodes = sum(n_own_final_nodes)
+    own_node_partition = variable_partition(n_own_final_nodes,n_final_nodes)
+    final_node_to_gid = map(v->zeros(Int,length(v)),final_node_to_owner)
+    map(final_node_to_gid,final_node_to_owner,own_node_partition,parts) do gids,owners,own_nodes,part
+        own = 0
+        for i in 1:length(gids)
+            owner = owners[i]
+            if owner == part
+                own += 1
+                gids[i] = own_nodes[own]
+            end
+        end
+    end
+    for d in 0:D
+        function fun1(coarse_dfaces,local_glue,gids)
+            coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
+            n_coarse_dfaces = local_length(coarse_dfaces)
+            coarse_dface_to_gids = Vector{Vector{Int}}(undef,n_coarse_dfaces)
+            for coarse_dface in 1:n_coarse_dfaces
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                coarse_dface_to_gids[coarse_dface] = gids[final_nodes]
+            end
+            JaggedArray(coarse_dface_to_gids)
+        end
+        coarse_dface_partition = face_partition(coarse_mesh,d)
+        coarse_dface_to_gids_data = map(fun1,coarse_dface_partition,glue,final_node_to_gid)
+        coarse_dface_to_gids = PVector(coarse_dface_to_gids_data,coarse_dface_partition)
+        consistent!(coarse_dface_to_gids) |> wait
+        function fun2!(coarse_dface_to_gids,local_glue,gids)
+            coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
+            n_coarse_dfaces = local_length(coarse_dfaces)
+            for coarse_dface in 1:n_coarse_dfaces
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                gids[final_nodes] = coarse_dface_to_gids[coarse_dface]
+            end
+        end
+        map(fun2!,coarse_dface_to_gids_data,final_node_to_gid)
+    end
+
+    function finalize_node_partition(part,gids,owners)
+        LocalIndices(n_final_nodes,part,gids,owners)
+    end
+    node_partition = map(finalize_node_partition,parts,final_node_to_gid,final_node_to_owner)
     # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
     function get_n_owned_cells(final_mesh)
         return num_faces(final_mesh, D)
