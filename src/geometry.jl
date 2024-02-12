@@ -3710,8 +3710,8 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         end
         my_final_node_to_owner
     end
-    final_node_to_owner = map(mark_nodes,mesh_partition,glue,index_partition(coarse_mesh))
-    
+    index_partition_coarse_mesh = index_partition(coarse_mesh)
+    final_node_to_owner = map(mark_nodes, mesh_partition, glue, index_partition_coarse_mesh) 
     parts = linear_indices(final_node_to_owner)
 
     # for owner in owners: if owner == partition, then accumulate 

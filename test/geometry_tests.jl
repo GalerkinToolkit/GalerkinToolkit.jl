@@ -273,6 +273,10 @@ a single fine mesh that is duplicated in each coarse cell
 NOTE: Wrapped as function for use with julia debugger 
 """
 function test_simple_two_level_pmesh()
+    # TODO: why are coarse meshes 3 x 3??? this is reflected in the `glue`...
+    # shouldn't they just be 2 x 2???
+    # sum(n_own_cells) --> 144 == 36*4 == (9*4)*4 == 
+    # (n_coarse_mesh_cells*n_fine_mesh_cells)*n_ranks
     fine_mesh = gk.cartesian_mesh((0, 1, 0, 1), (2, 2)) # very simple fine mesh
     domain = (0,30,0,10)
     cells = (4,4)
