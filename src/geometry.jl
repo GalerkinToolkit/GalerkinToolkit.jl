@@ -3693,7 +3693,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
     node_partition = nothing
 
-    ## mark owernship of nodes using a local final mesh and local glue
+    # mark owernship of nodes using a local final mesh and local glue
     function mark_nodes(final_mesh,local_glue,coarse_indices)
         d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
         my_final_node_to_owner = fill(0,num_nodes(final_mesh))
@@ -3710,19 +3710,24 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         end
         my_final_node_to_owner
     end
-    # coarse node/face indices per part
-    index_partition_coarse_mesh = index_partition(coarse_mesh) 
+    index_partition_coarse_mesh = index_partition(coarse_mesh) # node/face ixs per part
     final_node_to_owner = map(mark_nodes, mesh_partition, glue, index_partition_coarse_mesh) 
     parts = linear_indices(final_node_to_owner)
 
-    # for owner in owners: if owner == partition, then accumulate 
-    n_own_final_nodes = map((owners,part)->count(owner->owner==part,owners),final_node_to_owner,parts)
-    n_final_nodes = sum(n_own_final_nodes)
+    # count the number of owned final mesh nodes per partition
+    n_own_final_nodes = map(
+        (owners,part)->count(owner->owner==part,owners),final_node_to_owner,parts)
+    n_final_nodes = sum(n_own_final_nodes) 
+
+    # owned indices of final mesh nodes for each partition
     own_node_partition = variable_partition(n_own_final_nodes,n_final_nodes)
 
-    # global ids need to have unique id if they are owned by a particular process
+    # assign a non-zero global id to final mesh nodes if they are owneed by a partition
     final_node_to_gid = map(v->zeros(Int,length(v)),final_node_to_owner)
-    map(final_node_to_gid,final_node_to_owner,own_node_partition,parts) do gids,owners,own_nodes,part
+    map(final_node_to_gid,
+        final_node_to_owner,
+        own_node_partition,
+        parts) do gids, owners, own_nodes, part
         own = 0
         for i in 1:length(gids)
             owner = owners[i]
@@ -3733,7 +3738,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         end
     end
 
-    # for each dimension of the coarse d-face, handle ownership and ensure consistent data
+    # for each dimension of the coarse d-face, handle ownership and ensure consistent data 
     for d in 0:D
         function fun1(coarse_dfaces,local_glue,gids)
             coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
@@ -3745,7 +3750,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
             end
             JaggedArray(coarse_dface_to_gids)
         end
-        coarse_dface_partition = face_partition(coarse_mesh,d)
+        coarse_dface_partition = face_partition(coarse_mesh, d)
         coarse_dface_to_gids_data = map(fun1,coarse_dface_partition,glue,final_node_to_gid)
         coarse_dface_to_gids = PVector(coarse_dface_to_gids_data,coarse_dface_partition)
         consistent!(coarse_dface_to_gids) |> wait
@@ -3774,10 +3779,10 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
-    face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
+    _face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
 
     glue = nothing
-    PMesh(mesh_partition,node_partition,face_partition), glue 
+    PMesh(mesh_partition, node_partition, _face_partition), glue 
     #error("Not implemented yet")
 end
 

@@ -279,8 +279,7 @@ function test_simple_two_level_pmesh()
     parts_per_dir = (2,2)
     np = prod(parts_per_dir)
     parts = DebugArray(LinearIndices((np,)))
-    coarse_mesh = gk.cartesian_mesh(
-        domain,cells,parts_per_dir; parts, ghost_layers=0)
+    coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir; parts, ghost_layers=0)
     final_mesh, glue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 end
 
