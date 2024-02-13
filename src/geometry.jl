@@ -3693,10 +3693,10 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
     node_partition = nothing
 
-    # mark owernship of nodes using a local final mesh and local glue
+    ## mark owernship of nodes using a local final mesh and local glue
     function mark_nodes(final_mesh,local_glue,coarse_indices)
         d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
-        my_final_node_to_owner = fill(false,num_nodes(final_mesh))
+        my_final_node_to_owner = fill(0,num_nodes(final_mesh))
         for d in 0:D
             coarse_dface_to_final_nodes = d_to_coarse_dface_to_final_nodes[d+1]
             coarse_dfaces = face_indices(coarse_indices,d)
@@ -3710,7 +3710,8 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         end
         my_final_node_to_owner
     end
-    index_partition_coarse_mesh = index_partition(coarse_mesh)
+    # coarse node/face indices per part
+    index_partition_coarse_mesh = index_partition(coarse_mesh) 
     final_node_to_owner = map(mark_nodes, mesh_partition, glue, index_partition_coarse_mesh) 
     parts = linear_indices(final_node_to_owner)
 
