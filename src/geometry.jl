@@ -3792,6 +3792,9 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
     # dummy face partition 
+    # TODO: need vertex and edge partition information here right? node partition
+    # info could be used to construct vertex info, and then would need to give
+    # unique identifiers to the edge elements???
     _face_partition = ntuple(
         i-> i == (D+1) ? cell_partition : DebugArray(LinearIndices((0,))),
         D+1)
