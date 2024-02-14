@@ -3685,6 +3685,7 @@ end
 
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # TODO for the moment we assume a cell-based partition without ghosts
+    # TODO: NEED TO ASSERT CELL BASED PARTITION???
     D = num_dims(fine_mesh)
 
     function setup_local_meshes(my_coarse_mesh)
@@ -3791,7 +3792,9 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
     # dummy face partition 
-    _face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
+    _face_partition = ntuple(
+        i-> i == (D+1) ? cell_partition : DebugArray(LinearIndices((0,))),
+        D+1)
 
     final_glue = nothing # placeholder for parallel glue
     final_mesh = PMesh(mesh_partition, node_partition, _face_partition)

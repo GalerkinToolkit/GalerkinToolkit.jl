@@ -222,6 +222,7 @@ end |> multicast |> PartitionedArrays.getany
 pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=0)
 pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=1)
 
+# coarse pmesh testing and visualization
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
 parts_per_dir = (2,2)
@@ -237,7 +238,7 @@ function setup(mesh,ids,rank)
     for d in 0:D
         face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
     end
-    pvtk_grid(joinpath(outdir,"pmesh-cartesian"),gk.vtk_args(mesh)...;part=rank,nparts=np) do vtk
+    pvtk_grid(joinpath(outdir, "pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
         gk.vtk_physical_faces!(vtk,mesh)
         gk.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
@@ -246,7 +247,6 @@ function setup(mesh,ids,rank)
     end
 end
 map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
-
 
 domain = (0,1,0,1)
 cells = (10,10)
@@ -264,27 +264,31 @@ vtk_grid(joinpath(outdir,"two-level-mesh"),gk.vtk_args(final_mesh)...) do vtk
     vtk["node_ids"] = 1:gk.num_nodes(final_mesh)
 end
 
-"""
-    test_simple_two_level_pmesh()
+# Simple two level parallel mesh test and visualization
+fine_mesh = gk.cartesian_mesh((0, 1, 0, 1), (2, 2)) # very simple fine mesh
+domain = (0,30,0,10)
+cells = (4,4)
+parts_per_dir = (2,2)
+np = prod(parts_per_dir)
+parts = DebugArray(LinearIndices((np,)))
+coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir; parts, ghost_layers=0)
+final_pmesh, final_pglue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 
-Construct partitioned two level mesh using coarse mesh that is a non-overlapping
-pmesh and a single fine mesh that is duplicated in each coarse cell 
-
-NOTE: Wrapped as function for use with julia debugger 
-"""
-function test_simple_two_level_pmesh()
-    fine_mesh = gk.cartesian_mesh((0, 1, 0, 1), (2, 2)) # very simple fine mesh
-    domain = (0,30,0,10)
-    cells = (4,4)
-    parts_per_dir = (2,2)
-    np = prod(parts_per_dir)
-    parts = DebugArray(LinearIndices((np,)))
-    coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir; parts, ghost_layers=0)
-    final_mesh, glue = gk.two_level_mesh(coarse_mesh,fine_mesh)
+function final_pmesh_setup(mesh,ids,rank)
+    face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
+    @show D = gk.num_dims(mesh)
+    for d in 0:D
+        face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
+    end
+    pvtk_grid(joinpath(outdir, "final-pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
+        gk.vtk_physical_faces!(vtk,mesh)
+        gk.vtk_physical_nodes!(vtk,mesh)
+        vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
+        vtk["owner"] = local_to_owner(gk.node_indices(ids))
+        vtk["owner"] = face_to_owner
+    end
 end
 
-test_simple_two_level_pmesh() 
-
-
+@show map(final_pmesh_setup, partition(final_pmesh), gk.index_partition(final_pmesh), parts)
 
 end # module
