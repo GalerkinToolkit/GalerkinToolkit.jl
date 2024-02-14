@@ -3694,7 +3694,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     node_partition = nothing
 
     # mark owernship of nodes using a local final mesh and local glue
-    function mark_nodes(final_mesh,local_glue,coarse_indices)
+    function mark_nodes(final_mesh, local_glue, coarse_indices)
         d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
         my_final_node_to_owner = fill(0,num_nodes(final_mesh))
         for d in 0:D
@@ -3722,7 +3722,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # owned indices of final mesh nodes for each partition
     own_node_partition = variable_partition(n_own_final_nodes,n_final_nodes)
 
-    # assign a non-zero global id to final mesh nodes if they are owneed by a partition
+    # assign a non-zero global id to final mesh nodes if they are owned by a partition
     final_node_to_gid = map(v->zeros(Int,length(v)),final_node_to_owner)
     map(final_node_to_gid,
         final_node_to_owner,
@@ -3740,7 +3740,10 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
 
     # for each dimension of the coarse d-face, handle ownership and ensure consistent data 
     for d in 0:D
-        function fun1(coarse_dfaces,local_glue,gids)
+        # For a given d-dimensional (i.e., point, edge, surface, vol) coarse face,
+        # get a map from coarse face to final node, iterate through the coarse faces,
+        # and get a global id corresponding to that final node
+        function get_coarse_dface_to_gids(coarse_dfaces, local_glue, gids)
             coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
             n_coarse_dfaces = local_length(coarse_dfaces)
             coarse_dface_to_gids = Vector{Vector{Int}}(undef,n_coarse_dfaces)
@@ -3751,38 +3754,47 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
             JaggedArray(coarse_dface_to_gids)
         end
         coarse_dface_partition = face_partition(coarse_mesh, d)
-        coarse_dface_to_gids_data = map(fun1,coarse_dface_partition,glue,final_node_to_gid)
-        coarse_dface_to_gids = PVector(coarse_dface_to_gids_data,coarse_dface_partition)
-        consistent!(coarse_dface_to_gids) |> wait
-        function fun2!(coarse_dface_to_gids,local_glue,gids)
+        coarse_dface_to_gids_data = map( # this is a map over partition specific data
+            get_coarse_dface_to_gids, coarse_dface_partition, glue, final_node_to_gid)
+        coarse_dface_to_gids = PVector(coarse_dface_to_gids_data, coarse_dface_partition)
+        consistent!(coarse_dface_to_gids) |> wait # owners give their values to ghosts?
+
+        # For each d-dimensional coarse face, update the non-partitioned gids 
+        # with the partitioned and consistent gids
+        function update_gids!(coarse_dfaces, coarse_dface_to_gids, local_glue, gids)
             coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
-            n_coarse_dfaces = local_length(coarse_dfaces)
+            n_coarse_dfaces = local_length(coarse_dfaces) 
             for coarse_dface in 1:n_coarse_dfaces
                 final_nodes = coarse_dface_to_final_nodes[coarse_dface]
                 gids[final_nodes] = coarse_dface_to_gids[coarse_dface]
             end
         end
-        map(fun2!,coarse_dface_to_gids_data,final_node_to_gid)
+        map(update_gids!, 
+            coarse_dface_partition, 
+            coarse_dface_to_gids_data, 
+            glue, 
+            final_node_to_gid)
     end
 
-    # Use custom partitioned arrays indexing 
-    function finalize_node_partition(part,gids,owners)
-        LocalIndices(n_final_nodes,part,gids,owners)
+    # For each part, use the final node (i.e., local id) to global id map
+    # and final node to owner map to construct arbitrary indices for partitioned 
+    # mesh nodes 
+    function finalize_node_partition(part, gids, owners)
+        LocalIndices(n_final_nodes, part, gids, owners)
     end
-    node_partition = map(finalize_node_partition,parts,final_node_to_gid,final_node_to_owner)
+    node_partition = map(
+        finalize_node_partition, parts, final_node_to_gid, final_node_to_owner)
 
     # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
-    function get_n_owned_cells(final_mesh)
-        return num_faces(final_mesh, D)
-    end 
-    n_own_cells = map(get_n_owned_cells, mesh_partition) 
+    n_own_cells = map(final_mesh -> num_faces(final_mesh, D), mesh_partition) 
     n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
+    # dummy face partition 
     _face_partition = ntuple( i-> (i==(D+1) ? cell_partition : nothing) ,D+1)
 
-    glue = nothing
-    PMesh(mesh_partition, node_partition, _face_partition), glue 
-    #error("Not implemented yet")
+    final_glue = nothing # placeholder for parallel glue
+    final_mesh = PMesh(mesh_partition, node_partition, _face_partition)
+    return final_mesh, final_glue
 end
 
