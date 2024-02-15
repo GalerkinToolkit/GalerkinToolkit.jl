@@ -238,7 +238,7 @@ function setup(mesh,ids,rank)
     for d in 0:D
         face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
     end
-    @show pvtk_grid(joinpath(outdir, "pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
+    pvtk_grid(joinpath(outdir, "pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
         gk.vtk_physical_faces!(vtk,mesh)
         gk.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
@@ -274,21 +274,26 @@ parts = DebugArray(LinearIndices((np,)))
 coarse_mesh = gk.cartesian_mesh(domain,cells,parts_per_dir; parts, ghost_layers=0)
 final_pmesh, final_pglue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 
-function final_pmesh_setup(mesh,ids,rank)
-    face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
-    D = gk.num_dims(mesh)
-    for d in 0:D
-        face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
-    end
-    @show pvtk_grid(joinpath(outdir, "final-pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
-        gk.vtk_physical_faces!(vtk,mesh)
-        gk.vtk_physical_nodes!(vtk,mesh)
-        vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
-        vtk["owner"] = local_to_owner(gk.node_indices(ids))
-        vtk["owner"] = face_to_owner
+# TODO: visualize more than just cell elements
+function final_pmesh_setup(mesh, rank)
+    # face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
+    d = gk.num_dims(mesh)
+    # for d in 0:D
+    # face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
+    # end
+    @show pvtk_grid(
+        joinpath(outdir, "final-pmesh-cartesian"), 
+        gk.vtk_args(mesh, d)...; 
+        part=rank, nparts=np) do vtk
+
+        gk.vtk_physical_faces!(vtk, mesh, d)
+        gk.vtk_physical_nodes!(vtk, mesh, d)
+        #vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
+        #vtk["owner"] = local_to_owner(gk.node_indices(ids))
+        #vtk["owner"] = face_to_owner
     end
 end
 
-@show map(final_pmesh_setup, partition(final_pmesh), gk.index_partition(final_pmesh), parts)
+@show map(final_pmesh_setup, partition(final_pmesh), parts)
 
 end # module
