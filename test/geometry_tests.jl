@@ -238,7 +238,7 @@ function setup(mesh,ids,rank)
     for d in 0:D
         face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
     end
-    pvtk_grid(joinpath(outdir, "pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
+    @show pvtk_grid(joinpath(outdir, "pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
         gk.vtk_physical_faces!(vtk,mesh)
         gk.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))
@@ -276,11 +276,11 @@ final_pmesh, final_pglue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 
 function final_pmesh_setup(mesh,ids,rank)
     face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
-    @show D = gk.num_dims(mesh)
+    D = gk.num_dims(mesh)
     for d in 0:D
         face_to_owner[gk.face_range(mesh,d)] = local_to_owner(gk.face_indices(ids,d))
     end
-    pvtk_grid(joinpath(outdir, "final-pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
+    @show pvtk_grid(joinpath(outdir, "final-pmesh-cartesian"), gk.vtk_args(mesh)...; part=rank, nparts=np) do vtk
         gk.vtk_physical_faces!(vtk,mesh)
         gk.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(gk.num_faces(mesh)))

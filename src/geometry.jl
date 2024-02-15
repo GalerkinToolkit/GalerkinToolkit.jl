@@ -3692,7 +3692,6 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         two_level_mesh(my_coarse_mesh,fine_mesh; kwargs...)
     end
     mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
-    node_partition = nothing
 
     # mark owernship of nodes using a local final mesh and local glue
     function mark_nodes(final_mesh, local_glue, coarse_indices)
@@ -3791,10 +3790,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
-    # dummy face partition 
-    # TODO: need vertex and edge partition information here right? node partition
-    # info could be used to construct vertex info, and then would need to give
-    # unique identifiers to the edge elements???
+    # TODO: without d != D face partition info, cannot visualize??
     _face_partition = ntuple(
         i-> i == (D+1) ? cell_partition : DebugArray(LinearIndices((0,))),
         D+1)
