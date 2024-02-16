@@ -3791,8 +3791,11 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
     # TODO: without d != D face partition info, cannot visualize??
+    dummy_face_partition(nparts) = DebugArray([[] for p in 1:nparts])
     _face_partition = ntuple(
-        i-> i == (D+1) ? cell_partition : DebugArray(LinearIndices((0,))),
+        i-> i == (D+1) ? 
+            cell_partition : 
+            dummy_face_partition(length(parts)),
         D+1)
 
     final_glue = nothing # placeholder for parallel glue
