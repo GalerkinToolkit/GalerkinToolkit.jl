@@ -3790,12 +3790,16 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     n_cells = sum(n_own_cells)
     cell_partition = variable_partition(n_own_cells, n_cells) 
 
-    # TODO: without d != D face partition info, cannot visualize??
-    dummy_face_partition(nparts) = DebugArray([[] for p in 1:nparts])
+   
+    # TODO: 0 and 1 dimensional faces have ghost cells, so the use of
+    # variable_partition here is just a placeholder and is not accurate
+    function dummy_face_partition(d)
+        n_own_dfaces = map(mesh -> num_faces(mesh, d), mesh_partition)
+        n_dfaces = sum(n_own_dfaces)
+        return variable_partition(n_own_dfaces, n_dfaces)
+    end
     _face_partition = ntuple(
-        i-> i == (D+1) ? 
-            cell_partition : 
-            dummy_face_partition(length(parts)),
+        i-> i == (D+1) ? cell_partition : dummy_face_partition(i-1),
         D+1)
 
     final_glue = nothing # placeholder for parallel glue
