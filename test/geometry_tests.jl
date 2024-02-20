@@ -290,6 +290,7 @@ function final_pmesh_setup(mesh, ids, rank)
         vtk["piece"] = fill(rank, sum(gk.num_faces(mesh)))
         vtk["owner"] = local_to_owner(gk.node_indices(ids))
         vtk["owner"] = face_to_owner
+        vtk["node"] = local_to_global(gk.node_indices(ids))
     end
 end
 
