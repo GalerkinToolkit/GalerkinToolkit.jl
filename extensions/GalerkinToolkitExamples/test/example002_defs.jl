@@ -4,6 +4,8 @@ using GalerkinToolkitExamples: Example002
 using Test
 using PartitionedArrays
 using PetscCall
+using Metis
+using WriteVTK
 
 function example002_tests_np_4(distribute)
     tol = 1.0e-8
@@ -17,6 +19,31 @@ function example002_tests_np_4(distribute)
     mesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers)
     params[:mesh] = mesh
     results = Example002.main(params)
+    results = Example002.main(params)
+    @test results[:eh1] < tol
+    @test results[:el2] < tol
+
+    # This is how to repartition a general unstructured grid
+    graph_nodes = :cells
+    pmesh = map_main(parts) do parts
+        mesh = gk.cartesian_mesh(domain,cells_per_dir)
+        graph = gk.mesh_graph(mesh;graph_nodes)
+        graph_partition = Metis.partition(graph,np)
+        gk.partition_mesh(mesh,np;graph,graph_nodes,graph_partition,ghost_layers)
+    end |> gk.scatter_mesh
+    params[:mesh] = pmesh
+    results = Example002.main(params)
+    @test results[:eh1] < tol
+    @test results[:el2] < tol
+
+    graph_nodes = :nodes
+    pmesh = map_main(parts) do parts
+        mesh = gk.cartesian_mesh(domain,(3,3))
+        graph = gk.mesh_graph(mesh;graph_nodes)
+        graph_partition = Metis.partition(graph,np)
+        gk.partition_mesh(mesh,np;graph,graph_nodes,graph_partition)
+    end |> gk.scatter_mesh
+    params[:mesh] = pmesh
     results = Example002.main(params)
     @test results[:eh1] < tol
     @test results[:el2] < tol
