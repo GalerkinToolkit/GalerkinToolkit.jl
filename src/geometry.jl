@@ -3280,11 +3280,18 @@ function mesh_graph(mesh::AbstractFEMesh;
     end
 end
 
-struct PMesh{A,B,C} <: GalerkinToolkitDataType
+struct PartitionStrategy <: GalerkinToolkitDataType
+    graph_nodes::Symbol
+    ghost_layers::Int
+end
+
+struct PMesh{A,B,C,D} <: GalerkinToolkitDataType
     mesh_partition::A
     node_partition::B
     face_partition::C
+    partition_strategy::D
 end
+partition_strategy(a) = a.partition_strategy
 PartitionedArrays.partition(m::PMesh) = m.mesh_partition
 face_partition(a::PMesh,d) = a.face_partition[d+1]
 node_partition(a::PMesh) = a.node_partition
@@ -3338,7 +3345,10 @@ function scatter_mesh(pmeshes_on_main;source=MAIN)
     rcv = scatter(snd;source)
     mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
-    PMesh(mesh_partition,node_partition,face_partition)
+    snd2 = map_main(partition_strategy,pmeshes_on_main;main=source)
+    rcv2 = multicast(snd2)
+    partition_strategy_mesh = PartitionedArrays.getany(rcv2)
+    PMesh(mesh_partition,node_partition,face_partition,partition_strategy_mesh)
 end
 
 function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumber)
@@ -3398,7 +3408,8 @@ function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumb
             OwnAndGhostIndices(own,ghost)
         end
         lface_to_face_mesh = map(local_to_global,local_faces)
-        lmesh = restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+        lnode_to_node_mesh = local_to_global(local_nodes)
+        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
         lmesh, local_nodes, Tuple(local_faces)
     end
     mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
@@ -3410,7 +3421,9 @@ function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumb
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
     map(assembly_graph,face_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    graph_nodes = :nodes
+    partition_strategy = PartitionStrategy(graph_nodes,ghost_layers)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
     pmesh
 end
 
@@ -3510,7 +3523,9 @@ function partition_mesh_cells(cell_to_color,parts,mesh,graph,ghost_layers,renumb
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
     map(assembly_graph,face_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    graph_nodes = :cells
+    partition_strategy = PartitionStrategy(graph_nodes,ghost_layers)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
     pmesh
 end
 

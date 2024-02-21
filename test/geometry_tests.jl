@@ -230,6 +230,8 @@ pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;ghost_layers=0)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers=0)
+@test gk.partition_strategy(pmesh).ghost_layers == 0
+@test gk.partition_strategy(pmesh).graph_nodes === :cells
 
 function setup(mesh,ids,rank)
     face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
