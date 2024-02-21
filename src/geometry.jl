@@ -3382,8 +3382,11 @@ function scatter_mesh(pmeshes_on_main;source=MAIN)
     rcv = scatter(snd;source)
     mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
-    snd2 = map_main(partition_strategy,pmeshes_on_main;main=source)
-    rcv2 = multicast(snd2)
+    np = length(snd)
+    snd2 = map_main(pmeshes_on_main;main=source) do pmesh
+        fill(partition_strategy(pmesh),np)
+    end
+    rcv2 = scatter(snd2)
     partition_strategy_mesh = PartitionedArrays.getany(rcv2)
     PMesh(mesh_partition,node_partition,face_partition,partition_strategy_mesh)
 end
