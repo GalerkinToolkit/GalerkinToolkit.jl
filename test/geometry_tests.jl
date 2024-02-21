@@ -140,25 +140,22 @@ node_groups = gk.physical_nodes(mesh;merge_dims=true,disjoint=true)
 vmesh, vglue = gk.visualization_mesh(mesh)
 
 mesh = gk.cartesian_mesh(domain,cells)
-gk.mesh_graph(mesh;graph_nodes=:nodes)
-gk.mesh_graph(mesh;graph_nodes=:cells)
-gk.mesh_graph(mesh;graph_nodes=:nodes,graph_edges=:cells)
-gk.mesh_graph(mesh;graph_nodes=:nodes,graph_edges=:faces)
-gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:nodes)
-gk.mesh_graph(mesh;graph_nodes=:cells,graph_edges=:faces)
+gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells))
+gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:faces,graph_edges_dim=:all))
+gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:faces,graph_edges_dim=1))
+gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes))
+gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:faces,graph_edges_dim=1))
 
 np = 2
 parts = DebugArray(LinearIndices((np,)))
 mesh = gk.cartesian_mesh((0,1,0,1),(2,2))
 cell_to_color = [1,1,2,2]
-pmesh = gk.partition_mesh(mesh,np)
-pmesh = gk.partition_mesh(mesh,np;parts)
-pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=cell_to_color,graph_nodes=:cells,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0),parts,graph_partition=cell_to_color)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=1),parts,graph_partition=cell_to_color)
 
 node_to_color = [1,1,1,1,2,2,2,2,2]
-pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;parts,graph_partition=node_to_color,graph_nodes=:nodes,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells,ghost_layers=0),parts,graph_partition=node_to_color)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells,ghost_layers=1),parts,graph_partition=node_to_color)
 
 function setup(mesh,ids,rank)
     face_to_owner = zeros(Int,sum(gk.num_faces(mesh)))
@@ -181,10 +178,10 @@ np = 4
 parts = DebugArray(LinearIndices((np,)))
 pmesh = map_main(parts) do parts
     mesh = gk.mesh_from_gmsh(msh)
-    graph_nodes = :nodes
-    graph = gk.mesh_graph(mesh;graph_nodes=:nodes)
+    partition_strategy = gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells)
+    graph = gk.mesh_graph(mesh;partition_strategy)
     graph_partition = Metis.partition(graph,np)
-    gk.partition_mesh(mesh,np;graph,graph_nodes,graph_partition)
+    gk.partition_mesh(mesh,np;partition_strategy,graph,graph_partition)
 end |> gk.scatter_mesh
 
 function setup(mesh,ids,rank)
@@ -206,30 +203,31 @@ map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 # In this one, we do only the graph partition on the main
 # but we load the mesh everywhere
 mesh = gk.mesh_from_gmsh(msh)
-graph_nodes = :nodes
-graph = gk.mesh_graph(mesh;graph_nodes)
+partition_strategy = gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells,ghost_layers=1)
+graph = gk.mesh_graph(mesh;partition_strategy)
 graph_partition = map_main(parts) do parts
      Metis.partition(graph,np)
 end |> multicast |> PartitionedArrays.getany
-pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy,parts,graph,graph_partition)
 
 graph_nodes = :cells
-graph = gk.mesh_graph(mesh;graph_nodes)
+partition_strategy = gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes)
+graph = gk.mesh_graph(mesh;partition_strategy)
 graph_partition = map_main(parts) do parts
      Metis.partition(graph,np)
 end |> multicast |> PartitionedArrays.getany
-pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=0)
-pmesh = gk.partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers=1)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy,parts,graph,graph_partition)
+pmesh = gk.partition_mesh(mesh,np;partition_strategy,parts,graph,graph_partition)
 
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
 parts_per_dir = (2,2)
-pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir)
-pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;ghost_layers=0)
+pmesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=1))
+pmesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0))
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
-pmesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers=0)
+pmesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=1))
+pmesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy=gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0))
 @test gk.partition_strategy(pmesh).ghost_layers == 0
 @test gk.partition_strategy(pmesh).graph_nodes === :cells
 

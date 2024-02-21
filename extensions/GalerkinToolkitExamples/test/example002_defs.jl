@@ -15,8 +15,8 @@ function example002_tests_np_4(distribute)
     parts_per_dir = (2,2)
     np = prod(parts_per_dir)
     parts = distribute(LinearIndices((np,)))
-    ghost_layers = 0
-    mesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers)
+    partition_strategy = gk.partition_strategy(;graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+    mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
     params[:mesh] = mesh
     results = Example002.main(params)
     results = Example002.main(params)
@@ -24,24 +24,23 @@ function example002_tests_np_4(distribute)
     @test results[:el2] < tol
 
     # This is how to repartition a general unstructured grid
-    graph_nodes = :cells
     pmesh = map_main(parts) do parts
         mesh = gk.cartesian_mesh(domain,cells_per_dir)
-        graph = gk.mesh_graph(mesh;graph_nodes)
+        graph = gk.mesh_graph(mesh;partition_strategy)
         graph_partition = Metis.partition(graph,np)
-        gk.partition_mesh(mesh,np;graph,graph_nodes,graph_partition,ghost_layers)
+        gk.partition_mesh(mesh,np;partition_strategy,graph,graph_partition)
     end |> gk.scatter_mesh
     params[:mesh] = pmesh
     results = Example002.main(params)
     @test results[:eh1] < tol
     @test results[:el2] < tol
 
-    graph_nodes = :nodes
+    partition_strategy = gk.partition_strategy(;graph_nodes=:nodes,graph_edges=:cells,ghost_layers=1)
     pmesh = map_main(parts) do parts
         mesh = gk.cartesian_mesh(domain,(3,3))
-        graph = gk.mesh_graph(mesh;graph_nodes)
+        graph = gk.mesh_graph(mesh;partition_strategy)
         graph_partition = Metis.partition(graph,np)
-        gk.partition_mesh(mesh,np;graph,graph_nodes,graph_partition)
+        gk.partition_mesh(mesh,np;partition_strategy,graph,graph_partition)
     end |> gk.scatter_mesh
     params[:mesh] = pmesh
     results = Example002.main(params)
@@ -56,8 +55,8 @@ function example002_tests_np_4(distribute)
     parts_per_dir = (2,2,1)
     np = prod(parts_per_dir)
     parts = distribute(LinearIndices((np,)))
-    ghost_layers = 0
-    mesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers)
+    partition_strategy = gk.partition_strategy(;graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+    mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
     params[:mesh] = mesh
     params[:export_vtu] = false
     params[:solver] = Example002.ksp_solver()
