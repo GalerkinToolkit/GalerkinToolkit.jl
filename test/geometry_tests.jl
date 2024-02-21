@@ -67,6 +67,18 @@ x = gk.node_coordinates(fe)
 A = tabulator(gk.value,x)
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
+msh =  joinpath(@__DIR__,"..","assets","quad.msh")
+mesh = gk.mesh_from_gmsh(msh)
+vtk_grid(joinpath(outdir,"quad"),gk.vtk_args(mesh)...) do vtk
+    gk.vtk_physical_faces!(vtk,mesh)
+    gk.vtk_physical_nodes!(vtk,mesh)
+end
+for d in 0:gk.num_dims(mesh)
+    vtk_grid(joinpath(outdir,"quad_$d"),gk.vtk_args(mesh,d)...) do vtk
+        gk.vtk_physical_faces!(vtk,mesh,d)
+        gk.vtk_physical_nodes!(vtk,mesh,d)
+    end
+end
 
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = gk.mesh_from_gmsh(msh;complexify=false)
