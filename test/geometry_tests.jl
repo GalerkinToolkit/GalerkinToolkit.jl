@@ -248,6 +248,7 @@ function setup(mesh,ids,rank)
 end
 map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
+# sequential two level mesh testing and visualization
 domain = (0,1,0,1)
 cells = (10,10)
 fine_mesh = gk.cartesian_mesh(domain,cells)
@@ -299,5 +300,12 @@ map(
     partition(final_pmesh), 
     gk.index_partition(final_pmesh), 
     parts)
+
+# Periodicity testing: two_level_mesh.... not PMesh yet 
+# coarse AND fine mesh have to be periodic? 
+periodic_mesh_fpath = joinpath(
+    @__DIR__, "..", "assets", "coarse_periodic_right_left.msh")
+periodic_mesh = gk.mesh_from_gmsh(periodic_mesh_fpath)
+
 
 end # module
