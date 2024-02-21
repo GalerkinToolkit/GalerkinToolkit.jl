@@ -325,7 +325,13 @@ end
 function node_coordinates(fe::AbstractLagrangeMeshFace)
     @assert fe |> geometry |> is_unitary
     mexps = monomial_exponents(fe)
-    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+    lib_node_to_coords = node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+    if length(fe.lib_to_user_nodes) == 0
+        return lib_node_to_coords
+    end
+    user_node_to_coords = similar(lib_node_to_coords)
+    user_node_to_coords[fe.lib_to_user_nodes] = lib_node_to_coords
+    user_node_to_coords
 end
 
 function primal_basis(fe::AbstractLagrangeMeshFace)
