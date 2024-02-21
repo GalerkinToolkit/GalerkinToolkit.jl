@@ -1967,7 +1967,7 @@ function generate_face_boundary(
                             break
                         end
                     end
-                    @boundscheck @assert ldface2 != INVALID_ID
+                    @boundscheck @assert ldface2 != INVALID_ID # TODO: issue gmsh quad eles
                     Dface_to_dfaces[Dface1][ldface2] = dface2
                 end
             end
