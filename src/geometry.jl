@@ -325,7 +325,13 @@ end
 function node_coordinates(fe::AbstractLagrangeMeshFace)
     @assert fe |> geometry |> is_unitary
     mexps = monomial_exponents(fe)
-    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+    lib_node_to_coords = node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+    if length(fe.lib_to_user_nodes) == 0
+        return lib_node_to_coords
+    end
+    user_node_to_coords = similar(lib_node_to_coords)
+    user_node_to_coords[fe.lib_to_user_nodes] = lib_node_to_coords
+    user_node_to_coords
 end
 
 function primal_basis(fe::AbstractLagrangeMeshFace)
@@ -2412,13 +2418,13 @@ end
 """
 """
 function cartesian_mesh(
-    domain,cells_per_dir,parts_per_dir=nothing;
+    domain,cells_per_dir;
     boundary=true,
     complexify=true,
     simplexify=false,
+    parts_per_dir=nothing,
     parts = parts_per_dir === nothing ? nothing : LinearIndices((prod(parts_per_dir),)),
-    graph_nodes=:cells,
-    ghost_layers=1,
+    partition_strategy = GalerkinToolkit.partition_strategy()
     )
     mesh = if boundary
         if simplexify
@@ -2441,15 +2447,20 @@ function cartesian_mesh(
         return mesh
     end
     # TODO this can (and should!) be heavily optimized
+    @assert partition_strategy !== nothing
+    graph_nodes = partition_strategy.graph_nodes
+    graph_edges = partition_strategy.graph_edges
+    ghost_layers = partition_strategy.ghost_layers
     @assert graph_nodes === :cells
+    @assert graph_edges === :nodes
     np = prod(parts_per_dir)
-    graph = mesh_graph(mesh;graph_nodes)
+    graph = mesh_graph(mesh;partition_strategy)
     parts_seq = LinearIndices((np,))
     graph_partition = zeros(Int,prod(cells_per_dir))
     for ids in uniform_partition(LinearIndices((np,)),parts_per_dir,cells_per_dir)
         graph_partition[local_to_global(ids)] = local_to_owner(ids)
     end
-    partition_mesh(mesh,np;parts,graph,graph_nodes,graph_partition,ghost_layers)
+    partition_mesh(mesh,np;partition_strategy,parts,graph_partition)
 end
 
 function bounding_box_from_domain(domain)
@@ -3208,10 +3219,47 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
+struct PartitionStrategy{A,B} <: GalerkinToolkitDataType
+    graph_nodes::Symbol
+    graph_edges::Symbol
+    graph_nodes_dim::A
+    graph_edges_dim::B
+    ghost_layers::Int
+end
+
+function partition_strategy(;
+    graph_nodes=:cells,
+    graph_edges=:nodes,
+    ghost_layers=1,
+    graph_nodes_dim=nothing,
+    graph_edges_dim=nothing)
+
+    @assert graph_nodes in (:cells,:nodes,:faces)
+    @assert graph_edges in (:cells,:nodes,:faces)
+
+    if graph_nodes ∉ (:cells,:nodes) && graph_nodes_dim === nothing
+        error("graph_nodes_dim needs to be defined")
+    end
+
+    if graph_edges ∉ (:cells,:nodes) && graph_edges_dim === nothing
+        error("graph_edges_dim needs to be defined")
+    end
+
+    PartitionStrategy(
+                      graph_nodes,
+                      graph_edges,
+                      graph_nodes_dim,
+                      graph_edges_dim,
+                      ghost_layers)
+
+end
+
 function mesh_graph(mesh::AbstractFEMesh;
-    graph_nodes = :cells,
-    graph_edges= graph_nodes === :nodes ? (:cells) : (:nodes),
-    d=num_dims(mesh))
+    partition_strategy=GalerkinToolkit.partition_strategy())
+    graph_nodes = partition_strategy.graph_nodes
+    graph_edges = partition_strategy.graph_edges
+    graph_nodes_dim = partition_strategy.graph_nodes_dim
+    graph_edges_dim = partition_strategy.graph_edges_dim
     function barrier(nnodes,d_to_cell_to_nodes)
         ndata = 0
         for cell_to_nodes in d_to_cell_to_nodes
@@ -3248,15 +3296,14 @@ function mesh_graph(mesh::AbstractFEMesh;
     if graph_nodes === :nodes
         nnodes = num_nodes(mesh)
         if graph_edges === :cells
-            d = num_dims(mesh)
-            face_nodes_mesh = face_nodes(mesh,d)
+            face_nodes_mesh = face_nodes(mesh,num_dims(mesh))
             return barrier(nnodes,[face_nodes_mesh])
-        elseif graph_edges === :faces
-            face_nodes_mesh = face_nodes(mesh,d)
-            return barrier(nnodes,[face_nodes_mesh])
-        elseif graph_edges === :allfaces
+        elseif graph_edges === :faces && graph_edges_dim === :all
             face_nodes_mesh = face_nodes(mesh)
             return barrier(nnodes,face_nodes_mesh)
+        elseif graph_edges === :faces
+            face_nodes_mesh = face_nodes(mesh,graph_edges_dim)
+            return barrier(nnodes,[face_nodes_mesh])
         else
             error("case not implemented")
         end
@@ -3268,9 +3315,9 @@ function mesh_graph(mesh::AbstractFEMesh;
             nnodes = num_nodes(mesh)
             node_to_dfaces = generate_face_coboundary(dface_to_nodes,nnodes)
             return barrier(ndfaces,[node_to_dfaces])
-        elseif graph_edges === :faces
+        elseif graph_edges === :faces && graph_edges_dim !== :all
             topo = topology(mesh)
-            node_to_dfaces = face_incidence(topo,d,D)
+            node_to_dfaces = face_incidence(topo,graph_edges_dim,D)
             return barrier(ndfaces,[node_to_dfaces])
         else
             error("case not implemented")
@@ -3280,11 +3327,13 @@ function mesh_graph(mesh::AbstractFEMesh;
     end
 end
 
-struct PMesh{A,B,C} <: GalerkinToolkitDataType
+struct PMesh{A,B,C,D} <: GalerkinToolkitDataType
     mesh_partition::A
     node_partition::B
     face_partition::C
+    partition_strategy::D
 end
+partition_strategy(a) = a.partition_strategy
 PartitionedArrays.partition(m::PMesh) = m.mesh_partition
 face_partition(a::PMesh,d) = a.face_partition[d+1]
 node_partition(a::PMesh) = a.node_partition
@@ -3315,17 +3364,18 @@ node_indices(a::PMeshLocalIds) = a.node_indices
 face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
 function partition_mesh(mesh,np;
+    partition_strategy=GalerkinToolkit.partition_strategy(),
     parts = LinearIndices((np,)),
-    graph_nodes = :cells,
-    graph = mesh_graph(mesh;graph_nodes),
+    graph = mesh_graph(mesh;partition_strategy),
     graph_partition = Metis.partition(graph,np),
-    ghost_layers=1,
     renumber = true,
     )
+    graph_nodes = partition_strategy.graph_nodes
+    graph_edges = partition_strategy.graph_edges
     if graph_nodes === :nodes
-        partition_mesh_nodes(graph_partition,parts,mesh,graph,ghost_layers,renumber)
+        partition_mesh_nodes(graph_partition,parts,mesh,graph,partition_strategy,renumber)
     elseif graph_nodes === :cells
-        partition_mesh_cells(graph_partition,parts,mesh,graph,ghost_layers,renumber)
+        partition_mesh_cells(graph_partition,parts,mesh,graph,partition_strategy,renumber)
     else
         error("Case not implemented")
     end
@@ -3338,10 +3388,17 @@ function scatter_mesh(pmeshes_on_main;source=MAIN)
     rcv = scatter(snd;source)
     mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
-    PMesh(mesh_partition,node_partition,face_partition)
+    np = length(snd)
+    snd2 = map_main(pmeshes_on_main;main=source) do pmesh
+        fill(partition_strategy(pmesh),np)
+    end
+    rcv2 = scatter(snd2)
+    partition_strategy_mesh = PartitionedArrays.getany(rcv2)
+    PMesh(mesh_partition,node_partition,face_partition,partition_strategy_mesh)
 end
 
-function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumber)
+function partition_mesh_nodes(node_to_color,parts,mesh,graph,partition_strategy,renumber)
+    ghost_layers = partition_strategy.ghost_layers
     face_nodes_mesh = face_nodes(mesh)
     nnodes = num_nodes(mesh)
     function setup(part)
@@ -3398,7 +3455,8 @@ function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumb
             OwnAndGhostIndices(own,ghost)
         end
         lface_to_face_mesh = map(local_to_global,local_faces)
-        lmesh = restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+        lnode_to_node_mesh = local_to_global(local_nodes)
+        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
         lmesh, local_nodes, Tuple(local_faces)
     end
     mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
@@ -3409,12 +3467,12 @@ function partition_mesh_nodes(node_to_color,parts,mesh,graph,ghost_layers,renumb
     end
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
-    map(assembly_graph,face_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
     pmesh
 end
 
-function partition_mesh_cells(cell_to_color,parts,mesh,graph,ghost_layers,renumber)
+function partition_mesh_cells(cell_to_color,parts,mesh,graph,partition_strategy,renumber)
+    ghost_layers = partition_strategy.ghost_layers
     D = num_dims(mesh)
     ncells = num_faces(mesh,D)
     topo = topology(mesh)
@@ -3510,7 +3568,7 @@ function partition_mesh_cells(cell_to_color,parts,mesh,graph,ghost_layers,renumb
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
     map(assembly_graph,face_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition)
+    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
     pmesh
 end
 

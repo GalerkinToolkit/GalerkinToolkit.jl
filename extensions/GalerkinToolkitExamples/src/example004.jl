@@ -1,4 +1,4 @@
-module Example002
+module Example004
 
 import GalerkinToolkit as gk
 import ForwardDiff
@@ -8,35 +8,37 @@ using SparseArrays
 using WriteVTK
 using PartitionedArrays
 using TimerOutputs
-using PetscCall
+using NLsolve
+using Random
+using GalerkinToolkitExamples: Example001
+
+using Preconditioners
+using IterativeSolvers: cg!
+
+# This one implements a vanilla sequential iso-parametric p-Laplacian solver by only
+# using the mesh interface.
 
 function main(params_in)
-
-    # Dict to collect results
-    results = Dict{Symbol,Any}()
 
     # Process params
     params_default = default_params()
     params = add_default_params(params_in,params_default)
-    parts = linear_indices(partition(params[:mesh]))
-
-    timer = TimerOutput()
+    results = Dict{Symbol,Any}()
+    timer = params[:timer]
 
     # Setup main data structures
-    @timeit timer "setup"  state = setup(params,timer)
+    @timeit timer "setup" state = setup(params)
     add_basic_info(results,params,state)
 
-    # Assemble system and solve it
-    @timeit timer "assemble_system" A,b = assemble_system(state)
-    @timeit timer "solve_system" x = solve_system(A,b,params,state)
+    @timeit timer "solve_problem" x = solve_problem(params,state)
 
     # Post process
-    @timeit timer "setup_uh"  uh = setup_uh(x,state)
+    @timeit timer "setup_uh" uh = setup_uh(x,state)
     @timeit timer "integrate_error_norms" integrate_error_norms(results,uh,state)
-    @timeit timer "export_results"  export_results(uh,params,state)
+    @timeit timer "export_results" export_results(uh,params,state)
 
     map_main(state.local_states) do local_state
-        display(local_state.timer)
+        print_timer(local_state.timer,allocations=false)
     end
 
     results
@@ -64,99 +66,54 @@ function default_params()
     mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
     outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
+    params[:mesh] = mesh
     params[:u] = (x) -> sum(x)
     params[:f] = (x) -> 0.0
     params[:g] = (x) -> 0.0
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:integration_degree] = 2
-    params[:solver] = lu_solver()
+    params[:p] = 2
+    params[:solver] = nlsolve_solver(;method=:newton,show_trace=true)
+    params[:example_path] = joinpath(outdir,"example004")
     params[:export_vtu] = true
-    params[:mesh] = mesh
-    params[:example_path] = joinpath(outdir,"example002")
+    params[:autodiff] = :hand
+    params[:timer] = TimerOutput()
     params
 end
 
-# Not a parallel solver
-# just for debugging purposes
-function lu_solver()
-    setup(x,A,b) = lu(A)
-    setup! = lu!
-    solve! = ldiv!
-    finalize!(S) = nothing
-    (;setup,setup!,solve!,finalize!)
-end
-
-function ksp_solver()
-    setup = PetscCall.ksp_setup
-    setup! = PetscCall.ksp_setup!
-    solve! = PetscCall.ksp_solve!
-    finalize! = PetscCall.ksp_finalize!
-    (;setup,setup!,solve!,finalize!)
-end
-
-function setup(params,timer)
-    mesh = params[:mesh]
-    local_states_0 = map(partition(mesh)) do mesh
-        local_params = copy(params)
-        local_params[:mesh] = mesh
-        local_setup(local_params,timer)
-    end
-    @timeit timer "setup_dofs" dofs,local_dofs = setup_dofs(params,local_states_0)
-    local_states = map((a,dofs)->(;dofs,a...),local_states_0,local_dofs)
-    state = (;local_states,dofs,timer)
-    state
-end
-
-function local_setup(params,timer)
-    @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
-    @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
-    @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
-    @timeit timer "face_integration" face_integration = setup_integration(params,:faces)
-    @timeit timer "cell_isomap" cell_isomap = setup_isomap(params,cell_integration)
-    @timeit timer "face_isomap" face_isomap = setup_isomap(params,face_integration)
-    @timeit timer "user_funs" user_funs = setup_user_funs(params)
-    solver = params[:solver]
-    state = (;timer,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
-end
-
-function setup_dofs(params,local_states)
-    mesh = params[:mesh]
-    partition_strategy = gk.partition_strategy(mesh)
-    D = gk.num_dims(mesh)
-    node_partition = gk.node_partition(mesh)
-    global_node_to_mask = pfill(false,node_partition)
-    function fillmask!(node_to_mask,state)
-        free_nodes = first(state.dirichlet_bcs.free_and_dirichlet_nodes)
-        node_to_mask[free_nodes] .= true
-    end
-    map(fillmask!,partition(global_node_to_mask),local_states)
-    global_dof_to_node, global_node_to_dof = find_local_indices(global_node_to_mask)
-    dof_partition = partition(axes(global_dof_to_node,1))
-    function setup_local_dofs(state,node_to_dof,dofs)
-        free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
-        node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
-        n_free = length(first(free_and_dirichlet_nodes))
-        n_dofs = n_free
-        @assert length(dofs) == n_dofs
-        cell_to_nodes = state.cell_isomap.face_to_nodes
-        face_to_nodes = state.face_isomap.face_to_nodes
-        function map_node_to_dof(node)
-            free_node = node_to_free_node[node]
-            if free_node > n_free
-                return Int(-(free_node-n_free))
-            end
-            dof = node_to_dof[node]
-            Int(dof)
+function nlsolve_solver(;linear_solver=Example001.lu_solver(),timer=TimerOutput(),options...)
+    function setup(x0,nlp)
+        @timeit timer "linearize" r0,J0,cache = nlp.linearize(x0)
+        dx = similar(r0,axes(J0,2)) # TODO is there any way of reusing this in the nonlinear solve?
+        @timeit timer "linear_solver_setup" ls_setup = linear_solver.setup(dx,J0,r0)
+        function linsolve(x,A,b)
+            # TODO we dont need to re-setup for the first
+            # linear solve.
+            # This can be avoided with a Ref{Bool} shared
+            # between this function and j!
+            @timeit timer "linear_solver_setup!"  linear_solver.setup!(ls_setup,A)
+            @timeit timer "linear_solver_solve!" linear_solver.solve!(x,ls_setup,b)
+            x
         end
-        cell_to_dofs_data = map_node_to_dof.(cell_to_nodes.data)
-        face_to_dofs_data = map_node_to_dof.(face_to_nodes.data)
-        cell_to_dofs = JaggedArray(cell_to_dofs_data,cell_to_nodes.ptrs)
-        face_to_dofs = JaggedArray(face_to_dofs_data,face_to_nodes.ptrs)
-        (;cell_to_dofs,face_to_dofs,n_dofs,dofs,partition_strategy)
+        f!(r,x) = nlp.residual!(r,x,cache)
+        j!(J,x) = nlp.jacobian!(J,x,cache)
+        df = OnceDifferentiable(f!,j!,x0,r0,J0)
+        (;df,linsolve,J0,cache,ls_setup,linear_solver)
     end
-    local_dofs = map(setup_local_dofs,local_states,partition(global_node_to_dof),dof_partition)
-    (;dof_partition,global_node_to_dof,global_dof_to_node), local_dofs
+    function solve!(x,setup)
+        (;df,linsolve) = setup
+        result = nlsolve(df,x;linsolve,options...)
+        x .= result.zero
+        nothing
+    end
+    function setup!(setup,x0,nlp)
+        error("todo")
+    end
+    function finalize!(setup)
+        setup.linear_solver.finalize!(setup.ls_setup)
+    end
+    (;setup,solve!,setup!,finalize!)
 end
 
 function setup_dirichlet_bcs(params)
@@ -233,6 +190,81 @@ function setup_user_funs(params)
     user_funs = (;u,f,g)
 end
 
+function setup(params)
+    mesh = params[:mesh]
+    timer = params[:timer]
+    local_states_0 = map(partition(mesh)) do mesh
+        local_params = copy(params)
+        local_params[:mesh] = mesh
+        local_setup(local_params,timer)
+    end
+    @timeit timer "setup_dofs" dofs,local_dofs = setup_dofs(params,local_states_0)
+    local_states = map((a,dofs)->(;dofs,a...),local_states_0,local_dofs)
+    state = (;local_states,dofs,timer)
+    state
+end
+
+function setup_dofs(params,local_states)
+    mesh = params[:mesh]
+    node_partition = gk.node_partition(mesh)
+    global_node_to_mask = pfill(false,node_partition)
+    function fillmask!(node_to_mask,state)
+        free_nodes = first(state.dirichlet_bcs.free_and_dirichlet_nodes)
+        node_to_mask[free_nodes] .= true
+    end
+    map(fillmask!,partition(global_node_to_mask),local_states)
+    global_dof_to_node, global_node_to_dof = find_local_indices(global_node_to_mask)
+    dof_partition = partition(axes(global_dof_to_node,1))
+    function setup_local_dofs(state,node_to_dof)
+        free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+        node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
+        n_free = length(first(free_and_dirichlet_nodes))
+        n_dofs = n_free
+        cell_to_nodes = state.cell_isomap.face_to_nodes
+        face_to_nodes = state.face_isomap.face_to_nodes
+        function map_node_to_dof(node)
+            free_node = node_to_free_node[node]
+            if free_node > n_free
+                return Int(-(free_node-n_free))
+            end
+            dof = node_to_dof[node]
+            Int(dof)
+        end
+        cell_to_dofs_data = map_node_to_dof.(cell_to_nodes.data)
+        face_to_dofs_data = map_node_to_dof.(face_to_nodes.data)
+        cell_to_dofs = JaggedArray(cell_to_dofs_data,cell_to_nodes.ptrs)
+        face_to_dofs = JaggedArray(face_to_dofs_data,face_to_nodes.ptrs)
+        (;cell_to_dofs,face_to_dofs,n_dofs)
+    end
+    local_dofs = map(setup_local_dofs,local_states,partition(global_node_to_dof))
+    (;dof_partition,global_node_to_dof,global_dof_to_node), local_dofs
+end
+
+function local_setup(params,timer)
+    @timeit timer "dirichlet_bcs" dirichlet_bcs = setup_dirichlet_bcs(params)
+    @timeit timer "neumann_bcs" neumann_bcs = setup_neumann_bcs(params)
+    @timeit timer "cell_integration" cell_integration = setup_integration(params,:cells)
+    @timeit timer "face_integration" face_integration = setup_integration(params,:faces)
+    @timeit timer "cell_isomap" cell_isomap = setup_isomap(params,cell_integration)
+    @timeit timer "face_isomap" face_isomap = setup_isomap(params,face_integration)
+    @timeit timer "user_funs" user_funs = setup_user_funs(params)
+    solver = params[:solver]
+    p = params[:p]
+    if params[:autodiff] === :hand
+        flux = flux_hand
+        dflux = dflux_hand
+    elseif params[:autodiff] === :flux
+        flux = flux_hand
+        dflux = dflux_from_flux
+    elseif params[:autodiff] === :energy
+        flux = flux_from_energy
+        dflux = dflux_from_energy
+    else
+        error("not implemented: autodiff == $autodiff")
+    end
+    state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs)
+end
+
 function add_basic_info(results,params,state)
     mesh = params[:mesh]
     nfree = length(state.dofs.global_dof_to_node)
@@ -244,102 +276,134 @@ function add_basic_info(results,params,state)
     results
 end
 
-function assemble_system(state)
+# In the final interface, a non-linear problem
+# will have function size and axes
+function nonlinear_problem(state)
     timer = state.timer
-    dof_partition = partition(axes(state.dofs.global_dof_to_node,1))
-    @timeit timer "assemble_system_coo" I,J,V,b_partition = map(assemble_system_coo,state.local_states) |> tuple_of_arrays
-    @timeit timer "psparse" A = psparse(I,J,V,dof_partition,dof_partition;subassembled=true,indices=:local) |> fetch
-    row_partition = partition(axes(A,1))
-    b = PVector(b_partition,dof_partition)
-    @timeit timer "assemble_b" b = assemble(b,row_partition) |> fetch
-    A,b
+    function initial()
+        dof_partition = partition(axes(state.dofs.global_dof_to_node,1))
+        Random.seed!(1)
+        prand(Float64,dof_partition)
+    end
+    function linearize(u)
+        t = consistent!(u)
+        I,J,V = map(assemble_symbolic_local,state.local_states) |> tuple_of_arrays
+        r = similar(u)
+        fill!(r,0)
+        wait(t)
+        map(residual_local!,partition(r),partition(u),state.local_states)
+        t = assemble!(r)
+        map(jacobian_local!,V,partition(u),state.local_states)
+        wait(t)
+        dof_partition = partition(axes(u,1))
+        indices = :local
+        subassembled = true
+        reuse = true
+        row_partition = map(remove_ghost,dof_partition)
+        assembled_rows = row_partition
+        @timeit timer "psparse" J,J_cache = psparse(I,J,V,dof_partition,dof_partition;subassembled,indices,reuse,assembled_rows) |> fetch
+        cache = (V,J_cache)
+        r,J,cache
+    end
+    function residual!(r,u,cache)
+        t = consistent!(u)
+        fill!(r,0)
+        wait(t)
+        map(residual_local!,partition(r),partition(u),state.local_states)
+        assemble!(r) |> wait
+        r
+    end
+    function jacobian!(J,u,cache)
+        (V,J_cache) = cache 
+        consistent!(u) |> wait
+        map(jacobian_local!,V,partition(u),state.local_states)
+        @timeit timer "psparse!" psparse!(J,V,J_cache) |> wait
+        J
+    end
+    (;initial,linearize,residual!,jacobian!)
 end
 
-function assemble_system_coo(state)
+function assemble_symbolic_local(state)
     timer = state.timer
-    @timeit timer "assemble_sybmolic" args = assemble_sybmolic(state)
-    @timeit timer "assemble_numeric_cells!" assemble_numeric_cells!(args...,state)
-    @timeit timer "assemble_numeric_faces!" assemble_numeric_faces!(args...,state)
-    args
+    @timeit timer "assemble_symbolic" assemble_symbolic(state)
 end
 
-function assemble_sybmolic(state)
-
+function assemble_symbolic(state)
     cell_to_dofs = state.dofs.cell_to_dofs
-    partition_strategy = state.dofs.partition_strategy
-    if partition_strategy.graph_nodes === :cells
-        @assert partition_strategy.ghost_layers == 0
-    end
-    if partition_strategy.graph_nodes === :nodes
-        @assert partition_strategy.ghost_layers == 1
-    end
-    dof_to_owner = local_to_owner(state.dofs.dofs)
-    part = part_id(state.dofs.dofs)
-
+    n_dofs = state.dofs.n_dofs
     n_coo = 0
     ncells = length(cell_to_dofs)
     for cell in 1:ncells
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
-        for i in 1:ndofs
-            if !(dofs[i]>0)
-                continue
-            end
-            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
-                continue
-            end
-            for j in 1:ndofs
-                if !(dofs[j]>0)
-                    continue
-                end
-                n_coo += 1
-            end
-        end
+        n_coo += ndofs*ndofs
     end
-
     I_coo = Vector{Int32}(undef,n_coo)
     J_coo = Vector{Int32}(undef,n_coo)
     V_coo = Vector{Float64}(undef,n_coo)
-    b = zeros(Float64,state.dofs.n_dofs)
-
     n_coo = 0
     for cell in 1:ncells
         dofs = cell_to_dofs[cell]
         ndofs = length(dofs)
         for i in 1:ndofs
-            if !(dofs[i]>0)
-                continue
-            end
-            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
-                continue
-            end
             dofs_i = dofs[i]
             for j in 1:ndofs
-                if !(dofs[j]>0)
-                    continue
-                end
                 n_coo += 1
                 I_coo[n_coo] = dofs_i
                 J_coo[n_coo] = dofs[j]
             end
         end
     end
-
-    I_coo,J_coo,V_coo,b
+    I_coo,J_coo,V_coo
 end
 
-function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
+function residual_local!(r,u_dofs,state)
+    timer = state.timer
+    @timeit timer "residual_cells!"  residual_cells!(r,u_dofs,state)
+    @timeit timer "residual_faces!"  residual_faces!(r,u_dofs,state)
+end
 
-    partition_strategy = state.dofs.partition_strategy
-    if partition_strategy.graph_nodes === :cells
-        @assert partition_strategy.ghost_layers == 0
-    end
-    if partition_strategy.graph_nodes === :nodes
-        @assert partition_strategy.ghost_layers == 1
-    end
-    dof_to_owner = local_to_owner(state.dofs.dofs)
-    part = part_id(state.dofs.dofs)
+function jacobian_local!(V,u_dofs,state)
+    timer = state.timer
+    @timeit timer "jacobian_cells!" jacobian_cells!(V,u_dofs,state)
+end
 
+@inline flux_hand(∇u,p) = (norm(∇u)^(p-2))*∇u
+
+@inline function dflux_hand(∇u,∇du,p)
+    pm2 = p-2
+    pm4 = p-4
+    ((norm(∇u)^pm2)*∇du) + (pm2*(norm(∇u)^pm4)*(∇u⋅∇du)*∇u)
+end
+
+@inline function dflux_from_flux(∇u,∇du,p)
+    f(x) = flux_hand(x,p)
+    x = ∇u
+    dx = ∇du
+    dfdx = ForwardDiff.jacobian(f,x)
+    dfdx*dx
+end
+
+@inline energy(∇u,p) = (1/p)*(norm(∇u)^p)
+
+@inline function flux_from_energy(∇u,p)
+    f(x) = energy(x,p)
+    x = ∇u
+    dfdx = ForwardDiff.gradient(f,x)
+    dfdx
+end
+
+@inline function dflux_from_energy(∇u,∇du,p)
+    f(x) = energy(x,p)
+    x = ∇u
+    dx = ∇du
+    dfdx = ForwardDiff.hessian(f,x)
+    dfdx*dx
+end
+
+function residual_cells!(r,u_dofs,state)
+
+    flux = state.flux
     cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
     cell_to_rid = state.cell_isomap.face_to_rid
@@ -353,16 +417,19 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
     d = state.cell_integration.d
     u_dirichlet = state.dirichlet_bcs.u_dirichlet
     ncells = length(cell_to_nodes)
+    p = state.p
 
     # Allocate auxiliary buffers
     ∇x = map(i->similar(i,size(i,2)),∇s)
     Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
     fes = map(i->zeros(size(i,2)),∇s)
+    ues = map(i->zeros(size(i,2)),∇s)
     ∇st = map(m->collect(permutedims(m)),∇s)
     st = map(m->collect(permutedims(m)),s)
 
     Tx = eltype(node_to_x)
     TJ = typeof(zero(Tx)*zero(Tx)')
+    T = eltype(Tx)
 
     i_coo = 0
     for cell in 1:ncells
@@ -371,6 +438,7 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
         dofs = cell_to_dofs[cell]
         Ae = Aes[rid]
         fe = fes[rid]
+        ue = ues[rid]
         nl = length(nodes)
         ∇ste = ∇st[rid]
         ∇xe = ∇x[rid]
@@ -394,55 +462,134 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
             invJt = inv(Jt)
             dV = abs(detJt)*we[iq]
             for k in 1:nl
-                ∇xe[k] = invJt*∇ste[k,iq]
-            end
-            for j in 1:nl
-                ∇xej = ∇xe[j]
-                for i in 1:nl
-                    Ae[i,j] += ∇xe[i]⋅∇xej*dV
+                dof_k = dofs[k]
+                if dof_k < 1
+                    uk = u_dirichlet[-dof_k]
+                    ue[k] = uk
+                    continue
                 end
+                ue[k] = u_dofs[dof_k]
+            end
+            ∇u = zero(Tx)
+            for k in 1:nl
+                uek = ue[k] 
+                ∇xek = invJt*∇ste[k,iq]
+                ∇u += ∇xek*uek
+                ∇xe[k] = ∇xek
             end
             fx = f(xint)
             for k in 1:nl
-                fe[k] +=  fx*ste[k,iq]*dV
+                dv = ste[k,iq]
+                ∇dv = ∇xe[k]
+                fe[k] += ( ∇dv⋅flux(∇u,p) - fx*dv )*dV
             end
         end
-        # Set the result in the output array
         for i in 1:nl
             if !(dofs[i]>0)
                 continue
             end
-            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
-                continue
+            r[dofs[i]] += fe[i]
+        end
+    end
+end
+
+function jacobian_cells!(V_coo,u_dofs,state)
+
+    dflux = state.dflux
+    cell_to_dofs = state.dofs.cell_to_dofs
+    cell_to_nodes = state.cell_isomap.face_to_nodes
+    cell_to_rid = state.cell_isomap.face_to_rid
+    free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
+    node_to_x = state.cell_isomap.node_to_coords
+    ∇s = state.cell_isomap.rid_to_shape_grads
+    s = state.cell_isomap.rid_to_shape_vals
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    f = state.user_funs.f
+    w = state.cell_integration.rid_to_weights
+    d = state.cell_integration.d
+    u_dirichlet = state.dirichlet_bcs.u_dirichlet
+    ncells = length(cell_to_nodes)
+    p = state.p
+
+    # Allocate auxiliary buffers
+    ∇x = map(i->similar(i,size(i,2)),∇s)
+    Aes = map(i->zeros(size(i,2),size(i,2)),∇s)
+    fes = map(i->zeros(size(i,2)),∇s)
+    ues = map(i->zeros(size(i,2)),∇s)
+    ∇st = map(m->collect(permutedims(m)),∇s)
+    st = map(m->collect(permutedims(m)),s)
+
+    Tx = eltype(node_to_x)
+    TJ = typeof(zero(Tx)*zero(Tx)')
+    T = eltype(Tx)
+
+    i_coo = 0
+    for cell in 1:ncells
+        rid = cell_to_rid[cell]
+        nodes = cell_to_nodes[cell]
+        dofs = cell_to_dofs[cell]
+        Ae = Aes[rid]
+        fe = fes[rid]
+        ue = ues[rid]
+        nl = length(nodes)
+        ∇ste = ∇st[rid]
+        ∇xe = ∇x[rid]
+        ste = st[rid]
+        we = w[rid]
+        nq = length(we)
+        fill!(Ae,zero(eltype(Ae)))
+        fill!(fe,zero(eltype(Ae)))
+        # Integrate
+        for iq in 1:nq
+            Jt = zero(TJ) 
+            for k in 1:nl
+                x = node_to_x[nodes[k]]
+                ∇sqx = ∇ste[k,iq]
+                sqx = ste[k,iq]
+                Jt += ∇sqx*x'
             end
-            b[dofs[i]] += fe[i]
-            for j in 1:nl
-                if !(dofs[j]>0)
-                    uj = u_dirichlet[-dofs[j]]
-                    b[dofs[i]] -= Ae[i,j]*uj
+            detJt = det(Jt)
+            invJt = inv(Jt)
+            dV = abs(detJt)*we[iq]
+            for k in 1:nl
+                dof_k = dofs[k]
+                if dof_k < 1
+                    uk = u_dirichlet[-dof_k]
+                    ue[k] = uk
                     continue
                 end
+                ue[k] = u_dofs[dof_k]
+            end
+            ∇u = zero(Tx)
+            for k in 1:nl
+                uek = ue[k]
+                ∇xek = invJt*∇ste[k,iq]
+                ∇u += ∇xek*uek
+                ∇xe[k] = ∇xek
+            end
+            for j in 1:nl
+                ∇du = ∇xe[j]
+                for i in 1:nl
+                    ∇dv = ∇xe[i]
+                    Ae[i,j] += ( ∇dv⋅dflux(∇u,∇du,p) )*dV
+                end
+            end
+        end
+        # Set the result in the output array
+        for i in 1:nl
+            for j in 1:nl
                 i_coo += 1
                 V_coo[i_coo] = Ae[i,j]
             end
         end
     end
-
 end
 
-function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
+function residual_faces!(r,u_dofs,state)
 
     neum_face_to_face = state.neumann_bcs.neum_face_to_face
     if length(neum_face_to_face) == 0
         return nothing
-    end
-
-    partition_strategy = state.dofs.partition_strategy
-    if partition_strategy.graph_nodes === :cells
-        @assert partition_strategy.ghost_layers == 0
-    end
-    if partition_strategy.graph_nodes === :nodes
-        @assert partition_strategy.ghost_layers == 1
     end
 
     face_to_rid = state.face_isomap.face_to_rid
@@ -458,9 +605,6 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
     fes = map(i->zeros(size(i,2)),s_f)
     Tx = SVector{d,Float64}
     Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
-
-    dof_to_owner = local_to_owner(state.dofs.dofs)
-    part = part_id(state.dofs.dofs)
 
     for face in neum_face_to_face
         rid = face_to_rid[face]
@@ -494,30 +638,24 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
             if !(dofs[i]>0)
                 continue
             end
-            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
-                continue
-            end
-            b[dofs[i]] += fe[i]
+            r[dofs[i]] -= fe[i]
         end
     end
 end
 
-function solve_system(A,b,params,state)
+function solve_problem(params,state)
     timer = state.timer
+    problem = nonlinear_problem(state)
     solver = params[:solver]
-    x = similar(b,axes(A,2))
-    @timeit timer "solver.setup" setup = solver.setup(x,A,b)
-    @timeit timer "solver.solve!" solver.solve!(x,setup,b)
+    x = problem.initial()
+    @timeit timer "solver.setup" setup = solver.setup(x,problem)
+    @timeit timer "solver.solve!" solver.solve!(x,setup)
     @timeit timer "solver.finalize!" solver.finalize!(setup)
     x
 end
 
-function setup_uh(x,state)
-    dofs = axes(state.dofs.global_dof_to_node,1)
-    local_states = state.local_states
-    global_dof_to_x = similar(x,dofs)
-    global_dof_to_x .= x
-    consistent!(global_dof_to_x) |> wait
+function setup_uh(u,state)
+    consistent!(u) |> wait
     function setup_local_uh(dof_to_x,state,node_to_dof)
         free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
         node_to_x = state.cell_isomap.node_to_coords
@@ -530,7 +668,7 @@ function setup_uh(x,state)
         local_uh[last(free_and_dirichlet_nodes)] = u_dirichlet
         local_uh
     end
-    uh = map(setup_local_uh,partition(global_dof_to_x),local_states,partition(state.dofs.global_node_to_dof))
+    uh = map(setup_local_uh,partition(u),state.local_states,partition(state.dofs.global_node_to_dof))
     uh
 end
 
