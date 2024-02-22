@@ -316,13 +316,34 @@ map(
     parts)
 
 # Visualizing the periodic fine mesh
-periodic_mesh_fpath = joinpath(
+periodic_gmsh_fpath = joinpath(
     @__DIR__, "..", "assets", "coarse_periodic_right_left_top_bottom.msh")
-periodic_mesh = gk.mesh_from_gmsh(periodic_mesh_fpath)
-periodic_nodes = gk.periodic_nodes(periodic_mesh)
-pnode_to_node = periodic_nodes.first 
-pnode_to_master = periodic_nodes.second 
+periodic_gmsh = gk.mesh_from_gmsh(periodic_gmsh_fpath)
+periodic_nodes = gk.periodic_nodes(periodic_gmsh)
+fine_pnode_to_fine_node = periodic_nodes.first 
+fine_pnode_to_master_fine_node = periodic_nodes.second 
+#@assert length(pnode_to_node) == 16 """
+#12 edge nodes AND 4 vertex nodes are periodic, got $(length(pnode_to_node))
+#"""
+node_ids = collect(1:gk.num_nodes(periodic_gmsh))
+fine_node_to_master_fine_node = copy(node_ids)
+fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
 
+# TODO: vtu inspection seems to indicate that the nodes along the boundary edges
+# i.e., excluding the vertice are periodic, but the vertices themselves it's
+# not clear
+vtk_grid(joinpath(outdir,"periodic-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
+    gk.vtk_physical_faces!(vtk,periodic_gmsh)
+    gk.vtk_physical_nodes!(vtk,periodic_gmsh)
+    vtk["periodic"] = fine_node_to_master_fine_node 
+end
+
+for d in 0:gk.num_dims(periodic_gmsh)
+    vtk_grid(joinpath(outdir,"periodic_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
+        gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
+        gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
+    end
+end
 
 # Periodicity testing: two_level_mesh.... not PMesh yet 
 # coarse AND fine mesh have to be periodic? 
