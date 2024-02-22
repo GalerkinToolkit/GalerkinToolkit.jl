@@ -3860,8 +3860,10 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         i-> i == (D+1) ? cell_partition : dummy_face_partition(i-1),
         D+1)
 
-    final_glue = nothing # placeholder for parallel glue
-    final_mesh = PMesh(mesh_partition, node_partition, _face_partition)
+    final_glue = nothing # TODO: placeholder for parallel glue
+    partition_strategy = coarse_mesh.partition_strategy # TODO: is this right? 
+    final_mesh = PMesh(
+        mesh_partition, node_partition, _face_partition, partition_strategy)
     return final_mesh, final_glue
 end
 
