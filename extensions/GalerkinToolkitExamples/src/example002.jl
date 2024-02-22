@@ -60,8 +60,8 @@ function default_params()
     domain = (0,1,0,1)
     cells_per_dir = (10,10)
     parts_per_dir = (2,2)
-    ghost_layers = 0
-    mesh = gk.cartesian_mesh(domain,cells_per_dir,parts_per_dir;parts,ghost_layers)
+    partition_strategy = gk.partition_strategy(;graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+    mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
     outdir = mkpath(joinpath(@__DIR__,"..","output"))
     params = Dict{Symbol,Any}()
     params[:u] = (x) -> sum(x)
@@ -122,6 +122,8 @@ end
 
 function setup_dofs(params,local_states)
     mesh = params[:mesh]
+    partition_strategy = gk.partition_strategy(mesh)
+    D = gk.num_dims(mesh)
     node_partition = gk.node_partition(mesh)
     global_node_to_mask = pfill(false,node_partition)
     function fillmask!(node_to_mask,state)
@@ -131,11 +133,12 @@ function setup_dofs(params,local_states)
     map(fillmask!,partition(global_node_to_mask),local_states)
     global_dof_to_node, global_node_to_dof = find_local_indices(global_node_to_mask)
     dof_partition = partition(axes(global_dof_to_node,1))
-    function setup_local_dofs(state,node_to_dof)
+    function setup_local_dofs(state,node_to_dof,dofs)
         free_and_dirichlet_nodes = state.dirichlet_bcs.free_and_dirichlet_nodes
         node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
         n_free = length(first(free_and_dirichlet_nodes))
         n_dofs = n_free
+        @assert length(dofs) == n_dofs
         cell_to_nodes = state.cell_isomap.face_to_nodes
         face_to_nodes = state.face_isomap.face_to_nodes
         function map_node_to_dof(node)
@@ -150,9 +153,9 @@ function setup_dofs(params,local_states)
         face_to_dofs_data = map_node_to_dof.(face_to_nodes.data)
         cell_to_dofs = JaggedArray(cell_to_dofs_data,cell_to_nodes.ptrs)
         face_to_dofs = JaggedArray(face_to_dofs_data,face_to_nodes.ptrs)
-        (;cell_to_dofs,face_to_dofs,n_dofs)
+        (;cell_to_dofs,face_to_dofs,n_dofs,dofs,partition_strategy)
     end
-    local_dofs = map(setup_local_dofs,local_states,partition(global_node_to_dof))
+    local_dofs = map(setup_local_dofs,local_states,partition(global_node_to_dof),dof_partition)
     (;dof_partition,global_node_to_dof,global_dof_to_node), local_dofs
 end
 
@@ -261,7 +264,17 @@ function assemble_system_coo(state)
 end
 
 function assemble_sybmolic(state)
+
     cell_to_dofs = state.dofs.cell_to_dofs
+    partition_strategy = state.dofs.partition_strategy
+    if partition_strategy.graph_nodes === :cells
+        @assert partition_strategy.ghost_layers == 0
+    end
+    if partition_strategy.graph_nodes === :nodes
+        @assert partition_strategy.ghost_layers == 1
+    end
+    dof_to_owner = local_to_owner(state.dofs.dofs)
+    part = part_id(state.dofs.dofs)
 
     n_coo = 0
     ncells = length(cell_to_dofs)
@@ -270,6 +283,9 @@ function assemble_sybmolic(state)
         ndofs = length(dofs)
         for i in 1:ndofs
             if !(dofs[i]>0)
+                continue
+            end
+            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
                 continue
             end
             for j in 1:ndofs
@@ -294,6 +310,9 @@ function assemble_sybmolic(state)
             if !(dofs[i]>0)
                 continue
             end
+            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
+                continue
+            end
             dofs_i = dofs[i]
             for j in 1:ndofs
                 if !(dofs[j]>0)
@@ -310,6 +329,16 @@ function assemble_sybmolic(state)
 end
 
 function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
+
+    partition_strategy = state.dofs.partition_strategy
+    if partition_strategy.graph_nodes === :cells
+        @assert partition_strategy.ghost_layers == 0
+    end
+    if partition_strategy.graph_nodes === :nodes
+        @assert partition_strategy.ghost_layers == 1
+    end
+    dof_to_owner = local_to_owner(state.dofs.dofs)
+    part = part_id(state.dofs.dofs)
 
     cell_to_dofs = state.dofs.cell_to_dofs
     cell_to_nodes = state.cell_isomap.face_to_nodes
@@ -383,6 +412,9 @@ function assemble_numeric_cells!(I_coo,J_coo,V_coo,b,state)
             if !(dofs[i]>0)
                 continue
             end
+            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
+                continue
+            end
             b[dofs[i]] += fe[i]
             for j in 1:nl
                 if !(dofs[j]>0)
@@ -405,6 +437,14 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
         return nothing
     end
 
+    partition_strategy = state.dofs.partition_strategy
+    if partition_strategy.graph_nodes === :cells
+        @assert partition_strategy.ghost_layers == 0
+    end
+    if partition_strategy.graph_nodes === :nodes
+        @assert partition_strategy.ghost_layers == 1
+    end
+
     face_to_rid = state.face_isomap.face_to_rid
     face_to_dofs = state.dofs.face_to_dofs
     face_to_nodes = state.face_isomap.face_to_nodes
@@ -418,6 +458,9 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
     fes = map(i->zeros(size(i,2)),s_f)
     Tx = SVector{d,Float64}
     Ts = typeof(zero(SVector{d-1,Float64})*zero(Tx)')
+
+    dof_to_owner = local_to_owner(state.dofs.dofs)
+    part = part_id(state.dofs.dofs)
 
     for face in neum_face_to_face
         rid = face_to_rid[face]
@@ -449,6 +492,9 @@ function assemble_numeric_faces!(I_coo,J_coo,V_coo,b,state)
         end
         for i in 1:nl
             if !(dofs[i]>0)
+                continue
+            end
+            if partition_strategy.graph_nodes === :nodes && dof_to_owner[dofs[i]] != part
                 continue
             end
             b[dofs[i]] += fe[i]
