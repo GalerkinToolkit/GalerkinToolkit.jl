@@ -313,11 +313,17 @@ map(
     gk.index_partition(final_pmesh), 
     parts)
 
-# Periodicity testing: two_level_mesh.... not PMesh yet 
-# coarse AND fine mesh have to be periodic? 
+# Visualizing the periodic fine mesh
 periodic_mesh_fpath = joinpath(
     @__DIR__, "..", "assets", "coarse_periodic_right_left_top_bottom.msh")
 periodic_mesh = gk.mesh_from_gmsh(periodic_mesh_fpath)
+periodic_nodes = gk.periodic_nodes(periodic_mesh)
+pnode_to_node = periodic_nodes.first 
+pnode_to_master = periodic_nodes.second 
 
+
+# Periodicity testing: two_level_mesh.... not PMesh yet 
+# coarse AND fine mesh have to be periodic? 
+# TODO: coarse mesh with periodic fine meshes
 
 end # module
