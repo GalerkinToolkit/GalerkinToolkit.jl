@@ -284,7 +284,9 @@ cells = (4,4)
 parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
-coarse_mesh = gk.cartesian_mesh(domain,cells; parts_per_dir, parts)
+coarse_mesh = gk.cartesian_mesh(
+    domain,cells; 
+    parts_per_dir, parts, partition_strategy = gk.partition_strategy(;ghost_layers=0))
 final_pmesh, final_pglue = gk.two_level_mesh(coarse_mesh,fine_mesh)
 
 function final_pmesh_setup(mesh, ids, rank)
