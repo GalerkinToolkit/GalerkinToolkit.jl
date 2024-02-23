@@ -3741,6 +3741,52 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     final_mesh, glue
 end
 
+"""
+    get_size_based_permutation(a, b)
+
+Return permutation indices such that the size ordering of `b[perm]` corresponds
+to the size ordering of `a`.
+
+TODO: The use of two `sortperm` is not ideal, this is just a placeholder.
+
+# Examples
+```jldoctest
+julia> import GalerkingToolkit as gk
+julia> # get ixs for b mapping 24 -> 30, 2-> 14, 1 -> 10, 8 -> 21
+julia> a = [30, 14, 10, 21] 
+julia> b = [2, 8, 24, 1]
+julia> perm = gk.get_size_based_permutation(a, b)
+julia> b[perm]
+4-element Vector{Int64}:
+ 24
+  2
+  1
+  8
+```
+
+# References
+[1] : https://discourse.julialang.org/t/ranking-of-elements-of-a-vector/88293
+"""
+function get_size_based_permutation(a, b)
+    @assert length(a) == length(b)
+
+    # Get vectors ranking the size of elements relative to others in the vector
+    # where size 1 is the largest element and size n is the smallest 
+    sizes_a = invperm(sortperm(a; rev=true))
+    sizes_b = invperm(sortperm(b; rev=true))
+
+    # Map the ix of the matching size element in one array to the 
+    # linearly ordered ixs of the other array
+    p = collect(1:length(sizes_a))
+    for (ix, size_of_ele_in_b) in enumerate(sizes_b)
+        matching_size_ix = findfirst(ele -> ele == size_of_ele_in_b, sizes_a)
+        p[matching_size_ix] = ix 
+    end
+
+    return p
+end
+
+
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # TODO for the moment we assume a cell-based partition without ghosts
     # TODO: NEED TO ASSERT CELL BASED PARTITION???
