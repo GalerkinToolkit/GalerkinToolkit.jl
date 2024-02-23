@@ -3747,6 +3747,40 @@ end
 Return permutation indices such that the size ordering of `b[perm]` corresponds
 to the size ordering of `a`.
 
+TODO:
+Assumes that node ids are monotonically increasing but that they are simply
+stored in some data structures in the wrong order. Visually, the following
+assumption is made,
+```
+24  . . . . . 30
+ 8  .       . 21
+ 2  .       . 14
+ 1  . . . . . 10
+```
+where the numbers represent the ids of the nodes, and it is assumed that there
+are many more nodes internally (only the boundary nodes are labeled for simplicity
+in the above example). The assumption of monotonic increasing allows for the 
+the use of `sortperm` to recover the relationship between left and right boundary
+nodes.
+
+Inspecting a periodic puzzle piece shows that the assumption above does not
+hold, see below (or inspect `outputs/periodic-puzzle-piece-gmsh_0.vtu`):
+
+```
+    . . .     . . .
+ 20 .    .   .    . 26
+  5 .      .      . 10
+      .         .
+       .       . 
+      .         .
+  3 .      .      . 11
+ 17 .    .   .    . 30
+    . . .     . . .        
+```
+
+NOTE: Since it is known that id 30 is a periodic copy of 17, this information
+could be used to recover the permutation indices? 
+
 # Examples
 ```jldoctest
 julia> import GalerkinToolkit as gk
@@ -3768,6 +3802,8 @@ julia> b[perm]
 function get_size_based_permutation(a, b)
     @assert length(a) == length(b)
 
+    error("wrong assumptions... see docstring")
+
     # Permutation indices that would restore `a` to its original order after sorting
     ixs_by_ele_size_a = invperm(sortperm(a))
     # Indices that would sort `b` in ascending order
@@ -3777,6 +3813,13 @@ function get_size_based_permutation(a, b)
 
     return perm_ixs_b_from_ele_size_a
 end
+
+function update_fine_node_with_master_fine_node!(
+    fine_nodes, fine_node_to_master_fine_node)
+    # TODO: implies that these vecs are the same length... probably not true??
+    fine_nodes .= fine_node_to_master_fine_node[fines_nodes]
+    return nothing
+end 
 
 
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
