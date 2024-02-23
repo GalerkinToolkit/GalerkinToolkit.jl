@@ -3747,8 +3747,6 @@ end
 Return permutation indices such that the size ordering of `b[perm]` corresponds
 to the size ordering of `a`.
 
-TODO: The use of two `sortperm` is not ideal, this is just a placeholder.
-
 # Examples
 ```jldoctest
 julia> import GalerkinToolkit as gk
@@ -3770,20 +3768,14 @@ julia> b[perm]
 function get_size_based_permutation(a, b)
     @assert length(a) == length(b)
 
-    # Get vectors ranking the size of elements relative to others in the vector
-    # where size 1 is the largest element and size n is the smallest 
-    sizes_a = invperm(sortperm(a; rev=true))
-    sizes_b = invperm(sortperm(b; rev=true))
+    # Permutation indices that would restore `a` to its original order after sorting
+    ixs_by_ele_size_a = invperm(sortperm(a))
+    # Indices that would sort `b` in ascending order
+    sorted_perm_ixs_b = sortperm(b)
+    # Rearrange permutation indices of `b` based on the element ordering of `a` 
+    perm_ixs_b_from_ele_size_a = sorted_perm_ixs_b[ixs_by_ele_size_a]
 
-    # Map the ix of the matching size element in one array to the 
-    # linearly ordered ixs of the other array
-    p = collect(1:length(sizes_a))
-    for (ix, size_of_ele_in_b) in enumerate(sizes_b)
-        matching_size_ix = findfirst(ele -> ele == size_of_ele_in_b, sizes_a)
-        p[matching_size_ix] = ix 
-    end
-
-    return p
+    return perm_ixs_b_from_ele_size_a
 end
 
 
