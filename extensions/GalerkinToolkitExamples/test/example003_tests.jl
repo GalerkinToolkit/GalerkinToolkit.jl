@@ -3,7 +3,7 @@ module Example003Tests
 import GalerkinToolkit as gk
 using GalerkinToolkitExamples: Example003, Example001
 using Test
-    using TimerOutputs
+using TimerOutputs
 
 tol = 1.0e-10
 

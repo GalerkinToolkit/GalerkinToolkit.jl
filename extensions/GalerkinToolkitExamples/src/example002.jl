@@ -8,7 +8,7 @@ using SparseArrays
 using WriteVTK
 using PartitionedArrays
 using TimerOutputs
-using PetscCall
+# using PetscCall
 
 function main(params_in)
 
@@ -87,13 +87,13 @@ function lu_solver()
     (;setup,setup!,solve!,finalize!)
 end
 
-function ksp_solver()
-    setup = PetscCall.ksp_setup
-    setup! = PetscCall.ksp_setup!
-    solve! = PetscCall.ksp_solve!
-    finalize! = PetscCall.ksp_finalize!
-    (;setup,setup!,solve!,finalize!)
-end
+# function ksp_solver()
+#     setup = PetscCall.ksp_setup
+#     setup! = PetscCall.ksp_setup!
+#     solve! = PetscCall.ksp_solve!
+#     finalize! = PetscCall.ksp_finalize!
+#     (;setup,setup!,solve!,finalize!)
+# end
 
 function setup(params,timer)
     mesh = params[:mesh]
