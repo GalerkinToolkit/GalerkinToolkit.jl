@@ -3751,7 +3751,7 @@ TODO: The use of two `sortperm` is not ideal, this is just a placeholder.
 
 # Examples
 ```jldoctest
-julia> import GalerkingToolkit as gk
+julia> import GalerkinToolkit as gk
 julia> # get ixs for b mapping 24 -> 30, 2-> 14, 1 -> 10, 8 -> 21
 julia> a = [30, 14, 10, 21] 
 julia> b = [2, 8, 24, 1]
