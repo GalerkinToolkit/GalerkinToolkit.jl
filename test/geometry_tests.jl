@@ -375,7 +375,6 @@ end
 
 ## Periodicity testing: sequential two_level_mesh with periodic fine mesh and
 ## cartesian mesh 
-error("notimplemented")
 domain = (0,30,0,10)
 cells = (2,2)
 coarse_mesh = gk.cartesian_mesh(domain,cells)
