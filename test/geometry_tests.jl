@@ -328,13 +328,13 @@ node_ids = collect(1:gk.num_nodes(periodic_gmsh))
 fine_node_to_master_fine_node = copy(node_ids)
 fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
 
-vtk_grid(joinpath(outdir,"periodic-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
+vtk_grid(joinpath(outdir,"periodic-square-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
     gk.vtk_physical_faces!(vtk,periodic_gmsh)
     gk.vtk_physical_nodes!(vtk,periodic_gmsh)
 end
 
 for d in 0:gk.num_dims(periodic_gmsh)
-    vtk_grid(joinpath(outdir,"periodic_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
+    vtk_grid(joinpath(outdir,"periodic_square_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
         gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
         gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
        
