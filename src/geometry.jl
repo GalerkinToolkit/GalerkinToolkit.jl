@@ -52,7 +52,10 @@ has_physical_faces(a) = hasproperty(a,:physical_faces) && a.physical_faces !== n
 """
 """
 periodic_nodes(a) = a.periodic_nodes
-has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
+# The uncommented code would also ensure that an empty periodic node list 
+# corresponds to mesh with non-periodic BCs
+has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && 
+    a.periodic_nodes !== nothing # && length(a.periodic_nodes.first) != 0
 """
 """
 geometry(a) = a.geometry
@@ -3608,16 +3611,15 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     end
     d_to_local_dface_to_fine_nodes[D+1] = [findall(fine_node_mask)]
 
-    # TODO: Comment 
-    # Build permutation array
+    ## Ensure consistent mapping of periodic nodes on opposite faces 
     fine_node_to_master_node = collect(1:n_fine_nodes)
     d_to_local_dface_to_permutation = Vector{Vector{Vector{Int}}}(undef, D+1)
-    periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(coarse_mesh)
+    @show periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(coarse_mesh)
     fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
     d_to_local_dface_to_opposite_dface = opposite_faces(geometry(refcell))
     for d in 0:(D-1)
-        local_dface_to_fine_nodes_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         n_local_dfaces = num_faces(boundary(refcell),d)
+        local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         for local_dface_1 in 1:n_local_dfaces
             fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
@@ -3625,6 +3627,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
             fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
+            # TODO: How to handle meshes with non-periodic BCs?
             permutation = indexin(master_nodes_2, master_nodes_1)
             local_dface_to_permutation[local_dface_1] = permutation
         end
@@ -3685,7 +3688,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             for coarse_cell in coarse_cells
                 coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
-                permutation = d_to_local_dface_to_permutation[d][local_dface]
+                @show permutation = d_to_local_dface_to_permutation[d+1][local_dface]
+                # TODO: case of nonperiodic nodes?
                 fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
                 final_nodes =  offset .+ (1:length(fine_nodes))
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes

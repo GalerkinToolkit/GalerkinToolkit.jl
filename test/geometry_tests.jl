@@ -343,6 +343,12 @@ for d in 0:gk.num_dims(periodic_gmsh)
     end
 end
 
+## Periodicity testing: sequential two_level_mesh with periodic square fine mesh
+domain = (0,30,0,10)
+cells = (2,2)
+coarse_mesh = gk.cartesian_mesh(domain,cells)
+periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(coarse_mesh, periodic_gmsh)
+
 ## Visualizing a periodic "puzzle piece"-like unit cell
 periodic_gmsh_fpath = joinpath(
     @__DIR__, "..", "assets", "lines_only_periodic_puzzle_piece.msh")
@@ -373,8 +379,7 @@ for d in 0:gk.num_dims(periodic_gmsh)
     end
 end
 
-## Periodicity testing: sequential two_level_mesh with periodic fine mesh and
-## cartesian mesh 
+## Periodicity testing: sequential two_level_mesh with periodic puzzle piece fine mesh
 domain = (0,30,0,10)
 cells = (2,2)
 coarse_mesh = gk.cartesian_mesh(domain,cells)
