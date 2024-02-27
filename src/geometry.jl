@@ -3608,6 +3608,29 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     end
     d_to_local_dface_to_fine_nodes[D+1] = [findall(fine_node_mask)]
 
+    # TODO: Comment 
+    # Build permutation array
+    fine_node_to_master_node = collect(1:n_fine_nodes)
+    d_to_local_dface_to_permutation = Vector{Vector{Vector{Int}}}(undef, D+1)
+    periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(coarse_mesh)
+    fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
+    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(refcell))
+    for d in 0:(D-1)
+        local_dface_to_fine_nodes_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
+        n_local_dfaces = num_faces(boundary(refcell),d)
+        local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
+        for local_dface_1 in 1:n_local_dfaces
+            fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
+            master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
+            local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
+            fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
+            master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
+            permutation = indexin(master_nodes_2, master_nodes_1)
+            local_dface_to_permutation[local_dface_1] = permutation
+        end
+        d_to_local_dface_to_permutation[d+1] = local_dface_to_permutation
+    end
+
     # Coordinates
     fine_node_to_x = node_coordinates(fine_mesh)
     A = tabulator(refcell)(value,fine_node_to_x)
@@ -3662,8 +3685,9 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             for coarse_cell in coarse_cells
                 coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
-                fine_nodes = local_dface_to_fine_nodes[local_dface]
-                final_nodes =  offset .+ (1:length(fine_nodes)) # TODO, we need a permutation here defined by the boundary conditions
+                permutation = d_to_local_dface_to_permutation[d][local_dface]
+                fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
+                final_nodes =  offset .+ (1:length(fine_nodes))
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
                 coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    
@@ -3737,90 +3761,13 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
     end
 
-    glue = (;d_to_coarse_dface_to_final_nodes,coarse_cell_fine_node_to_final_node,d_to_local_dface_to_fine_nodes)
+    glue = (;
+        d_to_coarse_dface_to_final_nodes,
+        coarse_cell_fine_node_to_final_node,
+        d_to_local_dface_to_fine_nodes)
+
     final_mesh, glue
 end
-
-"""
-    get_size_based_permutation(a, b)
-
-Return permutation indices such that the size ordering of `b[perm]` corresponds
-to the size ordering of `a`.
-
-TODO:
-Assumes that node ids are monotonically increasing but that they are simply
-stored in some data structures in the wrong order. Visually, the following
-assumption is made,
-```
-24  . . . . . 30
- 8  .       . 21
- 2  .       . 14
- 1  . . . . . 10
-```
-where the numbers represent the ids of the nodes, and it is assumed that there
-are many more nodes internally (only the boundary nodes are labeled for simplicity
-in the above example). The assumption of monotonic increasing allows for the 
-the use of `sortperm` to recover the relationship between left and right boundary
-nodes.
-
-Inspecting a periodic puzzle piece shows that the assumption above does not
-hold, see below (or inspect `outputs/periodic-puzzle-piece-gmsh_0.vtu`):
-
-```
-    . . .     . . .
- 20 .    .   .    . 26
-  5 .      .      . 10
-      .         .
-       .       . 
-      .         .
-  3 .      .      . 11
- 17 .    .   .    . 30
-    . . .     . . .        
-```
-
-NOTE: Since it is known that id 30 is a periodic copy of 17, this information
-could be used to recover the permutation indices? 
-
-# Examples
-```jldoctest
-julia> import GalerkinToolkit as gk
-julia> # get ixs for b mapping 24 -> 30, 2-> 14, 1 -> 10, 8 -> 21
-julia> a = [30, 14, 10, 21] 
-julia> b = [2, 8, 24, 1]
-julia> perm = gk.get_size_based_permutation(a, b)
-julia> b[perm]
-4-element Vector{Int64}:
- 24
-  2
-  1
-  8
-```
-
-# References
-[1] : https://discourse.julialang.org/t/ranking-of-elements-of-a-vector/88293
-"""
-function get_size_based_permutation(a, b)
-    @assert length(a) == length(b)
-
-    error("wrong assumptions... see docstring")
-
-    # Permutation indices that would restore `a` to its original order after sorting
-    ixs_by_ele_size_a = invperm(sortperm(a))
-    # Indices that would sort `b` in ascending order
-    sorted_perm_ixs_b = sortperm(b)
-    # Rearrange permutation indices of `b` based on the element ordering of `a` 
-    perm_ixs_b_from_ele_size_a = sorted_perm_ixs_b[ixs_by_ele_size_a]
-
-    return perm_ixs_b_from_ele_size_a
-end
-
-function update_fine_node_with_master_fine_node!(
-    fine_nodes, fine_node_to_master_fine_node)
-    # TODO: implies that these vecs are the same length... probably not true??
-    fine_nodes .= fine_node_to_master_fine_node[fines_nodes]
-    return nothing
-end 
-
 
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # TODO for the moment we assume a cell-based partition without ghosts
