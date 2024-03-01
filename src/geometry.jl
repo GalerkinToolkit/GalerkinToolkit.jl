@@ -3614,7 +3614,10 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     ## Ensure consistent mapping of periodic nodes on opposite faces 
     fine_node_to_master_node = collect(1:n_fine_nodes)
     d_to_local_dface_to_permutation = Vector{Vector{Vector{Int}}}(undef, D+1)
-    @show periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(coarse_mesh)
+    # TODO: The coarse mesh does not have the periodic nodes, but the fine mesh does
+    # TODO: need to step through this and full debug.... 
+    periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(
+        fine_mesh)
     fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
     d_to_local_dface_to_opposite_dface = opposite_faces(geometry(refcell))
     for d in 0:(D-1)
@@ -3628,6 +3631,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
             # TODO: How to handle meshes with non-periodic BCs?
+            # TODO: Even with periodic nodes, there is a possibility of returning nothing?
             permutation = indexin(master_nodes_2, master_nodes_1)
             local_dface_to_permutation[local_dface_1] = permutation
         end
@@ -3688,10 +3692,10 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             for coarse_cell in coarse_cells
                 coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
-                @show permutation = d_to_local_dface_to_permutation[d+1][local_dface]
+                permutation = d_to_local_dface_to_permutation[d+1][local_dface]
                 # TODO: case of nonperiodic nodes?
                 fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
-                final_nodes =  offset .+ (1:length(fine_nodes))
+                final_nodes =  offset .+ (1:length(fine_nodes)) # why?
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
                 coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    

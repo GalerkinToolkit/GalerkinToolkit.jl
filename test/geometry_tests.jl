@@ -380,6 +380,7 @@ for d in 0:gk.num_dims(periodic_gmsh)
 end
 
 ## Periodicity testing: sequential two_level_mesh with periodic puzzle piece fine mesh
+# TODO: error on finite element interp for physical coordinates 
 domain = (0,30,0,10)
 cells = (2,2)
 coarse_mesh = gk.cartesian_mesh(domain,cells)
