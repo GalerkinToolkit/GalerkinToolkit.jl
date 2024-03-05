@@ -13,14 +13,12 @@ using ProfileView
 # 4. Jacobian function: original, cpu_extension and gpu_extension.
 # 5. autodiff to use: hand, flux or energy.
 
-
 # EXAMPLES
 # params[:parallelization_level] = :cell
 # params[:parallelization_level] = :coalesce
-# params[:xe_mem_layout] = :cell_major
+# params[:mem_layout] = :cell_major
 # params[:jacobian] = :cpu_extension
 # params[:autodiff] = :hand
-
 
 
 tol = 1.0e-10
@@ -31,12 +29,15 @@ params = Dict{Symbol,Any}()
 #params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(30,30,30))
 params[:mesh] = gk.cartesian_mesh((0,10,0,10),(2,2))
 #params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
+
 # First test original correct solution to compare the rest to
 params[:autodiff] = :flux
 params[:jacobian] = :original
+params[:export_vtu] = false
 println("Jacobian original ")
 
 results1 = Example003.main(params)
+
 iters_original = results1[:iterations]
 
 @test results1[:eh1] < tol
@@ -45,6 +46,8 @@ iters_original = results1[:iterations]
 # Test the kernel generic of the cpu extension
 params[:jacobian] = :cpu_extension
 params[:parallelization_level] = :cell
+params[:mem_layout] = :cell_major
+
 println("Jacobian extension ", params[:parallelization_level])
 
 reset_timer!(timer)
@@ -56,53 +59,53 @@ iters_extension = results2[:iterations]
 @test iters_original == iters_extension
 
 
-# # To test coalesce
-# params[:parallelization_level] = :coalesce
-# params[:mem_layout] = :cell_major
-# println("Jacobian extension ", params[:parallelization_level])
+# To test coalesce
+params[:parallelization_level] = :coalesce
+params[:mem_layout] = :dof_major
+println("Jacobian extension ", params[:parallelization_level])
 
+reset_timer!(timer)
+results2 = Example003.main(params)
+iters_coalesce = results2[:iterations]
+
+@test results2[:eh1] < tol
+@test results2[:el2] < tol
+@test iters_original == iters_coalesce
+
+###### To profile the extension #########
+# println("The profiling part")
 # reset_timer!(timer)
-# results2 = Example003.main(params)
-# iters_extension = results2[:iterations]
-
-# @test results2[:eh1] < tol
-# @test results2[:el2] < tol
-# @test iters_original == iters_extension
-
-# ###### To profile the extension #########
-# # println("The profiling part")
-# # reset_timer!(timer)
-# # ProfileView.@profview Example003.main(params)  # run once to trigger compilation (ignore this one)
-# # ProfileView.closeall()
-# # reset_timer!(timer)
-# # ProfileView.@profview Example003.main(params)
-
-# # Test the different parallelization levels for correctness.
-
-# params[:parallelization_level] = :elem_j
-# params[:mem_layout] = :cell_major
-# println("Jacobian extension ", params[:parallelization_level])
-
+# ProfileView.@profview Example003.main(params)  # run once to trigger compilation (ignore this one)
+# ProfileView.closeall()
 # reset_timer!(timer)
-# results3 = Example003.main(params)
-# iters_element_j = results3[:iterations]
+# ProfileView.@profview Example003.main(params)
 
-# @test results3[:eh1] < tol
-# @test results3[:el2] < tol
-# @test iters_original == iters_element_j
+# Test the different parallelization levels for correctness.
+
+params[:parallelization_level] = :elem_j
+params[:mem_layout] = :cell_major
+println("Jacobian extension ", params[:parallelization_level])
+
+reset_timer!(timer)
+results3 = Example003.main(params)
+iters_element_j = results3[:iterations]
+
+@test results3[:eh1] < tol
+@test results3[:el2] < tol
+@test iters_original == iters_element_j
 
 
-# # Fr the ij parallelisation
-# params[:parallelization_level] = :elem_ij
-# println("Jacobian extension ", params[:parallelization_level])
+# Fr the ij parallelisation
+params[:parallelization_level] = :elem_ij
+println("Jacobian extension ", params[:parallelization_level])
 
-# reset_timer!(timer)
-# results4 = Example003.main(params)
-# iters_element_ij = results4[:iterations]
+reset_timer!(timer)
+results4 = Example003.main(params)
+iters_element_ij = results4[:iterations]
 
-# @test results4[:eh1] < tol
-# @test results4[:el2] < tol
-# @test iters_original == iters_element_ij
+@test results4[:eh1] < tol
+@test results4[:el2] < tol
+@test iters_original == iters_element_ij
 
 
 # For the quad 
@@ -118,17 +121,17 @@ iters_element_quad = results5[:iterations]
 @test iters_original == iters_element_quad
 
 
-# # For full parallelisation
-# params[:parallelization_level] = :full
-# println("Jacobian extension ", params[:parallelization_level])
+# For full parallelisation
+params[:parallelization_level] = :full
+println("Jacobian extension ", params[:parallelization_level])
 
-# reset_timer!(timer)
-# results6 = Example003.main(params)
-# iters_element_full = results6[:iterations]
+reset_timer!(timer)
+results6 = Example003.main(params)
+iters_element_full = results6[:iterations]
 
-# @test results6[:eh1] < tol
-# @test results6[:el2] < tol
-# @test iters_original == iters_element_full
+@test results6[:eh1] < tol
+@test results6[:el2] < tol
+@test iters_original == iters_element_full
 
 
 
