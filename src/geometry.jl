@@ -3619,12 +3619,35 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(
         fine_mesh)
     fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
+
+    # Fixing vertices indirection
+    # assumes one level of indirection for periodicity (e.g., vertex -> master -> master)
+    for fine_node in 1:n_fine_nodes
+        master_node = fine_node_to_master_node[fine_node]
+        if fine_node == master_node
+            continue  
+        end
+
+        master_master_node = fine_node_to_master_node[master_node]
+        fine_node_to_master_node[fine_node] = master_master_node 
+        
+    end 
+
     d_to_local_dface_to_opposite_dface = opposite_faces(geometry(refcell))
     for d in 0:(D-1)
         n_local_dfaces = num_faces(boundary(refcell),d)
         local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         for local_dface_1 in 1:n_local_dfaces
+           
+            # handle nonperiodic case with identity permutation 
+            # assumes consistent numbering of node ids on opposite faces 
+            if length(periodic_node_to_fine_node) == 0
+                permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
+                local_dface_to_permutation[local_dface_1] = permutation
+                continue 
+            end
+    
             fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
             master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
             local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
@@ -3637,6 +3660,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
         d_to_local_dface_to_permutation[d+1] = local_dface_to_permutation
     end
+    d_to_local_dface_to_permutation[D+1] = [
+        collect(1:length(d_to_local_dface_to_fine_nodes[D+1][1]))]
 
     # Coordinates
     fine_node_to_x = node_coordinates(fine_mesh)
@@ -3706,7 +3731,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
     for coarse_cell in 1:n_coarse_cells
         fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]
-        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell]
+        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell] # TODO: problem here
         final_node_to_x[fine_node_to_final_node] = fine_node_to_x
     end
 
