@@ -35,7 +35,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     end
 end 
 
-function test_two_level_mesh_with_square_periodic_unit_cell()
+function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # Load periodic fine (unit cell) mesh and get periodic info
     unit_cell_mesh_fpath = joinpath(

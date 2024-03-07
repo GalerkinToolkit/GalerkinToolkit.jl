@@ -3580,7 +3580,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     D = num_dims(fine_mesh)
     n_fine_cells = num_faces(fine_mesh,D)
     n_fine_nodes = num_nodes(fine_mesh)
-    refcell = first(reference_faces(fine_mesh,D))
+    fine_refcell = first(reference_faces(fine_mesh,D))
+    coarse_refcell = first(reference_faces(coarse_mesh,D))
     n_coarse_cells = num_faces(coarse_mesh,D)
     fine_cell_local_node_to_fine_node = face_nodes(fine_mesh,D)
     coarse_cell_lnode_to_coarse_node = face_nodes(coarse_mesh,D)
@@ -3591,7 +3592,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # but we give some default value
     if boundary_names === nothing
         boundary_names = [
-            [ "$d-face-$face" for face in 1:num_faces(boundary(refcell),d)] for d in 0:(D-1)]
+            [ "$d-face-$face" for face in 1:num_faces(boundary(fine_refcell),d)] 
+            for d in 0:(D-1)]
     end
     name_priority = reduce(vcat,boundary_names)
     fine_node_groups = physical_nodes(fine_mesh;merge_dims=true,disjoint=true,name_priority)
@@ -3600,7 +3602,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_fine_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     fine_node_mask = fill(true,n_fine_nodes)
     for d in 0:(D-1)
-        n_local_dfaces = num_faces(boundary(refcell),d)
+        n_local_dfaces = num_faces(boundary(fine_refcell),d)
         local_dface_to_fine_nodes = Vector{Vector{Int}}(undef,n_local_dfaces)
         for local_dface in 1:n_local_dfaces
             fine_nodes = fine_node_groups[boundary_names[d+1][local_dface]]
@@ -3612,16 +3614,15 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_fine_nodes[D+1] = [findall(fine_node_mask)]
 
     ## Ensure consistent mapping of periodic nodes on opposite faces 
+    # Get periodicity information
     fine_node_to_master_node = collect(1:n_fine_nodes)
     d_to_local_dface_to_permutation = Vector{Vector{Vector{Int}}}(undef, D+1)
-    # TODO: The coarse mesh does not have the periodic nodes, but the fine mesh does
-    # TODO: need to step through this and full debug.... 
     periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(
         fine_mesh)
     fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
 
-    # Fixing vertices indirection
-    # assumes one level of indirection for periodicity (e.g., vertex -> master -> master)
+    # Fixing vertices indirection for unit cell
+    # Assumes one level of indirection for periodicity (e.g., vertex -> master -> master)
     for fine_node in 1:n_fine_nodes
         master_node = fine_node_to_master_node[fine_node]
         if fine_node == master_node
@@ -3633,28 +3634,31 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         
     end 
 
-    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(refcell))
+    # Fill permutation map for opposite local reference element faces 
+    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(fine_refcell))
     for d in 0:(D-1)
-        n_local_dfaces = num_faces(boundary(refcell),d)
+        n_local_dfaces = num_faces(boundary(fine_refcell),d)
         local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         for local_dface_1 in 1:n_local_dfaces
            
-            # handle nonperiodic case with identity permutation 
+            # Handle nonperiodic case with identity permutation 
             # assumes consistent numbering of node ids on opposite faces 
             if length(periodic_node_to_fine_node) == 0
                 permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
                 local_dface_to_permutation[local_dface_1] = permutation
                 continue 
             end
-    
+            
+            # Handle periodic case: use a local reference cell and its opposite 
+            # face to get the corresponding fine nodes and the master of those fine nodes.
+            # Then ensure that a given local d-face has the same ordering as the opposite
+            # face....
             fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
             master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
             local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
             fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
-            # TODO: How to handle meshes with non-periodic BCs?
-            # TODO: Even with periodic nodes, there is a possibility of returning nothing?
             permutation = indexin(master_nodes_2, master_nodes_1)
             local_dface_to_permutation[local_dface_1] = permutation
         end
@@ -3663,9 +3667,9 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_permutation[D+1] = [
         collect(1:length(d_to_local_dface_to_fine_nodes[D+1][1]))]
 
-    # Coordinates
+    # Setup the map of fine nodes to physical coordinates via finite element interpolation
     fine_node_to_x = node_coordinates(fine_mesh)
-    A = tabulator(refcell)(value,fine_node_to_x)
+    A = tabulator(coarse_refcell)(value,fine_node_to_x)
     coarse_cell_fine_node_to_x = Vector{Vector{SVector{D,Float64}}}(undef,n_coarse_cells)
     for coarse_cell in 1:n_coarse_cells
         lnode_to_coarse_node = coarse_cell_lnode_to_coarse_node[coarse_cell]
@@ -3698,11 +3702,15 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
         d_coarse_dface_to_offset[d+1] = coarse_dface_to_offset
     end
-    n_final_nodes = final_node
+    n_final_nodes = final_node # renaming of counter variable for clarity 
+
+    # Initialize map of coarse cell to final node mediated by fine node
     coarse_cell_fine_node_to_final_node = Vector{Vector{Int}}(undef,n_coarse_cells)
     for coarse_cell in 1:n_coarse_cells
         coarse_cell_fine_node_to_final_node[coarse_cell] = zeros(Int,n_fine_nodes)
     end
+
+    # Map each dimension to final nodes mediated by coarse d-dimensional face
     n_coarse_nodes = num_nodes(coarse_mesh)
     d_to_coarse_dface_to_final_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     for d in 0:D
@@ -3718,9 +3726,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
                 coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
                 permutation = d_to_local_dface_to_permutation[d+1][local_dface]
-                # TODO: case of nonperiodic nodes?
                 fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
-                final_nodes =  offset .+ (1:length(fine_nodes)) # why?
+                final_nodes =  offset .+ (1:length(fine_nodes)) 
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
                 coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    
@@ -3728,35 +3735,39 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         d_to_coarse_dface_to_final_nodes[d+1] = coarse_dface_to_final_nodes
     end
 
+    # Apply the coordinate transformation to the final nodes 
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
     for coarse_cell in 1:n_coarse_cells
         fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]
-        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell] # TODO: problem here
+        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell] 
         final_node_to_x[fine_node_to_final_node] = fine_node_to_x
     end
 
+    # Map final cells to final node mediated by local (finite element) reference entities
     n_final_cells = n_coarse_cells*n_fine_cells
     final_cell_local_node_to_final_node = Vector{Vector{Int}}(undef,n_final_cells)
     for final_cell in 1:n_final_cells
         final_cell_local_node_to_final_node[final_cell] = zeros(Int,n_final_nodes)
     end
+
     final_cell = 0
     for coarse_cell in 1:n_coarse_cells
         for fine_cell in 1:n_fine_cells
             local_node_to_fine_node = fine_cell_local_node_to_fine_node[fine_cell]
-            local_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell][local_node_to_fine_node]
+            local_node_to_final_node = coarse_cell_fine_node_to_final_node[
+                coarse_cell][local_node_to_fine_node]
             final_cell += 1
             final_cell_local_node_to_final_node[final_cell] = local_node_to_final_node
         end
     end
     final_cell_to_refid = fill(1,n_final_cells)
-    refid_to_refcell = [refcell]
+    refid_to_fine_refcell = [fine_refcell]
 
     chain = fe_chain(
-                        final_node_to_x,
-                        JaggedArray(final_cell_local_node_to_final_node),
-                        final_cell_to_refid,
-                        refid_to_refcell)
+                final_node_to_x,
+                JaggedArray(final_cell_local_node_to_final_node),
+                final_cell_to_refid,
+                refid_to_fine_refcell)
 
     # TODO we could avoid this call to complexify by using
     # the fine faces (just as we did with the fine nodes)
