@@ -207,13 +207,14 @@ function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
     dofs
 end
 # two versions of the setup, one with double precision. One for residual and one for jacobian. 
+# Two parts to it, change the values of cell_to_nodes etc in the setup and then pass a parameter that sets up xe etc. as Float32
 function setup_xe(cell_isomap, cell_integration, params)
     cell_to_nodes = cell_isomap.face_to_nodes
     node_to_coords = cell_isomap.node_to_coords
     mem_layout = params[:mem_layout]
     ncells = length(cell_to_nodes)
     nl = length(cell_to_nodes[1])
-    d = length(eltype(node_to_coords)) #define d as this
+    d = length(eltype(node_to_coords))
     # dof as the inner loop, since dofs per cell are looped over in assembly.
     xe = Vector{SVector{d, Float64}}(undef, ncells * nl) 
     if mem_layout == :cell_major
@@ -402,7 +403,7 @@ function assemble_sybmolic(state,params)
                 end
             end
         end
-    # You need to assume all cells are the same type here.
+    # You need to assume all cells are the same type here to make the outer loops work.
     elseif mem_layout == :dof_major # coalesced for gpu memory
         ndofs = length(cell_to_dofs[1])
         for j in 1:ndofs
@@ -541,6 +542,8 @@ function residual_cells!(r,u_dofs,state)
     end
 end
 
+# Check which arrays go into which parts of the memory.
+# profile on the gpu.
 @inline function kernel_generic!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
     # Integrate
     for iq in 1:nq 
@@ -550,20 +553,20 @@ end
         for k in 1:nl
             k_index = (cell - 1) * nl + k
             x = xe[k_index]
-            ∇sqx = ∇ste[k,iq] # On a gpu, all threads are going for the same values here. 
+            ∇sqx = ∇ste[k,iq] 
             Jt_local += ∇sqx*x'
         end
         detJt = det(Jt_local)
-        invJt = inv(Jt_local)
-        dV = abs(detJt)*we[iq] # Same with w here.
+        invJt = inv(Jt_local) # For the tiling this is tile x 1 _. make T x T (duplicate computation).
+        dV = abs(detJt)*we[iq] 
 
         for k in 1:nl
             k_index = (cell - 1) * nl + k
             uek = ue[k_index]
-            ∇xek = invJt*∇ste[k,iq] # here again all threads are reading the same array from memory at the same time. 
+            ∇xek = invJt*∇ste[k,iq] 
             ∇u_local += ∇xek*uek
         end
-
+        # Next you need ∇du, ∇dv and dV, ∇u
         for j in 1:nl
             ∇du = invJt*∇ste[j,iq]
             for i in 1:nl
@@ -573,6 +576,86 @@ end
             end
         end
     end
+end
+# Maybe the logic should be to get xe + ue, then loop through the iq in parallel. Then the last loop is nl*nq.
+# So in this case you have ncells * nl threads that are launched. In this version the ∇ste will never be a 
+# problem because threads in a block is approx. 1024 while ∇ste << 1024. 
+
+# So there are two parts to this -> loading values which is according to nl and computing
+# which is done according to nq.
+@inline function kernel_tiled!(V_coo, tid, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
+    # variables to load into local memory: Jt, ∇u, ∇ste, xe, we, ue.
+    # Think about this as how many values does each thread store (max 12 for 1024 threads per block).
+    # Specify the shared memory per threadblock.
+    # Assume (for now) nq == nl and that d = 2.
+    # So the gain comes from not having to recompute invJt etc. for all iq points.
+    # Note here that each shmem array should be 32 or a multiple of it (related to warp execution).
+    max_threads = 1024
+    Txe = CuStaticSharedArray(Float32, (2,max_threads)) # Two per thread (for the coordinates).
+    Tue = CuStaticSharedArray(Float32, max_threads) # One per thread
+    T∇ste = CuStaticSharedArray(Float32, (max_threads,2)) # This one is flattened using 2 indices (nq and nl)
+    T∇u = CuStaticSharedArray(Float32, (2,max_threads))
+    T∇dux = CuStaticSharedArray(Float32, (2,max_threads))
+    TdV = CuStaticSharedArray(Float32, max_threads)
+    
+    # identify your position in nl block, nq and cell. tid is the grid value.
+    cell = Int((ceil(tid/nl^2)-1) % ncells)+1 
+    j = Int(((ceil(tid/nl)-1) % nl)+1) # Column 
+    i = ((tid-1)%nl)+1 # Row
+    iq = ((tid-1)%nq)+1 
+    node_index = (cell - 1) * nl + i # Here you get node to use in ue/xe
+    xe_col = tid % 2 + 1
+
+    # here until row 638 is done for each iq in nq (NOTE THIS!)
+    # Load the variables into shared memory from global memory
+    TV_coo = 0 # auxiliary for each thread
+    # If you want the vector inside xe next to each other then use div(tid + 1, 2)
+    Txe[:,tid] = xe[node_index][:] # use global id to load into local id - so which i,j to operate from.
+    Tue[tid] = ue[node_index]
+    T∇ste[tid,:] = ∇ste[j,iq][:] # This works but very complicated.
+    sync_threads() # sync to make sure all data (per threadblock) is loaded into memory
+
+    # ---------------- SWITCH FROM NL INDEXING TO NQ INDEXING ---------------
+    # Calculate your part of Jt -> determinants etc. + u_local accumulation
+    for k in 1:nl 
+        # So you want to round down to the first node in your column
+        index = Int32(floor(tid / nl^2) * nl^2) + k # For the first index in the cell
+        x = Txe[:, index] # Then you can get the k-th node in cell 
+        ∇sqx = T∇ste[(k-1) * nl + iq,:] 
+        Jt += ∇sqx*x'
+    end
+    detJt = det(Jt_local)
+    invJt = inv(Jt_local) 
+    # Both Jt and ∇u are calculated per iq point and per cell. 
+
+    for k in 1:nl
+        index = Int32(floor(tid / nl^2) * nl^2) + k # For the first index in the cell
+        uek = Tue[index]
+        ∇xek = invJt*T∇ste[(k-1) * nl + iq,:] 
+        ∇u += ∇xek*uek # per iq and per cell.
+    end
+
+    T∇u[:,tid] = ∇u # per iq and per cell. Maybe a cyclic one here as well. 
+    TdV[tid] = abs(detJt)*we[iq] # This one is per iq. So pick first value in cell and loop nq times.
+    # If you precompute this then you need to store nq x nl values.
+    ∇dux = invJt * T∇ste[(k-1) * nl + iq,:] # To keep the order stable. 1 1 1 2 2 2 for nl and 1 2 3 1 2 3 for iq.
+    T∇dux[:,tid] = ∇dux # Precompute these into shared instead of storing invJt matrices.
+    sync_threads() # sync so that all data is computed before adding to global memory.
+
+    # Loop over the iq points and accumulate into an intermediate variable before writing to global mem.
+    for iq in 1:nq # Each i,j index will loop over all the nq points
+        index = Int32(floor(tid / nl^2) * nl^2) + iq # For first index in cell = first iq point
+        dV = TdV[index]
+        ∇u_local = T∇u[:,index]
+        i_index = (cell - 1) * nl + nl * i + iq
+        j_index = (cell - 1) * nl + nl * j + iq
+        ∇du = T∇dux[:,i_index] # Still need to think about how these are stored.
+        ∇dv = T∇dux[:,j_index] # So you jump nl steps into the cell and + the iq point.
+        TV_coo += (∇dv⋅dflux(∇u_local,∇du,p)) * dV
+    end 
+    # Write the total onto global memory
+    i_coo = (cell - 1) * nl^2 + ((j - 1) * nl + i) 
+    V_coo[i_coo] = TV_coo
 end
 
 @inline function kernel_coalesced!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
@@ -927,22 +1010,22 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
     Jt = zero(TJ)
     ∇u = zero(Tx)
     # This also needs to be done on the gpu.
-    fill!(V_coo,zero(Float64)) # Fill V_coo with Float64 zeros to then later accumulate to it
+    fill!(V_coo,zero(Float64)) # Move this such that each thread does it individually, check how that goes for the kernels i and ij
     setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, mem_layout) # update ue
 
     # The _d denotes that it's an array on the device.
     V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = cpu_gpu_transfer(V_coo, ∇ste, 
-            we, xe, Jt, ∇u, ue, ncells, nq, nl, p)
+            we, xe, Jt, ∇u, ue, ncells, nq, nl, p) # This should be timed
 
     # Maybe set all of this in a separate function with config and kernel launch.
-    # Here the correct configuration is set for the kernel (threads, blocks etc.)
+    # Here the configuration is set for the kernel (threads, blocks etc.)
     ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
     config = launch_configuration(ckernel.fun)
     threads = min(ncells, config.threads)
     blocks =  cld(ncells, threads)
     
     CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
-                                    ncells_d,p_d,dflux,nl_d,nq_d)
+                                    ncells_d,p_d,dflux,nl_d,nq_d) # This should be timed.
     # Then you need to copy back V_coo back to cpu memory
     copyto!(V_coo, V_coo_d) # This copies over to already existing memory.
 end
