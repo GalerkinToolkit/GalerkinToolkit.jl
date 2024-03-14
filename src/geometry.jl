@@ -3735,6 +3735,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         d_to_coarse_dface_to_final_nodes[d+1] = coarse_dface_to_final_nodes
     end
 
+    # TODO: fine_node_to_final_node is definitely wrong! likely due to wrong ref cell
+
     # Apply the coordinate transformation to the final nodes 
     # TODO: Since the 2x2 final mesh with non-periodic square unit cell is 
     # fine... clearly the issue is with the periodicity
