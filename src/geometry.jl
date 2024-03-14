@@ -3710,14 +3710,6 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         coarse_cell_fine_node_to_final_node[coarse_cell] = zeros(Int,n_fine_nodes)
     end
 
-    # Initialize map of coarse cell to final node mediated by unpermuted fine node
-    coarse_cell_unpermuted_fine_node_to_final_node = Vector{Vector{Int}}(
-        undef,n_coarse_cells)
-    for coarse_cell in 1:n_coarse_cells
-        coarse_cell_unpermuted_fine_node_to_final_node[coarse_cell] = zeros(
-            Int,n_fine_nodes)
-    end
-
     # Map each dimension to final nodes mediated by coarse d-dimensional face
     n_coarse_nodes = num_nodes(coarse_mesh)
     d_to_coarse_dface_to_final_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
@@ -3735,11 +3727,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
                 permutation = d_to_local_dface_to_permutation[d+1][local_dface]
                 fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
-                unpermuted_fine_nodes = local_dface_to_fine_nodes[local_dface] 
                 final_nodes =  offset .+ (1:length(fine_nodes)) 
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
-                coarse_cell_unpermuted_fine_node_to_final_node[coarse_cell][
-                    unpermuted_fine_nodes] = final_nodes
                 coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    
         end
@@ -3751,15 +3740,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # fine... clearly the issue is with the periodicity
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
     for coarse_cell in 1:n_coarse_cells
-        # TODO: This has been permuted
         fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]  
-        # fine_node_to_final_node = coarse_cell_unpermuted_fine_node_to_final_node[coarse_cell] 
-
-        # TODO: this has not been permuted
         fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell] 
-
-        # TODO: result is using permuted fine node when unit permutation is
-        # expected right?? i.e., no permutation
         final_node_to_x[fine_node_to_final_node] = fine_node_to_x
     end
 
