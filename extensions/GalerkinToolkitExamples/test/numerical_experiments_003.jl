@@ -22,18 +22,36 @@ using Serialization
 # params[:autodiff] = :hand
 # params[:precision] = Dict(:Float => Float16, :Int => Int16)
 
-# Each column is one experiment configuration.
+# Each row is one experiment configuration.
 double = Dict(:Float => Float64, :Int => Int64)
 single = Dict(:Float => Float32, :Int => Int32)
 half = Dict(:Float => Float16, :Int => Int16)
 
-configurations_dict = Dict(
-    :jacobian => [:original, :original, :original, :cpu_extension, :cpu_extension, :cpu_extension],
-    :autodiff => [:hand, :flux, :energy, :hand, :flux, :energy],
-    :mem_layout => [:cell_major, :cell_major, :cell_major, :dof_major, :dof_major, :dof_major],
-    :parallelization_level => [:cell, :cell, :cell, :coalesce, :coalesce, :coalesce],
-    :precision => [double, double, double, single, single, single]
-)
+# Define the parameter settings for each Jacobian function and get the combinations. 
+autodiff = [:hand,:flux,:energy]
+mesh = [gk.cartesian_mesh((0,3,0,2,0,1),(15,15,15))]
+jacobian_orig = [:original]
+prl_level_orig = [:cell]
+mem_layout_orig = [:cell_major]
+
+jacobian_cpu = [:cpu_extension]
+prl_level_cpu = [:cell]
+mem_layout_cpu = [:cell_major]
+
+jacobian_gpu = [:gpu_extension]
+prl_level_gpu = [:cell, :coalesce]
+mem_layout_gpu = [:cell_major, :dof_major]
+
+# Get all combinations
+combinations_orig = collect(Iterators.product(autodiff, mesh, jacobian_orig, prl_level_orig, mem_layout_orig))
+combinations_cpu = collect(Iterators.product(autodiff, mesh, jacobian_cpu, prl_level_cpu, mem_layout_cpu))
+#combinations_gpu = collect(Iterators.product(autodiff, mesh, jacobian_gpu, prl_level_gpu, mem_layout_gpu))
+#combinations_gpu = filter(comb -> !(comb[4] == :coalesce && comb[5] == :cell_major), combinations_gpu)
+
+#param_combinations = vcat(DataFrame(combinations_orig), DataFrame(combinations_cpu), DataFrame(combinations_gpu))
+param_combinations = vcat(DataFrame(combinations_orig), DataFrame(combinations_cpu))
+rename!(param_combinations, :1 => :Autodiff, :2 => :Mesh, :3 => :Jacobian, :4 => :Prl_level, :5 => :Mem_layout)
+param_combinations.Precision .= :double
 
 # Set the different experiment parameters and variables.
 params = Dict{Symbol,Any}()
@@ -42,7 +60,7 @@ params[:export_vtu] = false
 
 tol = 1.0e-10
 timer = TimerOutput()
-experiments = length(configurations_dict[:jacobian])
+
 simulations = 3
 ns_to_s = 1e+9
 
@@ -52,43 +70,42 @@ result_df = DataFrame(Experiment = Int[], SimID = Int[], NewtonIterations = Int[
         nCells = Int[], Precision = DataType[], AutoDiff = [], Jacobian = [])
 
 # Go for the loop of the experiments through the parameter sets.
-for mesh in meshes
-    params[:mesh] = mesh
-    for e in 1:experiments
-        # Set the parameters
-        params[:autodiff] = configurations_dict[:autodiff][e]
-        params[:jacobian] = configurations_dict[:jacobian][e]
-        params[:parallelization_level] = configurations_dict[:parallelization_level][e]
-        params[:mem_layout] = configurations_dict[:mem_layout][e]
-        params[:precision] = configurations_dict[:precision][e]
+for (index, experiment) in enumerate(eachrow(param_combinations))
+    # Set the parameters
+    params[:mesh] = experiment.Mesh
+    params[:autodiff] = experiment.Autodiff
+    params[:jacobian] = experiment.Jacobian
+    params[:parallelization_level] = experiment.Prl_level
+    params[:mem_layout] = experiment.Mem_layout
+    params[:precision] = double
 
-        for sim in 1:simulations
+    for sim in 1:simulations
 
-            result, time = Example003.main(params)
+        result, time = Example003.main(params)
 
-            result[:time_jacobian] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["inner_timers"]["solver.solve!"]["inner_timers"]["jacobian_cells!"]["time_ns"]
-            result[:time_solve] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["time_ns"]
-            result[:time_setup] = TimerOutputs.todict(time)["inner_timers"]["setup"]["time_ns"]
-            result[:ncalls] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["inner_timers"]["solver.solve!"]["inner_timers"]["jacobian_cells!"]["n_calls"]
+        result[:time_jacobian] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["inner_timers"]["solver.solve!"]["inner_timers"]["jacobian_cells!"]["time_ns"]
+        result[:time_solve] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["time_ns"]
+        result[:time_setup] = TimerOutputs.todict(time)["inner_timers"]["setup"]["time_ns"]
+        result[:ncalls] = TimerOutputs.todict(time)["inner_timers"]["solve_problem"]["inner_timers"]["solver.solve!"]["inner_timers"]["jacobian_cells!"]["n_calls"]
 
-            sim_result = (e, sim, result[:iterations], result[:time_jacobian]/ns_to_s, result[:time_solve]/ns_to_s, 
-                result[:time_setup]/ns_to_s, result[:ncalls], result[:ncells], params[:precision][:Float], params[:autodiff], 
-                params[:jacobian])
-            push!(result_df, sim_result)
+        sim_result = (index, sim, result[:iterations], result[:time_jacobian]/ns_to_s, result[:time_solve]/ns_to_s, 
+            result[:time_setup]/ns_to_s, result[:ncalls], result[:ncells], params[:precision][:Float], params[:autodiff], 
+            params[:jacobian])
+        push!(result_df, sim_result)
 
-            reset_timer!(timer)
-        end
+        reset_timer!(timer)
     end
+
 end
 println(result_df)
 
-# Save the results to the folder for further analysis. 
-filename = "experimental_result.dat"
+# # Save the results to the folder for further analysis. 
+# filename = "experimental_result.dat"
 
-# Serialize the DataFrame
-open(joinpath(@__DIR__, filename), "w") do io
-    serialize(io, result_df)
-end
+# # Serialize the DataFrame
+# open(joinpath(@__DIR__, filename), "w") do io
+#     serialize(io, result_df)
+# end
 
 
 end

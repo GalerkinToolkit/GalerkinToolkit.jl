@@ -24,15 +24,17 @@ timer = TimerOutput()
 
 # Initialize the mesh to be used
 params = Dict{Symbol,Any}()
-#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(30,30,30))
-params[:mesh] = gk.cartesian_mesh((0,10,0,10),(2,2))
-#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
+# 
+#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(40,40,40)) # 64000 cells. Out of memory Error.
+#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(30,30,30)) # Around 2.5 seconds per Jacobian. 27000 cells
+#params[:mesh] = gk.cartesian_mesh((0,10,0,10),(2,2))
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
 
 # First test original correct solution to compare the rest to
 params[:autodiff] = :flux
 params[:jacobian] = :original
 params[:export_vtu] = false
-params[:precision] = Dict(:Float => Float32, :Int => Int32)
+params[:precision] = Dict(:Float => Float64, :Int => Int64)
 println("Jacobian original ")
 
 # You want to loop this one to get several measurements. 
@@ -42,12 +44,12 @@ print_timer(time,allocations=false)
 
 iters_original = results1[:iterations]
 
-# @test results1[:eh1] < tol
-# @test results1[:el2] < tol
+@test results1[:eh1] < tol
+@test results1[:el2] < tol
 
 # Test the kernel generic of the cpu extension
 params[:jacobian] = :cpu_extension
-params[:parallelization_level] = :cell
+params[:parallelization_level] = :split_kernel_nq
 params[:mem_layout] = :cell_major
 
 println("Jacobian extension ", params[:parallelization_level])
@@ -57,8 +59,9 @@ results2, time  = Example003.main(params)
 print_timer(time,allocations=false)
 iters_extension = results2[:iterations]
 
-# @test results2[:eh1] < tol
-# @test results2[:el2] < tol
+println("Number of cells: ", results2[:ncells])
+@test results2[:eh1] < tol
+@test results2[:el2] < tol
 @test iters_original == iters_extension
 
 
