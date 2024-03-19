@@ -3602,7 +3602,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_fine_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     fine_node_mask = fill(true,n_fine_nodes)
     for d in 0:(D-1)
-        n_local_dfaces = num_faces(boundary(fine_refcell),d)
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
         local_dface_to_fine_nodes = Vector{Vector{Int}}(undef,n_local_dfaces)
         for local_dface in 1:n_local_dfaces
             fine_nodes = fine_node_groups[boundary_names[d+1][local_dface]]
@@ -3635,9 +3635,9 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     end 
 
     # Fill permutation map for opposite local reference element faces 
-    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(fine_refcell))
+    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(coarse_refcell))
     for d in 0:(D-1)
-        n_local_dfaces = num_faces(boundary(fine_refcell),d)
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
         local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         for local_dface_1 in 1:n_local_dfaces
@@ -3656,6 +3656,14 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             # face....
             fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
             master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
+            
+            # master fine nodes determine the permutation order
+            if fine_nodes_1 == master_nodes_1
+                permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
+                local_dface_to_permutation[local_dface_1] = permutation
+                continue 
+            end
+
             local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
             fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
@@ -3666,6 +3674,11 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     end
     d_to_local_dface_to_permutation[D+1] = [
         collect(1:length(d_to_local_dface_to_fine_nodes[D+1][1]))]
+
+    for i in 0:D
+        @show i
+        display(d_to_local_dface_to_permutation[i+1])
+    end
 
     # Setup the map of fine nodes to physical coordinates via finite element interpolation
     fine_node_to_x = node_coordinates(fine_mesh)
