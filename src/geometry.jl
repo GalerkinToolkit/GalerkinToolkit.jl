@@ -3592,7 +3592,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # but we give some default value
     if boundary_names === nothing
         boundary_names = [
-            [ "$d-face-$face" for face in 1:num_faces(boundary(fine_refcell),d)] 
+            [ "$d-face-$face" for face in 1:num_faces(boundary(coarse_refcell),d)] 
             for d in 0:(D-1)]
     end
     name_priority = reduce(vcat,boundary_names)

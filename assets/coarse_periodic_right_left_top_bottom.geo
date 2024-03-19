@@ -15,12 +15,12 @@ Physical Point("0-face-3", 7) = {4};
 //+
 Physical Point("0-face-4", 8) = {3};
 //+
-Physical Curve("1-face-1", 9) = {4};
+Physical Curve("1-face-1", 9) = {1};
 //+
-Physical Curve("1-face-2", 10) = {2};
+Physical Curve("1-face-2", 10) = {4};
 //+
-Physical Curve("1-face-3", 11) = {1};
+Physical Curve("1-face-3", 11) = {2};
 //+
 Physical Curve("1-face-4", 12) = {3};
-
+//+
 Physical Surface("2-face-1", 13) = {1};
