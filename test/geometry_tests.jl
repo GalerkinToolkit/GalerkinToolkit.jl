@@ -315,75 +315,76 @@ map(
     gk.index_partition(final_pmesh), 
     parts)
 
-## Visualizing a simple periodic fine mesh
-periodic_gmsh_fpath = joinpath(
-    @__DIR__, "..", "assets", "coarse_periodic_right_left_top_bottom.msh")
-periodic_gmsh = gk.mesh_from_gmsh(periodic_gmsh_fpath)
-periodic_nodes = gk.periodic_nodes(periodic_gmsh)
-fine_pnode_to_fine_node = periodic_nodes.first 
-fine_pnode_to_master_fine_node = periodic_nodes.second 
+## TODO: clean up
+# ## Visualizing a simple periodic fine mesh
+# periodic_gmsh_fpath = joinpath(
+#     @__DIR__, "..", "assets", "coarse_periodic_right_left_top_bottom.msh")
+# periodic_gmsh = gk.mesh_from_gmsh(periodic_gmsh_fpath)
+# periodic_nodes = gk.periodic_nodes(periodic_gmsh)
+# fine_pnode_to_fine_node = periodic_nodes.first 
+# fine_pnode_to_master_fine_node = periodic_nodes.second 
 
-# labeling periodic nodes 
-node_ids = collect(1:gk.num_nodes(periodic_gmsh))
-fine_node_to_master_fine_node = copy(node_ids)
-fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
+# # labeling periodic nodes 
+# node_ids = collect(1:gk.num_nodes(periodic_gmsh))
+# fine_node_to_master_fine_node = copy(node_ids)
+# fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
 
-vtk_grid(joinpath(outdir,"periodic-square-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
-    gk.vtk_physical_faces!(vtk,periodic_gmsh)
-    gk.vtk_physical_nodes!(vtk,periodic_gmsh)
-end
+# vtk_grid(joinpath(outdir,"periodic-square-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
+#     gk.vtk_physical_faces!(vtk,periodic_gmsh)
+#     gk.vtk_physical_nodes!(vtk,periodic_gmsh)
+# end
 
-for d in 0:gk.num_dims(periodic_gmsh)
-    vtk_grid(joinpath(outdir,"periodic_square_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
-        gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
-        gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
+# for d in 0:gk.num_dims(periodic_gmsh)
+#     vtk_grid(joinpath(outdir,"periodic_square_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
+#         gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
+#         gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
        
-        # label master 0D finite elements ids (minus 1 due to 0-based vtk id numbering)
-        d == 0 && (vtk["periodic_master_id"] = fine_node_to_master_fine_node .- 1)
-    end
-end
+#         # label master 0D finite elements ids (minus 1 due to 0-based vtk id numbering)
+#         d == 0 && (vtk["periodic_master_id"] = fine_node_to_master_fine_node .- 1)
+#     end
+# end
 
-## Periodicity testing: sequential two_level_mesh with periodic square fine mesh
-domain = (0,30,0,10)
-cells = (2,2)
-coarse_mesh = gk.cartesian_mesh(domain,cells)
-periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(coarse_mesh, periodic_gmsh)
+# ## Periodicity testing: sequential two_level_mesh with periodic square fine mesh
+# domain = (0,30,0,10)
+# cells = (2,2)
+# coarse_mesh = gk.cartesian_mesh(domain,cells)
+# periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(coarse_mesh, periodic_gmsh)
 
-## Visualizing a periodic "puzzle piece"-like unit cell
-periodic_gmsh_fpath = joinpath(
-    @__DIR__, "..", "assets", "lines_only_periodic_puzzle_piece.msh")
-periodic_gmsh = gk.mesh_from_gmsh(periodic_gmsh_fpath)
-periodic_nodes = gk.periodic_nodes(periodic_gmsh)
-fine_pnode_to_fine_node = periodic_nodes.first 
-fine_pnode_to_master_fine_node = periodic_nodes.second 
+# ## Visualizing a periodic "puzzle piece"-like unit cell
+# periodic_gmsh_fpath = joinpath(
+#     @__DIR__, "..", "assets", "lines_only_periodic_puzzle_piece.msh")
+# periodic_gmsh = gk.mesh_from_gmsh(periodic_gmsh_fpath)
+# periodic_nodes = gk.periodic_nodes(periodic_gmsh)
+# fine_pnode_to_fine_node = periodic_nodes.first 
+# fine_pnode_to_master_fine_node = periodic_nodes.second 
 
-# labeling periodic nodes 
-node_ids = collect(1:gk.num_nodes(periodic_gmsh))
-fine_node_to_master_fine_node = copy(node_ids)
-fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
+# # labeling periodic nodes 
+# node_ids = collect(1:gk.num_nodes(periodic_gmsh))
+# fine_node_to_master_fine_node = copy(node_ids)
+# fine_node_to_master_fine_node[fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node 
 
-vtk_grid(
-    joinpath(outdir,"periodic-puzzle-piece-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
-    gk.vtk_physical_faces!(vtk,periodic_gmsh)
-    gk.vtk_physical_nodes!(vtk,periodic_gmsh)
-end
+# vtk_grid(
+#     joinpath(outdir,"periodic-puzzle-piece-gmsh"),gk.vtk_args(periodic_gmsh)...) do vtk
+#     gk.vtk_physical_faces!(vtk,periodic_gmsh)
+#     gk.vtk_physical_nodes!(vtk,periodic_gmsh)
+# end
 
-for d in 0:gk.num_dims(periodic_gmsh)
-    vtk_grid(
-    joinpath(outdir,"periodic_puzzle_piece_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
-        gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
-        gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
+# for d in 0:gk.num_dims(periodic_gmsh)
+#     vtk_grid(
+#     joinpath(outdir,"periodic_puzzle_piece_gmsh_$d"),gk.vtk_args(periodic_gmsh,d)...) do vtk
+#         gk.vtk_physical_faces!(vtk,periodic_gmsh,d)
+#         gk.vtk_physical_nodes!(vtk,periodic_gmsh,d)
        
-        # label master 0D finite elements ids (minus 1 due to 0-based vtk id numbering)
-        d == 0 && (vtk["periodic_master_id"] = fine_node_to_master_fine_node .- 1)
-    end
-end
+#         # label master 0D finite elements ids (minus 1 due to 0-based vtk id numbering)
+#         d == 0 && (vtk["periodic_master_id"] = fine_node_to_master_fine_node .- 1)
+#     end
+# end
 
-## Periodicity testing: sequential two_level_mesh with periodic puzzle piece fine mesh
-# TODO: error on finite element interp for physical coordinates 
-domain = (0,30,0,10)
-cells = (2,2)
-coarse_mesh = gk.cartesian_mesh(domain,cells)
-periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(coarse_mesh, periodic_gmsh)
+# ## Periodicity testing: sequential two_level_mesh with periodic puzzle piece fine mesh
+# # TODO: error on finite element interp for physical coordinates 
+# domain = (0,30,0,10)
+# cells = (2,2)
+# coarse_mesh = gk.cartesian_mesh(domain,cells)
+# periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(coarse_mesh, periodic_gmsh)
 
 end # module

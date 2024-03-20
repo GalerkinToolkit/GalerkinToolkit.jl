@@ -3675,11 +3675,6 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_permutation[D+1] = [
         collect(1:length(d_to_local_dface_to_fine_nodes[D+1][1]))]
 
-    for i in 0:D
-        @show i
-        display(d_to_local_dface_to_permutation[i+1])
-    end
-
     # Setup the map of fine nodes to physical coordinates via finite element interpolation
     fine_node_to_x = node_coordinates(fine_mesh)
     A = tabulator(coarse_refcell)(value,fine_node_to_x)
