@@ -70,10 +70,8 @@ function default_params()
     params[:export_vtu] = true
     params[:autodiff] = :hand
     params[:timer] = TimerOutput()
-    params[:jacobian] = :original
-    params[:parallelization_level] = :cell
-    params[:mem_layout] = :cell_major
-    params[:precision] = Dict(:Float => Float64, :Int => Int64)
+    params[:jacobian_implementation] = :original
+    params[:precision] = Dict(:Float => Float64, :Int => Int32)
     params
 end
 
@@ -213,13 +211,13 @@ end
 function setup_xe(cell_isomap, cell_integration, params)
     cell_to_nodes = cell_isomap.face_to_nodes
     node_to_coords = cell_isomap.node_to_coords
-    mem_layout = params[:mem_layout]
+    jacobian = params[:jacobian_implementation]
     ncells = length(cell_to_nodes)
     nl = length(cell_to_nodes[1])
     d = length(eltype(node_to_coords))
     # dof as the inner loop, since dofs per cell are looped over in assembly.
     xe = Vector{SVector{d, params[:precision][:Float]}}(undef, ncells * nl) 
-    if mem_layout == :cell_major
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1
         for cell in 1:ncells
             for dof in 1:nl
                 index = (cell - 1) * nl + dof
@@ -227,7 +225,7 @@ function setup_xe(cell_isomap, cell_integration, params)
                 xe[index] = node_to_coords[node]
             end
         end
-    elseif mem_layout == :dof_major # coalesced for gpu memory
+    else # coalesced for gpu memory
         for dof in 1:nl
             for cell in 1:ncells
                 index = (dof - 1) * ncells + cell
@@ -239,10 +237,11 @@ function setup_xe(cell_isomap, cell_integration, params)
     setup_xe = (;xe)
 end
 
-function setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, mem_layout)
-    if mem_layout == :cell_major
+function setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, jacobian)
+    # Here you also want jacobian implementation to determine.
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1
         index_function = (cell, dof, nl, ncells) -> (cell - 1) * nl + dof
-    elseif mem_layout == :dof_major # coalesced for gpu access.
+    else # coalesced for gpu access.
         index_function = (cell, dof, nl, ncells) -> (dof - 1) * ncells + cell
     end
 
@@ -272,22 +271,68 @@ function ue_allocation(cell_isomap, params)
     ue_alloc = (;ue)
 end
 
-function setup_Jt()
+function setup_Jt(cell_integration, xe_setup, cell_isomap, precision, jacobian)
     # Precompute the Jt values. ncells * nq of static matrices  
+    w = cell_integration.rid_to_weights
+    xe = xe_setup.xe
+    cell_to_nodes = cell_isomap.face_to_nodes
+    ∇s = cell_isomap.rid_to_shape_grads
+
+    ncells = Int32(length(cell_to_nodes))
+    we = Float64.(w[1])
+    nq = Int32(length(we)) # number of quadrature points.
+    nl = Int32(length(cell_to_nodes[1]))
+    Tx = eltype(xe)
+    TJ = typeof(zero(Tx)*zero(Tx)')
+    ∇ste = map(m->collect(permutedims(m)),∇s)[1]
+
+    zero_Jt = zero(TJ)
+    Jt_local = zero_Jt
+    Jt = Matrix{typeof(zero_Jt)}(undef, (ncells,nq))
+
+    # Here you need to consider the memory layout. 
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1
+        for cell in 1:ncells
+            for iq in 1:nq 
+                Jt_local = zero_Jt
+                for k in 1:nl
+                    k_index = (cell - 1) * nl + k
+                    x = xe[k_index]
+                    ∇sqx = ∇ste[k,iq] 
+                    Jt_local += ∇sqx*x'
+                end
+                Jt[cell, iq] = Jt_local
+            end
+        end
+    else
+        for cell in 1:ncells
+            for iq in 1:nq 
+                Jt_local = zero_Jt
+                for k in 1:nl
+                    k_index = (k - 1) * ncells + cell
+                    x = xe[k_index]
+                    ∇sqx = ∇ste[k,iq] 
+                    Jt_local += ∇sqx*x'
+                end
+                Jt[cell, iq] = Jt_local
+            end
+        end
+    end
+    Jt_precompute = (;Jt,zero_Jt)
 end
 
 # Fix this one - the function arguments are not correct should be params, cell_isomap etc...
-function cpu_gpu_transfer(params, V_coo, ∇ste, w, xe, Jt, ∇u, ue, ncells, nq, nl, p)
-    cell_to_nodes = state.cell_isomap.face_to_nodes
-    cell_to_dofs = state.dofs.cell_to_dofs
+function cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue_alloc,Jt_precompute)
+    cell_to_nodes = cell_isomap.face_to_nodes
+    cell_to_dofs = dofs.cell_to_dofs
     dofs = cell_to_dofs[cell]
-    ∇s = state.cell_isomap.rid_to_shape_grads
-    we = state.cell_integration.rid_to_weights[1]
-    d = state.cell_integration.d
+    ∇s = cell_isomap.rid_to_shape_grads
+    we = cell_integration.rid_to_weights[1]
+    d = cell_integration.d
     ncells = length(cell_to_nodes)
-    p = state.p
-    xe = state.xe.node_to_x
-    ue = state.ue_alloc.ue
+    xe = xe.node_to_x
+    ue = ue_alloc.ue
+    Jt = setup_Jt.Jt
     
     ∇ste = map(m->collect(permutedims(m)),∇s)[1]
     nl = length(cell_to_nodes[1]) 
@@ -305,18 +350,18 @@ function cpu_gpu_transfer(params, V_coo, ∇ste, w, xe, Jt, ∇u, ue, ncells, nq
     ∇ste_d = cu(cu.(∇ste))
     w_d = cu(we)
     xe_d = cu(xe) 
-    zero_Jt_d = cu(zero_Jt) 
+    Jt_d = cu(Jt) 
     ∇u_d = cu(cu.(∇u)) 
     ue_d = cu(ue) 
     ncells_d = cu(ncells)
     nq_d = cu(nq)
     nl_d = cu(nl)
     p_d = cu(p)
-    for i in [V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
+    for i in [V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
         print(typeof(i))
     end
 
-    [V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
+    [V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
 end
 
 function setup(params)
@@ -331,8 +376,7 @@ function setup(params)
     @timeit timer "user_funs" user_funs = setup_user_funs(params)
     @timeit timer "ue_allocation" ue_alloc = ue_allocation(cell_isomap, params)
     @timeit timer "node_setup" xe_setup = setup_xe(cell_isomap, cell_integration, params)
-    # Add here a setup Jt? So that it can then be moved to gpu as well. 
-    @timeit timer "Jt_setup" Jt = setup_Jt()
+    @timeit timer "Jt_setup" Jt_precompute = setup_Jt(cell_integration,xe_setup,cell_isomap,params[:precision],params[:jacobian_implementation])
 
     solver = params[:solver]
     p = params[:p]
@@ -349,25 +393,29 @@ function setup(params)
         error("not implemented: autodiff == $autodiff")
     end
 
-    if params[:jacobian] === :original
+    if occursin("original", string(params[:jacobian_implementation]))
         jacobian_cells! = jacobian_cells_original!
-    elseif params[:jacobian] === :cpu_extension
+    elseif occursin("cpu", string(params[:jacobian_implementation]))
         jacobian_cells! = jacobian_cells_cpu_extension!
-    elseif params[:jacobian] === :gpu_extension
+    elseif occursin("gpu", string(params[:jacobian_implementation]))
         jacobian_cells! = jacobian_cells_gpu!
         # Allocate memory on gpu
-        gpu_pointers = cpu_gpu_transfer(params, V_coo, ∇ste, w, xe, Jt, ∇u, ue, ncells, nq, nl, p)
+        gpu_pointers = cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue_alloc,Jt_precompute)
     else
         error("unspecified jacobian function")
     end
 
+    jacobian_impl = params[:jacobian_implementation]
     precision = params[:precision]
-    prl_level = params[:parallelization_level]
-    mem_layout = params[:mem_layout]
-    if params[:jacobian] === :gpu_extension
-        return state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,prl_level,mem_layout,gpu_pointers,precision)
+
+    if occursin("gpu", string(params[:jacobian_implementation]))
+        return state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,
+                    face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,
+                    gpu_pointers,precision,jacobian_impl,Jt_precompute)
     else
-        return state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,prl_level,mem_layout,precision)
+        return state = (;p,timer,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,
+                    face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,precision,
+                    jacobian_impl,Jt_precompute)
     end
 end
 
@@ -418,7 +466,7 @@ end
 function assemble_sybmolic(state,params)
     cell_to_dofs = state.dofs.cell_to_dofs
     n_dofs = state.dofs.n_dofs
-    mem_layout = params[:mem_layout]
+    jacobian = params[:jacobian_implementation]
 
     n_coo = 0
     ncells = length(cell_to_dofs)
@@ -434,7 +482,7 @@ function assemble_sybmolic(state,params)
     r = zeros(Float64,state.dofs.n_dofs)
 
     n_coo = 0
-    if mem_layout == :cell_major
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1 || jacobian == :original
         for cell in 1:ncells
             dofs = cell_to_dofs[cell]
             ndofs = length(dofs)
@@ -448,7 +496,7 @@ function assemble_sybmolic(state,params)
             end
         end
     # You need to assume all cells are the same type here to make the outer loops work.
-    elseif mem_layout == :dof_major # coalesced for gpu memory
+    else # coalesced for gpu memory
         ndofs = length(cell_to_dofs[1])
         for j in 1:ndofs
             for i in 1:ndofs
@@ -588,27 +636,21 @@ end
 @inline function kernel_generic!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
     # Integrate
     for iq in 1:nq 
-        Jt_local = Jt
+        Jt_local = Jt[cell,iq]
         ∇u_local = ∇u
 
-        for k in 1:nl
-            k_index = (cell - 1) * nl + k
-            x = xe[k_index]
-            ∇sqx = ∇ste[k,iq] 
-            Jt_local += ∇sqx*x'
-        end
         detJt = det(Jt_local)
         invJt = inv(Jt_local)
         dV = abs(detJt)*we[iq] 
 
-        for k in 1:nl
+        for k in 1:nl # nq * ncells threads
             k_index = (cell - 1) * nl + k
             uek = ue[k_index]
             ∇xek = invJt*∇ste[k,iq] 
             ∇u_local += ∇xek*uek
         end
 
-        for j in 1:nl
+        for j in 1:nl # ncells * nl^2 threads.
             ∇du = invJt*∇ste[j,iq]
             for i in 1:nl
                 ∇dv = invJt*∇ste[i,iq]
@@ -617,58 +659,6 @@ end
             end
         end
     end
-end
-
-function kernel_generic_Jte!(Jt, cell, nq, nl, zero_Jt, xe, ∇ste)
-    # 2d matrix (nq, ncells) for gpu better to have ncells first. 
-    for iq in 1:nq 
-        Jt_local = zero_Jt
-
-        for k in 1:nl
-            k_index = (cell - 1) * nl + k
-            x = xe[k_index]
-            ∇sqx = ∇ste[k,iq] 
-            Jt_local += ∇sqx*x'
-        end
-        Jt[cell,iq] = Jt_local
-    end
-end
-
-function kernel_generic_Jte!(Jt, cell, iq, nq, nl, zero_Jt, xe, ∇ste)
-    # Then another version of this function with tiling.
-    Jt_local = zero_Jt
-
-    for k in 1:nl
-        k_index = (cell - 1) * nl + k
-        x = xe[k_index]
-        ∇sqx = ∇ste[k,iq] 
-        Jt_local += ∇sqx*x'
-    end
-    Jt[cell,iq] = Jt_local
-end
-
-function kernel_Jte_tiled!(Jt, tid, nq, nl, zero_Jt, xe, ∇ste)
-    # First define the data structures in local and shared memory
-    Txe = CuStaticSharedArray(Float32, (2,max_threads))
-    Jt_local = zero_Jt
-    # Possibly also do ∇ste in shared memory.
-
-    # identify your position in the blocks - You want this one cell major (to have the whole cell in shared memory).
-    cell = Int((ceil(tid/nq) - 1) % ncells) + 1
-    iq = (tid-1) % nq + 1
-    idx = threadIdx().x
-    # Then collectively load it into shared memory
-    # Assume nl == nq for now.
-    Txe[:,tid] = xe[tid][:] # Fetch from global memory 
-    sync_threads()
-
-    for k in 1:nl
-        index = Int32(floor(idx/(nl+1)) * nl) + k # For the first index in the cell
-        x = Txe[:, index] # Then you can get the k-th node in cell 
-        ∇sqx = ∇ste[k,iq] 
-        Jt_local += ∇sqx*x'
-    end
-    Jt[cell,iq] = Jt_local # Maybe here @SMatrix is needed
 end
 
 function kernel_generic_∇ue!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
@@ -844,15 +834,9 @@ end
 
 @inline function kernel_coalesced!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
     for iq in 1:nq 
-        Jt_local = Jt
         ∇u_local = ∇u
+        Jt_local = Jt[cell,iq]
 
-        for k in 1:nl
-            k_index = (k - 1) * ncells + cell # switch the cell and k here to get right index.
-            x = xe[k_index]
-            ∇sqx = ∇ste[k,iq]
-            Jt_local += ∇sqx*x'
-        end
         detJt = det(Jt_local)
         invJt = inv(Jt_local)
         dV = abs(detJt)*we[iq]
@@ -880,15 +864,9 @@ end
     cell = ((thread-1)%ncells)+1
     iq = Int(((ceil(thread/ncells)-1) % ncells)+1)
 
-    Jt_local = Jt
+    Jt_local = Jt[cell, iq]
     ∇u_local = ∇u
 
-    for k in 1:nl
-        k_index = (cell - 1) * nl + k
-        x = xe[k_index]
-        ∇sqx = ∇ste[k,iq] # On a gpu, all threads are going for the same values here. 
-        Jt_local += ∇sqx*x'
-    end
     detJt = det(Jt_local)
     invJt = inv(Jt_local)
     dV = abs(detJt)*we[iq] # Same with w here.
@@ -917,14 +895,9 @@ end
     j = ((thread-1)%nl)+1
 
     for iq in 1:nq
-        Jt_local = Jt
+        Jt_local = Jt[cell,iq]
         ∇u_local = ∇u
-        for k in 1:nl
-            k_index = (cell - 1) * nl + k
-            x = xe[k_index]
-            ∇sqx = ∇ste[k,iq]
-            Jt_local += ∇sqx*x'
-        end
+
         detJt = det(Jt_local)
         invJt = inv(Jt_local)
         dV = abs(detJt)*we[iq]
@@ -954,15 +927,9 @@ end
     i_coo = (cell - 1) * nl^2 + ((j - 1) * nl + i) # Define this one only once. 
     # parallelize this loop and add atomic V_coo.
     for iq in 1:nq # quadrature points. 
-        Jt_local = Jt
+        Jt_local = Jt[cell,iq]
         ∇u_local = ∇u
 
-        for k in 1:nl
-            k_index = (cell - 1) * nl + k
-            x = xe[k_index]
-            ∇sqx = ∇ste[k,iq]
-            Jt_local += ∇sqx*x'
-        end
         detJt = det(Jt_local)
         invJt = inv(Jt_local)
         dV = abs(detJt)*we[iq]
@@ -988,15 +955,9 @@ end
     iq = Int(ceil(thread/(nl^2*ncells)))
     i_coo = (cell - 1) * nl^2 + ((j - 1) * nl + i) # Define this one only once. 
 
-    Jt_local = Jt
+    Jt_local = Jt[cell,iq]
     ∇u_local = ∇u
 
-    for k in 1:nl
-        k_index = (cell - 1) * nl + k
-        x = xe[k_index]
-        ∇sqx = ∇ste[k,iq]
-        Jt_local += ∇sqx*x'
-    end
     detJt = det(Jt_local)
     invJt = inv(Jt_local)
     dV = abs(detJt)*we[iq]
@@ -1026,76 +987,39 @@ function jacobian_cells_cpu_extension!(V_coo,u_dofs,state)
     p = state.p
     xe = state.xe_setup.xe
     ue = state.ue_alloc.ue
-    prl_level = state.prl_level
-    mem_layout = state.mem_layout
+    jacobian = state.jacobian_impl
     precision = state.precision
+    Jt = state.Jt_precompute.Jt
+    zero_Jt = state.Jt_precompute.zero_Jt
 
     ∇ste = map(m->collect(permutedims(m)),∇s)[1]
     we = precision[:Float].(w[1])
-    nl = precision[:Int](length(cell_to_nodes[1])) 
-    nq = precision[:Int](length(we)) # number of quadrature points.
+    nl = Int32(length(cell_to_nodes[1])) 
+    nq = Int32(length(we)) # number of quadrature points.
     Tx = eltype(xe)
-    TJ = typeof(zero(Tx)*zero(Tx)')
-
-    zero_Jt = zero(TJ)
     ∇u = zero(Tx)
 
-    fill!(V_coo,zero(Float64))
-    setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, mem_layout) # update ue
+    fill!(V_coo, 0.0)
+    setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, jacobian) # update ue
     # To check data types 
     # for x in [V_coo, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p]
     #     print(typeof(x), "  ")
     # end
     # println(" ")
-    if prl_level == :cell
+    if jacobian == :cpu_v1
         for cell in 1:ncells
-            kernel_generic!(V_coo, cell, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
+            kernel_generic!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
         end
-    elseif prl_level == :coalesce
+    elseif jacobian == :cpu_v2
         for cell in 1:ncells
-            kernel_coalesced!(V_coo, cell, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
+            kernel_coalesced!(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
         end
-    elseif prl_level == :elem_j
-        threads = ncells * nl
-        for thread in 1:threads
-            kernel_elem_j!(V_coo, thread, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
-        end
-    elseif prl_level == :elem_ij
-        threads = ncells * nl^2
-        for thread in 1:threads
-            kernel_elem_ij!(V_coo, thread, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
-        end
-    elseif prl_level == :quad
-        threads = ncells * nq
-        for thread in 1:threads
-            kernel_quad!(V_coo, thread, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
-        end
-    elseif prl_level == :full
-        threads = ncells * nq * nl^2
-        for thread in 1:threads
-            kernel_full_prl!(V_coo, thread, nq, nl, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
-        end
-    elseif prl_level == :split_kernel
-        threads = ncells
-        Jt = Matrix{typeof(zero_Jt)}(undef, ncells, nq)
-        # First the Jt kernel.
-        for thread in 1:threads
-            kernel_generic_Jte!(Jt, thread, nq, nl, zero_Jt, xe, ∇ste)
-        end
-        # Then the second one assembles the rest.
+    elseif jacobian == :split_kernel
+        threads = ncells 
         for thread in 1:threads
             kernel_generic_∇ue!(V_coo, thread, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
         end
-    elseif prl_level == :split_kernel_nq
-        # First kernel has ncells * nq threads
-        threads = nq * ncells
-        Jt = Matrix{typeof(zero_Jt)}(undef, ncells, nq)
-        for thread in 1:threads
-            cell = (thread-1) % ncells + 1 
-            iq = Int((ceil(thread/ncells) - 1) % nq) + 1
-            kernel_generic_Jte!(Jt, cell, iq, nq, nl, zero_Jt, xe, ∇ste)
-        end
-        # Then the second one has ncells * nl^2 threads
+    elseif jacobian == :split_kernel_nq
         threads = ncells * nl^2
         for thread in 1:threads
             cell = Int((ceil(thread/nl^2)-1) % ncells)+1
@@ -1208,38 +1132,37 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
     u_dirichlet = state.dirichlet_bcs.u_dirichlet
     xe = state.xe.node_to_x
     ue = state.ue_alloc.ue
-    prl_level = state.prl_level
-    mem_layout = state.mem_layout
+    jacobian = state.jacobian_impl
 
-    V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = state.gpu_pointers
+    V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = state.gpu_pointers
 
     # This also needs to be done on the gpu.
-    fill!(V_coo_d,zero(params[:precision][:Float])) # Move this such that each thread does it individually, check how that goes for the kernels i and ij
-    setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, mem_layout) # update ue
+    fill!(V_coo_d,0.0) # Move this such that each thread does it individually, check how that goes for the kernels i and ij
+    setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, jacobian) # update ue
     # Copy over V_coo and ue
     copyto!(ue_d, ue)
 
     max_threads = attribute(CuDevice(0),CUDA.DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK)
 
-    if prl_level == :cell
+    if jacobian == :gpu_v1
         # Here the configuration is set for the kernel (threads, blocks etc.)
-        ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+        ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
         config = launch_configuration(ckernel.fun)
         threads = min(ncells, config.threads)
         blocks =  cld(ncells, threads)
         
-        CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,
+        CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
                                         ncells_d,p_d,dflux,nl_d,nq_d)
-    elseif prl_level == :coalesce
-        ckernel=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+    elseif jacobian == :gpu_v2
+        ckernel=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
         config = launch_configuration(ckernel.fun)
         threads = min(ncells, config.threads)
         blocks =  cld(ncells, threads)
         
-        CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,zero_Jt_d,∇u_d,
+        CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
                                         ncells_d,p_d,dflux,nl_d,nq_d)
     
-    elseif prl_level == :split_kernel
+    elseif jacobian == :gpu_v3
         # Reserve memory for Jt in global memory
         Jt_d = fill(zero_Jt_d, ncells, nq)
         # First you launch the Jt kernel with ncells * ndofs threads
@@ -1251,15 +1174,8 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
         blocks = cld(ncells, max_threads)
         CUDA.@sync @cuda threads=threads blocks=blocks assemble_∇ue(V_coo_d, cell_d, nq_d, nl_d, Jt_d, xe_d, ∇ste_d, we_d, ∇u_d, ue_d, dflux_d, p_d)
     
-    elseif prl_level == :split_kernel_tiled
-        Jt_d = fill(zero_Jt_d, ncells, nq)
-        
-        # First kernel for the Jte part - needs to be a multiple of nq
-        threads = fld(max_threads, nq) * nq
-        blocks = cld(ncells*nq, threads)
-        CUDA.@sync @cuda threads=threads blocks=blocks assemble_kernel_Jte_tiled(Jt_d, tid, nq, nl, zero_Jt, xe, ∇ste)
-
-        # second kernel for the ue + V_coo part. ncells * nq^2 threads
+    elseif jacobian == :gpu_v4
+        # ncells * nq^2 threads
         threads = fld(max_threads, nl^2) * nl
         blocks = cld(ncells*nl^2, threads)
         CUDA.@sync @cuda threads=threads blocks=blocks assemble_kernel_∇ue_tiled(V_coo, nq, nl, Jt_d, zero_Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
@@ -1285,27 +1201,12 @@ function assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
     nothing
 end
 
-function assemble_Jte(Jt, nq, nl, zero_Jt, xe, ∇ste)
-    idx = threadIdx().x + (blockIdx().x - Int32(1)) * blockDim().x
-    if idx <= ncells_d
-        kernel_generic_Jte!(Jt, idx, nq, nl, zero_Jt, xe, ∇ste)
-    end
-    nothing
-end
-
 function assemble_∇ue(V_coo, cell, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
     idx = threadIdx().x + (blockIdx().x - Int32(1)) * blockDim().x
     if idx <= ncells_d 
         kernel_generic_∇ue!(V_coo, idx, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)
     end
     nothing
-end
-
-function assemble_kernel_Jte_tiled(Jt, tid, nq, nl, zero_Jt, xe, ∇ste)
-    idx = threadIdx().x + (blockIdx().x - Int32(1)) * blockDim().x
-    if idx <= ncells_d * nq
-        kernel_Jte_tiled!(Jt, tid, nq, nl, zero_Jt, xe, ∇ste)
-    end
 end
 
 function assemble_kernel_∇ue_tiled(V_coo, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p)

@@ -5,7 +5,7 @@ using FastGaussQuadrature
 using StaticArrays
 using LinearAlgebra
 using ForwardDiff
-using Gmsh
+#using Gmsh
 using PartitionedArrays
 using Combinatorics
 using SparseArrays
