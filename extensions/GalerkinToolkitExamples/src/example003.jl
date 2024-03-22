@@ -16,7 +16,6 @@ using Preconditioners
 using IterativeSolvers: cg!
 
 using CUDA
-using Serialization
 # This one implements a vanilla sequential iso-parametric p-Laplacian solver by only
 # using the mesh interface.
 
@@ -206,8 +205,7 @@ function setup_dofs(params,dirichlet_bcs,cell_isomap,face_isomap)
     dofs = (;cell_to_dofs,face_to_dofs,n_dofs)
     dofs
 end
-# two versions of the setup, one with double precision. One for residual and one for jacobian. 
-# Two parts to it, change the values of cell_to_nodes etc in the setup and then pass a parameter that sets up xe etc. as Float32
+
 function setup_xe(cell_isomap, cell_integration, params)
     cell_to_nodes = cell_isomap.face_to_nodes
     node_to_coords = cell_isomap.node_to_coords
@@ -280,7 +278,7 @@ function setup_Jt(cell_integration, xe_setup, cell_isomap, precision, jacobian)
 
     ncells = Int32(length(cell_to_nodes))
     we = Float64.(w[1])
-    nq = Int32(length(we)) # number of quadrature points.
+    nq = Int32(length(we))
     nl = Int32(length(cell_to_nodes[1]))
     Tx = eltype(xe)
     TJ = typeof(zero(Tx)*zero(Tx)')
@@ -321,22 +319,21 @@ function setup_Jt(cell_integration, xe_setup, cell_isomap, precision, jacobian)
     Jt_precompute = (;Jt,zero_Jt)
 end
 
-# Fix this one - the function arguments are not correct should be params, cell_isomap etc...
 function cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue_alloc,Jt_precompute)
     cell_to_nodes = cell_isomap.face_to_nodes
     cell_to_dofs = dofs.cell_to_dofs
-    dofs = cell_to_dofs[cell]
+    dofs = cell_to_dofs[1]
     ∇s = cell_isomap.rid_to_shape_grads
     we = cell_integration.rid_to_weights[1]
     d = cell_integration.d
-    ncells = length(cell_to_nodes)
-    xe = xe.node_to_x
+    ncells = Int32(length(cell_to_nodes))
+    xe = xe_setup.xe
     ue = ue_alloc.ue
-    Jt = setup_Jt.Jt
+    Jt = Jt_precompute.Jt
     
     ∇ste = map(m->collect(permutedims(m)),∇s)[1]
-    nl = length(cell_to_nodes[1]) 
-    nq = length(we)
+    nl = Int32(length(cell_to_nodes[1]))
+    nq = Int32(length(we))
     Tx = eltype(xe)
     TJ = typeof(zero(Tx)*zero(Tx)')
     ndofs = length(dofs)
@@ -356,9 +353,9 @@ function cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue
     ncells_d = cu(ncells)
     nq_d = cu(nq)
     nl_d = cu(nl)
-    p_d = cu(p)
-    for i in [V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
-        print(typeof(i))
+    p_d = cu(Int32(p))
+    for i in [V_coo_d, ∇ste_d, w_d, xe_d, ue_d, Jt_d, ∇u_d, ncells_d, nl_d, nq_d, p_d]
+        println(typeof(i))
     end
 
     [V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d]
@@ -1130,7 +1127,7 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
     ncells = length(cell_to_nodes)
     nl = length(cell_to_nodes[1]) 
     u_dirichlet = state.dirichlet_bcs.u_dirichlet
-    xe = state.xe.node_to_x
+    xe = state.xe_setup.xe
     ue = state.ue_alloc.ue
     jacobian = state.jacobian_impl
 
