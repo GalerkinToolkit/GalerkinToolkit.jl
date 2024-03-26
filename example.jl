@@ -42,7 +42,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     coarse_domain = (0,10,0,10)
     coarse_mesh_dims = (1,1)
     coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-    coarse_cell_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
+    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
 
     # initialize 4x4 glk unit cell mesh  
     unit_cell_domain = (0,1,0,1)
@@ -50,19 +50,16 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     unit_cell_mesh = gk.cartesian_mesh(unit_cell_domain, unit_cell_dims) 
 
     # visualize the glk unit cell 
-    unit_cell_fname = "unit_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
-    visualize_unit_cell_mesh(
-        unit_cell_mesh, joinpath(
-            "output", 
-            unit_cell_fname))
+    unit_cell_vtk_fname = "unit_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
+    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
     # construct the final mesh with 1x1 coarse mesh 
-    final_mesh, final_glue = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
+    final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
 
     # visualize final mesh with 1x1 coarse mesh
     vtk_grid(joinpath(
         "output",
-        "two_level_mesh_$(unit_cell_fname)_$(coarse_cell_fname_1x1)"),
+        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"),
         gk.vtk_args(final_mesh)...) do vtk
             gk.vtk_physical_faces!(vtk,final_mesh)
             gk.vtk_physical_nodes!(vtk,final_mesh)
@@ -74,15 +71,15 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     coarse_domain = (0,10,0,10)
     coarse_mesh_dims = (4,4)
     coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-    coarse_cell_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
+    coarse_cell_vtk_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
 
     # construct the final mesh with a 4x4 coarse mesh     
-    final_mesh, final_glue = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
+    final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
 
     # visualize final mesh with 4x4 coarse mesh
     vtk_grid(joinpath(
         "output",
-        "two_level_mesh_$(unit_cell_fname)_$(coarse_cell_fname_4x4)"),
+        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"),
         gk.vtk_args(final_mesh)...) do vtk
             gk.vtk_physical_faces!(vtk,final_mesh)
             gk.vtk_physical_nodes!(vtk,final_mesh)
@@ -94,14 +91,14 @@ end
 
 function test_two_level_mesh_with_periodic_square_unit_cell()
 
-    # Initialize coarse mesh 
+    # Initialize coarse 1x1 mesh 
     coarse_domain = (0,10,0,10)
-    coarse_mesh_dims = (4,4)
-    coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-    coarse_cell_vtk_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
+    coarse_mesh_dims = (1,1)
+    coarse_mesh_1x1 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
 
     # Load periodic fine (unit cell) mesh with triangular refcells 
-    unit_cell_mesh_fpath = joinpath(
+     unit_cell_mesh_fpath = joinpath(
         @__DIR__, 
         "assets", 
         "unit_cell_2D_periodic_square_geometry_triangular_refcell.msh")
@@ -109,14 +106,35 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # visualize the periodic gmsh unit cell with triangular refcells 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_square_geometry_triangular_refcell"
-    visualize_unit_cell_mesh(unit_cell_mesh, joinpath(
-        "output", 
-        unit_cell_vtk_fname))
+    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
-    # visualize final mesh with 4x4 coarse mesh and 4x4 unit cell
-    periodic_final_mesh, periodic_final_glue = gk.two_level_mesh(
-        coarse_mesh, unit_cell_mesh)
+    # visualize final mesh with 1x1 coarse mesh and periodic unit cell 
+    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
+
     n_nodes = gk.num_nodes(periodic_final_mesh)
+
+    vtk_grid(
+        joinpath("output",
+        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"),
+        gk.vtk_args(periodic_final_mesh)...) do vtk
+            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
+            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
+            vtk["node_ids"] = collect(1:n_nodes)
+    end
+   
+    # TODO: hardcoded coordinate check
+
+    # Initialize coarse 4x4 mesh 
+    coarse_domain = (0,10,0,10)
+    coarse_mesh_dims = (4,4)
+    coarse_mesh_4x4 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
+
+    # visualize final mesh with 4x4 coarse mesh and periodic unit cell 
+    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
+
+    n_nodes = gk.num_nodes(periodic_final_mesh)
+
     vtk_grid(
         joinpath("output",
         "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"),
@@ -127,6 +145,8 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     end
 
     # TODO: Check hardcoded coordinates 
+
+
 end
 
 # TODO: fails currently... check physical group naming conventions 
@@ -147,13 +167,13 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
     # visualize the periodic gmsh unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"
-    visualize_unit_cell_mesh(unit_cell_mesh, joinpath(
-        "output", 
-        unit_cell_vtk_fname))
+    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
     # visualize final mesh with 4x4 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
+
     n_nodes = gk.num_nodes(periodic_final_mesh)
+
     vtk_grid(
         joinpath(
         "output",

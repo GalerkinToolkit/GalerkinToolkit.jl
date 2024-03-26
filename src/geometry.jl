@@ -3641,29 +3641,24 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         for local_dface_1 in 1:n_local_dfaces
-           
-            # Handle nonperiodic case with identity permutation 
-            # assumes consistent numbering of node ids on opposite faces 
-            if length(periodic_node_to_fine_node) == 0
-                permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
-                local_dface_to_permutation[local_dface_1] = permutation
-                continue 
-            end
-            
-            # Handle periodic case: use a local reference cell and its opposite 
-            # face to get the corresponding fine nodes and the master of those fine nodes.
-            # Then ensure that a given local d-face has the same ordering as the opposite
-            # face....
+
             fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
             master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
-            
-            # master fine nodes determine the permutation order
-            if fine_nodes_1 == master_nodes_1
+           
+            # Handle nonperiodic case with identity permutation 
+            # assumes consistent numbering of node ids on opposite faces... 
+            # Also handles case where there are periodic nodes but the master nodes 
+            # will use the identity permutation 
+            if length(periodic_node_to_fine_node) == 0 || fine_nodes_1 == master_nodes_1
                 permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
                 local_dface_to_permutation[local_dface_1] = permutation
                 continue 
             end
 
+            # Handle periodic case: use a local reference cell and its opposite 
+            # face to get the corresponding fine nodes and the master of those fine nodes.
+            # Then ensure that a given local d-face has the same ordering as the opposite
+            # face....
             local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
             fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
