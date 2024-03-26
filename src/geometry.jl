@@ -3631,7 +3631,6 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
 
         master_master_node = fine_node_to_master_node[master_node]
         fine_node_to_master_node[fine_node] = master_master_node 
-        
     end 
 
     # Fill permutation map for opposite local reference element faces 
@@ -3738,11 +3737,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         d_to_coarse_dface_to_final_nodes[d+1] = coarse_dface_to_final_nodes
     end
 
-    # TODO: fine_node_to_final_node is definitely wrong! likely due to wrong ref cell
-
     # Apply the coordinate transformation to the final nodes 
-    # TODO: Since the 2x2 final mesh with non-periodic square unit cell is 
-    # fine... clearly the issue is with the periodicity
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
     for coarse_cell in 1:n_coarse_cells
         fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]  

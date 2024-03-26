@@ -36,9 +36,13 @@ module TMP
 
 import GalerkinToolkit as gk
 using WriteVTK
+using Test
 
 function test_two_level_mesh_with_nonperiodic_square_unit_cell()
-    # initailize 1x1 coarse mesh
+    # corresponds to 2D cell in glk mesh
+    cell_dim = 2
+
+    # initialize 1x1 coarse mesh
     coarse_domain = (0,10,0,10)
     coarse_mesh_dims = (1,1)
     coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
@@ -65,7 +69,16 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
             gk.vtk_physical_nodes!(vtk,final_mesh)
     end
 
-    # TODO: hardcoded coordinate check 
+    # Coordinate check for unit cell in 1x1 coarse mesh
+    final_cell_to_inspect = 12 # arbitrary 
+    final_cell_to_inspect_coordinates = [
+        [7.5, 5.0],
+        [10.0, 5.0],
+        [7.5, 7.5],
+        [10.0, 7.5]
+    ]
+    example_coordinates = coordinates(final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
 
     # initialize 4x4 coarse mesh 
     coarse_domain = (0,10,0,10)
@@ -85,8 +98,16 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
             gk.vtk_physical_nodes!(vtk,final_mesh)
     end
 
-    # TODO: Check hardcoded coordinates 
-
+    # Coordinate check for unit cell in 4x4 coarse mesh 
+    final_cell_to_inspect = 114 # arbitrary 
+    final_cell_to_inspect_coordinates = [
+        [8.125, 2.5],
+        [8.75, 2.5],
+        [8.125, 3.125],
+        [8.75, 3.125]       
+    ]
+    example_coordinates = coordinates(final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
 end 
 
 function test_two_level_mesh_with_periodic_square_unit_cell()
@@ -225,6 +246,25 @@ function visualize_unit_cell_mesh(unit_cell_mesh, outpath)
     end
 
     # TODO: Check hardcoded coordinates 
+end 
+
+"""
+    coordinates(mesh, face_id, d)
+
+Return node coordinates corresponding to the `d`-dimensional face with `face_id`
+
+Variables matching the pattern `mesh_node*` correspond to the granularity of the supplied 
+`mesh`. For example, if `mesh` is a `final_mesh`, then `mesh_node_to_coordinates`
+is understood as `final_mesh_node_to_coordinates`.
+"""
+function coordinates(mesh, face, d)
+    n_dfaces = gk.num_faces(mesh, d)
+    dface_to_local_node_to_mesh_node = gk.face_nodes(mesh, d)
+    mesh_node_to_coordinates = gk.node_coordinates(mesh)
+    @assert face <= n_dfaces "face id is in [1...n_faces]"
+    local_node_to_mesh_node = dface_to_local_node_to_mesh_node[face]
+    coordinates = mesh_node_to_coordinates[local_node_to_mesh_node]
+    return coordinates
 end 
 
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
