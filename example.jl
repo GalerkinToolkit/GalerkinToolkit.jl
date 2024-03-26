@@ -1,4 +1,20 @@
 """
+TODOs:
+puzzle piece 2D test
+parallel puzzle piece 2D test
+puzzle piece 3D test
+parallel puzzle piece 3D test
+
+using DrWatson
+
+partitionedarryasbenchmarks
+check the helpers and the `runjobs`
+analysis.ipynb
+setup ssh tunnel with jupyter notebook and das5
+jupyter-notebook --no-browser
+history | grep ssh # on client
+careful on job submission to DAS
+
 TODO:
 3D cartesian and naming and gmsh
 
@@ -37,16 +53,11 @@ module TMP
 import GalerkinToolkit as gk
 using WriteVTK
 using Test
+using PartitionedArrays
 
 function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
-
-    # initialize 1x1 coarse mesh
-    coarse_domain = (0,10,0,10)
-    coarse_mesh_dims = (1,1)
-    coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
 
     # initialize 4x4 glk unit cell mesh  
     unit_cell_domain = (0,1,0,1)
@@ -57,17 +68,16 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     unit_cell_vtk_fname = "unit_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
     visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
+    # initialize 1x1 coarse mesh
+    coarse_domain = (0,10,0,10)
+    coarse_mesh_dims = (1,1)
+    coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
+
     # construct the final mesh with 1x1 coarse mesh 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
-
-    # visualize final mesh with 1x1 coarse mesh
-    vtk_grid(joinpath(
-        "output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"),
-        gk.vtk_args(final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,final_mesh)
-            gk.vtk_physical_nodes!(vtk,final_mesh)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh
     final_cell_to_inspect = 12 # arbitrary 
@@ -88,15 +98,8 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
 
     # construct the final mesh with a 4x4 coarse mesh     
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
-
-    # visualize final mesh with 4x4 coarse mesh
-    vtk_grid(joinpath(
-        "output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"),
-        gk.vtk_args(final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,final_mesh)
-            gk.vtk_physical_nodes!(vtk,final_mesh)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh 
     final_cell_to_inspect = 114 # arbitrary 
@@ -114,12 +117,6 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # corresponds to 3D cell in glk mesh
     cell_dim = 3
 
-    # Coarse 1x1x1 mesh 
-    coarse_domain = (0, 10, 0, 10, 0, 10)
-    coarse_mesh_dims = (1, 1, 1)
-    coarse_mesh_1x1x1 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_1x1x1_refcell"
-
     # initialize 4x4x4 glk unit cell mesh  
     unit_cell_domain = (0,1,0,1,0,1)
     unit_cell_dims = (4,4,4)
@@ -129,19 +126,16 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     unit_cell_vtk_fname = "unit_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
     visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
+    # Coarse 1x1x1 mesh 
+    coarse_domain = (0, 10, 0, 10, 0, 10)
+    coarse_mesh_dims = (1, 1, 1)
+    coarse_mesh_1x1x1 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
+    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_1x1x1_refcell"
+
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"),
-        gk.vtk_args(final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,final_mesh)
-            gk.vtk_physical_nodes!(vtk,final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1x1 coarse grid 
     final_cell_to_inspect = 32 
@@ -167,17 +161,8 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"),
-        gk.vtk_args(final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,final_mesh)
-            gk.vtk_physical_nodes!(vtk,final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # coordinate check for 4x4x4 coarse mesh 
     final_cell_to_inspect = 2048
@@ -200,14 +185,8 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
 
-    # Initialize coarse 1x1 mesh 
-    coarse_domain = (0,10,0,10)
-    coarse_mesh_dims = (1,1)
-    coarse_mesh_1x1 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
-
     # Load periodic fine (unit cell) mesh with triangular refcells 
-     unit_cell_mesh_fpath = joinpath(
+    unit_cell_mesh_fpath = joinpath(
         @__DIR__, 
         "assets", 
         "unit_cell_2D_periodic_square_geometry_triangular_refcell.msh")
@@ -217,20 +196,17 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_square_geometry_triangular_refcell"
     visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
+    # Initialize coarse 1x1 mesh 
+    coarse_domain = (0,10,0,10)
+    coarse_mesh_dims = (1,1)
+    coarse_mesh_1x1 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
+
     # visualize final mesh with 1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(periodic_final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"),
-        gk.vtk_args(periodic_final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
-            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
-   
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+ 
     # Coordinate check for unit cell in 1x1 coarse mesh 
     final_cell_to_inspect = 23
     final_cell_to_inspect_coordinates = [
@@ -250,17 +226,8 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # visualize final mesh with 4x4 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(periodic_final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"),
-        gk.vtk_args(periodic_final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
-            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh
     final_cell_to_inspect = 272 
@@ -297,17 +264,8 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(periodic_final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"),
-        gk.vtk_args(periodic_final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
-            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
     final_cell_to_inspect = 112
@@ -329,17 +287,8 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
-
-    n_nodes = gk.num_nodes(periodic_final_mesh)
-
-    vtk_grid(
-        joinpath("output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"),
-        gk.vtk_args(periodic_final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
-            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
-    end
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4x4 coarse grid 
     final_cell_to_inspect = 1096 
@@ -354,78 +303,131 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 end 
 
-# TODO: fails currently... check physical group naming conventions 
 function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
-     # Initialize coarse mesh 
-     coarse_domain = (0,10,0,10)
-     coarse_mesh_dims = (4,4)
-     coarse_mesh = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
-     coarse_cell_vtk_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
-
+    ## Sequential 
     # Load periodic fine (unit cell) mesh
     unit_cell_mesh_fpath = joinpath(
         @__DIR__, 
         "assets", 
-        "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
+        "unit_cell_2D_periodic_puzzlepiece_geometry.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"
     visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
+    # coarse 1x1 mesh
+    coarse_domain = (0,10,0,10)
+    coarse_mesh_dims = (1,1)
+    coarse_mesh_1x1 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_1x1 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_1x1_refcell"
+
+    # visualize final mesh with 1x1 coarse mesh and puzzle piece unit cell
+    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+
+    # TODO: check hardcode coordinates     
+    
+    # coarse 4x4 mesh 
+    coarse_domain = (0,10,0,10)
+    coarse_mesh_dims = (4,4)
+    coarse_mesh_4x4 = gk.cartesian_mesh(coarse_domain,coarse_mesh_dims)
+    coarse_cell_vtk_fname_4x4 = "coarse_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
+
     # visualize final mesh with 4x4 coarse mesh and puzzle piece unit cell
+    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
+    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+
+    # TODO: check hardcode coordinates 
+
+    ## Parallel
+    # parallel coarse mesh
+    domain = (0,10,0,10)
+    cells = (4,4)
+    parts_per_dir = (2,2)
+    np = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((np,)))
+    coarse_mesh = gk.cartesian_mesh(
+        domain,cells; 
+        parts_per_dir, parts, 
+        partition_strategy = gk.partition_strategy(;ghost_layers=0))
+ 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
 
-    n_nodes = gk.num_nodes(periodic_final_mesh)
+    # visualize mesh
+    # TODO: abstract this and pass a arg for output path??
+    function final_pmesh_setup(mesh, ids, rank)
+        face_to_owner = zeros(Int, sum(gk.num_faces(mesh)))
+        D = gk.num_dims(mesh)
+        for d in 0:D
+            face_to_owner[gk.face_range(mesh, D)] = local_to_owner(gk.face_indices(ids, D))
+        end
+        pvtk_grid(
+            joinpath(@__DIR__, "output", "puzzlepiece-pmesh-cartesian"), 
+            gk.vtk_args(mesh)...; 
+            part=rank, nparts=np, append=false, ascii=true) do vtk
 
-    vtk_grid(
-        joinpath(
-        "output",
-        "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"),
-        gk.vtk_args(periodic_final_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,periodic_final_mesh)
-            gk.vtk_physical_nodes!(vtk,periodic_final_mesh)
-            vtk["node_ids"] = collect(1:n_nodes)
+            gk.vtk_physical_faces!(vtk, mesh)
+            gk.vtk_physical_nodes!(vtk, mesh)
+            vtk["piece"] = fill(rank, sum(gk.num_faces(mesh)))
+            vtk["owner"] = local_to_owner(gk.node_indices(ids))
+            vtk["owner"] = face_to_owner
+            vtk["node"] = local_to_global(gk.node_indices(ids))
+        end
     end
+
+    map(
+        final_pmesh_setup, 
+        partition(periodic_final_mesh), 
+        gk.index_partition(periodic_final_mesh), 
+        parts)
 
     # TODO: check hardcode coordinates 
 end
 
-function visualize_mesh(unit_cell_mesh, outpath)
+function visualize_mesh(mesh, outpath)
+    node_ids = collect(1:gk.num_nodes(mesh))
 
-    # Get periodic node info about unit cell
-    periodic_nodes = gk.periodic_nodes(unit_cell_mesh)
-    fine_pnode_to_fine_node = periodic_nodes.first 
-    fine_pnode_to_master_fine_node = periodic_nodes.second 
-    
-    # Labeling periodic nodes 
-    node_ids = collect(1:gk.num_nodes(unit_cell_mesh))
-    fine_node_to_master_fine_node = copy(node_ids)
-    fine_node_to_master_fine_node[
-        fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node
+    # TODO: without this check, attempting to visualize a 3D periodic mesh fails because
+    # the `periodic_nodes` property is a Vector and not a Pair 
+    valid_periodic_mesh = gk.has_periodic_nodes(mesh) && gk.periodic_nodes(mesh) isa Pair
+    if valid_periodic_mesh
+        # Get periodic node info aboutcell
+        periodic_nodes = gk.periodic_nodes(mesh)
+        fine_pnode_to_fine_node = periodic_nodes.first 
+        fine_pnode_to_master_fine_node = periodic_nodes.second 
+        
+        # Labeling periodic nodes 
+        fine_node_to_master_fine_node = copy(node_ids)
+        fine_node_to_master_fine_node[
+            fine_pnode_to_fine_node] = fine_pnode_to_master_fine_node
 
-    # Handles periodic vertices whose master node is the master of another periodic 
-    # vertex assuming one level of indirection for periodicity 
-    # (e.g., vertex -> master -> master)
-    n_fine_nodes = length(node_ids)
-    for fine_node in 1:n_fine_nodes
-        master_fine_node = fine_node_to_master_fine_node[fine_node]
-        if fine_node == master_fine_node
-            continue  
-        end
+        # Handles periodic vertices whose master node is the master of another periodic 
+        # vertex assuming one level of indirection for periodicity 
+        # (e.g., vertex -> master -> master)
+        n_fine_nodes = length(node_ids)
+        for fine_node in 1:n_fine_nodes
+            master_fine_node = fine_node_to_master_fine_node[fine_node]
+            if fine_node == master_fine_node
+                continue  
+            end
 
-        master_master_fine_node = fine_node_to_master_fine_node[master_fine_node]
-        fine_node_to_master_fine_node[fine_node] = master_master_fine_node 
-    end 
+            master_master_fine_node = fine_node_to_master_fine_node[master_fine_node]
+            fine_node_to_master_fine_node[fine_node] = master_master_fine_node 
+        end 
+    end
 
     # Visualize in paraview
     vtk_grid(
         outpath,
-        gk.vtk_args(unit_cell_mesh)...) do vtk
-            gk.vtk_physical_faces!(vtk,unit_cell_mesh)
-            gk.vtk_physical_nodes!(vtk,unit_cell_mesh)
-            vtk["periodic_master_id"] = fine_node_to_master_fine_node
+        gk.vtk_args(mesh)...) do vtk
+            gk.vtk_physical_faces!(vtk,mesh)
+            gk.vtk_physical_nodes!(vtk,mesh)
+            valid_periodic_mesh && (
+                vtk["periodic_master_id"] = fine_node_to_master_fine_node)
             vtk["node_id"] = node_ids
     end
 end 
@@ -434,6 +436,6 @@ TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
 TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
 TMP.test_two_level_mesh_with_periodic_box_unit_cell()
-# TMP.test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
+TMP.test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
 end # module TMP
