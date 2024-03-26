@@ -55,7 +55,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
 
     # visualize the glk unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
-    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
     # construct the final mesh with 1x1 coarse mesh 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
@@ -110,6 +110,10 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 end 
 
+function test_two_level_mesh_with_nonperiodic_box_unit_cell()
+
+end 
+
 function test_two_level_mesh_with_periodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
@@ -129,7 +133,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # visualize the periodic gmsh unit cell with triangular refcells 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_square_geometry_triangular_refcell"
-    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
     # visualize final mesh with 1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
@@ -188,6 +192,15 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 end
 
+function test_two_level_mesh_with_periodic_box_unit_cell()
+    coarse_domain = (0, 10, 0, 10, 0, 10)
+    coarse_mesh_dims = (1, 1, 1)
+    coarse_mesh = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
+    coarse_vtk_fname = "coarse_mesh_3D_periodic_glk_box_geometry_quad_refcell"
+    coarse_vtk_fpath = joinpath("output", coarse_vtk_fname)
+    visualize_mesh(coarse_mesh, coarse_vtk_fpath)
+end 
+
 # TODO: fails currently... check physical group naming conventions 
 function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
@@ -206,7 +219,7 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
     # visualize the periodic gmsh unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"
-    visualize_unit_cell_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
 
     # visualize final mesh with 4x4 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
@@ -226,7 +239,7 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     # TODO: check hardcode coordinates 
 end
 
-function visualize_unit_cell_mesh(unit_cell_mesh, outpath)
+function visualize_mesh(unit_cell_mesh, outpath)
 
     # Get periodic node info about unit cell
     periodic_nodes = gk.periodic_nodes(unit_cell_mesh)
@@ -262,12 +275,12 @@ function visualize_unit_cell_mesh(unit_cell_mesh, outpath)
             vtk["periodic_master_id"] = fine_node_to_master_fine_node
             vtk["node_id"] = node_ids
     end
-
-    # TODO: Check hardcoded coordinates 
 end 
 
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
 TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
+TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 # TMP.test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
 end # module TMP

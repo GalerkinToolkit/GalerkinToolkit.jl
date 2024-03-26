@@ -1,4 +1,5 @@
 // Puzzle piece cube with periodic surfaces
+// TODO: Check physical groups!
 
 //----------
 // Geometry
