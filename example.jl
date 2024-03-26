@@ -77,7 +77,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # construct the final mesh with 1x1 coarse mesh 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh
     final_cell_to_inspect = 12 # arbitrary 
@@ -99,7 +99,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # construct the final mesh with a 4x4 coarse mesh     
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh 
     final_cell_to_inspect = 114 # arbitrary 
@@ -130,12 +130,12 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     coarse_domain = (0, 10, 0, 10, 0, 10)
     coarse_mesh_dims = (1, 1, 1)
     coarse_mesh_1x1x1 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_1x1x1_refcell"
+    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_1x1x1_refcell"
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1x1 coarse grid 
     final_cell_to_inspect = 32 
@@ -157,12 +157,12 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     coarse_domain = (0, 10, 0, 10, 0, 10)
     coarse_mesh_dims = (4, 4, 4)
     coarse_mesh_4x4x4 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_4x4x4_refcell"
+    coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # coordinate check for 4x4x4 coarse mesh 
     final_cell_to_inspect = 2048
@@ -304,6 +304,8 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 end 
 
 function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
+    # corresponds to 2D cell in glk mesh
+    cell_dim = 2
 
     ## Sequential 
     # Load periodic fine (unit cell) mesh
@@ -328,8 +330,17 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
-    # TODO: check hardcode coordinates     
-    
+    # Check coordinates of example refcell in final mesh
+    final_cell_to_inspect = 64
+    final_cell_to_inspect_coordinates = [
+        [7.1650635094611, 8.750000000000007],
+        [8.148393354515463, 9.262620317047551],
+        [7.5, 10.0]
+    ]
+    example_coordinates = gk.node_coordinates(
+        periodic_final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
+
     # coarse 4x4 mesh 
     coarse_domain = (0,10,0,10)
     coarse_mesh_dims = (4,4)
@@ -342,6 +353,15 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # TODO: check hardcode coordinates 
+    final_cell_to_inspect = 256
+    final_cell_to_inspect_coordinates = [
+        [5.0, 2.187500000000001],
+        [5.229888333973762, 2.270164229732711],
+        [5.0, 2.5]
+    ]
+    example_coordinates = gk.node_coordinates(
+        periodic_final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
 
     ## Parallel
     # parallel coarse mesh
@@ -350,39 +370,25 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     parts_per_dir = (2,2)
     np = prod(parts_per_dir)
     parts = DebugArray(LinearIndices((np,)))
-    coarse_mesh = gk.cartesian_mesh(
+    coarse_pmesh = gk.cartesian_mesh(
         domain,cells; 
         parts_per_dir, parts, 
         partition_strategy = gk.partition_strategy(;ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell_2x2_parts_per_direction"   
  
-    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
+    # generate parallel mesh 
+    periodic_final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
 
-    # visualize mesh
-    # TODO: abstract this and pass a arg for output path??
-    function final_pmesh_setup(mesh, ids, rank)
-        face_to_owner = zeros(Int, sum(gk.num_faces(mesh)))
-        D = gk.num_dims(mesh)
-        for d in 0:D
-            face_to_owner[gk.face_range(mesh, D)] = local_to_owner(gk.face_indices(ids, D))
-        end
-        pvtk_grid(
-            joinpath(@__DIR__, "output", "puzzlepiece-pmesh-cartesian"), 
-            gk.vtk_args(mesh)...; 
-            part=rank, nparts=np, append=false, ascii=true) do vtk
-
-            gk.vtk_physical_faces!(vtk, mesh)
-            gk.vtk_physical_nodes!(vtk, mesh)
-            vtk["piece"] = fill(rank, sum(gk.num_faces(mesh)))
-            vtk["owner"] = local_to_owner(gk.node_indices(ids))
-            vtk["owner"] = face_to_owner
-            vtk["node"] = local_to_global(gk.node_indices(ids))
-        end
-    end
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__, 
+        "output", 
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     map(
-        final_pmesh_setup, 
-        partition(periodic_final_mesh), 
-        gk.index_partition(periodic_final_mesh), 
+        visualize_pmesh(np, pmesh_vtk_fpath), 
+        partition(periodic_final_pmesh), 
+        gk.index_partition(periodic_final_pmesh), 
         parts)
 
     # TODO: check hardcode coordinates 
@@ -430,6 +436,33 @@ function visualize_mesh(mesh, outpath)
                 vtk["periodic_master_id"] = fine_node_to_master_fine_node)
             vtk["node_id"] = node_ids
     end
+end
+
+"""
+    visualize_pmesh(np, outpath) 
+
+TODO: doc this 
+"""
+function visualize_pmesh(np, outpath) 
+    @assert isabspath(outpath) "abspath with pvtk_grid ensures function" # TODO: PR this?
+    function setup(mesh, ids, rank)
+        face_to_owner = zeros(Int, sum(gk.num_faces(mesh)))
+        D = gk.num_dims(mesh)
+        for d in 0:D
+            face_to_owner[gk.face_range(mesh, D)] = local_to_owner(gk.face_indices(ids, D))
+        end
+        pvtk_grid(
+            outpath, gk.vtk_args(mesh)...; 
+            part=rank, nparts=np, append=false, ascii=true) do vtk
+            gk.vtk_physical_faces!(vtk, mesh)
+            gk.vtk_physical_nodes!(vtk, mesh)
+            vtk["piece"] = fill(rank, sum(gk.num_faces(mesh)))
+            vtk["owner"] = local_to_owner(gk.node_indices(ids))
+            vtk["owner"] = face_to_owner
+            vtk["node"] = local_to_global(gk.node_indices(ids))
+        end
+    end
+    setup
 end 
 
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
