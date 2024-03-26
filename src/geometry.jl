@@ -2154,6 +2154,20 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     node_to_tag
 end
 
+function classify_mesh_faces!(dface_to_tag,mesh,d,tag_to_name)
+    fill!(dface_to_tag,zero(eltype(dface_to_tag)))
+    face_groups = physical_faces(mesh,d)
+    for (tag,name) in enumerate(tag_to_name)
+        for (name2,faces) in face_groups
+            if name != name2
+                continue
+            end
+            Dface_to_tag[faces] .= tag
+        end
+    end
+    dface_to_tag
+end
+
 """
 """
 function physical_names(mesh,d)
@@ -2848,7 +2862,7 @@ function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
-function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,resolution=nothing)
+function visualization_mesh_from_mesh(mesh,dim;order=nothing,resolution=nothing)
     function barrier(
             refid_to_tabulation,
             refid_to_scell_to_snodes,

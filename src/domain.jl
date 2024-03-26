@@ -2,8 +2,6 @@
 abstract type AbstractDomain <: GalerkinToolkitDataType end
 domain(a::AbstractDomain) = a
 
-# TODO several physical names
-# it solves the issue with PiecewiseField
 struct Domain{A,B,C,D,E} <: AbstractDomain
     mesh::A
     physical_names::B
@@ -13,11 +11,12 @@ struct Domain{A,B,C,D,E} <: AbstractDomain
 end
 
 function domain(mesh::AbstractFEMesh;
-    physical_names = :all,
-    face_dims = (num_dims(mesh),),
+    physical_names=gk.physical_names(mesh,gk.num_dims(mesh)),
+    face_dims = (gk.num_dims(mesh),),
     reference = (Val(false),),
     permuted = Val(true),
     )
+
     Domain(
            mesh,
            physical_names,
@@ -68,7 +67,7 @@ function face_ids(dom::AbstractDomain)
         Dface_to_tag = zeros(Int,num_faces(mesh,D))
         gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
         physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-        physical_Dfaces
+        (physical_Dfaces,)
     elseif length(face_dims) == 2
         D = face_dims[1]
         d = face_dims[2]
@@ -265,4 +264,244 @@ function interpolate!(field::PiecewiseField,free_or_diri::FreeOrDirichlet,uh::Di
     uh
 end
 
+abstract type AbstractPoint end
+
+struct Point{A,B} <: AbstractPoint
+    domain::A
+    reference_points::B
+    face_reference_id::C
+end
+
+function return_type(f,x)
+    typeof(f(x))
+end
+
+function sample(field,point)
+    data = allocate_sample(field,point)
+    sample!(data,field,point)
+end
+
+function sample_length(point::AbstractPoint)
+    @assert gk.domain(field) == gk.domain(point)
+    domain = gk.domain(field)
+    face_dims = gk.face_dims(domain)
+    @assert length(face_dims) == 1 "Not implemented yet"
+    nfaces = gk.num_faces(domain)
+    d, = face_dims
+    face_to_refid = gk.face_reference_id(point)
+    refid_to_refpoints = gk.reference_points(point)
+    i = 0
+    for face in faces
+        refid = face_to_refid[face]
+        refpoints = refid_to_refpoints[refid]
+        i += length(refpoints)
+    end
+    i
+end
+
+function allocate_sample(field::AnalyticalField,point::AbstractPoint)
+    @assert gk.domain(field) == gk.domain(point)
+    domain = gk.domain(field)
+    face_dims = gk.face_dims(domain)
+    @assert length(face_dims) == 1 "Not implemented yet"
+    faces, = gk.faces(domain)
+    reference, = gk.reference(domain)
+    d, = face_dims
+    face_to_refid = gk.face_reference_id(point)
+    refid_to_refpoints = gk.reference_points(point)
+    if reference
+        y = first(first(refid_to_refpoints))
+    else
+        mesh = domain |> gk.mesh
+        node_to_x = gk.node_coordinates(mesh)
+        Tx = eltype(node_to_x)
+        y = zero(Tx)
+    end
+    T = gk.return_type(field.f,y)
+    i = sample_length(point)
+    zeros(T,i)
+end
+
+function sample!(output,field::AnalyticalField,point::AbstractPoint)
+    @assert gk.domain(field) == gk.domain(point)
+    domain = gk.domain(field)
+    face_dims = gk.face_dims(domain)
+    @assert length(face_dims) == 1 "Not implemented yet"
+    nfaces = gk.num_faces(domain)
+    faces, = gk.faces(domain)
+    reference, = gk.reference(domain)
+    d, = face_dims
+    face_to_refid = gk.face_reference_id(point)
+    refid_to_refpoints = gk.reference_points(point)
+    if reference
+        refid_to_values = map(refid_to_refpoints) do refpoints
+            field.f.(refpoints)
+        end
+        i = 0
+        for face in 1:nfaces
+            refid = face_to_refid[face]
+            values = refid_to_values[refid]
+            for value in values
+                i += 1
+                output[i] = value
+            end
+        end
+    else
+        mesh = domain |> gk.mesh
+        face_to_refid2 = gk.face_reference_id(mesh,d)
+        refid2_to_refface = gk.reference_faces(mesh,d)
+        refid2_refid_to_A = map(refid2_to_refface) do refface
+            tabulator = gk.tabulator(refface)
+            map(refid_to_refpoints) do refpoints
+                tabulator(gk.value,refpoints)
+            end
+        end
+        i = 0
+        node_to_x = gk.node_coordinates(mesh)
+        face_to_nodes = gk.face_nodes(mesh,d)
+        Tx = eltype(node_to_x)
+        for face in 1:nfaces
+            refid = face_to_refid[face]
+            refid2 = face_to_refid2[faces[face]]
+            A = refid2_refid_to_A[refid2][refid]
+            nodes = face_to_nodes[face]
+            for p in 1:size(A,1)
+                y = zero(Tx)
+                for k in 1:length(nodes)
+                    node = nodes[k]
+                    x = node_to_x[node]
+                    y += A[p,k]*x
+                end
+                i += 1
+                value = field.f(y)
+                output[i] = value
+            end
+        end
+    end
+    output
+end
+
+function allocate_sample(field::DiscreteField,point::AbstractPoint)
+    space = field |> gk.space
+    @assert gk.domain(field) == gk.domain(point)
+    domain = gk.domain(field)
+    face_dims = gk.face_dims(domain)
+    @assert length(face_dims) == 1 "Not implemented yet"
+    nfaces = gk.num_faces(domain)
+    reference, = gk.reference(domain)
+    d, = face_dims
+    refpoints = gk.reference_points(point) |> first
+    reffe = gk.reference_fes(space) |> first
+    tabulator = gk.tabulator(refface)
+    A = tabulator(gk.value,refpoints)
+    free_dof_to_x = gk.free_values(field)
+    Tx = eltype(free_dof_to_x)
+    b = zeros(size(A,2),Tx)
+    c = A*b
+    T = eltype(c)
+    i = sample_length(point)
+    zeros(T,i)
+end
+
+function sample!(data,field::DiscreteField,point::AbstractPoint)
+    constr = field |> gk.space |> gk.constraints
+    @assert constr === nothing "Not yet implemented"
+    trans = field |> gk.space |> gk.transformation
+    sample!(data,field,point,trans)
+end
+
+function sample!(data,field::DiscreteField,point::AbstractPoint,transformation::Nothing)
+    space = field |> gk.space
+    @assert gk.domain(field) == gk.domain(point)
+    domain = gk.domain(field)
+    face_dims = gk.face_dims(domain)
+    @assert length(face_dims) == 1 "Not implemented yet"
+    nfaces = gk.num_faces(domain)
+    reference, = gk.reference(domain)
+    d, = face_dims
+    face_to_refid = gk.face_reference_id(point)
+    refid_to_refpoints = gk.reference_points(point)
+    face_to_refid2 = gk.face_reference_id(space)
+    refid2_to_reffe = gk.reference_fes(space)
+    refid2_refid_to_A = map(refid2_to_reffe) do refface
+        tabulator = gk.tabulator(refface)
+        map(refid_to_refpoints) do refpoints
+            tabulator(gk.value,refpoints)
+        end
+    end
+    free_dof_to_x, diri_dof_to_x = gk.free_and_dirichlet_values(field)
+    face_to_dofs = gk.face_dofs(space)
+    T = eltype(data)
+    i = 0
+    for face in 1:nfaces
+        refid = face_to_refid[face]
+        refid2 = face_to_refid2[face]
+        A = refid2_refid_to_A[refid2][refid]
+        dofs = face_to_dofs[face]
+        for p in 1:size(A,1)
+            y = zero(T)
+            for k in 1:length(dofs)
+                dof = dofs[k]
+                if dof > 0
+                    x = free_dof_to_x[dof]
+                else
+                    x = diri_dof_to_x[-dof]
+                end
+                y += A[p,k]*x
+            end
+            i += 1
+            output[i] = y
+        end
+    end
+    data
+end
+
+function sample!(data,field::DiscreteField,point::AbstractPoint,transformation)
+    error("Not implemented")
+end
+
+struct VisualizationField{A,B,C}
+    f::A
+    T::Type{B}
+    domain::C
+end
+
+function allocate_sample(field::VisualizationField,point::AbstractPoint)
+    i = sample_length(point)
+    zeros(field.T,i)
+end
+
+function sample!(data,field::VisualizationField,point::AbstractPoint)
+    field.f(data,point)
+end
+
+struct VtkPlot{A,B,C}
+    mesh::A
+    dim::Int
+    vizualization_mesh::B
+    vtk::C
+end
+
+function vtk_plot(f,filename,mesh::AbstractFEMesh,dim;kwargs...)
+    vmesh, vglue = visualization_mesh(mesh,dim;kwargs...)
+    vtk_grid(filename,gk.vtk_args(vmesh)...) do vtk
+        plt = VtkPlot(mesh,dim,(vmesh,vglue),vtk)
+        f(plt)
+    end
+end
+
+function plot!(plt::VtkPlot,field::AbstractField;label)
+    @assert length(gk.face_dims(domain)) == 1 "Not implemented yet"
+    domain = field |> gk.domain
+    faces = domain |> gk.faces
+    @assert faces == 1:gk.num_faces(plt.mesh,plt.dim) "Not implemented yet"
+    mesh = domain |> gk.mesh
+    vmesh, vglue = plt |> gk.visualization_mesh
+    face_to_refid = gk.face_reference_id(mesh)
+    refid_to_refpoints = vglue.reference_coordinates
+    point = gk.point(domain,refid_to_refpoints,face_to_refid[faces])
+    data = sample(field,point)
+    plt.vtk[label] = data
+    plt
+end
 

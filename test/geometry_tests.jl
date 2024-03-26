@@ -149,7 +149,7 @@ group_names = gk.physical_names(mesh;merge_dims=true)
 node_groups = gk.physical_nodes(mesh;merge_dims=true)
 node_groups = gk.physical_nodes(mesh;merge_dims=true,disjoint=true)
 
-vmesh, vglue = gk.visualization_mesh(mesh)
+vmesh, vglue = gk.visualization_mesh(mesh,2)
 
 mesh = gk.cartesian_mesh(domain,cells)
 gk.mesh_graph(mesh;partition_strategy=gk.partition_strategy(graph_nodes=:nodes,graph_edges=:cells))
