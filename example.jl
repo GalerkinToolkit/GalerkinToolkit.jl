@@ -77,7 +77,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
         [7.5, 7.5],
         [10.0, 7.5]
     ]
-    example_coordinates = coordinates(final_mesh, final_cell_to_inspect, cell_dim)
+    example_coordinates = gk.node_coordinates(final_mesh, final_cell_to_inspect, cell_dim)
     @test example_coordinates == final_cell_to_inspect_coordinates
 
     # initialize 4x4 coarse mesh 
@@ -106,11 +106,13 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
         [8.125, 3.125],
         [8.75, 3.125]       
     ]
-    example_coordinates = coordinates(final_mesh, final_cell_to_inspect, cell_dim)
+    example_coordinates = gk.node_coordinates(final_mesh, final_cell_to_inspect, cell_dim)
     @test example_coordinates == final_cell_to_inspect_coordinates
 end 
 
 function test_two_level_mesh_with_periodic_square_unit_cell()
+    # corresponds to 2D cell in glk mesh
+    cell_dim = 2
 
     # Initialize coarse 1x1 mesh 
     coarse_domain = (0,10,0,10)
@@ -143,7 +145,16 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
             vtk["node_ids"] = collect(1:n_nodes)
     end
    
-    # TODO: hardcoded coordinate check
+    # Coordinate check for unit cell in 1x1 coarse mesh 
+    final_cell_to_inspect = 23
+    final_cell_to_inspect_coordinates = [
+        [2.4999999999999982, 0.0],
+        [1.830127018922196, 1.8301270189221992],
+        [0.0, 0.0]
+    ]
+    example_coordinates = gk.node_coordinates(
+        periodic_final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
 
     # Initialize coarse 4x4 mesh 
     coarse_domain = (0,10,0,10)
@@ -165,9 +176,16 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
             vtk["node_ids"] = collect(1:n_nodes)
     end
 
-    # TODO: Check hardcoded coordinates 
-
-
+    # Coordinate check for unit cell in 4x4 coarse mesh
+    final_cell_to_inspect = 272 
+    final_cell_to_inspect_coordinates = [
+        [6.874999999999997, 2.5],
+        [6.562499999999998, 3.0412658773652734],
+        [6.2499999999999964, 2.5]
+    ]
+    example_coordinates = gk.node_coordinates(
+        periodic_final_mesh, final_cell_to_inspect, cell_dim)
+    @test example_coordinates == final_cell_to_inspect_coordinates
 end
 
 # TODO: fails currently... check physical group naming conventions 
@@ -246,25 +264,6 @@ function visualize_unit_cell_mesh(unit_cell_mesh, outpath)
     end
 
     # TODO: Check hardcoded coordinates 
-end 
-
-"""
-    coordinates(mesh, face_id, d)
-
-Return node coordinates corresponding to the `d`-dimensional face with `face_id`
-
-Variables matching the pattern `mesh_node*` correspond to the granularity of the supplied 
-`mesh`. For example, if `mesh` is a `final_mesh`, then `mesh_node_to_coordinates`
-is understood as `final_mesh_node_to_coordinates`.
-"""
-function coordinates(mesh, face, d)
-    n_dfaces = gk.num_faces(mesh, d)
-    dface_to_local_node_to_mesh_node = gk.face_nodes(mesh, d)
-    mesh_node_to_coordinates = gk.node_coordinates(mesh)
-    @assert face <= n_dfaces "face id is in [1...n_faces]"
-    local_node_to_mesh_node = dface_to_local_node_to_mesh_node[face]
-    coordinates = mesh_node_to_coordinates[local_node_to_mesh_node]
-    return coordinates
 end 
 
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
