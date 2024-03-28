@@ -312,7 +312,7 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     unit_cell_mesh_fpath = joinpath(
         @__DIR__, 
         "assets", 
-        "unit_cell_2D_periodic_puzzlepiece_geometry.msh")
+        "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell 
