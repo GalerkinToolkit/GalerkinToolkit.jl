@@ -368,8 +368,8 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
     domain = (0,10,0,10)
     cells = (4,4)
     parts_per_dir = (2,2)
-    np = prod(parts_per_dir)
-    parts = DebugArray(LinearIndices((np,)))
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
     coarse_pmesh = gk.cartesian_mesh(
         domain,cells; 
         parts_per_dir, parts, 
@@ -385,13 +385,11 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
         "output", 
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
-    map(
-        visualize_pmesh(np, pmesh_vtk_fpath), 
-        partition(periodic_final_pmesh), 
-        gk.index_partition(periodic_final_pmesh), 
-        parts)
+    visualize_pmesh(periodic_final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
     # TODO: check hardcode coordinates 
+
+    # TODO: Assert ownership of nodes on boundaries 
 end
 
 function visualize_mesh(mesh, outpath)
@@ -439,21 +437,32 @@ function visualize_mesh(mesh, outpath)
 end
 
 """
-    visualize_pmesh(np, outpath) 
+    visualize_pmesh(pmesh::gk.PMesh, parts, nparts, pmesh_vtk_fpath::String)
 
-TODO: doc this 
+Writes a parallel mesh on `nparts` partitions to `pmesh_vtk_fpath`.
 """
-function visualize_pmesh(np, outpath) 
+function visualize_pmesh(pmesh::gk.PMesh, parts, nparts, pmesh_vtk_fpath::String)
+    map(
+        visualize_pmesh_setup(nparts, pmesh_vtk_fpath), 
+        partition(pmesh), 
+        gk.index_partition(pmesh), 
+        parts)
+end 
+
+"""
+    visualize_pmesh_setup(nparts, outpath) 
+
+Return function that writes vtk for each part in a parallel mesh.
+"""
+function visualize_pmesh_setup(nparts, outpath) 
     @assert isabspath(outpath) "abspath with pvtk_grid ensures function" # TODO: PR this?
     function setup(mesh, ids, rank)
         face_to_owner = zeros(Int, sum(gk.num_faces(mesh)))
         D = gk.num_dims(mesh)
-        for d in 0:D
-            face_to_owner[gk.face_range(mesh, D)] = local_to_owner(gk.face_indices(ids, D))
-        end
+        face_to_owner[gk.face_range(mesh, D)] = local_to_owner(gk.face_indices(ids, D))
         pvtk_grid(
             outpath, gk.vtk_args(mesh)...; 
-            part=rank, nparts=np, append=false, ascii=true) do vtk
+            part=rank, nparts=nparts, append=false, ascii=true) do vtk
             gk.vtk_physical_faces!(vtk, mesh)
             gk.vtk_physical_nodes!(vtk, mesh)
             vtk["piece"] = fill(rank, sum(gk.num_faces(mesh)))
