@@ -303,7 +303,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 end 
 
-function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
+function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
 
@@ -387,10 +387,42 @@ function test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
 
     visualize_pmesh(periodic_final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
-    # TODO: check hardcode coordinates 
+    # Check whether coordinates on different partitions match the expected coordinates 
+    expected_coordinates = DebugArray([ 
+        # mesh 1
+        [
+            [2.187499999999999, 2.5],
+            [2.2701477152063223, 2.270121200692494],
+            [2.5, 2.5]
+        ],
+        # mesh 2
+        [
+            [7.187499999999999, 2.5],
+            [7.270147715206322, 2.270121200692494],
+            [7.5, 2.5]           
+        ],
+        # mesh 3
+        [
+            [2.187499999999999, 7.5],
+            [2.2701477152063223, 7.270121200692493],
+            [2.5, 7.5]
+        ],
+        # mesh 4
+        [
+            [7.187499999999999, 7.5],
+            [7.270147715206322, 7.270121200692493],
+            [7.5, 7.5]           
+        ],
+    ])
+
+    test_pmesh_coordinates(expected_coordinates, periodic_final_pmesh, 42, cell_dim)
 
     # TODO: Assert ownership of nodes on boundaries 
 end
+
+function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+
+end 
 
 function visualize_mesh(mesh, outpath)
     node_ids = collect(1:gk.num_nodes(mesh))
@@ -474,10 +506,28 @@ function visualize_pmesh_setup(nparts, outpath)
     setup
 end 
 
+""" 
+    test_pmesh_coordinates(
+        expected_pcoordinates::DebugArray, pmesh::gk.PMesh, face_id::Int, face_dim::Int)
+
+Use `@test` to check whether `expected_pcoordinates` matches the coordinates of a particular 
+`face_id` of dimension `face_dim` in the mesh of `pmesh`.
+"""
+function test_pmesh_coordinates(
+    expected_pcoordinates::DebugArray, pmesh::gk.PMesh, face_id::Int, face_dim::Int)
+    map(partition(pmesh), expected_pcoordinates) do mesh, expected_coordinates
+        example_coordinates = gk.node_coordinates(mesh, face_id, face_dim)
+        @test example_coordinates == expected_coordinates
+    end 
+end 
+
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
 TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+
 TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
 TMP.test_two_level_mesh_with_periodic_box_unit_cell()
-TMP.test_two_level_mesh_with_periodic_puzzle_piece_unit_cell()
+
+TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
+TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
 end # module TMP
