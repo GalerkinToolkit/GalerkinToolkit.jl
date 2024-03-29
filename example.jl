@@ -420,11 +420,9 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
         expected_coordinates, periodic_final_pmesh, cell_id_to_inspect, cell_dim)
 
     # TODO: Assert ownership of nodes on boundaries 
-    node_ownership = nothing 
-    test_pmesh_node_ownership(node_ownership, periodic_final_pmesh)
+    test_pmesh_node_ownership(periodic_final_pmesh, parts)
 
-    cell_ownership = nothing 
-    test_pmesh_cell_ownership(cell_ownership, periodic_final_pmesh)
+    # test_pmesh_cell_ownership(cell_ownership, periodic_final_pmesh)
 end
 
 function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
@@ -589,7 +587,12 @@ for each mesh in pmesh
 
 point at (5, 5, 0) --- given current domain -- should have 4 has owner for all meshes 
 """
-function test_pmesh_node_ownership(node_ownership, pmesh)
+function test_pmesh_node_ownership(pmesh, parts)
+    map(partition(pmesh), gk.index_partition(pmesh), parts) do mesh, ids, part 
+        node_indices = gk.node_indices(ids)
+        node_index_to_owner = local_to_owner(node_indices)
+
+    end 
 end 
 
 function test_pmesh_cell_ownership(cell_ownership, pmesh)
