@@ -388,6 +388,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     visualize_pmesh(periodic_final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
     # Check whether coordinates on different partitions match the expected coordinates 
+    cell_id_to_inspect = 42 
     expected_coordinates = DebugArray([ 
         # mesh 1
         [
@@ -415,9 +416,15 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
         ],
     ])
 
-    test_pmesh_coordinates(expected_coordinates, periodic_final_pmesh, 42, cell_dim)
+    test_pmesh_coordinates(
+        expected_coordinates, periodic_final_pmesh, cell_id_to_inspect, cell_dim)
 
     # TODO: Assert ownership of nodes on boundaries 
+    node_ownership = nothing 
+    test_pmesh_node_ownership(node_ownership, periodic_final_pmesh)
+
+    cell_ownership = nothing 
+    test_pmesh_cell_ownership(cell_ownership, periodic_final_pmesh)
 end
 
 function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
@@ -519,6 +526,75 @@ function test_pmesh_coordinates(
         example_coordinates = gk.node_coordinates(mesh, face_id, face_dim)
         @test example_coordinates == expected_coordinates
     end 
+end 
+
+"""
+
+In the current scheme, the partition ids in the 2D case are
+
+```
+[3 4
+ 1 2]
+```
+and ownership of a node should belong to the partition id with the highest partition id 
+at the interfaces. So do something like 
+
+for each mesh in pmesh 
+    myid = mesh.id 
+    function intersection_owned_by_mesh_4(interface)
+        @test count(owner -> owner == 4, owners(interface)) == 1 
+        # test that the intersection node is at the center of the partitions ???
+    end
+
+    # could get physical group 2 (top) and 4 (right) for mesh 1
+    # top owned by mesh 3 and right owned by mesh 2 
+    if myid == 1
+        top = get_top(mesh)
+        right = get_right(mesh)
+        intersection_owned_by_mesh_4(top)
+        intersection_owned_by_mesh_4(right)
+        @test all(map(owner -> owner == 3 || owner == 4, unique(owners(top))))
+        @test all(map(owner -> owner == 2 || owner == 4, unique(owners(right))))
+
+    # could get physical group 3 (left) and 2 (top) for mesh 2 
+    # left owned by mesh 2 and top owned by mesh 4
+    elseif myid == 2
+        left = get_left(mesh)
+        top = get_top(mesh)
+        intersection_owned_by_mesh_4(left)
+        @test all(map(owner -> owner == 2 || owner == 4, unique(owners(left))))
+        @test all(unique(owners(top)) .== 4)
+
+    # could get physical group 1 (bottom) and 4 (right) for mesh 3
+    # bottom owned by mesh 3 and right owned by mesh 4 
+    elseif myid == 3
+        bottom = get_bottom(mesh)
+        right = get_right(mesh)
+        intersection_owned_by_mesh_4(bottom)
+        @test all(map(owner -> owner == 3 || owner == 4, unique(owners(bottom))))
+        @test all(unique(owners(right)) .== 4)
+
+    # could get physical group 3 (left) and (1) bottom for mesh 4
+    # all owned by mesh 4
+    elseif myid == 4
+        left = get_left(mesh)
+        bottom = get_bottom(mesh)
+        @test all(unique(owners(left)) .== 4)
+        @test all(unique(owners(bottom)) .== 4)
+
+    else 
+        throw("notimplemented")
+    end
+
+
+point at (5, 5, 0) --- given current domain -- should have 4 has owner for all meshes 
+"""
+function test_pmesh_node_ownership(node_ownership, pmesh)
+end 
+
+function test_pmesh_cell_ownership(cell_ownership, pmesh)
+    # this is guaranteed currently by uniform mesh partition, but could iterate 
+    # all cells on partition and verify ownership
 end 
 
 TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
