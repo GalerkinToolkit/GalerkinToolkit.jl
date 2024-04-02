@@ -280,6 +280,7 @@ end
 function test_two_level_mesh_with_periodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
+    cell_id_to_inspect = 42
 
     ## Sequential 
     # Load periodic fine (unit cell) mesh with triangular refcells 
@@ -338,6 +339,88 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 
     ## Parallel 
+    # 1 part per dir (i.e., no parallelism)
+    domain = (0, 10, 0, 10)
+    cells = (4, 4)
+    parts_per_dir = (1, 1)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell_1x1_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        [
+            [0.5292325281598943, 0.9401483558005499],
+            [0.457531754730549, 0.4575317547305498],
+            [0.9177993396034972, 0.531490997982729],
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
+
+    # 2x2 parallel
+    domain = (0, 10, 0, 10)
+    cells = (4, 4)
+    parts_per_dir = (2, 2)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell_2x2_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        # mesh 1
+        [
+            [0.5292325281598943, 0.9401483558005499],                                                    
+            [0.457531754730549, 0.4575317547305498],
+            [0.9177993396034972, 0.531490997982729]
+        ],
+        # mesh 2 
+        [
+            [5.529232528159895, 0.9401483558005499],
+            [5.457531754730549, 0.4575317547305498],
+            [5.917799339603498, 0.531490997982729]           
+        ],
+        # mesh 3
+        [
+            [0.5292325281598943, 5.940148355800551],
+            [0.457531754730549, 5.45753175473055],
+            [0.9177993396034972, 5.531490997982729]           
+        ],
+        # mesh 4
+        [
+            [5.529232528159895, 5.940148355800551],
+            [5.457531754730549, 5.45753175473055],
+            [5.917799339603498, 5.531490997982729]           
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
 function test_two_level_mesh_with_periodic_box_unit_cell()
@@ -817,8 +900,8 @@ function test_pmesh_cell_ownership(cell_ownership, pmesh)
     # all cells on partition and verify ownership
 end
 
-@show TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+# TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
+TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
 #TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
 #TMP.test_two_level_mesh_with_periodic_box_unit_cell()
