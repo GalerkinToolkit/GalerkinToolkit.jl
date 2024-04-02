@@ -294,7 +294,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
         @__DIR__,
         "output",
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
-    @show visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
     # coordinate check 
     expected_coordinates = DebugArray([
@@ -330,7 +330,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
         @__DIR__,
         "output",
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
-    @show visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
     # coordinate check 
     expected_coordinates = DebugArray([
@@ -578,6 +578,7 @@ end
 function test_two_level_mesh_with_periodic_box_unit_cell()
     # corresponds to 3D cell in glk mesh
     cell_dim = 3
+    cell_id_to_inspect = 42
 
     ## Sequential
     # Coarse 1x1x1 mesh 
@@ -638,7 +639,119 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 
     ## Parallel 
-    # TODO:
+    # 1 part per dir (i.e., no parallelism)
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (1, 1, 1)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_1x1x1_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        [
+            [2.5, 0.6057993871292108, 1.8942006128707867],
+            [2.5, 1.251797598520434, 1.8814002042902611],
+            [2.5, 0.7536190378253815, 1.2499999999999971],
+            [1.255141956096512, 1.3665284427802786, 1.3665177258943422]
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
+
+    # 2x2x2 part per dir 
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (2, 2, 2)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_2x2x2_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        # p1
+        [
+            [2.5, 0.6057993871292108, 1.8942006128707867],                                               
+            [2.5, 1.251797598520434, 1.8814002042902611],                                                
+            [2.5, 0.7536190378253815, 1.2499999999999971],                                               
+            [1.255141956096512, 1.3665284427802786, 1.3665177258943422] 
+        ],
+        # p2 
+        [
+            [7.5, 0.6057993871292108, 1.8942006128707867],                                               
+            [7.5, 1.251797598520434, 1.8814002042902611],                                                
+            [7.5, 0.7536190378253815, 1.2499999999999971],                                               
+            [6.255141956096512, 1.3665284427802786, 1.3665177258943422]   
+        ],
+        # p3 
+        [
+            [2.5, 5.605799387129211, 1.8942006128707867],                                                
+            [2.5, 6.251797598520434, 1.8814002042902611],                                                
+            [2.5, 5.7536190378253815, 1.2499999999999971],                                               
+            [1.255141956096512, 6.366528442780278, 1.3665177258943422]
+        ],
+        # p4 
+        [
+            [7.5, 5.605799387129211, 1.8942006128707867],                                                
+            [7.5, 6.251797598520434, 1.8814002042902611],                                                
+            [7.5, 5.7536190378253815, 1.2499999999999971],                                               
+            [6.255141956096512, 6.366528442780278, 1.3665177258943422]
+        ],
+        # p5  
+        [
+            [2.5, 0.6057993871292108, 6.894200612870787],
+            [2.5, 1.251797598520434, 6.881400204290262],
+            [2.5, 0.7536190378253815, 6.249999999999997],
+            [1.255141956096512, 1.3665284427802786, 6.366517725894343],
+        ],
+        # p6 
+        [
+            [7.5, 0.6057993871292108, 6.894200612870787],
+            [7.5, 1.251797598520434, 6.881400204290262],
+            [7.5, 0.7536190378253815, 6.249999999999997],
+            [6.255141956096512, 1.3665284427802786, 6.366517725894343]
+        ],
+        # p7 
+        [ 
+            [2.5, 5.605799387129211, 6.894200612870787],
+            [2.5, 6.251797598520434, 6.881400204290262],
+            [2.5, 5.7536190378253815, 6.249999999999997],
+            [1.255141956096512, 6.366528442780278, 6.366517725894343]
+        ],
+        # p8
+        [
+            [7.5, 5.605799387129211, 6.894200612870787],
+            [7.5, 6.251797598520434, 6.881400204290262],
+            [7.5, 5.7536190378253815, 6.249999999999997],
+            [6.255141956096512, 6.366528442780278, 6.366517725894343]
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
 function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
@@ -1052,13 +1165,13 @@ function test_pmesh_cell_ownership(cell_ownership, pmesh)
     # all cells on partition and verify ownership
 end
 
-#TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
+TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
 TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_box_unit_cell()
+TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
-#TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
+TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
 end # module TMP
