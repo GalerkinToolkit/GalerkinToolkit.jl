@@ -208,6 +208,7 @@ end
 function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # corresponds to 3D cell in glk mesh
     cell_dim = 3
+    cell_id_to_inspect = 42
 
     ## Sequential 
     # initialize 4x4x4 glk unit cell mesh  
@@ -274,7 +275,158 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     @test example_coordinates == final_cell_to_inspect_coordinates
 
     ## Parallel 
-    # TODO 
+    # 1 part per dir (i.e., no parallelism)
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (1, 1, 1)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_1x1x1_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    @show visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        [
+            [0.625, 1.25, 1.25],
+            [1.25, 1.25, 1.25],
+            [0.625, 1.875, 1.25],
+            [1.25, 1.875, 1.25],
+            [0.625, 1.25, 1.875],
+            [1.25, 1.25, 1.875],
+            [0.625, 1.875, 1.875],
+            [1.25, 1.875, 1.875]
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
+
+    # 2x2x2 part per dir 
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (2, 2, 2)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_2x2x2_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    @show visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        # p1
+        [
+            [0.625, 1.25, 1.25],
+            [1.25, 1.25, 1.25],
+            [0.625, 1.875, 1.25],
+            [1.25, 1.875, 1.25],
+            [0.625, 1.25, 1.875],
+            [1.25, 1.25, 1.875],
+            [0.625, 1.875, 1.875],
+            [1.25, 1.875, 1.875]
+        ],
+        # p2 
+        [
+            [5.625, 1.25, 1.25],                                                                         
+            [6.25, 1.25, 1.25],                                                                          
+            [5.625, 1.875, 1.25],                                                                        
+            [6.25, 1.875, 1.25],                                                                         
+            [5.625, 1.25, 1.875],                                                                        
+            [6.25, 1.25, 1.875],                                                                         
+            [5.625, 1.875, 1.875],                                                                       
+            [6.25, 1.875, 1.875]        
+        ],
+        # p3 
+        [
+            [0.625, 6.25, 1.25],                                                           
+            [1.25, 6.25, 1.25],                                                                          
+            [0.625, 6.875, 1.25],                                                                       
+            [1.25, 6.875, 1.25],                                                                         
+            [0.625, 6.25, 1.875],
+            [1.25, 6.25, 1.875],
+            [0.625, 6.875, 1.875],
+            [1.25, 6.875, 1.875]
+           
+        ],
+        # p4 
+        [
+            [5.625, 6.25, 1.25],                                                                         
+            [6.25, 6.25, 1.25],                                                                          
+            [5.625, 6.875, 1.25],                                                                        
+            [6.25, 6.875, 1.25],                                                                         
+            [5.625, 6.25, 1.875],                                                                        
+            [6.25, 6.25, 1.875],                                                                         
+            [5.625, 6.875, 1.875] ,                                                                      
+            [6.25, 6.875, 1.875] ,
+        ],
+        # p5  
+        [
+            [0.625, 1.25, 6.25],                                                                         
+            [1.25, 1.25, 6.25],                                                                          
+            [0.625, 1.875, 6.25],                                                                        
+            [1.25, 1.875, 6.25],                                                                         
+            [0.625, 1.25, 6.875],                                                                        
+            [1.25, 1.25, 6.875],                                                                         
+            [0.625, 1.875, 6.875],                                                                       
+            [1.25, 1.875, 6.875]
+        ],
+        # p6 
+        [
+            [5.625, 1.25, 6.25],                                                                         
+            [6.25, 1.25, 6.25],                                                                          
+            [5.625, 1.875, 6.25],                                                                        
+            [6.25, 1.875, 6.25],                                                                         
+            [5.625, 1.25, 6.875],                                                                        
+            [6.25, 1.25, 6.875],                                                                         
+            [5.625, 1.875, 6.875],
+            [6.25, 1.875, 6.875]
+           
+        ],
+        # p7 
+        [ 
+            [0.625, 6.25, 6.25],
+            [1.25, 6.25, 6.25],
+            [0.625, 6.875, 6.25],
+            [1.25, 6.875, 6.25],
+            [0.625, 6.25, 6.875],
+            [1.25, 6.25, 6.875],
+            [0.625, 6.875, 6.875],
+            [1.25, 6.875, 6.875]
+           
+        ],
+        # p8
+        [
+            [5.625, 6.25, 6.25],
+            [6.25, 6.25, 6.25],
+            [5.625, 6.875, 6.25],
+            [6.25, 6.875, 6.25],
+            [5.625, 6.25, 6.875],
+            [6.25, 6.25, 6.875],
+            [5.625, 6.875, 6.875],
+            [6.25, 6.875, 6.875]
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
 function test_two_level_mesh_with_periodic_square_unit_cell()
@@ -900,10 +1052,10 @@ function test_pmesh_cell_ownership(cell_ownership, pmesh)
     # all cells on partition and verify ownership
 end
 
-# TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+#TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
+#TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
-#TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
+TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
 #TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
 #TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
