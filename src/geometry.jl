@@ -350,7 +350,7 @@ function node_coordinates(mesh, face, d)
     n_dfaces = num_faces(mesh, d)
     dface_to_local_node_to_mesh_node = face_nodes(mesh, d)
     mesh_node_to_coordinates = node_coordinates(mesh)
-    @assert face <= n_dfaces "face id is in 1:n_dfaces"
+    @assert face <= n_dfaces "face id is in 1:n_dfaces, got $(face) ∉ 1:$(n_dfaces)"
     local_node_to_mesh_node = dface_to_local_node_to_mesh_node[face]
     coordinates = mesh_node_to_coordinates[local_node_to_mesh_node]
     coordinates
