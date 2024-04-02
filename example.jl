@@ -33,7 +33,7 @@ unit_cell_<dimension>_<periodic OR nonperiodic> \
     _[mesh dims]_refcell.vtu 
 
 # The file naming convention for final meshes vtu (i.e., two level meshes)
-final_mesh_<unit cell vtk file name>_<coarse cell vtk fname>
+[,coarse_cell_id]_final_mesh_<unit cell vtk file name>_<coarse cell vtk fname>
 """
 module TMP
 
@@ -956,6 +956,14 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_2x2x2, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname), glue, 3)
+
+    # TODO: visualizing the puzzle piece geometry with the coarse cell ids labeled 
+    final_mesh_coarse_cell_id_vtk_fname = "coarse_cell_id_"*final_mesh_vtk_fname
+    visualize_mesh(
+        periodic_final_mesh, 
+        joinpath("output", final_mesh_coarse_cell_id_vtk_fname), 
+        glue, 
+        3)
 
     throw("problem with 3D periodic puzzlepiece sequential mesh visualization")
 
