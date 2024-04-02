@@ -65,7 +65,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
 
     # construct the final mesh with 1x1 coarse mesh 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
     visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh
@@ -87,7 +87,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
 
     # construct the final mesh with a 4x4 coarse mesh     
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
     visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh 
@@ -214,7 +214,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
     visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1x1 coarse grid 
@@ -241,7 +241,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
     visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # coordinate check for 4x4x4 coarse mesh 
@@ -440,7 +440,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # visualize final mesh with 1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh 
@@ -462,7 +462,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
 
     # visualize final mesh with 4x4 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh
@@ -586,7 +586,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
@@ -609,7 +609,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # TODO: visualizing coarse cell ids in a 4x4x4 coarse cube with periodic cube unit cell 
@@ -773,7 +773,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
 
     # visualize final mesh with 1x1 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Check coordinates of example refcell in final mesh
@@ -795,7 +795,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
 
     # visualize final mesh with 4x4 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Check coordinates  
@@ -930,7 +930,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
@@ -954,7 +954,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
     # visualize final mesh with 2x2x2 coarse mesh and unit cell 
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_2x2x2, unit_cell_mesh)
-    final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname), glue, 3)
 
     # TODO: visualizing the puzzle piece geometry with the coarse cell ids labeled 
