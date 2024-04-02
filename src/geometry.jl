@@ -2162,7 +2162,7 @@ function classify_mesh_faces!(dface_to_tag,mesh,d,tag_to_name)
             if name != name2
                 continue
             end
-            Dface_to_tag[faces] .= tag
+            dface_to_tag[faces] .= tag
         end
     end
     dface_to_tag
@@ -2862,7 +2862,7 @@ function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
-function visualization_mesh_from_mesh(mesh,dim;order=nothing,resolution=nothing)
+function visualization_mesh_from_mesh(mesh,dim,ids=num_faces(mesh,dim);order=nothing,refinement=nothing)
     function barrier(
             refid_to_tabulation,
             refid_to_scell_to_snodes,
@@ -2976,20 +2976,20 @@ function visualization_mesh_from_mesh(mesh,dim;order=nothing,resolution=nothing)
     end # barrier
     refid_to_refface = reference_faces(mesh,dim)
     refid_to_refmesh = map(refid_to_refface) do ref_face
-        if order === nothing && resolution === nothing
+        if order === nothing && refinement === nothing
             # Use the given cells as visualization cells
             mesh_from_reference_face(ref_face)
-        elseif order !== nothing && resolution === nothing
+        elseif order !== nothing && refinement === nothing
             # Use cells of given order as visualization cells
             geo = geometry(ref_face)
             ref_face_ho = lagrangian_reference_face(geo;order)
             mesh_from_reference_face(ref_face_ho)
-        elseif order === nothing && resolution !== nothing
-            # Use linear sub-cells with $resolution per direction per direction
+        elseif order === nothing && refinement !== nothing
+            # Use linear sub-cells with $refinement per direction per direction
             geom = geometry(ref_face)
-            refine_reference_geometry(geom,resolution)
+            refine_reference_geometry(geom,refinement)
         else
-            error("order and resolution kw-arguments can not be given at the same time")
+            error("order and refinement kw-arguments can not be given at the same time")
         end
     end
     refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
@@ -3002,8 +3002,8 @@ function visualization_mesh_from_mesh(mesh,dim;order=nothing,resolution=nothing)
     refid_to_srefid_to_vrefface = map(refmesh->reference_faces(refmesh,dim),refid_to_refmesh)
     refid_to_snode_to_coords = map(node_coordinates,refid_to_refmesh)
     node_to_coords = node_coordinates(mesh)
-    cell_to_nodes = face_nodes(mesh,dim)
-    cell_to_refid = face_reference_id(mesh,dim)
+    cell_to_nodes = view(face_nodes(mesh,dim),ids)
+    cell_to_refid = view(face_reference_id(mesh,dim),ids)
     Dn = num_ambient_dims(mesh)
     barrier(
             refid_to_tabulation,

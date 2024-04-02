@@ -1,10 +1,12 @@
 
 abstract type AbstractQuantity end
 term(a::AbstractQuantity) = a.term
+prototype(a::AbstractQuantity) = a.prototype
 
-quantity(term) = Quantity(term)
-struct Quantity{T} <: AbstractQuantity
+quantity(term,prototype) = Quantity(term,prototype)
+struct Quantity{T,B} <: AbstractQuantity
     term::T
+    prototype::B
 end
 
 function index(;
@@ -24,11 +26,24 @@ struct Index{A,B,C,D,E}
     point::E
 end
 
+function return_prototype(f,args...)
+    f(args...)
+end
+
+function call(f,args...)
+    f(args...)
+end
+
 function call(g,args::AbstractQuantity...)
     fs = map(gk.term,args)
-    gk.quantity() do index
+    prototype = gk.return_prototype(g,map(gk.prototype,args)...)
+    gk.quantity(prototype) do index
         g(map(f->f(index),fs)...)
     end
+end
+
+function (f::AbstractQuantity)(x::AbstractQuantity)
+    call(call,f,x)
 end
 
 abstract type AbstractDomain <: GalerkinToolkitDataType end
@@ -65,8 +80,10 @@ end
 
 function face_ids(domain::AbstractDomain)
     @assert length(gk.face_dims(domain)) == 1
-    D = face_dims[1]
+    D = gk.face_dims(domain)[1]
+    mesh = gk.mesh(domain)
     Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
+    tag_to_name = gk.physical_names(domain)
     gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
     physical_Dfaces = findall(i->i!=0,Dface_to_tag)
     (physical_Dfaces,)
@@ -83,6 +100,7 @@ struct AnalyticalField{A,B} <: AbstractField
     domain::B
 end
 term(a::AnalyticalField) = index -> a.f
+prototype(a::AbstractField) = a.f
 
 function measure(dom::AbstractDomain,degree)
     measure(default_quadrature,dom,degree)
@@ -113,7 +131,8 @@ function quadrature(measure::Measure)
     end
     domface_to_face, = gk.face_ids(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
-    gk.quantity() do index
+    prototype = first(refid_to_quad)
+    gk.quantity(prototype) do index
         domface = index.face[1]
         face = domface_to_face[domface]
         refid = face_to_refid[face]
@@ -124,7 +143,8 @@ end
 function coordinates(measure::Measure)
     quadrature = gk.quadrature(measure)
     quadrature_term = gk.term(quadrature)
-    gk.quantity() do index
+    prototype = gk.coordinates(gk.prototype(quadrature))
+    gk.quantity(prototype) do index
         quad = quadrature_term(index)
         gk.coordinates(quad)[index.point]
     end
@@ -133,7 +153,8 @@ end
 function weights(measure::Measure)
     quadrature = gk.quadrature(measure)
     quadrature_term = gk.term(quadrature)
-    gk.quantity() do index
+    prototype = gk.weights(gk.prototype(quadrature))
+    gk.quantity(prototype) do index
         quad = quadrature_term(index)
         gk.weights(quad)[index.point]
     end
@@ -142,7 +163,8 @@ end
 function num_points(measure::Measure)
     quadrature = gk.quadrature(measure)
     quadrature_term = gk.term(quadrature)
-    gk.quantity() do index
+    prototype = 1
+    gk.quantity(prototype) do index
         quad = quadrature_term(index)
         length(gk.weights(quad))
     end
@@ -153,7 +175,8 @@ function integrate(f,measure::Measure)
     w = gk.weights(measure) |> gk.term
     np = gk.num_points(measure) |> gk.term
     f_q = f(q)
-    domain_contribution = gk.quantity() do index
+    prototype = gk.prototype(w)*gk.prototype(f_q)+gk.prototype(w)*gk.prototype(f_q)
+    domain_contribution = gk.quantity(prototype) do index
         sum(1:np(index)) do point
             @assert index.point === nothing
             index2 = replace_point(index,point)
@@ -175,18 +198,59 @@ contributions(a::Integral) = a.contributions
 
 function plot(domain::AbstractDomain;kwargs...)
     @assert length(gk.face_dims(domain)) == 1
-    d = face_dims(domain)[1]
+    d = gk.face_dims(domain)[1]
     domface_to_face, = gk.face_ids(domain)
     mesh = gk.mesh(domain)
-    vmesh, vglue = visualization_mesh(mesh,dim,domface_to_face;kwargs...)
-    Plot(domain,(vmesh,vgluevmesh,vglue),Dict{String,Any}(),Dict{String,Any}())
+    vmesh, vglue = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
+    Plot(domain,(vmesh,vglue),Dict{String,Any}(),Dict{String,Any}())
 end
 
 struct Plot{A,B,C,D}
     domain::A
-    vizualization_mesh::B
+    visualization_mesh::B
     node_data::C
     face_data::D
+end
+domain(plt::Plot) = plt.domain
+visualization_mesh(plt::Plot) = plt.visualization_mesh
+
+function coordinates(plt::Plot)
+    domain = plt.domain
+    d = gk.face_dims(domain)[1]
+    domface_to_face, = gk.face_ids(domain)
+    mesh = gk.mesh(domain)
+    vmesh,vglue = gk.visualization_mesh(plt)
+    refid_to_snode_to_coords = vglue.reference_coordinates
+    d = gk.num_dims(vmesh)
+    face_to_refid = gk.face_reference_id(mesh,d)
+    prototype = first(first(refid_to_snode_to_coords))
+    if gk.val_parameter(gk.is_reference_domain(domain)[1])
+        gk.quantity(prototype) do index
+            domface = index.face[1]
+            point = index.point
+            face = domface_to_face[domface]
+            refid = face_to_refid[face]
+            refid_to_snode_to_coords[refid][point]
+        end
+    else
+        node_to_x = gk.node_coordinates(mesh)
+        face_to_nodes = gk.face_nodes(mesh,d)
+        refid_to_refface = gk.reference_faces(mesh,d)
+        refid_to_A = map(refid_to_refface,refid_to_snode_to_coords) do refface, x
+            A = gk.tabulator(refface)(value,x)
+            A
+        end
+        gk.quantity(prototype) do index
+            domface = index.face[1]
+            point = index.point
+            face = domface_to_face[domface]
+            refid = face_to_refid[face]
+            A = refid_to_A[refid]
+            nodes = face_to_nodes[face]
+            x = view(node_to_x,nodes)
+            (A*x)[point]
+        end
+    end
 end
 
 function plot!(plt::Plot,field;label)
@@ -198,20 +262,21 @@ function plot_impl!(plt::Plot,field::AbstractField;label)
     q = gk.coordinates(plt)
     f_q = field(q)
     term = gk.term(f_q)
-    T = gk.quantity_type(f_q)
+    T = typeof(gk.prototype(f_q))
     vmesh,vglue = plt.visualization_mesh
     nnodes = gk.num_nodes(vmesh)
     data = zeros(T,nnodes)
     face_to_nodes = vglue.face_fine_nodes
-    for face in 1:gk.num_faces(plt.domain)
+    for face in 1:length(face_to_nodes)
         nodes = face_to_nodes[face]
         for point in 1:length(nodes)
             index = gk.index(;face,point)
-            data[nodes[point]] = term(index)
+            v = term(index)
+            data[nodes[point]] = v
         end
     end
     plt.node_data[label] = data
-    plt
+    data, :node_data
 end
 
 function plot_impl!(plt::Plot,integral::Integral;label)
@@ -232,8 +297,14 @@ struct VtkPlot{A,B}
 end
 
 function plot!(plt::VtkPlot,field;label)
-    plot!(plt.plt,field;label)
-    plt.vtk[label] = plt.plt.node_data[label]
+    data,data_type = plot_impl!(plt.plt,field;label)
+    if data_type === :node_data
+        plt.vtk[label,WriteVTK.VTKPointData()] = data
+    elseif data_type === :face_data
+        plt.vtk[label,WriteVTK.VTKCellData()] = data
+    else
+        error("Unreachable line reached")
+    end
     plt
 end
 
