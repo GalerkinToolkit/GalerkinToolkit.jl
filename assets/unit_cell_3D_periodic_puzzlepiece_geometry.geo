@@ -1,5 +1,4 @@
 // Puzzle piece cube with periodic surfaces
-// TODO: Check physical groups!
 
 //----------
 // Geometry
@@ -43,6 +42,11 @@ Periodic Surface {9} = {4} Translate {0, 0, -1};
 Periodic Surface {7} = {2} Translate {0, 1, 0};
 // Right face copy of left face
 Periodic Surface {12} = {1} Translate {1, 0, 0};
+
+
+//----------
+// physical groups
+//----------
 //+
 Physical Point("0-face-1", 79) = {1};
 //+

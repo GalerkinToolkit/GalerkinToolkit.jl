@@ -3772,6 +3772,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     end
 
     final_cell = 0
+    final_cell_to_coarse_cell = Vector{Int}(undef, n_final_cells)
     for coarse_cell in 1:n_coarse_cells
         for fine_cell in 1:n_fine_cells
             local_node_to_fine_node = fine_cell_local_node_to_fine_node[fine_cell]
@@ -3779,6 +3780,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
                 coarse_cell][local_node_to_fine_node]
             final_cell += 1
             final_cell_local_node_to_final_node[final_cell] = local_node_to_final_node
+            final_cell_to_coarse_cell[final_cell] = coarse_cell
         end
     end
     final_cell_to_refid = fill(1,n_final_cells)
@@ -3829,7 +3831,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     glue = (;
         d_to_coarse_dface_to_final_nodes,
         coarse_cell_fine_node_to_final_node,
-        d_to_local_dface_to_fine_nodes)
+        d_to_local_dface_to_fine_nodes,
+        final_cell_to_coarse_cell)
 
     final_mesh, glue
 end

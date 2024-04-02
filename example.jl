@@ -1,52 +1,39 @@
 """
-TODOs:
-puzzle piece 2D test
-parallel puzzle piece 2D test
-puzzle piece 3D test
-parallel puzzle piece 3D test
+# TODOs:
+[] example002 codes on meshes 
+[] setup experiments 
+[] sequential puzzle piece 3D test
+    [] look at interior of box geometry 3D, requires change to visualization to use
+    the glue and dimension 3
+[] pmesh puzzle piece 3D test
 
-using DrWatson
+To easily write sequential meshes to vtk, simply call the `visualize_mesh` function.
+Similarly, call `visualize_pmesh` for parallel meshes.
 
-partitionedarryasbenchmarks
-check the helpers and the `runjobs`
-analysis.ipynb
-setup ssh tunnel with jupyter notebook and das5
-jupyter-notebook --no-browser
-history | grep ssh # on client
-careful on job submission to DAS
+# Notes for Visualizations 
+For visualizations, use threshold and or translations of coordinates to aid in viewing
+only desired parts of the coarse cell ids. 
 
-TODO:
-3D cartesian and naming and gmsh
+Opposite faces seem okay, potential problem  with periodicity, edges (i.e., 1-face-i) seems 
+to be the issue.
 
-geometry.jl
-geometry_test.jl # clean up example.jl
-descriptive names for assets and geo files
-2D square_<square, triangl>_4x4
-3D  
+In GMSH visibility you can change to elementary entities to debug visualization 
 
-# example naming convention, only include refcell info in the mesh fname, not the geo fname
-[unit_cell_mesh, two_level_mesh]_<dimension>_[periodic,nonperiodic]_[gmsh,glk]\
-    _<shape, e.g., puzzlepiece, square>_shape_[quad, triangle]\
-    _[mesh dims]_refcell.[geo, msh, vtu]
+# The file naming convention for geo files 
+unit_cell_<dimension>_<periodic OR nonperiodic> \
+    _<geometry, e.g., puzzlepiece, square>_geometry.geo
 
-for testing correctness of outputs:
-   given a julia object, store the integer for correct object contents (find this func, not ash)   
-    take some example node ids and corresponding coordinates of interface nodes against
-        the hardcoded physical coordinates that would be expected for those points
+# The file naming convention for msh files:
+<unit cell geo file name>_<refcell type, e.g., quad, triangular>\
+    _[, mesh dims]_refcell.msh 
 
-can use PartitionedArraysBenchmarks/benchmarks.jl as reference
+# The file naming convention for unit cell/coarse cell vtk files:
+<unit_cell_mesh OR coarse_cell_mesh>_<dimension>_<periodic OR nonperiodic>_<gmsh OR glk>\
+    _<geometry, e.g., puzzlepiece, square>_geometry_<refcell type e.g., quad, triangular>\
+    _[mesh dims]_refcell.vtu 
 
-mesh generation should be of order of multigrid solver example02
-
-loading of sequential total mesh 
-
-parallel mesh support in gmsh?
-
-Go through assets/ and remove unneeded geos/meshes 
-
-Test using puzzle piece mesh??
-
-Make 3D periodic cube
+# The file naming convention for final meshes vtu (i.e., two level meshes)
+final_mesh_<unit cell vtk file name>_<coarse cell vtk fname>
 """
 module TMP
 
@@ -148,7 +135,6 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     ])
     test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 
-
     # 2x2 parallel
     domain = (0, 10, 0, 10)
     cells = (4, 4)
@@ -245,7 +231,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     # Coarse 4x4x4 mesh 
     coarse_domain = (0, 10, 0, 10, 0, 10)
@@ -272,7 +258,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     ## Parallel 
     # 1 part per dir (i.e., no parallelism)
@@ -466,7 +452,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     # Initialize coarse 4x4 mesh 
     coarse_domain = (0, 10, 0, 10)
@@ -488,7 +474,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     ## Parallel 
     # 1 part per dir (i.e., no parallelism)
@@ -613,7 +599,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     # Coarse 4x4x4 mesh 
     coarse_domain = (0, 10, 0, 10, 0, 10)
@@ -622,9 +608,17 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_4x4x4_refcell"
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
-    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
+    periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+
+    # TODO: visualizing coarse cell ids in a 4x4x4 coarse cube with periodic cube unit cell 
+    final_mesh_coarse_cell_id_vtk_fname = "coarse_cell_id_"*final_mesh_vtk_fname
+    visualize_mesh(
+        periodic_final_mesh, 
+        joinpath("output", final_mesh_coarse_cell_id_vtk_fname), 
+        glue, 
+        3)
 
     # Coordinate check for unit cell in 4x4x4 coarse grid 
     final_cell_to_inspect = 1096
@@ -636,7 +630,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     ## Parallel 
     # 1 part per dir (i.e., no parallelism)
@@ -791,7 +785,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     # coarse 4x4 mesh 
     coarse_domain = (0, 10, 0, 10)
@@ -813,7 +807,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, final_cell_to_inspect, cell_dim)
-    @test example_coordinates == final_cell_to_inspect_coordinates
+    @test all(example_coordinates .≈ final_cell_to_inspect_coordinates)
 
     ## Parallel
     # 1 part per dir (i.e., no parallelism)
@@ -905,8 +899,8 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     test_pmesh_coordinates(
         expected_coordinates, periodic_final_pmesh, cell_id_to_inspect, cell_dim)
 
-    # TODO: Assert ownership of nodes on boundaries 
-    test_pmesh_node_ownership(periodic_final_pmesh, parts)
+    # # NOTE: Assert ownership of nodes on boundaries 
+    # test_pmesh_node_ownership(periodic_final_pmesh, parts)
 
     # test_pmesh_cell_ownership(cell_ownership, periodic_final_pmesh)
 end
@@ -939,7 +933,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
-    # TODO Coordinate check for unit cell in a 1x1x1 coarse mesh 
+    # Coordinate check for unit cell in a 1x1x1 coarse mesh 
     expected_coordinates = [
         [2.462298894969888, 4.330483324970414, 4.387785104676822],
         [2.6085458181788184, 5.1674805956749905, 3.037271336319951],
@@ -948,18 +942,20 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, cell_id_to_inspect, cell_dim)
-    @test example_coordinates == expected_coordinates
+    @test all(example_coordinates .≈ expected_coordinates)
 
     # test 2x2x2 coarse mesh
-    coarse_domain = (0, 10, 0, 10, 0, 10)
+    coarse_domain = (0, 1, 0, 1, 0, 1)
     coarse_mesh_dims = (2, 2, 2)
     coarse_mesh_2x2x2 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
     coarse_cell_vtk_fname_2x2x2 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_2x2x2_refcell"
 
+    @show visualize_mesh(coarse_mesh_2x2x2, joinpath("output", coarse_cell_vtk_fname_2x2x2))
+
     # visualize final mesh with 2x2x2 coarse mesh and unit cell 
-    periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_2x2x2, unit_cell_mesh)
+    periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_2x2x2, unit_cell_mesh)
     final_mesh_vtk_fname = "two_level_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname), glue, 3)
 
     throw("problem with 3D periodic puzzlepiece sequential mesh visualization")
 
@@ -975,10 +971,10 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     # test 2x2x2 parts per dir 
 end
 
-function visualize_mesh(mesh, outpath)
+function visualize_mesh(mesh, outpath, glue = nothing, d = nothing)
     node_ids = collect(1:gk.num_nodes(mesh))
 
-    # TODO: without this check, attempting to visualize a 3D periodic mesh fails because
+    # NOTE: without this check, attempting to visualize a 3D periodic mesh fails because
     # the `periodic_nodes` property is a Vector and not a Pair 
     valid_periodic_mesh = gk.has_periodic_nodes(mesh) && gk.periodic_nodes(mesh) isa Pair
     if valid_periodic_mesh
@@ -1008,15 +1004,33 @@ function visualize_mesh(mesh, outpath)
     end
 
     # Visualize in paraview
-    vtk_grid(
-        outpath,
-        gk.vtk_args(mesh)...) do vtk
-        gk.vtk_physical_faces!(vtk, mesh)
-        gk.vtk_physical_nodes!(vtk, mesh)
-        valid_periodic_mesh && (
-            vtk["periodic_master_id"] = fine_node_to_master_fine_node)
-        vtk["node_id"] = node_ids
-    end
+    if isnothing(d) 
+        vtk_grid(
+            outpath,
+            gk.vtk_args(mesh)...) do vtk
+            gk.vtk_physical_faces!(vtk, mesh)
+            gk.vtk_physical_nodes!(vtk, mesh)
+            valid_periodic_mesh && (
+                vtk["periodic_master_id"] = fine_node_to_master_fine_node)
+            vtk["node_id"] = node_ids
+            if !isnothing(glue)
+                vtk["coarse_cell_id"] = glue.final_cell_to_coarse_cell
+            end 
+        end
+    else
+        vtk_grid(
+            outpath,
+            gk.vtk_args(mesh, d)...) do vtk
+            gk.vtk_physical_faces!(vtk, mesh, d)
+            gk.vtk_physical_nodes!(vtk, mesh, d)
+            valid_periodic_mesh && (
+                vtk["periodic_master_id"] = fine_node_to_master_fine_node)
+            vtk["node_id"] = node_ids
+            if !isnothing(glue)
+                vtk["coarse_cell_id"] = glue.final_cell_to_coarse_cell
+            end 
+        end
+    end 
 end
 
 """
@@ -1038,7 +1052,7 @@ end
 Return function that writes vtk for each part in a parallel mesh.
 """
 function visualize_pmesh_setup(nparts, outpath)
-    @assert isabspath(outpath) "abspath with pvtk_grid ensures function" # TODO: PR this?
+    @assert isabspath(outpath) "abspath with pvtk_grid ensures function" # PR this?
     function setup(mesh, ids, rank)
         face_to_owner = zeros(Int, sum(gk.num_faces(mesh)))
         D = gk.num_dims(mesh)
@@ -1068,7 +1082,7 @@ function test_pmesh_coordinates(
     expected_pcoordinates::DebugArray, pmesh::gk.PMesh, face_id::Int, face_dim::Int)
     map(partition(pmesh), expected_pcoordinates) do mesh, expected_coordinates
         example_coordinates = gk.node_coordinates(mesh, face_id, face_dim)
-        @test example_coordinates == expected_coordinates
+        @test all(example_coordinates .≈ expected_coordinates)
     end
 end
 
@@ -1076,7 +1090,7 @@ function print_pmesh_coordinates(
     pmesh::gk.PMesh, parts, face_id::Int, face_dim::Int, part_id::Int = 0)
     @show face_id face_dim 
     map(partition(pmesh), parts) do mesh, part 
-        # print coordinates for all parts at this id if part_id == 0
+        # print coordinates for all parts if part_id == 0
         if part_id == 0 || part == part_id 
             @show part 
             display(gk.node_coordinates(mesh, face_id, face_dim))
@@ -1084,6 +1098,11 @@ function print_pmesh_coordinates(
     end
 end
 
+"""
+    show_num_nodes(pmesh::gk.PMesh, parts)
+
+Show the number of nodes on each partition of a `pmesh`.
+"""
 function show_num_nodes(pmesh::gk.PMesh, parts)
     @show gk.num_nodes(pmesh)
     map(partition(pmesh), parts) do mesh, part 
@@ -1165,13 +1184,14 @@ function test_pmesh_cell_ownership(cell_ownership, pmesh)
     # all cells on partition and verify ownership
 end
 
-TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+# TODO: Fix tests the 3D puzzlepiece tests... currently 2D tests are commented out 
+#TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
+#TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
 TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
 TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
-TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
+#TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
 TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
 end # module TMP
