@@ -128,6 +128,25 @@ repeat_per_dir(geo,a::NTuple) = a
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
 face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2)+1]
+function face_local_faces(topo,d,D)
+    dface_to_Dfaces = JaggedArray(gk.face_incidence(topo,d,D))
+    Dface_to_dfaces = gk.face_incidence(topo,D,d)
+    dface_to_lfaces_data = similar(dface_to_Dfaces.data) 
+    fill!(dface_to_lfaces_data,0)
+    dface_to_lfaces_ptrs = dface_to_Dfaces.ptrs
+    dface_to_lfaces = JaggedArray(dface_to_lfaces_data,dface_to_lfaces_ptrs)
+    for (dface1,Dfaces) in enumerate(dface_to_Dfaces)
+        for (lface1,Dface) in enumerate(Dfaces)
+            dfaces = Dface_to_dfaces[Dface]
+            for (lface2,dface2) in enumerate(dfaces)
+                if dface1 == dface2
+                    dface_to_lfaces[dface1][lface1] = lface2
+                end
+            end
+        end
+    end
+    dface_to_lfaces
+end
 face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
 num_faces(a) = map(length,face_reference_id(a))
 num_faces(a,d) = length(face_reference_id(a,d))
