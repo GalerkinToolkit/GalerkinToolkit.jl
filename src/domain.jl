@@ -1,5 +1,5 @@
 
-abstract type AbstractDomain <: GalerkinToolkitDataType end
+abstract type AbstractDomain <: gk.AbstractType end
 domain(a::AbstractDomain) = a
 mesh(a::AbstractDomain) = a.mesh
 mesh_id(a::AbstractDomain) = a.mesh_id
@@ -9,8 +9,8 @@ is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> gk.val_paramet
 
 function domain(mesh;
     mesh_id = objectid(mesh),
-    physical_names=gk.physical_names(mesh,gk.num_dims(mesh)),
     face_dim = gk.num_dims(mesh),
+    physical_names=gk.physical_names(mesh,face_dim),
     is_reference_domain = Val(false),
     )
 
@@ -31,16 +31,7 @@ struct Domain{A,B,C,D,E} <: AbstractDomain
     is_reference_domain::E
 end
 
-function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
-    flag = true
-    flar = flag && gk.mesh_id(a) == gk.mesh_id(b)
-    flar = flag && gk.physical_names(a) == gk.physical_names(b)
-    flar = flag && gk.face_dim(a) == gk.face_dim(b)
-    flar = flag && gk.is_reference_domain(a) == gk.is_reference_domain(b)
-    flag
-end
-
-abstract type AbstractDomainStyle end
+abstract type AbstractDomainStyle <: gk.AbstractType end
 is_reference_domain(a::AbstractDomainStyle) = a.is_reference_domain |> gk.val_parameter
 
 struct GlobalDomain{A} <: AbstractDomainStyle
@@ -62,6 +53,33 @@ end
 
 function domain_style(domain::AbstractDomain,is_reference_domain::Tuple{Bool,Bool})
     LocalDomain(Val(is_reference_domain))
+end
+
+function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
+    flag = true
+    flag = flag && (gk.mesh_id(a) == gk.mesh_id(b))
+    flag = flag && (gk.physical_names(a) == gk.physical_names(b))
+    flag = flag && (gk.face_dim(a) == gk.face_dim(b))
+    flag = flag && (gk.is_reference_domain(a) == gk.is_reference_domain(b))
+    flag
+end
+
+function reference_domain(domain::AbstractDomain)
+    reference_domain(domain,domain |> gk.domain_style)
+end
+
+function reference_domain(domain::AbstractDomain,::GlobalDomain{false})
+    Domain(
+           domain |> gk.mesh,
+           domain |> gk.mesh_id,
+           domain |> gk.physical_names,
+           domain |> gk.face_dim,
+           Val(true),
+          )
+end
+
+function reference_domain(domain::AbstractDomain,::GlobalDomain{true})
+    domain
 end
 
 function faces(domain::AbstractDomain)
@@ -91,7 +109,7 @@ end
 domain(a::DomainGlue) = a.domain
 codomain(a::DomainGlue) = a.codomain
 
-abstract type AbstractDomainGlueStyle end
+abstract type AbstractDomainGlueStyle <: gk.AbstractType end
 domain_style(a::AbstractDomainGlueStyle) = a.domain_style
 codomain_style(a::AbstractDomainGlueStyle) = a.codomain_style
 
@@ -153,8 +171,8 @@ end
 
 function target_face(glue::DomainGlue,style::InteriorGlue)
     mesh = glue |> gk.domain |> gk.mesh
-    doman = glue |> gk.domain
-    codoman = glue |> gk.codomain
+    domain = glue |> gk.domain
+    codomain = glue |> gk.codomain
     d = domain |> gk.face_dim
     D = codomain |> gk.face_dim
     @assert d == D
@@ -177,8 +195,8 @@ end
 
 function target_face(glue::DomainGlue,style::CoboundaryGlue)
     mesh = glue |> gk.domain |> gk.mesh
-    doman = glue |> gk.domain
-    codoman = glue |> gk.codomain
+    domain = glue |> gk.domain
+    codomain = glue |> gk.codomain
     d = domain |> gk.face_dim
     D = codomain |> gk.face_dim
     @assert d < D
@@ -212,14 +230,16 @@ function target_index_term(glue::DomainGlue,::CoboundaryGlue)
     end
 end
 
-abstract type AbstractQuantity end
+abstract type AbstractQuantity <: gk.AbstractType end
 term(a::AbstractQuantity) = a.term
 prototype(a::AbstractQuantity) = a.prototype
+domain(a::AbstractQuantity) = a.domain
 
-quantity(term,prototype) = Quantity(term,prototype)
-struct Quantity{T,B} <: AbstractQuantity
+quantity(term,prototype,domain) = Quantity(term,prototype,domain)
+struct Quantity{T,B,C} <: AbstractQuantity
     term::T
     prototype::B
+    domain::C
 end
 
 function index(;
@@ -310,8 +330,11 @@ end
 
 function call(g,args::AbstractQuantity...)
     fs = map(gk.term,args)
+    domain = args |> first |> gk.domain
+    msg = "All quantities need to be defined on the same domain"
+    @assert all(dom->dom==domain,map(gk.domain,args)) msg
     prototype = gk.return_prototype(g,map(gk.prototype,args)...)
-    gk.quantity(prototype) do index
+    gk.quantity(prototype,domain) do index
         g(map(f->f(index),fs)...)
     end
 end
@@ -320,19 +343,16 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     call(call,f,x)
 end
 
-abstract type AbstractField <: AbstractQuantity end
-domain(a::AbstractField) = a.domain
-
 function analytical_field(f,dom)
     AnalyticalField(f,dom)
 end
 
-struct AnalyticalField{A,B} <: AbstractField
+struct AnalyticalField{A,B} <: AbstractQuantity
     f::A
     domain::B
 end
 term(a::AnalyticalField) = index -> a.f
-prototype(a::AbstractField) = a.f
+prototype(a::AnalyticalField) = a.f
 
 function domain_map(domain,codomain;face_around=nothing)
     glue = gk.domain_glue(domain,codomain)
@@ -345,7 +365,7 @@ function domain_map(glue::DomainGlue,glue_style,face_around)
     DomainMap(glue,face_around)
 end
 
-function domain_map(glue::DomainGlue,::CoboundaryGlue,::Integer)
+function domain_map(glue::DomainGlue,::CoboundaryGlue,face_around::Integer)
     DomainMap(glue,face_around)
 end
 
@@ -357,7 +377,7 @@ function domain_map(glue::DomainGlue,::CoboundaryGlue,::Nothing)
     (phi_plus,phi_minus)
 end
 
-struct DomainMap{A,B} <: AbstractField
+struct DomainMap{A,B} <: AbstractQuantity
     domain_glue::A
     face_around::B
 end
@@ -375,7 +395,27 @@ function term(a::DomainMap)
     term(a,glue_style)
 end
 
-function prototype(a::DomainMap,::InteriorGlue)
+function Base.:∘(a::AbstractQuantity,phi::DomainMap)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    target_index_term = gk.target_index_term(glue)
+    face_around = phi.face_around
+    domain = phi |> gk.domain
+    gk.quantity(prototype,domain) do index
+        index2 = replace_face_around(index,face_around)
+        index3 = target_index_term(index2)
+        ai = term_a(index3)
+        phii = term_phi(index)
+        x-> ai(phii(x))
+    end
+end
+
+function prototype(a::DomainMap,::InteriorGlue{true,true})
     identity
 end
 
@@ -383,6 +423,22 @@ function term(a::DomainMap,::InteriorGlue{true,true})
     index -> identity
 end
 
+function prototype(a::DomainMap,::InteriorGlue{false,false})
+    identity
+end
+
+function term(a::DomainMap,::InteriorGlue{false,false})
+    index -> identity
+end
+
+function prototype(a::DomainMap,::InteriorGlue{true,false})
+    glue = a |> gk.domain_glue
+    domain = glue |> gk.domain
+    mesh = domain |> gk.mesh
+    T = eltype(gk.node_coordinates(mesh))
+    x = zero(T)
+    y->x
+end
 function term(a::DomainMap,::InteriorGlue{true,false})
     glue = a |> gk.domain_glue
     domain = glue |> gk.domain
@@ -391,6 +447,7 @@ function term(a::DomainMap,::InteriorGlue{true,false})
     node_to_coords = gk.node_coordinates(mesh)
     sface_to_face = domain |> gk.faces
     face_to_nodes = gk.face_nodes(mesh,d)
+    face_to_refid = gk.face_reference_id(mesh,d)
     refid_to_refface = gk.reference_faces(mesh,d)
     refid_to_funs = map(gk.shape_functions,refid_to_refface)
     index -> begin
@@ -411,30 +468,100 @@ function term(a::DomainMap,::InteriorGlue{true,false})
     end
 end
 
+function prototype(a::DomainMap,::InteriorGlue{false,true})
+    error("Physical to reference map not implemented yet")
+end
+
 function term(a::DomainMap,::InteriorGlue{false,true})
     error("Physical to reference map not implemented yet")
 end
 
-function term(a::DomainMap,::InteriorGlue{false,false})
+function prototype(phi::DomainMap,::CoboundaryGlue{true,true})
+    glue = phi |> gk.domain_glue
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    y -> x
+end
+
+function term(phi::DomainMap,::CoboundaryGlue{true,true})
+    glue = phi |> gk.domain_glue
+    domain = glue |> gk.domain
+    codomain = glue |> gk.codomain
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    tface_to_Dface = codomain |> gk.faces
+    d = domain |> gk.face_dim
+    D = codomain |> gk.face_dim
+    mesh = domain |> gk.mesh
+    topo = mesh |> gk.topology
+    Dface_to_lface_to_perm = gk.face_permutation_ids(topo,D,d)
+    Dface_to_Drefid = gk.face_reference_id(mesh,D)
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+        boundary = refDface |> gk.geometry |> gk.boundary
+        lface_to_nodes = gk.face_nodes(boundary,d)
+        node_to_coords = gk.node_coordinates(boundary)
+        lface_to_lrefid = gk.face_reference_id(boundary,d)
+        lrefid_to_lrefface = gk.reference_faces(boundary,d)
+        lrefid_to_perm_to_ids = map(gk.node_permutations,lrefid_to_lrefface)
+        map(1:gk.num_faces(boundary,d)) do lface
+            lrefid = lface_to_lrefid[lface]
+            nodes = lface_to_nodes[lface]
+            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+            map(perm_to_ids) do ids
+                coords = node_to_coords[nodes[ids]]
+                coords
+            end
+        end
+    end
+    sface_to_dface = domain |> gk.faces
+    dface_to_drefid = gk.face_reference_id(mesh,d)
+    drefid_to_refdface = gk.reference_faces(mesh,d)
+    drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
+    face_around = phi.face_around
+    @assert face_around !== nothing
+    index -> begin
+        sface = index.face
+        tface = sface_to_tfaces[sface][face_around]
+        lface = sface_to_lfaces[sface][face_around]
+        Dface = tface_to_Dface[tface]
+        dface = sface_to_dface[sface]
+        perm = Dface_to_lface_to_perm[Dface][lface]
+        Drefid = Dface_to_Drefid[Dface]
+        drefid = dface_to_drefid[dface]
+        coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+        funs = drefid_to_funs[drefid]
+        q -> begin
+            sum(1:length(coords)) do i
+                x = coords[i]
+                fun = funs[i]
+                coeff = fun(q)
+                coeff*x
+            end
+        end
+    end
+end
+
+function prototype(a::DomainMap,::CoboundaryGlue{false,false})
+    identity
+end
+
+function term(a::DomainMap,::CoboundaryGlue{false,false})
     index -> identity
 end
 
-function Base.:∘(a::AbstractQuantity,phi::DomainMap)
-    g = gk.prototype(a)
-    f = gk.prototype(phi)
-    prototype = x-> g(f(x))
-    term_a = gk.term(a)
-    term_phi = gk.term(phi)
-    glue = domain_glue(phi)
-    target_index_term = gk.target_index_term(glue)
-    face_around = phi.face_around
-    gk.quantity(prototype) do index
-        index2 = replace_face_around(index,face_around)
-        index3 = target_index_term(index2)
-        ai = term_a(index3)
-        phii = term_phi(index)
-        x-> ai(phii(x))
-    end
+function prototype(a::DomainMap,::CoboundaryGlue)
+    error("Case not yet implemented")
+end
+
+function term(a::DomainMap,::CoboundaryGlue)
+    error("Case not yet implemented")
 end
 
 function (phi::DomainMap)(x::AbstractQuantity)
@@ -467,110 +594,23 @@ function (a::AbstractQuantity)(y::MappedPoint)
     (a∘phi)(x)
 end
 
-function measure(dom::AbstractDomain,degree)
-    measure(default_quadrature,dom,degree)
-end
-function measure(f,dom::AbstractDomain,degree)
-    Measure(f,dom,degree)
-end
-struct Measure{A,B,C}
-    quadrature_rule::A
-    domain::B
-    degree::C
-end
-domain(a::Measure) = a.domain
-
-#TODO this is just a reference quadrature
-function quadrature(measure::Measure)
-    domain = gk.domain(measure)
-    @assert length(gk.face_dim(domain)) == 1
-    @assert all(gk.is_reference_domain(domain))
-    @assert gk.is_permuted_domain == false
-    mesh = gk.mesh(domain)
-    d = gk.face_dim(domain)[end]
-    drefid_refdface = gk.reference_faces(mesh,d)
-    ndrefids = length(drefid_refdface)
-    refid_to_quad = map(1:ndrefids) do drefid
-        refdface = drefid_refdface[drefid]
-        geo = gk.geometry(refdface)
-        measure.quadrature_rule(geo,measure.degree)
-    end
-    domface_to_face, = gk.faces(domain)
-    face_to_refid = gk.face_reference_id(mesh,d)
-    prototype = first(refid_to_quad)
-    gk.quantity(prototype) do index
-        domface = index.face[1]
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        refid_to_quad[refid]
-    end
-end
-
-#TODO these are just the reference coordinates
-function coordinates(measure::Measure)
-    quadrature = gk.quadrature(measure)
-    quadrature_term = gk.term(quadrature)
-    prototype = gk.coordinates(gk.prototype(quadrature))
-    gk.quantity(prototype) do index
-        quad = quadrature_term(index)
-        gk.coordinates(quad)[index.point]
-    end
-end
-
-#TODO these are just the reference weights
-function weights(measure::Measure)
-    quadrature = gk.quadrature(measure)
-    quadrature_term = gk.term(quadrature)
-    prototype = gk.weights(gk.prototype(quadrature))
-    gk.quantity(prototype) do index
-        quad = quadrature_term(index)
-        gk.weights(quad)[index.point]
-    end
-end
-
-function num_points(measure::Measure)
-    quadrature = gk.quadrature(measure)
-    quadrature_term = gk.term(quadrature)
-    prototype = 1
-    gk.quantity(prototype) do index
-        quad = quadrature_term(index)
-        length(gk.weights(quad))
-    end
-end
-
-function integrate(f,measure::Measure)
-    q = gk.coordinates(measure)
-    w = gk.weights(measure) |> gk.term
-    np = gk.num_points(measure) |> gk.term
-    f_q = f(q)
-    prototype = gk.prototype(w)*gk.prototype(f_q)+gk.prototype(w)*gk.prototype(f_q)
-    domain_contribution = gk.quantity(prototype) do index
-        sum(1:np(index)) do point
-            @assert index.point === nothing
-            index2 = replace_point(index,point)
-            w(index2)*f_q(index2)
-        end
-    end
-    domain = gk.domain(measure)
-    contribution = domain => domain_contribution
-    contributions = (contribution,)
-    gk.integral(contributions)
-end
-const ∫ = integrate
-
-integral(contribs) = Integral(contribs)
-struct Integral{A}
-    contributions::A
-end
-contributions(a::Integral) = a.contributions
-
 function plot(domain::AbstractDomain;kwargs...)
-    @assert length(gk.face_dim(domain)) == 1
-    d = gk.face_dim(domain)[1]
+    plot(domain,gk.domain_style(domain))
+end
+
+function plot(domain::AbstractDomain,::GlobalDomain;kwargs...)
+    style = domain |> gk.domain_style
+    d = gk.face_dim(domain)
     domface_to_face = gk.faces(domain)
     mesh = gk.mesh(domain)
-    vmesh, vglue = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
-    Plot(domain,(vmesh,vglue),Dict{String,Any}(),Dict{String,Any}())
+    vismesh = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
+    node_data = Dict{String,Any}()
+    face_data = Dict{String,Any}()
+    Plot(domain,vismesh,node_data,face_data)
+end
+
+function plot(domain::AbstractDomain,style;kwargs...)
+    error("case not implemented")
 end
 
 struct Plot{A,B,C,D}
@@ -582,52 +622,53 @@ end
 domain(plt::Plot) = plt.domain
 visualization_mesh(plt::Plot) = plt.visualization_mesh
 
-function coordinates(plt::Plot)
-    domain = plt.domain
-    d = gk.face_dim(domain)[1]
+function reference_coordinates(plt::Plot)
+    domain = gk.reference_domain(plt.domain)
+    d = gk.face_dim(domain)
     domface_to_face = gk.faces(domain)
     mesh = gk.mesh(domain)
-    vmesh,vglue = gk.visualization_mesh(plt)
+    vmesh, vglue = gk.visualization_mesh(plt)
     refid_to_snode_to_coords = vglue.reference_coordinates
     d = gk.num_dims(vmesh)
     face_to_refid = gk.face_reference_id(mesh,d)
     prototype = first(first(refid_to_snode_to_coords))
-    # TODO use a domain_map here
-    if gk.val_parameter(gk.is_reference_domain(domain)[1])
-        gk.quantity(prototype) do index
-            domface = index.face[1]
-            point = index.point
-            face = domface_to_face[domface]
-            refid = face_to_refid[face]
-            refid_to_snode_to_coords[refid][point]
-        end
-    else
-        node_to_x = gk.node_coordinates(mesh)
-        face_to_nodes = gk.face_nodes(mesh,d)
-        refid_to_refface = gk.reference_faces(mesh,d)
-        refid_to_A = map(refid_to_refface,refid_to_snode_to_coords) do refface, x
-            A = gk.tabulator(refface)(value,x)
-            A
-        end
-        gk.quantity(prototype) do index
-            domface = index.face[1]
-            point = index.point
-            face = domface_to_face[domface]
-            refid = face_to_refid[face]
-            A = refid_to_A[refid]
-            nodes = face_to_nodes[face]
-            x = view(node_to_x,nodes)
-            (A*x)[point]
-        end
+    gk.quantity(prototype,domain) do index
+        domface = index.face[1]
+        point = index.point
+        face = domface_to_face[domface]
+        refid = face_to_refid[face]
+        refid_to_snode_to_coords[refid][point]
     end
 end
 
+function coordinates(plt::Plot)
+    style = plt |> gk.domain |> gk.domain_style
+    gk.coordinates(plt,style)
+end
+
+function coordinates(plt::Plot,::GlobalDomain{true})
+    gk.reference_coordinates(plt)
+end
+
+function coordinates(plt::Plot,::GlobalDomain{false})
+    domain_phys = plt |> gk.domain
+    domain_ref = domain_phys |> reference_domain
+    phi = gk.domain_map(domain_ref,domain_phys)
+    q = gk.reference_coordinates(plt)
+    phi(q)
+end
+
 function plot!(plt::Plot,field;label)
-    plot_impl!(plt,field;label)
+    plot_impl!(field,plt;label)
     plt
 end
 
-function plot_impl!(plt::Plot,field::AbstractField;label)
+function plot!(field,plt::Plot;label)
+    plot_impl!(field,plt;label)
+    plt
+end
+
+function plot_impl!(field,plt::Plot;label)
     q = gk.coordinates(plt)
     f_q = field(q)
     term = gk.term(f_q)
@@ -648,14 +689,11 @@ function plot_impl!(plt::Plot,field::AbstractField;label)
     data, :node_data
 end
 
-function plot_impl!(plt::Plot,integral::Integral;label)
-    error("Not implemented")
-end
-
 function vtk_plot(f,filename,args...;kwargs...)
     plt = plot(args...;kwargs...)
     vmesh, = plt.visualization_mesh
-    vtk_grid(filename,gk.vtk_args(vmesh)...) do vtk
+    d = gk.face_dim(plt.domain)
+    vtk_grid(filename,gk.vtk_args(vmesh,d)...) do vtk
         f(VtkPlot(plt,vtk))
     end
 end
@@ -665,8 +703,12 @@ struct VtkPlot{A,B}
     vtk::B
 end
 
+function plot!(field,plt::VtkPlot;label)
+    plot!(plt,field;label)
+end
+
 function plot!(plt::VtkPlot,field;label)
-    data,data_type = plot_impl!(plt.plt,field;label)
+    data,data_type = plot_impl!(field,plt.plt;label)
     if data_type === :node_data
         plt.vtk[label,WriteVTK.VTKPointData()] = data
     elseif data_type === :face_data
@@ -676,5 +718,4 @@ function plot!(plt::VtkPlot,field;label)
     end
     plt
 end
-
 
