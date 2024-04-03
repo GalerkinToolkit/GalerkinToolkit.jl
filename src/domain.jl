@@ -370,6 +370,9 @@ function domain_map(glue::DomainGlue,::CoboundaryGlue,face_around::Integer)
 end
 
 function domain_map(glue::DomainGlue,::CoboundaryGlue,::Nothing)
+    sface_to_tfaces, = gk.target_face(glue)
+    msg = "Not all faces are interior faces!"
+    @assert all(tfaces->length(tfaces)==2,sface_to_tfaces) msg
     face_around_plus = 1
     face_around_minus = 2
     phi_plus = DomainMap(glue,face_around_plus)

@@ -2210,6 +2210,28 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
+function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==2,face_to_cells)
+    groups[physical_name] = faces
+    mesh
+end
+
+function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==1,face_to_cells)
+    groups[physical_name] = faces
+    mesh
+end
+
 """
 abstract type AbstractFEChain
 
