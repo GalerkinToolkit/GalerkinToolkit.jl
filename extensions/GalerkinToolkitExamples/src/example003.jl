@@ -7,7 +7,6 @@ using LinearAlgebra
 using SparseArrays
 using WriteVTK
 using PartitionedArrays: JaggedArray, sparse_matrix, sparse_matrix!
-using TimerOutputs
 using NLsolve
 using Random
 using GalerkinToolkitExamples: Example001
@@ -24,7 +23,7 @@ global gpu_transfer_time = 0.0
 
 function main(params_in)
     # Process params
-    global jacobian_time = 0.0
+    global jacobian_time = 0.0 # set again to zero (for between simulations)
     global gpu_transfer_time = 0.0
 
     params_default = default_params()
@@ -72,7 +71,6 @@ function default_params()
     params[:example_path] = joinpath(outdir,"example003")
     params[:export_vtu] = true
     params[:autodiff] = :hand
-    #params[:timer] = TimerOutput()
     params[:jacobian_implementation] = :original
     params[:float_type] = Dict(:Float => Float64, :Int => Int32)
     params
@@ -228,7 +226,7 @@ function setup_xe(cell_isomap, cell_integration, params)
     d = length(eltype(node_to_coords))
     # dof as the inner loop, since dofs per cell are looped over in assembly.
     xe = Vector{SVector{d, params[:float_type][:Float]}}(undef, ncells * nl) 
-    if jacobian == :cpu_v1 || jacobian == :gpu_v1
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1 || jacobian == :original
         for cell in 1:ncells
             for dof in 1:nl
                 index = (cell - 1) * nl + dof
@@ -250,7 +248,7 @@ end
 
 function setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, jacobian)
     # Here you also want jacobian implementation to determine.
-    if jacobian == :cpu_v1 || jacobian == :gpu_v1
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1 || jacobian == :original
         index_function = (cell, dof, nl, ncells) -> (cell - 1) * nl + dof
     else # coalesced for gpu access.
         index_function = (cell, dof, nl, ncells) -> (dof - 1) * ncells + cell
@@ -301,7 +299,7 @@ function setup_Jt(cell_integration, xe_setup, cell_isomap, float_type, jacobian)
     Jt = Matrix{typeof(zero_Jt)}(undef, (ncells,nq))
 
     # Here you need to consider the memory layout. 
-    if jacobian == :cpu_v1 || jacobian == :gpu_v1
+    if jacobian == :cpu_v1 || jacobian == :gpu_v1 || jacobian == :original
         for cell in 1:ncells
             for iq in 1:nq 
                 Jt_local = zero_Jt
@@ -371,7 +369,6 @@ function cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue
 end
 
 function setup(params)
-    #timer = params[:timer]
     dirichlet_bcs = setup_dirichlet_bcs(params)
     neumann_bcs = setup_neumann_bcs(params)
     cell_integration = setup_integration(params,:cells,"cell")
@@ -461,8 +458,8 @@ function nonlinear_problem(state)
     end
     function jacobian!(J,u_dofs,cache)
         (V,K) = cache 
-        jac_time = CUDA.@elapsed CUDA.@sync gpu_data_transfer = state.jacobian_cells!(V,u_dofs,state)
-        global jacobian_time += jac_time
+        jac_time_iter = @elapsed gpu_data_transfer = state.jacobian_cells!(V,u_dofs,state)
+        global jacobian_time += jac_time_iter
         global gpu_transfer_time += gpu_data_transfer
         sparse_matrix!(J,V,K)
         J
@@ -688,7 +685,7 @@ end
             ∇du = invJt*∇ste[j,iq]
             for i in 1:nl
                 ∇dv = invJt*∇ste[i,iq]
-                i_coo = cell + (j-1) * ncells * nl + (i-1) * ncells # There is also a change here to the calculation
+                i_coo = cell + (j-1) * ncells * nl + (i-1) * ncells
                 V_coo[i_coo] += (∇dv⋅dflux(∇u_local,∇du,p)) * dV
             end
         end
