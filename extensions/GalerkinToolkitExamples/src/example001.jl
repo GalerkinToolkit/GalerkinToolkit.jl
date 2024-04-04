@@ -78,7 +78,7 @@ function lu_solver()
     (;setup,setup!,solve!,finalize!)
 end
 
-function cg_amg_solver(;reltol=1.0e-6,verbose=false,timer=TimerOutput())
+function cg_amg_solver(;reltol=1.0e-6,verbose=false)
     function setup(x,A,b)
         Pl = AMGPreconditioner{SmoothedAggregation}(A)
         cache = Ref((;Pl,A))
