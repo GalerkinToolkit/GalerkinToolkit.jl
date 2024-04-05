@@ -41,7 +41,7 @@ function main(params_in)
     integrate_error_norms(results,uh,state)
     export_results(uh,params,state)
 
-    results, jacobian_time, gpu_transfer_time, gpu_setup_time
+    results, jacobian_time, gpu_transfer_time, gpu_setup_time, x
 end
 
 function add_default_params(params_in,params_default)
@@ -99,7 +99,7 @@ function nlsolve_solver(;linear_solver=Example001.cg_amg_solver(),options...)
         (;df,linsolve) = setup
         result = nlsolve(df,x;linsolve,options...)
         x .= result.zero
-        result.f_calls
+        result.f_calls, x
     end
     function setup!(setup,x0,nlp)
         error("todo")
@@ -1136,7 +1136,7 @@ function solve_problem(params,state,results)
     solver = params[:solver]
     x = problem.initial()
     setup = solver.setup(x,problem,params)
-    iterations = solver.solve!(x,setup)
+    iterations,x = solver.solve!(x,setup)
     solver.finalize!(setup)
     results[:iterations] = iterations
     x

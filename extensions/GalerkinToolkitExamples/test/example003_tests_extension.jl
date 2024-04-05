@@ -8,10 +8,9 @@ using Test
 tol = 1.0e-10
 params = Dict{Symbol,Any}()
 
-#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5)) # 64000 cells. Out of memory Error.
-#params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5)) # Around 2.5 seconds per Jacobian. 27000 cells
+
 #params[:mesh] = gk.cartesian_mesh((0,10,0,10),(2,2))
-params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(60,60,60))
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(25,25,25))
 # (80,80,80) is about 18 seconds for jacobian with cpu_v1 500k cells | flux
 # (60,60,60) is about 7 seconds for jacobian with cpu_v1 | flux
 
@@ -19,7 +18,8 @@ params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(60,60,60))
 params[:autodiff] = :flux
 params[:export_vtu] = false
 ns_to_s = 1e+9
-params[:float_type] = Dict(:Float => Float64, :Int => Int32)
+params[:float_type] = Dict(:Float => Float32, :Int => Int32)
+params[:p] = 3
 #println("Jacobian original ")
 
 # You want to loop this one to get several measurements. 
@@ -30,13 +30,18 @@ params[:float_type] = Dict(:Float => Float64, :Int => Int32)
 params[:jacobian_implementation] = :cpu_v1
 
 println("Jacobian extension ", params[:jacobian_implementation])
-t = @elapsed results, jacobian_time, gpu_transfer_time, gpu_setup_time  = Example003.main(params)
+t = @elapsed results, jacobian_time, gpu_transfer_time, gpu_setup_time, x  = Example003.main(params)
+
 println(t)
+println("iterations ",results[:iterations])
 println(jacobian_time, " ",gpu_transfer_time, " ",gpu_setup_time)
 # println("Number of cells: ", results2[:ncells])
 
-
-
+params[:float_type] = Dict(:Float => Float16, :Int => Int32)
+t = @elapsed results1, jacobian_time1, gpu_transfer_time1, gpu_setup_time1, x1  = Example003.main(params)
+println(t)
+println("iterations ",results1[:iterations])
+#println(round.(x .- x1,digits=4))
 # # To test coalesce
 # params[:jacobian_implementation] = :gpu_v1
 # println("Jacobian extension ", params[:jacobian_implementation])
