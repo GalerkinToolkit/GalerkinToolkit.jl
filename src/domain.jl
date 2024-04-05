@@ -96,6 +96,10 @@ function faces(domain::AbstractDomain,::GlobalDomain)
     physical_Dfaces
 end
 
+function num_faces(domain)
+    length(faces(domain))
+end
+
 function domain_glue(domain,codomain;face_around=nothing)
     msg = "Trying to combine domains on different meshes"
     @assert gk.mesh_id(domain) == gk.mesh_id(codomain) msg
@@ -285,6 +289,16 @@ function replace_point(index::Index,point)
           index.local_face,
           point,
           index.dof_per_dim,
+          index.face_around_per_dim
+         )
+end
+
+function replace_dof_per_dim(index::Index,dof_per_dim)
+    Index(
+          index.face,
+          index.local_face,
+          index.point,
+          dof_per_dim,
           index.face_around_per_dim
          )
 end
@@ -703,7 +717,7 @@ function (a::AbstractQuantity)(y::MappedPoint)
 end
 
 function plot(domain::AbstractDomain;kwargs...)
-    plot(domain,gk.domain_style(domain))
+    plot(domain,gk.domain_style(domain);kwargs...)
 end
 
 function plot(domain::AbstractDomain,::GlobalDomain;kwargs...)
@@ -798,7 +812,7 @@ function plot_impl!(field,plt::Plot;label)
 end
 
 function vtk_plot(f,filename,args...;kwargs...)
-    plt = plot(args...;kwargs...)
+    plt = gk.plot(args...;kwargs...)
     vmesh, = plt.visualization_mesh
     d = gk.face_dim(plt.domain)
     vtk_grid(filename,gk.vtk_args(vmesh,d)...) do vtk
