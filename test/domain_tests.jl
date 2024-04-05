@@ -52,13 +52,15 @@ end
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
 
-ϕ⁺,ϕ⁻ = gk.domain_map(Λref,Ωref)
+ϕ = gk.domain_map(Λref,Ωref)
+
+jump(u) = u[2]-u[1]
 
 gk.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
     gk.plot!(plt;label="jump_u") do q
-        x⁺ = ϕ⁺(q)
-        x⁻ = ϕ⁻(q)
-        gk.call(-,uref(x⁺),uref(x⁻))
+        x = ϕ(q)
+        uq = uref(x)
+        gk.call(jump,uref(x))
     end
 end
 

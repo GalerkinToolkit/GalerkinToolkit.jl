@@ -96,15 +96,16 @@ function faces(domain::AbstractDomain,::GlobalDomain)
     physical_Dfaces
 end
 
-function domain_glue(domain,codomain)
+function domain_glue(domain,codomain;face_around=nothing)
     msg = "Trying to combine domains on different meshes"
     @assert gk.mesh_id(domain) == gk.mesh_id(codomain) msg
-    DomainGlue(domain,codomain)
+    DomainGlue(domain,codomain,face_around)
 end
 
-struct DomainGlue{A,B}
+struct DomainGlue{A,B,C}
     domain::A
     codomain::B
+    face_around::C
 end
 domain(a::DomainGlue) = a.domain
 codomain(a::DomainGlue) = a.codomain
@@ -118,7 +119,7 @@ struct InteriorGlue{A,B} <: AbstractDomainGlueStyle
     codomain_style::GlobalDomain{B}
 end
 
-struct BoundaryGlue{A,B} <: AbstractDomainGlueStyle
+struct LocalBoundaryGlue{A,B} <: AbstractDomainGlueStyle
     domain_style::LocalDomain{A}
     codomain_style::GlobalDomain{B}
 end
@@ -126,6 +127,12 @@ end
 struct CoboundaryGlue{A,B} <: AbstractDomainGlueStyle
     domain_style::GlobalDomain{A}
     codomain_style::GlobalDomain{B}
+end
+
+struct BoundaryGlue{A,B} <: AbstractDomainGlueStyle
+    domain_style::GlobalDomain{A}
+    codomain_style::GlobalDomain{B}
+    face_around::Int
 end
 
 function domain_glue_style(glue::DomainGlue)
@@ -140,7 +147,11 @@ function domain_glue_style(glue,d1::Integer,d2::Integer)
     if d1 == d2
         InteriorGlue(domain_style,codomain_style)
     elseif d1 < d2
-        CoboundaryGlue(domain_style,codomain_style)
+        if glue.face_around === nothing
+            CoboundaryGlue(domain_style,codomain_style)
+        else
+            BoundaryGlue(domain_style,codomain_style,glue.face_around)
+        end
     else
         error("This case does not make sense")
     end
@@ -151,7 +162,7 @@ function domain_glue_style(glue,d1::Tuple{Integer,Integer},d2::Integer)
     codomain_style = glue |> gk.codomain |> gk.domain_style
     d1g,d1l = d1
     if d1l == d2
-        BoundaryGlue(domain_style,codomain_style)
+        LocalBoundaryGlue(domain_style,codomain_style)
     elseif d1l < d2
         error("Case not supported yet")
     else
@@ -162,11 +173,6 @@ end
 function target_face(glue::DomainGlue)
     glue_style = gk.domain_glue_style(glue)
     target_face(glue,glue_style)
-end
-
-function target_index_term(glue::DomainGlue)
-    glue_style = gk.domain_glue_style(glue)
-    target_index_term(glue,glue_style)
 end
 
 function target_face(glue::DomainGlue,style::InteriorGlue)
@@ -182,15 +188,6 @@ function target_face(glue::DomainGlue,style::InteriorGlue)
     tface_to_tface = LinearIndices(tface_to_Dface)
     Dface_to_tface[tface_to_Dface] = tface_to_tface
     sface_to_tface = Dface_to_tface[sface_to_dface]
-end
-
-function target_index_term(glue::DomainGlue,::InteriorGlue)
-    sface_to_tface = glue |> gk.target_face
-    index -> begin
-        sface = index.face
-        tface = sface_to_tface[sface]
-        replace_face(index,tface)
-    end
 end
 
 function target_face(glue::DomainGlue,style::CoboundaryGlue)
@@ -217,17 +214,13 @@ function target_face(glue::DomainGlue,style::CoboundaryGlue)
     sface_to_tfaces, sface_to_lfaces
 end
 
-function target_index_term(glue::DomainGlue,::CoboundaryGlue)
-    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
-    index -> begin
-        face_around = index.face_around
-        @assert face_around !== nothing
-        sface = index.face
-        tface = sface_to_tfaces[sface][face_around]
-        lface = sface_to_lfaces[sface][face_around]
-        index2 = replace_face(index,tface)
-        replace_local_face(index2,lface)
-    end
+function target_face(glue::DomainGlue,style::BoundaryGlue)
+    style2 = CoboundaryGlue(style.domain_style,style.codomain_style)
+    sface_to_tfaces, sface_to_lfaces = target_face(glue,style2)
+    face_around = glue.face_around
+    sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
+    sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
+    sface_to_tface, sface_to_lface
 end
 
 abstract type AbstractQuantity <: gk.AbstractType end
@@ -245,29 +238,23 @@ end
 function index(;
     face=nothing,
     local_face=nothing,
-    face_around=nothing,
     point=nothing,
-    field_per_dim=nothing,
     dof_per_dim=nothing,
     face_around_per_dim=nothing
     )
     Index(
           face,
           local_face,
-          face_around,
           point,
-          field_per_dim,
           dof_per_dim,
           face_around_per_dim
          )
 end
 
-struct Index{A,B,C,D,E,F,G}
+struct Index{A,B,D,F,G}
     face::A
     local_face::B
-    face_around::C
     point::D
-    field_per_dim::E
     dof_per_dim::F
     face_around_per_dim::G
 end
@@ -276,9 +263,7 @@ function replace_face(index::Index,face)
     Index(
           face,
           index.local_face,
-          index.face_around,
           index.point,
-          index.field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -288,21 +273,7 @@ function replace_local_face(index::Index,local_face)
     Index(
           index.face,
           local_face,
-          index.face_around,
           index.point,
-          index.field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim
-         )
-end
-
-function replace_face_around(index::Index,face_around)
-    Index(
-          index.face,
-          index.local_face,
-          face_around,
-          index.point,
-          index.field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -312,9 +283,7 @@ function replace_point(index::Index,point)
     Index(
           index.face,
           index.local_face,
-          index.face_around,
           point,
-          index.field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -354,35 +323,17 @@ end
 term(a::AnalyticalField) = index -> a.f
 prototype(a::AnalyticalField) = a.f
 
-function domain_map(domain,codomain;face_around=nothing)
-    glue = gk.domain_glue(domain,codomain)
-    glue_style = gk.domain_glue_style(glue)
-    domain_map(glue,glue_style,face_around)
+function domain_map(domain,codomain;kwargs...)
+    glue = gk.domain_glue(domain,codomain;kwargs...)
+    domain_map(glue)
 end
 
-function domain_map(glue::DomainGlue,glue_style,face_around)
-    @assert face_around === nothing
-    DomainMap(glue,face_around)
+function domain_map(glue)
+    DomainMap(glue)
 end
 
-function domain_map(glue::DomainGlue,::CoboundaryGlue,face_around::Integer)
-    DomainMap(glue,face_around)
-end
-
-function domain_map(glue::DomainGlue,::CoboundaryGlue,::Nothing)
-    sface_to_tfaces, = gk.target_face(glue)
-    msg = "Not all faces are interior faces!"
-    @assert all(tfaces->length(tfaces)==2,sface_to_tfaces) msg
-    face_around_plus = 1
-    face_around_minus = 2
-    phi_plus = DomainMap(glue,face_around_plus)
-    phi_minus = DomainMap(glue,face_around_minus)
-    (phi_plus,phi_minus)
-end
-
-struct DomainMap{A,B} <: AbstractQuantity
+struct DomainMap{A} <: AbstractQuantity
     domain_glue::A
-    face_around::B
 end
 domain_glue(a::DomainMap) = a.domain_glue
 domain(a::DomainMap) = a |> gk.domain_glue |> gk.domain
@@ -398,40 +349,21 @@ function term(a::DomainMap)
     term(a,glue_style)
 end
 
+function compose(a::AbstractQuantity,phi::DomainMap)
+    glue_style = phi |> gk.domain_glue |> gk.domain_glue_style
+    compose(a,phi,glue_style)
+end
+
 function Base.:∘(a::AbstractQuantity,phi::DomainMap)
-    @assert gk.domain(a) == gk.codomain(phi)
-    g = gk.prototype(a)
-    f = gk.prototype(phi)
-    prototype = x-> g(f(x))
-    term_a = gk.term(a)
-    term_phi = gk.term(phi)
-    glue = domain_glue(phi)
-    target_index_term = gk.target_index_term(glue)
-    face_around = phi.face_around
-    domain = phi |> gk.domain
-    gk.quantity(prototype,domain) do index
-        index2 = replace_face_around(index,face_around)
-        index3 = target_index_term(index2)
-        ai = term_a(index3)
-        phii = term_phi(index)
-        x-> ai(phii(x))
-    end
+    compose(a,phi)
 end
 
 function prototype(a::DomainMap,::InteriorGlue{true,true})
     identity
 end
 
-function term(a::DomainMap,::InteriorGlue{true,true})
-    index -> identity
-end
-
 function prototype(a::DomainMap,::InteriorGlue{false,false})
     identity
-end
-
-function term(a::DomainMap,::InteriorGlue{false,false})
-    index -> identity
 end
 
 function prototype(a::DomainMap,::InteriorGlue{true,false})
@@ -442,6 +374,19 @@ function prototype(a::DomainMap,::InteriorGlue{true,false})
     x = zero(T)
     y->x
 end
+
+function prototype(a::DomainMap,::InteriorGlue{false,true})
+    error("Physical to reference map not implemented yet")
+end
+
+function term(a::DomainMap,::InteriorGlue{true,true})
+    index -> identity
+end
+
+function term(a::DomainMap,::InteriorGlue{false,false})
+    index -> identity
+end
+
 function term(a::DomainMap,::InteriorGlue{true,false})
     glue = a |> gk.domain_glue
     domain = glue |> gk.domain
@@ -471,12 +416,29 @@ function term(a::DomainMap,::InteriorGlue{true,false})
     end
 end
 
-function prototype(a::DomainMap,::InteriorGlue{false,true})
+function term(a::DomainMap,::InteriorGlue{false,true})
     error("Physical to reference map not implemented yet")
 end
 
-function term(a::DomainMap,::InteriorGlue{false,true})
-    error("Physical to reference map not implemented yet")
+function compose(a::AbstractQuantity,phi::DomainMap,::InteriorGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    sface_to_tface = gk.target_face(glue)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        phii = term_phi(index)
+        x-> ai(phii(x))
+    end
+
 end
 
 function prototype(phi::DomainMap,::CoboundaryGlue{true,true})
@@ -490,7 +452,15 @@ function prototype(phi::DomainMap,::CoboundaryGlue{true,true})
     node_to_coords = gk.node_coordinates(boundary)
     T = eltype(node_to_coords)
     x = zero(T)
-    y -> x
+    y -> [x,x]
+end
+
+function prototype(a::DomainMap,::CoboundaryGlue{false,false})
+    error("Case not yet implemented")
+end
+
+function prototype(a::DomainMap,::CoboundaryGlue)
+    error("Case not yet implemented")
 end
 
 function term(phi::DomainMap,::CoboundaryGlue{true,true})
@@ -527,12 +497,131 @@ function term(phi::DomainMap,::CoboundaryGlue{true,true})
     dface_to_drefid = gk.face_reference_id(mesh,d)
     drefid_to_refdface = gk.reference_faces(mesh,d)
     drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
-    face_around = phi.face_around
-    @assert face_around !== nothing
     index -> begin
         sface = index.face
-        tface = sface_to_tfaces[sface][face_around]
-        lface = sface_to_lfaces[sface][face_around]
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(lfaces)
+        q -> begin
+            map(1:n_faces_around) do face_around
+                tface = tfaces[face_around]
+                lface = lfaces[face_around]
+                Dface = tface_to_Dface[tface]
+                dface = sface_to_dface[sface]
+                perm = Dface_to_lface_to_perm[Dface][lface]
+                Drefid = Dface_to_Drefid[Dface]
+                drefid = dface_to_drefid[dface]
+                coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+                funs = drefid_to_funs[drefid]
+                sum(1:length(coords)) do i
+                    x = coords[i]
+                    fun = funs[i]
+                    coeff = fun(q)
+                    coeff*x
+                end
+            end
+        end
+    end
+end
+
+function term(a::DomainMap,::CoboundaryGlue{false,false})
+    error("Case not yet implemented")
+end
+
+function term(a::DomainMap,::CoboundaryGlue)
+    error("Case not yet implemented")
+end
+
+function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> [g(f(x)),g(f(x))]
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        phii = term_phi(index)
+        x -> begin
+            ys = phii(x)
+            map(1:n_faces_around) do face_around
+                tface = sface_to_tfaces[sface][face_around]
+                lface = sface_to_lfaces[sface][face_around]
+                index2 = replace_face(index,tface)
+                ai = term_a(index2)
+                y = ys[face_around]
+                ai(y)
+            end
+        end
+    end
+end
+
+function prototype(phi::DomainMap,::BoundaryGlue{true,true})
+    glue = phi |> gk.domain_glue
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    y -> x
+end
+
+function prototype(a::DomainMap,::BoundaryGlue{false,false})
+    error("Case not yet implemented")
+end
+
+function prototype(a::DomainMap,::BoundaryGlue)
+    error("Case not yet implemented")
+end
+
+function term(phi::DomainMap,::BoundaryGlue{true,true})
+    glue = phi |> gk.domain_glue
+    domain = glue |> gk.domain
+    codomain = glue |> gk.codomain
+    sface_to_tface, sface_to_lfaces = glue |> gk.target_face
+    tface_to_Dface = codomain |> gk.faces
+    d = domain |> gk.face_dim
+    D = codomain |> gk.face_dim
+    mesh = domain |> gk.mesh
+    topo = mesh |> gk.topology
+    Dface_to_lface_to_perm = gk.face_permutation_ids(topo,D,d)
+    Dface_to_Drefid = gk.face_reference_id(mesh,D)
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+        boundary = refDface |> gk.geometry |> gk.boundary
+        lface_to_nodes = gk.face_nodes(boundary,d)
+        node_to_coords = gk.node_coordinates(boundary)
+        lface_to_lrefid = gk.face_reference_id(boundary,d)
+        lrefid_to_lrefface = gk.reference_faces(boundary,d)
+        lrefid_to_perm_to_ids = map(gk.node_permutations,lrefid_to_lrefface)
+        map(1:gk.num_faces(boundary,d)) do lface
+            lrefid = lface_to_lrefid[lface]
+            nodes = lface_to_nodes[lface]
+            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+            map(perm_to_ids) do ids
+                coords = node_to_coords[nodes[ids]]
+                coords
+            end
+        end
+    end
+    sface_to_dface = domain |> gk.faces
+    dface_to_drefid = gk.face_reference_id(mesh,d)
+    drefid_to_refdface = gk.reference_faces(mesh,d)
+    drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
+    index -> begin
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lfaces[sface]
         Dface = tface_to_Dface[tface]
         dface = sface_to_dface[sface]
         perm = Dface_to_lface_to_perm[Dface][lface]
@@ -551,20 +640,33 @@ function term(phi::DomainMap,::CoboundaryGlue{true,true})
     end
 end
 
-function prototype(a::DomainMap,::CoboundaryGlue{false,false})
-    identity
-end
-
-function term(a::DomainMap,::CoboundaryGlue{false,false})
-    index -> identity
-end
-
-function prototype(a::DomainMap,::CoboundaryGlue)
+function term(a::DomainMap,::BoundaryGlue{false,false})
     error("Case not yet implemented")
 end
 
-function term(a::DomainMap,::CoboundaryGlue)
+function term(a::DomainMap,::BoundaryGlue)
     error("Case not yet implemented")
+end
+
+function compose(a::AbstractQuantity,phi::DomainMap,::BoundaryGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    sface_to_tface, sface_to_lface = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        phii = term_phi(index)
+        x -> ai(phii(x))
+    end
 end
 
 function (phi::DomainMap)(x::AbstractQuantity)
@@ -576,6 +678,8 @@ struct MappedPoint{A,B} <: AbstractQuantity
     x::B
 end
 function prototype(y::MappedPoint)
+    phi = y.phi
+    x = y.x
     phi_p = gk.prototype(phi)
     x_p = gk.prototype(x)
     phi_p(x_p)
@@ -594,7 +698,7 @@ end
 function (a::AbstractQuantity)(y::MappedPoint)
     phi = y.phi
     x = y.x
-    (a∘phi)(x)
+    gk.compose(a,phi)(x)
 end
 
 function plot(domain::AbstractDomain;kwargs...)

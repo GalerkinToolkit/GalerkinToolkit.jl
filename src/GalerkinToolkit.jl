@@ -13,8 +13,8 @@ using SparseArrays
 using Metis
 
 include("geometry.jl")
+include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")
-include("domain.jl")
 
 end # module
