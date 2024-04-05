@@ -136,14 +136,14 @@ struct BoundaryGlue{A,B} <: AbstractDomainGlueStyle
 end
 
 function domain_glue_style(glue::DomainGlue)
-    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
-    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
-    domain_glue_style(glue,d1,d2)
+    style1 = domain_style(glue.domain)
+    style2 = domain_style(glue.codomain)
+    domain_glue_style(glue,style1,style2)
 end
 
-function domain_glue_style(glue,d1::Integer,d2::Integer)
-    domain_style = glue |> gk.domain |> gk.domain_style
-    codomain_style = glue |> gk.codomain |> gk.domain_style
+function domain_glue_style(glue::DomainGlue,domain_style::GlobalDomain,codomain_style::GlobalDomain)
+    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
+    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
     if d1 == d2
         InteriorGlue(domain_style,codomain_style)
     elseif d1 < d2
@@ -157,9 +157,9 @@ function domain_glue_style(glue,d1::Integer,d2::Integer)
     end
 end
 
-function domain_glue_style(glue,d1::Tuple{Integer,Integer},d2::Integer)
-    domain_style = glue |> gk.domain |> gk.domain_style
-    codomain_style = glue |> gk.codomain |> gk.domain_style
+function domain_glue_style(glue::DomainGlue,domain_style::LocalDomain,codomain_style::GlobalDomain)
+    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
+    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
     d1g,d1l = d1
     if d1l == d2
         LocalBoundaryGlue(domain_style,codomain_style)
@@ -550,6 +550,7 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
         phii = term_phi(index)
         x -> begin
             ys = phii(x)
+            # TODO This should be a tuple
             map(1:n_faces_around) do face_around
                 tface = sface_to_tfaces[sface][face_around]
                 lface = sface_to_lfaces[sface][face_around]
