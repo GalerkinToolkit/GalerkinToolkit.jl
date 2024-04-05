@@ -96,7 +96,7 @@ function faces(domain::AbstractDomain,::GlobalDomain)
     physical_Dfaces
 end
 
-function num_faces(domain)
+function num_faces(domain::AbstractDomain)
     length(faces(domain))
 end
 
@@ -243,6 +243,7 @@ function index(;
     face=nothing,
     local_face=nothing,
     point=nothing,
+    field_per_dim =nothing,
     dof_per_dim=nothing,
     face_around_per_dim=nothing
     )
@@ -250,15 +251,17 @@ function index(;
           face,
           local_face,
           point,
+          field_per_dim,
           dof_per_dim,
           face_around_per_dim
          )
 end
 
-struct Index{A,B,D,F,G}
+struct Index{A,B,D,E,F,G}
     face::A
     local_face::B
     point::D
+    field_per_dim::E
     dof_per_dim::F
     face_around_per_dim::G
 end
@@ -268,6 +271,7 @@ function replace_face(index::Index,face)
           face,
           index.local_face,
           index.point,
+          index.field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -278,6 +282,7 @@ function replace_local_face(index::Index,local_face)
           index.face,
           local_face,
           index.point,
+          index.field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -288,6 +293,18 @@ function replace_point(index::Index,point)
           index.face,
           index.local_face,
           point,
+          index.field_per_dim,
+          index.dof_per_dim,
+          index.face_around_per_dim
+         )
+end
+
+function replace_field_per_dim(index::Index,field_per_dim)
+    Index(
+          index.face,
+          index.local_face,
+          index.point,
+          field_per_dim,
           index.dof_per_dim,
           index.face_around_per_dim
          )
@@ -298,6 +315,7 @@ function replace_dof_per_dim(index::Index,dof_per_dim)
           index.face,
           index.local_face,
           index.point,
+          index.field_per_dim,
           dof_per_dim,
           index.face_around_per_dim
          )

@@ -157,11 +157,6 @@ function values(a,free_or_diri::FreeOrDirichlet)
     end
 end
 
-struct FieldIndex{B}
-    field::Int
-    dof::B
-end
-
 struct VectorStrategy{A,B,C}
     dofs::A
     allocate_values::B
@@ -251,10 +246,9 @@ end
 function num_face_dofs(a::CartesianProductSpace,dim)
     terms = map(s->gk.num_face_dofs(s,dim),a.spaces)
     index -> begin
-        i = index.dof_per_dim[dim]
-        field = i.field
-        dof_per_dim = set_at_dim(index.dof_per_dim,Val(dim),FieldIndex(1,nothing))
-        index2 = replace_dof_per_dim(index,dof_per_dim)
+        field = index.field_per_dim[dim]
+        @assert field !== nothing
+        index2 = replace_field_per_dim(index,nothing)
         terms[field](index2)
     end
 end
@@ -262,53 +256,19 @@ end
 function dof_map(a::CartesianProductSpace,dim)
     terms = map(s->gk.dof_map(s,dim),a.spaces)
     index -> begin
-        i = index.dof_per_dim[dim]
-        field = i.field
-        dof = i.dof
-        dof_per_dim = set_at_dim(index.dof_per_dim,Val(dim),FieldIndex(1,dof))
-        index2 = replace_dof_per_dim(index,dof_per_dim)
+        field = index.field_per_dim[dim]
+        @assert field !== nothing
+        index2 = replace_field_per_dim(index,nothing)
         terms[field](index2)
     end
 end
 
-function basis(a::CartesianProductSpace,dim)
-    bases = map(s->gk.basis(s,dim),a.spaces)
-    prototypes = map(gk.prototype,bases)
-    field_to_field = ntuple(identity,gk.num_fields(a))
-    domain = gk.domain(a)
-    prototype = x->begin
-        # TODO if we want to support recursive Cartesian spaces we need a 
-        # "MathTuple" instead of a Tuple so that we can call zero(g(x))
-        map(field_to_field) do field
-            g = prototypes[field]
-            g(x)
-        end
-    end
-    gk.quantity(prototype,domain) do index
-        i = index.dof_per_dim[dim]
-        @assert isa(i,FieldIndex)
-        field = i.field
-        dof = i.dof
-        dof_per_dim = set_at_dim(index.dof_per_dim,Val(dim),dof)
-        index2 = replace_dof_per_dim(index,dof_per_dim)
-        f = terms[field](index2)
-        # TODO if we want to support recursive Cartesian spaces we need a 
-        # "MathTuple" instead of a Tuple so that we can call zero(g(x))
-        x -> begin
-            map(field_to_field) do field_bis
-                if field == field_bis
-                    f(x)
-                else
-                    g = prototypes[field_bis]
-                    zero(g(x))
-                end
-            end
-        end
-    end
+function shape_functions(a::CartesianProductSpace,dim)
+    error("Not implemented yet. Not needed in practice.")
 end
 
 function dual_basis(a::CartesianProductSpace)
-    error("Not implemented yet")
+    error("Not implemented yet. Not needed in practice.")
 end
 
 function discrete_field(space,free_values,dirichlet_values)
@@ -384,7 +344,7 @@ end
 function prototype(u::DiscreteField)
     space = gk.space(u)
     dim = 2
-    basis = gk.basis(space,dim)
+    basis = gk.shape_functions(space,dim)
     f = gk.prototype(basis)
     T = eltype(gk.free_values(u))
     z = zero(T)
@@ -400,23 +360,20 @@ function term(u::DiscreteField)
     dim = 2
     dof_map = gk.dof_map(space,dim)
     num_face_dofs = gk.num_face_dofs(space,dim)
-    basis = gk.basis(space,dim)
+    basis = gk.shape_functions(space,dim)
     basis_term = gk.term(basis)
     nfields = num_fields(u)
     index -> begin
         x -> begin
             sum(1:nfields) do field
-                # TODO I don't like to use a FieldIndex here
-                j = FieldIndex(field,nothing)
-                dof_per_dim = (nothing,j)
-                index3 = replace_dof_per_dim(index,dof_per_dim)
-                ndofs = num_face_dofs(index3)
+                field_per_dim = (nothing,field)
+                index2 = replace_field_per_dim(index,field_per_dim)
+                ndofs = num_face_dofs(index2)
                 sum(1:ndofs) do dof
-                    i = FieldIndex(field,dof)
-                    dof_per_dim = (nothing,i)
-                    index2 = replace_dof_per_dim(index,dof_per_dim)
-                    dof = dof_map(index2)
-                    f = basis_term(index2)
+                    dof_per_dim = (nothing,dof)
+                    index3 = replace_dof_per_dim(index2,dof_per_dim)
+                    dof = dof_map(index3)
+                    f = basis_term(index3)
                     coeff =  dof > 0 ? field_to_free_vals[field][dof] : field_to_diri_vals[field][-dof]
                     f(x)*coeff
                 end
@@ -434,6 +391,10 @@ end
 #gk.interpolate!(uref,v;domain_map=)
 #gk.interpolate!(uref,v;domain_glue=)
 #gk.interpolate!(u,v;domain=Ω)
+# We could automatic discover the domain of f
+# but we can ask for an addition kwarg domain
+# to confirm that we want the domain of f
+# and we can also provide another one witht he glue?
 
 function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
@@ -462,12 +423,11 @@ function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDiric
     num_face_dofs = gk.num_face_dofs(space,dim)
     for face in 1:gk.num_faces(domain)
         for field in 1:num_fields(space)
-            # TODO I don't like to use a FieldIndex here
-            index3 = gk.index(;face,dof_per_dim=(FieldIndex(field,nothing),))
-            for dof in 1:num_face_dofs(index3)
-                index = gk.index(;face,dof_per_dim=(FieldIndex(field,dof),))
-                v = vals_term(index)
-                dof = dof_map(index)
+            index = gk.index(;face,field_per_dim=(field,))
+            for dof in 1:num_face_dofs(index)
+                index2 = replace_dof_per_dim(index,(dof,))
+                v = vals_term(index2)
+                dof = dof_map(index2)
                 if dof > 0
                     if free_or_diri != DIRICHLET
                         field_to_free_vals[field][dof] = v
@@ -581,9 +541,8 @@ end
 function num_face_dofs(a::IsoParametricSpace,dim)
     face_to_dofs = face_dofs(a)
     index -> begin
+        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
-        i = index.dof_per_dim[dim]
-        @assert i.field == 1
         length(face_to_dofs[face])
     end
 end
@@ -591,26 +550,24 @@ end
 function dof_map(a::IsoParametricSpace,dim)
     face_to_dofs = face_dofs(a)
     index -> begin
+        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
-        i = index.dof_per_dim[dim]
-        @assert i.field == 1
-        dof = i.dof
+        dof = index.dof_per_dim[dim]
         face_to_dofs[face][dof]
     end
 end
 
-function basis(a::IsoParametricSpace,dim)
+function shape_functions(a::IsoParametricSpace,dim)
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(gk.shape_functions,refid_to_reffes)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
     gk.quantity(prototype,domain) do index
+        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         refid = face_to_refid[face]
-        i = index.dof_per_dim[dim]
-        @assert i.field == 1
-        dof = i.dof
+        dof = index.dof_per_dim[dim]
         refid_to_funs[refid][dof]
     end
 end
@@ -622,11 +579,11 @@ function dual_basis(a::IsoParametricSpace,dim)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
     gk.quantity(prototype,domain) do index
+        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         refid = face_to_refid[face]
-        i = index.dof_per_dim[dim]
-        @assert i.field == 1
-        dof = i.dof
+        dof = index.dof_per_dim[dim]
+        field = index.field_per_dim[dim]
         refid_to_funs[refid][dof]
     end
 end
