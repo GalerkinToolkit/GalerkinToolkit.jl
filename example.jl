@@ -41,6 +41,7 @@ import GalerkinToolkit as gk
 using WriteVTK
 using Test
 using PartitionedArrays
+include("src/tmp.jl")
 
 function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
@@ -979,6 +980,27 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     # test 2x2x2 parts per dir 
 end
 
+function debug_periodic_3D_puzzlepiece()
+    # test 2x2x2 coarse mesh
+    coarse_domain = (0, 1, 0, 1, 0, 1)
+    coarse_mesh_dims = (2, 2, 2)
+    coarse_mesh_2x2x2 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
+    coarse_cell_vtk_fname_2x2x2 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_2x2x2_refcell"
+
+    # Load periodic fine (unit cell) mesh with triangular refcells
+    # TODO: load simpler quad mesh  
+    unit_cell_mesh_fpath = joinpath(
+        @__DIR__,
+        "assets",
+        "unit_cell_3D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
+    unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
+
+    two_level_mesh(
+        joinpath("output", "debug_3D_periodic_puzzlepiece"), 
+        coarse_mesh_2x2x2,
+        unit_cell_mesh) 
+end 
+
 function visualize_mesh(mesh, outpath, glue = nothing, d = nothing)
     node_ids = collect(1:gk.num_nodes(mesh))
 
@@ -1196,10 +1218,11 @@ end
 #TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
 #TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
-TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
-TMP.test_two_level_mesh_with_periodic_box_unit_cell()
+# TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
+#TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
 #TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
-TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+# TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+TMP.debug_periodic_3D_puzzlepiece()
 
 end # module TMP

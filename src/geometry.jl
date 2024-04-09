@@ -3642,18 +3642,42 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
 
     # Fixing vertices indirection for unit cell
     # Assumes one level of indirection for periodicity (e.g., vertex -> master -> master)
-    for fine_node in 1:n_fine_nodes
-        master_node = fine_node_to_master_node[fine_node]
-        if fine_node == master_node
-            continue  
+    # TODO: d-1 levels of indirection
+    for _ in 1:(D-1)
+        for fine_node in 1:n_fine_nodes
+            master_node = fine_node_to_master_node[fine_node]
+            if fine_node == master_node
+                continue  
+            end
+
+            master_master_node = fine_node_to_master_node[master_node]
+            fine_node_to_master_node[fine_node] = master_master_node 
+        end 
+    end
+
+    fine_node_to_permuted_node = zeros(Int, n_fine_nodes)
+    fine_node_to_face_node = zeros(Int, n_fine_nodes)
+    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(coarse_refcell))
+    d_to_local_dface_to_is_master = Vector{Vector{Bool}}(undef, D+1)
+    for d in 0:(D-1)
+        local_dface_to_is_master = similar(d_to_local_dface_to_opposite_dface[d+1], Bool) 
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
+        for local_dface in 1:n_local_dfaces 
+            local_dface_to_is_master[local_dface] = true
+        end
+     
+        for local_dface in 1:n_local_dfaces 
+            if  local_dface_to_is_master[local_dface] == false
+                continue
+            end
+        
+            opposite_local_dface = d_to_local_dface_to_opposite_dface[d+1][local_dface]
+            local_dface_to_is_master[opposite_local_dface] = false
         end
 
-        master_master_node = fine_node_to_master_node[master_node]
-        fine_node_to_master_node[fine_node] = master_master_node 
+        d_to_local_dface_to_is_master[d+1] = local_dface_to_is_master
     end 
-
-    # Fill permutation map for opposite local reference element faces 
-    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(coarse_refcell))
+    
     for d in 0:(D-1)
         n_local_dfaces = num_faces(boundary(coarse_refcell),d)
         local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
@@ -3666,10 +3690,18 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             # Handle nonperiodic case with identity permutation 
             # assumes consistent numbering of node ids on opposite faces... 
             # Also handles case where there are periodic nodes but the master nodes 
-            # will use the identity permutation 
-            if length(periodic_node_to_fine_node) == 0 || fine_nodes_1 == master_nodes_1
+            # will use the identity permutation
+            # TODO: in 3d geometry, since surfaces represent the periodic copies,
+            # the opposite edges can end up being a map from slaves to slave, and therefore
+            # this condition below fails because there is no obvious master (as in the 2d case) 
+            if length(periodic_node_to_fine_node) == 0 || 
+                fine_nodes_1 == master_nodes_1 ||
+                d_to_local_dface_to_is_master[d+1][local_dface_1] 
+
                 permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
                 local_dface_to_permutation[local_dface_1] = permutation
+                fine_node_to_permuted_node[fine_nodes_1] = permutation
+                fine_node_to_face_node[fine_nodes_1] = 1:length(fine_nodes_1)
                 continue 
             end
 
@@ -3682,6 +3714,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
             master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
             permutation = indexin(master_nodes_2, master_nodes_1)
             local_dface_to_permutation[local_dface_1] = permutation
+            fine_node_to_permuted_node[fine_nodes_1] = permutation
+            fine_node_to_face_node[fine_nodes_1] = 1:length(fine_nodes_1)
         end
         d_to_local_dface_to_permutation[d+1] = local_dface_to_permutation
     end
