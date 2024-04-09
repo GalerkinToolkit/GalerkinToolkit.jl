@@ -954,7 +954,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     @show visualize_mesh(coarse_mesh_2x2x2, joinpath("output", coarse_cell_vtk_fname_2x2x2))
 
     # visualize final mesh with 2x2x2 coarse mesh and unit cell 
-    periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_2x2x2, unit_cell_mesh)
+    periodic_final_mesh, glue = gk.two_level_mesh_kk(coarse_mesh_2x2x2, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
     visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname), glue, 3)
 
@@ -966,7 +966,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
         glue, 
         3)
 
-    throw("problem with 3D periodic puzzlepiece sequential mesh visualization")
+    #throw("problem with 3D periodic puzzlepiece sequential mesh visualization")
 
     # coarse_domain = (0, 10, 0, 10, 0, 10)
     # coarse_mesh_dims = (4, 4, 4)
@@ -1222,7 +1222,7 @@ end
 #TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
 #TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
-# TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+ TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 TMP.debug_periodic_3D_puzzlepiece()
 
 end # module TMP

@@ -55,7 +55,6 @@ function two_level_mesh(outpath, coarse_mesh,fine_mesh;boundary_names=nothing)
             if fine_node == master_node
                 continue  
             end
-
             master_master_node = fine_node_to_master_node[master_node]
             fine_node_to_master_node[fine_node] = master_master_node 
         end 
@@ -83,7 +82,6 @@ function two_level_mesh(outpath, coarse_mesh,fine_mesh;boundary_names=nothing)
 
         d_to_local_dface_to_is_master[d+1] = local_dface_to_is_master
     end 
-    display(d_to_local_dface_to_is_master) # TODO
     
     for d in 0:(D-1)
         n_local_dfaces = gk.num_faces(gk.boundary(coarse_refcell),d)
@@ -101,9 +99,7 @@ function two_level_mesh(outpath, coarse_mesh,fine_mesh;boundary_names=nothing)
             # TODO: in 3d geometry, since surfaces represent the periodic copies,
             # the opposite edges can end up being a map from slaves to slave, and therefore
             # this condition below fails because there is no obvious master (as in the 2d case) 
-            if length(periodic_node_to_fine_node) == 0 || 
-                fine_nodes_1 == master_nodes_1 ||
-                d_to_local_dface_to_is_master[d+1][local_dface_1] 
+            if length(periodic_node_to_fine_node) == 0 || d_to_local_dface_to_is_master[d+1][local_dface_1] 
 
                 permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
                 local_dface_to_permutation[local_dface_1] = permutation
