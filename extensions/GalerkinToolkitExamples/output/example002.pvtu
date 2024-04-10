@@ -5,10 +5,6 @@
     <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_2.vtu"/>
     <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_3.vtu"/>
     <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_4.vtu"/>
-    <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_5.vtu"/>
-    <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_6.vtu"/>
-    <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_7.vtu"/>
-    <Piece Source="/home/hades/.julia/dev/GalerkinToolkit.jl/extensions/GalerkinToolkitExamples/src/../output/example002/example002_8.vtu"/>
     <PPoints>
       <PDataArray type="Float64" Name="Points" NumberOfComponents="3"/>
     </PPoints>
@@ -18,34 +14,16 @@
     </PPointData>
     <PCellData>
       <PDataArray type="Int64" Name="0-face-3" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="0-face-8" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="2-face-3" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="interior" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="0-face-5" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="2-face-2" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-7" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="0-face-4" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="boundary" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="1-face-1" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="1-face-2" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-12" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="0-face-7" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="3-face-1" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="2-face-4" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-9" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="2-face-6" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="1-face-3" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="0-face-1" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="0-face-2" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="1-face-4" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-8" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="0-face-6" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-5" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="2-face-5" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-10" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="2-face-1" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-11" NumberOfComponents="1"/>
-      <PDataArray type="Int64" Name="1-face-6" NumberOfComponents="1"/>
       <PDataArray type="Int64" Name="piece" NumberOfComponents="1"/>
     </PCellData>
   </PUnstructuredGrid>

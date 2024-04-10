@@ -41,7 +41,6 @@ import GalerkinToolkit as gk
 using WriteVTK
 using Test
 using PartitionedArrays
-include("src/tmp.jl")
 
 function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # corresponds to 2D cell in glk mesh
@@ -572,7 +571,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     coarse_domain = (0, 10, 0, 10, 0, 10)
     coarse_mesh_dims = (1, 1, 1)
     coarse_mesh_1x1x1 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_1x1x1_refcell"
+    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_1x1x1_refcell"
 
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
@@ -606,7 +605,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     coarse_domain = (0, 10, 0, 10, 0, 10)
     coarse_mesh_dims = (4, 4, 4)
     coarse_mesh_4x4x4 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_4x4x4_refcell"
+    coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
@@ -916,7 +915,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     coarse_domain = (0, 10, 0, 10, 0, 10)
     coarse_mesh_dims = (1, 1, 1)
     coarse_mesh_1x1x1 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_1x1x1_refcell"
+    coarse_cell_vtk_fname_1x1x1 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_1x1x1_refcell"
 
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
@@ -936,70 +935,153 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
     expected_coordinates = [
-        [2.462298894969888, 4.330483324970414, 4.387785104676822],
-        [2.6085458181788184, 5.1674805956749905, 3.037271336319951],
-        [3.4823714583516914, 6.455029775322512, 3.3900969204290567],
-        [4.588614680940672, 5.402023185913057, 3.459281419337512]
+        [8.31698729810778, 8.316987298107781, 10.0],
+        [10.0, 8.453395893624393, 8.436185836985588],
+        [10.0, 6.76776695296637, 8.232233047033633],
+        [6.601456609551659, 6.630776452002998, 6.5285120063889135]
     ]
     example_coordinates = gk.node_coordinates(
         periodic_final_mesh, cell_id_to_inspect, cell_dim)
     @test all(example_coordinates .≈ expected_coordinates)
 
-    # test 2x2x2 coarse mesh
-    coarse_domain = (0, 1, 0, 1, 0, 1)
-    coarse_mesh_dims = (2, 2, 2)
-    coarse_mesh_2x2x2 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_2x2x2 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_2x2x2_refcell"
+    # test 4x4x4 coarse mesh 
+    coarse_domain = (0, 10, 0, 10, 0, 10)
+    coarse_mesh_dims = (4, 4, 4)
+    coarse_mesh_4x4x4 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
+    coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
+    visualize_mesh(coarse_mesh_4x4x4, joinpath("output", coarse_cell_vtk_fname_4x4x4))
 
-    @show visualize_mesh(coarse_mesh_2x2x2, joinpath("output", coarse_cell_vtk_fname_2x2x2))
+    # visualize final mesh with 4x4x4 coarse mesh and unit cell 
+    periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
+    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
+    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
 
-    # visualize final mesh with 2x2x2 coarse mesh and unit cell 
-    periodic_final_mesh, glue = gk.two_level_mesh_kk(coarse_mesh_2x2x2, unit_cell_mesh)
-    final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_2x2x2)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname), glue, 3)
-
-    # TODO: visualizing the puzzle piece geometry with the coarse cell ids labeled 
-    final_mesh_coarse_cell_id_vtk_fname = "coarse_cell_id_"*final_mesh_vtk_fname
-    visualize_mesh(
-        periodic_final_mesh, 
-        joinpath("output", final_mesh_coarse_cell_id_vtk_fname), 
-        glue, 
-        3)
-
-    #throw("problem with 3D periodic puzzlepiece sequential mesh visualization")
-
-    # coarse_domain = (0, 10, 0, 10, 0, 10)
-    # coarse_mesh_dims = (4, 4, 4)
-    # coarse_mesh_4x4x4 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    # coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_4x4x4_refcell"
-
+    # coordinate check 
+    expected_coordinates = [
+        [2.079246824526945, 2.0792468245269453, 2.5],
+        [2.5, 2.113348973406098, 2.109046459246397],
+        [2.5, 1.6919417382415924, 2.0580582617584082],
+        [1.6503641523879147, 1.6576941130007494, 1.6321280015972284],
+    ]
+    example_coordinates = gk.node_coordinates(
+        periodic_final_mesh, cell_id_to_inspect, cell_dim)
+    @test all(example_coordinates .≈ expected_coordinates)
 
     ## Parallel 
-    # test one mesh one process
+    # 1 part per dir (i.e., no parallelism)
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (1, 1, 1)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_1x1x1_parts_per_direction"
 
-    # test 2x2x2 parts per dir 
-end
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
 
-function debug_periodic_3D_puzzlepiece()
-    # test 2x2x2 coarse mesh
-    coarse_domain = (0, 1, 0, 1, 0, 1)
-    coarse_mesh_dims = (2, 2, 2)
-    coarse_mesh_2x2x2 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
-    coarse_cell_vtk_fname_2x2x2 = "coarse_cell_mesh_3D_periodic_glk_box_geometry_quad_2x2x2_refcell"
-
-    # Load periodic fine (unit cell) mesh with triangular refcells
-    # TODO: load simpler quad mesh  
-    unit_cell_mesh_fpath = joinpath(
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "assets",
-        "unit_cell_3D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
-    unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
-    two_level_mesh(
-        joinpath("output", "debug_3D_periodic_puzzlepiece"), 
-        coarse_mesh_2x2x2,
-        unit_cell_mesh) 
-end 
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        [
+            [2.079246824526945, 2.0792468245269453, 2.5],
+            [2.5, 2.113348973406098, 2.109046459246397],
+            [2.5, 1.6919417382415924, 2.0580582617584082],
+            [1.6503641523879147, 1.6576941130007494, 1.6321280015972284],
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
+
+    # 2x2x2 part per dir 
+    domain = (0, 10, 0, 10, 0, 10)
+    cells = (4, 4, 4)
+    parts_per_dir = (2, 2, 2)
+    nparts = prod(parts_per_dir)
+    parts = DebugArray(LinearIndices((nparts,)))
+    coarse_pmesh = gk.cartesian_mesh(
+        domain, cells;
+        parts_per_dir, parts,
+        partition_strategy=gk.partition_strategy(; ghost_layers=0))
+    coarse_pmesh_vtk_fname = "coarse_cell_pmesh_3D_nonperiodic_glk_square_geometry_quad_4x4x4_refcell_2x2x2_parts_per_direction"
+
+    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+
+    # visualize the parallel mesh
+    pmesh_vtk_fpath = joinpath(
+        @__DIR__,
+        "output",
+        "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
+    visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
+
+    # coordinate check 
+    expected_coordinates = DebugArray([
+        # p1
+        [
+            [2.079246824526945, 2.0792468245269453, 2.5],                                                                                                                                                
+            [2.5, 2.113348973406098, 2.109046459246397],                                                                                                                                                 
+            [2.5, 1.6919417382415924, 2.0580582617584082],                                                                                                                                               
+            [1.6503641523879147, 1.6576941130007494, 1.6321280015972284]     
+        ],
+        # p2 
+        [
+            [7.079246824526946, 2.0792468245269453, 2.5],                                                                                                                                                
+            [7.5, 2.113348973406098, 2.109046459246397],                                                                                                                                                 
+            [7.5, 1.6919417382415924, 2.0580582617584082],                                                                                                                                               
+            [6.650364152387915, 1.6576941130007494, 1.6321280015972284]   
+        ],
+        # p3 
+        [
+            [2.079246824526945, 7.079246824526946, 2.5],                                                                                                                                                 
+            [2.5, 7.113348973406098, 2.109046459246397],                                                                                                                                                 
+            [2.5, 6.691941738241592, 2.0580582617584082],                                                                                                                                                
+            [1.6503641523879147, 6.657694113000749, 1.6321280015972284]
+        ],
+        # p4 
+        [
+            [7.079246824526946, 7.079246824526946, 2.5],                                                                                                                                                 
+            [7.5, 7.113348973406098, 2.109046459246397],                                                                                                                                                 
+            [7.5, 6.691941738241592, 2.0580582617584082],                                                                                                                                               
+            [6.650364152387915, 6.657694113000749, 1.6321280015972284]
+        ],
+        # p5  
+        [
+            [2.079246824526945, 2.0792468245269453, 7.5],
+            [2.5, 2.113348973406098, 7.109046459246397],
+            [2.5, 1.6919417382415924, 7.058058261758408],
+            [1.6503641523879147, 1.6576941130007494, 6.632128001597229]
+        ],
+        # p6 
+        [
+            [7.079246824526946, 2.0792468245269453, 7.5],
+            [7.5, 2.113348973406098, 7.109046459246397],
+            [7.5, 1.6919417382415924, 7.058058261758408],
+            [6.650364152387915, 1.6576941130007494, 6.632128001597229]
+        ],
+        # p7 
+        [ 
+            [2.079246824526945, 7.079246824526946, 7.5],
+            [2.5, 7.113348973406098, 7.109046459246397],
+            [2.5, 6.691941738241592, 7.058058261758408],
+            [1.6503641523879147, 6.657694113000749, 6.632128001597229]
+        ],
+        # p8
+        [
+            [7.079246824526946, 7.079246824526946, 7.5],
+            [7.5, 7.113348973406098, 7.109046459246397],
+            [7.5, 6.691941738241592, 7.058058261758408],
+            [6.650364152387915, 6.657694113000749, 6.632128001597229]
+        ]
+    ])
+    test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
+end
 
 function visualize_mesh(mesh, outpath, glue = nothing, d = nothing)
     node_ids = collect(1:gk.num_nodes(mesh))
@@ -1214,15 +1296,13 @@ function test_pmesh_cell_ownership(cell_ownership, pmesh)
     # all cells on partition and verify ownership
 end
 
-# TODO: Fix tests the 3D puzzlepiece tests... currently 2D tests are commented out 
-#TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_square_unit_cell()
+TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
+TMP.test_two_level_mesh_with_periodic_square_unit_cell()
 
-# TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
-#TMP.test_two_level_mesh_with_periodic_box_unit_cell()
+TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
+TMP.test_two_level_mesh_with_periodic_box_unit_cell()
 
-#TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
- TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
-TMP.debug_periodic_3D_puzzlepiece()
+TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
+TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
 end # module TMP
