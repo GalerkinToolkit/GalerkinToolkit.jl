@@ -70,4 +70,30 @@ params[:export_vtu] = false
 Example001.main(params)
 Example001.main(params)
 
+# Puzzle piece 2D
+# The puzzle piece has gaps for which there is no labeling of phhysical groups 
+# and therefore the solution on these gaps essentially does not occur, resulting
+# in failure of thetests 
+domain = (0,1,0,1)
+cells = (10,10)
+unit_cell_mesh_fpath = joinpath(
+    @__DIR__,
+    "..", # projectdir?
+    "..",
+    "..",
+    "assets",
+    "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
+fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
+domain = (0,30,0,10)
+cells = (2,2)
+coarse_mesh = gk.cartesian_mesh(domain,cells)
+mesh, = gk.two_level_mesh(coarse_mesh,fine_mesh)
+
+params = Dict{Symbol,Any}()
+params[:example_path] =  
+params[:mesh] = mesh
+results = Example001.main(params)
+@test results[:eh1] < tol
+@test results[:el2] < tol
+
 end # module
