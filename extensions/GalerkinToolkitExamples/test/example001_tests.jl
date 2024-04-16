@@ -88,10 +88,11 @@ domain = (0,30,0,10)
 cells = (2,2)
 coarse_mesh = gk.cartesian_mesh(domain,cells)
 mesh, = gk.two_level_mesh(coarse_mesh,fine_mesh)
+gk.label_boundary_faces!(mesh; physical_name="boundary")
 
 params = Dict{Symbol,Any}()
-params[:example_path] =  
 params[:mesh] = mesh
+params[:dirichlet_tags] = ["boundary"] 
 results = Example001.main(params)
 @test results[:eh1] < tol
 @test results[:el2] < tol
