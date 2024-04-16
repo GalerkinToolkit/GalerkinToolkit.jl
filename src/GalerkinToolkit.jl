@@ -1,4 +1,5 @@
 module GalerkinToolkit
+const gk = GalerkinToolkit
 
 using WriteVTK
 using FastGaussQuadrature
@@ -12,6 +13,7 @@ using SparseArrays
 using Metis
 
 include("geometry.jl")
+include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")
 

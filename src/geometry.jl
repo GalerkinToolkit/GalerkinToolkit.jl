@@ -5,8 +5,8 @@
 # reference_faces
 #
 
-abstract type GalerkinToolkitDataType end
-function Base.show(io::IO,data::GalerkinToolkitDataType)
+abstract type AbstractType end
+function Base.show(io::IO,data::gk.AbstractType)
     print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
 end
 
@@ -131,6 +131,25 @@ repeat_per_dir(geo,a::NTuple) = a
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
 face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2)+1]
+function face_local_faces(topo,d,D)
+    dface_to_Dfaces = JaggedArray(gk.face_incidence(topo,d,D))
+    Dface_to_dfaces = gk.face_incidence(topo,D,d)
+    dface_to_lfaces_data = similar(dface_to_Dfaces.data) 
+    fill!(dface_to_lfaces_data,0)
+    dface_to_lfaces_ptrs = dface_to_Dfaces.ptrs
+    dface_to_lfaces = JaggedArray(dface_to_lfaces_data,dface_to_lfaces_ptrs)
+    for (dface1,Dfaces) in enumerate(dface_to_Dfaces)
+        for (lface1,Dface) in enumerate(Dfaces)
+            dfaces = Dface_to_dfaces[Dface]
+            for (lface2,dface2) in enumerate(dfaces)
+                if dface1 == dface2
+                    dface_to_lfaces[dface1][lface1] = lface2
+                end
+            end
+        end
+    end
+    dface_to_lfaces
+end
 face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
 num_faces(a) = map(length,face_reference_id(a))
 num_faces(a,d) = length(face_reference_id(a,d))
@@ -192,10 +211,10 @@ end
 
 # Supertype hierarchy
 
-    AbstractFaceGeometry <: GalerkinToolkitDataType
+    AbstractFaceGeometry <: gk.AbstractType
 
 """
-abstract type AbstractFaceGeometry <: GalerkinToolkitDataType end
+abstract type AbstractFaceGeometry <: gk.AbstractType end
 
 struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
     extrusion::NTuple{D,Bool}
@@ -280,7 +299,7 @@ end
 - [`lagrange_mesh_face`](@ref)
 
 """
-abstract type AbstractMeshFace <: GalerkinToolkitDataType end
+abstract type AbstractMeshFace <: gk.AbstractType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
@@ -477,7 +496,7 @@ end
 - [`mesh_from_chain`](@ref)
 
 """
-abstract type AbstractFEMesh <: GalerkinToolkitDataType end
+abstract type AbstractFEMesh <: gk.AbstractType end
 
 struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     node_coordinates::A
@@ -1212,11 +1231,18 @@ end
 """
 """
 function interior_node_permutations(fe::AbstractMeshFace)
-    interior_node_permutations_from_mesh_face(fe)
+    interior_ho_nodes = interior_nodes(fe)
+    node_permutations_from_mesh_face(fe,interior_ho_nodes)
 end
 
-function interior_node_permutations_from_mesh_face(refface)
-    interior_ho_nodes = interior_nodes(refface)
+"""
+"""
+function node_permutations(fe::AbstractMeshFace)
+    interior_ho_nodes = 1:num_nodes(fe)
+    node_permutations_from_mesh_face(fe,interior_ho_nodes)
+end
+
+function node_permutations_from_mesh_face(refface,interior_ho_nodes)
     ho_nodes_coordinates = node_coordinates(refface)
     geo = geometry(refface)
     vertex_perms = vertex_permutations(geo)
@@ -1229,7 +1255,7 @@ function interior_node_permutations_from_mesh_face(refface)
     geo_mesh = boundary(geo)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
     vertex_to_geo_node = map(first,vertex_to_geo_nodes)
-    ref_face = lagrangian_reference_face(geo)
+    ref_face = lagrange_mesh_face(geo,1)
     fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
@@ -1278,7 +1304,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractMeshTopology <: GalerkinToolkitDataType end
+abstract type AbstractMeshTopology <: gk.AbstractType end
 
 struct GenericMeshTopology{A,B,C,D} <: AbstractMeshTopology
     face_incidence::A
@@ -1626,7 +1652,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractFaceTopology <: GalerkinToolkitDataType end
+abstract type AbstractFaceTopology <: gk.AbstractType end
 
 struct GenericFaceTopology{A,B} <: AbstractFaceTopology
     boundary::A
@@ -2176,6 +2202,20 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     node_to_tag
 end
 
+function classify_mesh_faces!(dface_to_tag,mesh,d,tag_to_name)
+    fill!(dface_to_tag,zero(eltype(dface_to_tag)))
+    face_groups = physical_faces(mesh,d)
+    for (tag,name) in enumerate(tag_to_name)
+        for (name2,faces) in face_groups
+            if name != name2
+                continue
+            end
+            dface_to_tag[faces] .= tag
+        end
+    end
+    dface_to_tag
+end
+
 """
 """
 function physical_names(mesh,d)
@@ -2190,6 +2230,28 @@ function physical_names(mesh;merge_dims=Val(false))
         return d_to_names
     end
     reduce(union,d_to_names)
+end
+
+function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==2,face_to_cells)
+    groups[physical_name] = faces
+    mesh
+end
+
+function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==1,face_to_cells)
+    groups[physical_name] = faces
+    mesh
 end
 
 """
@@ -2211,7 +2273,7 @@ abstract type AbstractFEChain
 - [`fe_chain`](@ref)
 
 """
-abstract type AbstractFEChain <: GalerkinToolkitDataType end
+abstract type AbstractFEChain <: gk.AbstractType end
 
 struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
     node_coordinates::A
@@ -2307,7 +2369,7 @@ end
 
 function simplexify_unit_simplex(geo)
     @assert is_unit_simplex(geo)
-    refface = lagrangian_reference_face(geo)
+    refface = lagrange_mesh_face(geo,1)
     mesh_from_reference_face(refface)
 end
 
@@ -2397,7 +2459,7 @@ function simplexify_reference_face(ref_face)
     # We need the same order in all directions
     # for this to make sense
     my_order = order(ref_face)
-    ref_faces_inter = map(r_geom->lagrangian_reference_face(geometry(r_geom),order=my_order),ref_faces_geom)
+    ref_faces_inter = map(r_geom->lagrange_mesh_face(geometry(r_geom),my_order),ref_faces_geom)
     s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
         m = num_nodes(r)
         n = num_nodes(r_geom)
@@ -2870,7 +2932,7 @@ function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
-function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,resolution=nothing)
+function visualization_mesh_from_mesh(mesh,dim,ids=num_faces(mesh,dim);order=nothing,refinement=nothing)
     function barrier(
             refid_to_tabulation,
             refid_to_scell_to_snodes,
@@ -2984,20 +3046,20 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,reso
     end # barrier
     refid_to_refface = reference_faces(mesh,dim)
     refid_to_refmesh = map(refid_to_refface) do ref_face
-        if order === nothing && resolution === nothing
+        if order === nothing && refinement === nothing
             # Use the given cells as visualization cells
             mesh_from_reference_face(ref_face)
-        elseif order !== nothing && resolution === nothing
+        elseif order !== nothing && refinement === nothing
             # Use cells of given order as visualization cells
             geo = geometry(ref_face)
-            ref_face_ho = lagrangian_reference_face(geo;order)
+            ref_face_ho = lagrange_mesh_face(geo,order)
             mesh_from_reference_face(ref_face_ho)
-        elseif order === nothing && resolution !== nothing
-            # Use linear sub-cells with $resolution per direction per direction
+        elseif order === nothing && refinement !== nothing
+            # Use linear sub-cells with $refinement per direction per direction
             geom = geometry(ref_face)
-            refine_reference_geometry(geom,resolution)
+            refine_reference_geometry(geom,refinement)
         else
-            error("order and resolution kw-arguments can not be given at the same time")
+            error("order and refinement kw-arguments can not be given at the same time")
         end
     end
     refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
@@ -3010,8 +3072,8 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,reso
     refid_to_srefid_to_vrefface = map(refmesh->reference_faces(refmesh,dim),refid_to_refmesh)
     refid_to_snode_to_coords = map(node_coordinates,refid_to_refmesh)
     node_to_coords = node_coordinates(mesh)
-    cell_to_nodes = face_nodes(mesh,dim)
-    cell_to_refid = face_reference_id(mesh,dim)
+    cell_to_nodes = view(face_nodes(mesh,dim),ids)
+    cell_to_refid = view(face_reference_id(mesh,dim),ids)
     Dn = num_ambient_dims(mesh)
     barrier(
             refid_to_tabulation,
@@ -3064,7 +3126,7 @@ function refine_reference_geometry(geo,resolution)
             end
           end
         end
-        refface = lagrangian_reference_face(geo)
+        refface = lagrange_mesh_face(geo,1)
         chain = Chain(;
                        num_dims=Val(2),
                        node_coordinates = X,
@@ -3241,7 +3303,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
-struct PartitionStrategy{A,B} <: GalerkinToolkitDataType
+struct PartitionStrategy{A,B} <: gk.AbstractType
     graph_nodes::Symbol
     graph_edges::Symbol
     graph_nodes_dim::A
@@ -3349,7 +3411,7 @@ function mesh_graph(mesh::AbstractFEMesh;
     end
 end
 
-struct PMesh{A,B,C,D} <: GalerkinToolkitDataType
+struct PMesh{A,B,C,D} <: gk.AbstractType
     mesh_partition::A
     node_partition::B
     face_partition::C
@@ -3378,7 +3440,7 @@ function num_dims(mesh::PMesh)
     length(mesh.face_partition) - 1
 end
 
-struct PMeshLocalIds{A,B} <: GalerkinToolkitDataType
+struct PMeshLocalIds{A,B} <: gk.AbstractType
     node_indices::A
     face_indices::B
 end
