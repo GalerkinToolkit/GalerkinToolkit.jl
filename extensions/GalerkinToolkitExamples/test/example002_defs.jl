@@ -135,7 +135,7 @@ function example002_advanced_tests_np_4(distribute)
 
     params[:mesh] = final_pmesh 
     params[:dirichlet_tags] = ["boundary"]
-    params[:example_path] = joinpath("..", "output")
+    params[:example_path] = joinpath(@__DIR__, "..", "output", "puzzle_piece_2D_np_4")
     params[:export_vtu] = true 
     results = Example002.main(params)
     @test results[:eh1] < tol 
