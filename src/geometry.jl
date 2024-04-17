@@ -3441,6 +3441,7 @@ function num_dims(mesh::PMesh)
 end
 
 """
+    label_boundary_faces!(mesh::PMesh;physical_name="boundary")
 
 Update `mesh` inplace by using partition ownership of faces to label only the boundary of 
 meshes in a parallel mesh where the boundary is defined as a face owned by a given partition 
