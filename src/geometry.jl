@@ -3458,10 +3458,13 @@ function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
         face_to_cells = face_incidence(topo,d,D)
         local_to_owner_face = local_to_owner(myfaces)
         part = part_id(myfaces)
-        ids = findall(1:length(myfaces)) do face
-            myv[face] == 1 && local_to_owner_face[face] == part && length(face_to_cells) == 1
+        let face = 0
+            faces = findall(face_to_cells) do cells
+                face += 1
+                myv[face] == 1 && local_to_owner_face[face] == part && length(cells) == 1
+            end
+            physical_faces(mymesh,d)[physical_name] = faces
         end
-        physical_faces(mymesh,d)[physical_name] = ids
     end
     mesh
 end
