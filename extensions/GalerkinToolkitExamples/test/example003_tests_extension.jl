@@ -10,7 +10,7 @@ params = Dict{Symbol,Any}()
 
 
 #params[:mesh] = gk.cartesian_mesh((0,10,0,10),(2,2))
-params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(25,25,25))
+params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(30,30,30))
 # (80,80,80) is about 18 seconds for jacobian with cpu_v1 500k cells | flux
 # (60,60,60) is about 7 seconds for jacobian with cpu_v1 | flux
 
@@ -41,7 +41,7 @@ params[:float_type] = Dict(:Float => Float16, :Int => Int32)
 t = @elapsed results1, jacobian_time1, gpu_transfer_time1, gpu_setup_time1, x1  = Example003.main(params)
 println(t)
 println("iterations ",results1[:iterations])
-#println(round.(x .- x1,digits=4))
+println(round.(x .- x1,digits=4))
 # # To test coalesce
 # params[:jacobian_implementation] = :gpu_v1
 # println("Jacobian extension ", params[:jacobian_implementation])

@@ -93,7 +93,7 @@ function nlsolve_solver(;linear_solver=Example001.cg_amg_solver(),options...)
         f!(r,x) = nlp.residual!(r,x,cache)
         j!(J,x) = nlp.jacobian!(J,x,cache) 
         df = OnceDifferentiable(f!,j!,x0,r0,J0)
-        (;df,linsolve,J0,cache,ls_setup,linear_solver)
+        (;df,linsolve,J0,cache,ls_setup,linear_solver,cache) # store the cache here.
     end
     function solve!(x,setup)
         (;df,linsolve) = setup
@@ -443,7 +443,7 @@ function nonlinear_problem(state)
     end
     function linearize(u_dofs, params)
         r,J,V,K = assemble_sybmolic(state, params)
-        cache = (V,K)
+        cache = (V,K) # Can add a reference to timer. Maybe a dictionary
         residual_cells!(r,u_dofs,state)
         residual_faces!(r,u_dofs,state)
         state.jacobian_cells!(V,u_dofs,state) 
@@ -457,7 +457,7 @@ function nonlinear_problem(state)
         r
     end
     function jacobian!(J,u_dofs,cache)
-        (V,K) = cache 
+        (V,K) = cache # put the timings 
         jac_time_iter = @elapsed gpu_data_transfer = state.jacobian_cells!(V,u_dofs,state)
         global jacobian_time += jac_time_iter
         global gpu_transfer_time += gpu_data_transfer
@@ -1135,8 +1135,9 @@ function solve_problem(params,state,results)
     problem = nonlinear_problem(state)
     solver = params[:solver]
     x = problem.initial()
-    setup = solver.setup(x,problem,params)
+    setup = solver.setup(x,problem,params) # put the timer in this setup.
     iterations,x = solver.solve!(x,setup)
+    #setup.cache.timers # all the info is then here.
     solver.finalize!(setup)
     results[:iterations] = iterations
     x
