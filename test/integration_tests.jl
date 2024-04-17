@@ -51,6 +51,15 @@ int = ∫(dΩref) do q
     gk.call(*,u(x),dV)
 end
 
+#int = ∫(dΩref) do q
+#    @magic begin
+#        x = ϕ(q)
+#        J = ForwardDiff.jacobian(ϕ,q)
+#        dV = abs(det(J))
+#        u(x)*dV
+#    end
+#end
+
 @test sum(int) ≈ 8
 
 int = ∫(dΩref) do q
@@ -59,6 +68,17 @@ int = ∫(dΩref) do q
     dV
 end
 
+@test sum(int) ≈ 4
+
+dΩ = gk.measure(Ω,degree)
+int = ∫(dΩ) do x
+    u(x)
+end
+
+@test sum(int) ≈ 8
+
+u = gk.analytical_field(x->1,Ω)
+int = ∫(u,dΩ)
 @test sum(int) ≈ 4
 
 end # module
