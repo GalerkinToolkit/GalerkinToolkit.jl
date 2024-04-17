@@ -131,8 +131,12 @@ function example002_advanced_tests_np_4(distribute)
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, unit_cell_mesh)
+    final_pmesh = gk.label_boundary_faces!(final_pmesh; physical_name="boundary")
 
     params[:mesh] = final_pmesh 
+    params[:dirichlet_tags] = ["boundary"]
+    params[:example_path] = joinpath("..", "output")
+    params[:export_vtu] = true 
     results = Example002.main(params)
     @test results[:eh1] < tol 
     @test results[:el2] < tol

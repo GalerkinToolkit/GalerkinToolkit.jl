@@ -3440,6 +3440,31 @@ function num_dims(mesh::PMesh)
     length(mesh.face_partition) - 1
 end
 
+"""
+
+Update `mesh` inplace by using partition ownership of faces to label only the boundary of 
+meshes in a parallel mesh where the boundary is defined as a face owned by a given partition 
+and not incident with any other faces on another partition (i.e., not on the interface). 
+"""
+function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
+    D = num_dims(mesh)
+    d = D - 1
+    face_parts = face_partition(mesh, d)
+    v = pfill(1,face_parts)
+    assemble!(v) |> wait
+    map(partition(mesh),partition(v),face_parts) do mymesh, myv, myfaces
+        topo = topology(mymesh)
+        face_to_cells = face_incidence(topo,d,D)
+        local_to_owner_face = local_to_owner(myfaces)
+        part = part_id(myfaces)
+        ids = findall(1:length(myfaces)) do face
+            myv[face] == 1 && local_to_owner_face[face] == part && length(face_to_cells) == 1
+        end
+        physical_faces(mymesh,d)[physical_name] = ids
+    end
+    mesh
+end
+
 struct PMeshLocalIds{A,B} <: gk.AbstractType
     node_indices::A
     face_indices::B

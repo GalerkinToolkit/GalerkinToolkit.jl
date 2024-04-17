@@ -34,6 +34,60 @@ unit_cell_<dimension>_<periodic OR nonperiodic> \
 
 # The file naming convention for final meshes vtu (i.e., two level meshes)
 [,coarse_cell_id]_final_mesh_<unit cell vtk file name>_<coarse cell vtk fname>
+
+# geometry_tests.jl
+Has example code for using Metis to partition a mesh to different mpi ranks
+Do this if gmsh doesn't already support parallel mesh  
+Remember: partition_strategy(shouldn't have ghosts)
+Without the galerkin toolkit approach, the standard approach ^ 
+could improve with parmetis... but only binary supported, no interface so far 
+
+
+num of cells in unit cells how todes time change
+numn of cell in coarse mesh how time change
+size of unit cell in 3D --> possible reduction of time 
+
+i.e., 
+t vs. num fine cells
+t vs. num coarse cells 
+
+# for gmsh baseline
+Check if parallel generation is already available
+
+Just make the final geometry, and don't do the unit cell appraoch (since this 
+approach is already covered by galerkintoolkit)
+
+mention: brute force approach of checking each node against node coordinate 
+to determine duplicates was not taken, more intelligent, though complicated
+indirection involved, used to avoid this approach
+
+fixed fine and coarse cells, then increase # of processes 
+
+scale nprocs with ncoarse cells 
+
+include time spent in the sequential approach to show relative improvement 
+
+what is the % of time the meshing time is compared with the different phases
+i.e., time.(solver == assembly == meshing)
+
+# label boundary faces in parallel
+see issues for pseudocode
+
+
+update the two_level_mesh
+
+pvec = pfill(1, face_partition(pmesh))
+assemble!(pvec) |> wait # collect values of interfaces into proper owner 
+only label Dirichlet boundary conditions (i.e., label_boundaries!)
+on nodes that have a single neighbor... this avoids naming BCs at the interface
+between meshes
+
+map(parittion(v), face_partition(mesh))  do myv, myfaces
+    
+end
+
+see struct Pmesh
+face_partition
 """
 module TMP
 
