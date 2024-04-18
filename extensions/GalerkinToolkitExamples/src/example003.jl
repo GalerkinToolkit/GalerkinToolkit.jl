@@ -18,14 +18,8 @@ using CUDA
 # This one implements a vanilla sequential iso-parametric p-Laplacian solver by only
 # using the mesh interface.
 
-global jacobian_time = 0.0
-global gpu_transfer_time = 0.0
-
 function main(params_in)
     # Process params
-    global jacobian_time = 0.0 # set again to zero (for between simulations)
-    global gpu_transfer_time = 0.0
-
     params_default = default_params()
     params = add_default_params(params_in,params_default)
     results = Dict{Symbol,Any}()
@@ -34,6 +28,8 @@ function main(params_in)
     state, gpu_setup_time = setup(params)
     add_basic_info(results,params,state)
 
+    push!(params[:timer_dict]["Initial_setup"], gpu_setup_time)
+
     x = solve_problem(params,state,results)
 
     # Post process
@@ -41,7 +37,7 @@ function main(params_in)
     integrate_error_norms(results,uh,state)
     export_results(uh,params,state)
 
-    results, jacobian_time, gpu_transfer_time, gpu_setup_time, x
+    results, x
 end
 
 function add_default_params(params_in,params_default)
@@ -73,6 +69,11 @@ function default_params()
     params[:autodiff] = :hand
     params[:jacobian_implementation] = :original
     params[:float_type] = Dict(:Float => Float64, :Int => Int32)
+    timer = Dict("Initial_setup" => [],
+                 "Jacobian" => [],
+                 "Jacobian_transfer" => []
+                )
+    params[:timer_dict] = timer
     params
 end
 
@@ -93,7 +94,7 @@ function nlsolve_solver(;linear_solver=Example001.cg_amg_solver(),options...)
         f!(r,x) = nlp.residual!(r,x,cache)
         j!(J,x) = nlp.jacobian!(J,x,cache) 
         df = OnceDifferentiable(f!,j!,x0,r0,J0)
-        (;df,linsolve,J0,cache,ls_setup,linear_solver,cache) # store the cache here.
+        (;df,linsolve,J0,cache,ls_setup,linear_solver) # store the cache here.
     end
     function solve!(x,setup)
         (;df,linsolve) = setup
@@ -402,6 +403,7 @@ function setup(params)
         jacobian_cells! = jacobian_cells_cpu_extension!
     elseif occursin("gpu", string(params[:jacobian_implementation]))
         jacobian_cells! = jacobian_cells_gpu!
+        threads_in_block = params[:threads_in_block]
         # Allocate memory on gpu
         gpu_pointers, gpu_setup_time = cpu_gpu_transfer(params,cell_isomap,dofs,cell_integration,p,xe_setup,ue_alloc,Jt_precompute)
     else
@@ -414,7 +416,7 @@ function setup(params)
     if occursin("gpu", string(params[:jacobian_implementation]))
         return state = (;p,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,
                     face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,
-                    gpu_pointers,float_type,jacobian_impl,Jt_precompute), gpu_setup_time
+                    gpu_pointers,float_type,jacobian_impl,Jt_precompute,threads_in_block), gpu_setup_time
     else
         return state = (;p,flux,dflux,solver,dirichlet_bcs,neumann_bcs,cell_integration,cell_isomap,
                     face_integration,face_isomap,user_funs,dofs,xe_setup,ue_alloc,jacobian_cells!,float_type,
@@ -443,7 +445,8 @@ function nonlinear_problem(state)
     end
     function linearize(u_dofs, params)
         r,J,V,K = assemble_sybmolic(state, params)
-        cache = (V,K) # Can add a reference to timer. Maybe a dictionary
+        timer_dict = params[:timer_dict]
+        cache = (V,K,timer_dict) # Can add a reference to timer. Maybe a dictionary
         residual_cells!(r,u_dofs,state)
         residual_faces!(r,u_dofs,state)
         state.jacobian_cells!(V,u_dofs,state) 
@@ -457,14 +460,36 @@ function nonlinear_problem(state)
         r
     end
     function jacobian!(J,u_dofs,cache)
-        (V,K) = cache # put the timings 
+        (V,K,timer_dict) = cache # put the timings here
         jac_time_iter = @elapsed gpu_data_transfer = state.jacobian_cells!(V,u_dofs,state)
-        global jacobian_time += jac_time_iter
-        global gpu_transfer_time += gpu_data_transfer
+        push!(cache[3]["Jacobian_transfer"], gpu_data_transfer)
+        push!(cache[3]["Jacobian"], jac_time_iter)
         sparse_matrix!(J,V,K)
         J
     end
     (;initial,linearize,residual!,jacobian!)
+end
+
+function gpu_kernel_register_usage(params_in)
+    params_default = default_params()
+    params = add_default_params(params_in,params_default)
+    results = Dict{Symbol,Any}()
+
+    state, gpu_setup_time = setup(params)
+    problem = nonlinear_problem(state)
+    x = problem.initial()
+    r,J,V,K = assemble_sybmolic(state, params)
+    V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = state.gpu_pointers
+
+    # Then check for each kernel the register usage.
+    kernel_v1=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+    kernel_v2=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+    kernel_v3=@cuda launch=false assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)
+    
+    registers = Dict("gpu_v1"=>CUDA.registers(kernel_v1), 
+                     "gpu_v2"=>CUDA.registers(kernel_v2),
+                     "gpu_v3"=>CUDA.registers(kernel_v3))
+    registers
 end
 
 function assemble_sybmolic(state,params)
@@ -1024,7 +1049,7 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
     xe = state.xe_setup.xe
     ue = state.ue_alloc.ue
     jacobian = state.jacobian_impl
-
+    threads = state.threads_in_block
     V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = state.gpu_pointers
 
     setup_ue!(ue, cell_to_dofs, u_dirichlet, u_dofs, ncells, nl, jacobian) # update ue
@@ -1032,37 +1057,28 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
         copyto!(ue_d, ue)
         fill!(V_coo_d,0.0)
     end
-    # max_threads = attribute(CuDevice(0),CUDA.DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK)
 
     if jacobian == :gpu_v1 # baseline
         # Here the configuration is set for the kernel (threads, blocks etc.)
-        ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
-        config = launch_configuration(ckernel.fun)
-        threads = min(ncells, config.threads)
+        # ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+        # config = launch_configuration(ckernel.fun)
+        # threads = min(ncells, config.threads)
         blocks =  cld(ncells, threads)
         CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
                                         ncells_d,p_d,dflux,nl_d,nq_d)
     elseif jacobian == :gpu_v2 # coalesced
-        ckernel=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
-        config = launch_configuration(ckernel.fun)
-        threads = min(ncells, config.threads)
+        # ckernel=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+        # config = launch_configuration(ckernel.fun)
+        # threads = min(ncells, config.threads)
         blocks =  cld(ncells, threads)
-        
         CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
-                                        ncells_d,p_d,dflux,nl_d,nq_d)
-    
+                                        ncells_d,p_d,dflux,nl_d,nq_d) 
     elseif jacobian == :gpu_v3 # version 3 ncells * nl^2
-        ckernel=@cuda launch=false assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)
-        config = launch_configuration(ckernel.fun)
-        threads = min(ncells * nl^2, config.threads)
+        # ckernel=@cuda launch=false assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)
+        # config = launch_configuration(ckernel.fun)
+        # threads = min(ncells * nl^2, config.threads)
         blocks =  cld(ncells * nl^2, threads)
-        CUDA.@sync @cuda threads=threads blocks=blocks assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)
-        
-    elseif jacobian == :gpu_v4
-        # ncells * nq^2 threads
-        threads = fld(512, nl^2) * nl^2
-        blocks = Int(cld((ncells*nl^2)/nl, threads))
-        CUDA.@sync @cuda threads=threads blocks=blocks assemble_kernel_∇ue_tiled(V_coo_d, nq_d, nl_d, Jt_d, xe_d, ∇ste_d, w_d, ∇u_d, ue_d, dflux, p_d, ncells_d)
+        CUDA.@sync @cuda threads=threads blocks=blocks assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)   
     end
 
     # Then you need to copy back V_coo back to cpu memory
@@ -1135,9 +1151,9 @@ function solve_problem(params,state,results)
     problem = nonlinear_problem(state)
     solver = params[:solver]
     x = problem.initial()
-    setup = solver.setup(x,problem,params) # put the timer in this setup.
+    setup = solver.setup(x,problem,params)
     iterations,x = solver.solve!(x,setup)
-    #setup.cache.timers # all the info is then here.
+    results[:timer_dict] = setup.cache[3] # all the info is then here.
     solver.finalize!(setup)
     results[:iterations] = iterations
     x
