@@ -17,12 +17,16 @@ params[:mesh] = gk.cartesian_mesh((0,3,0,2,0,1),(5,5,5))
 # First test original correct solution to compare the rest to
 params[:export_vtu] = false
 ns_to_s = 1e+9
-params[:float_type] = Dict(:Float => Float32, :Int => Int32)
+params[:float_type] = Dict(:Float => Float64, :Int => Int32)
 params[:p] = 2
 params[:jacobian_implementation] = :gpu_v1
 params[:autodiff] = :flux
+params[:threads_in_block] = 30
 
-
+register_list = []
+register_list = Example003.gpu_kernel_register_usage(params, register_list)
+params[:autodiff] = :energy
+println(Example003.gpu_kernel_register_usage(params, register_list))
 # From here you pull out the time measurement and the number of Newton iterations for convergence and store it in a df.
 
 # Test the kernel generic of the cpu extension
@@ -34,7 +38,6 @@ timer = Dict("Initial_setup" => [],
 params[:timer_dict] = timer
 
 println("Jacobian extension ", params[:jacobian_implementation])
-t = @elapsed results, x  = Example003.main(params)
 t = @elapsed results, x  = Example003.main(params)
 
 println(results[:timer_dict])
