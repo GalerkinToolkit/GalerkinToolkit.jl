@@ -3451,7 +3451,8 @@ function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
     D = num_dims(mesh)
     d = D - 1
     face_parts = face_partition(mesh, d)
-    v = pfill(1,face_parts)
+    v = pfill(1,face_parts) # TODO: fail here, send to neigs from which you are not rcving 
+                            # TODO: look at face partition D-1
     assemble!(v) |> wait
     map(partition(mesh),partition(v),face_parts) do mymesh, myv, myfaces
         topo = topology(mymesh)
@@ -3961,14 +3962,56 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
                         final_node_to_mask[final_nodes] .=true
                     end
                 end
-                final_faces_in_group = findall(final_nodes->all(final_node->final_node_to_mask[final_node],final_nodes),final_dfaces_to_final_nodes)
+                final_faces_in_group = findall(
+                    final_nodes->all(final_node->final_node_to_mask[final_node],final_nodes),final_dfaces_to_final_nodes)
                 final_physical_dfaces[name] = final_faces_in_group
             end
         end
     end
 
+    final_node_to_face_dim = zeros(Int32, n_final_nodes)
+    final_node_to_coarse_dface = zeros(Int32, n_final_nodes)
+
+    for d in 0:D
+        n_coarse_dfaces = num_faces(coarse_mesh, d)
+        for coarse_dface in 1:n_coarse_dfaces 
+            final_nodes = d_to_coarse_dface_to_final_nodes[d+1][coarse_dface]
+            final_node_to_coarse_dface[final_nodes] .= coarse_dface  
+            final_node_to_face_dim[final_nodes] .= d 
+        end
+    end
+
+    d_to_coarse_dface_to_final_dfaces = Vector{Vector{Vector{Int32}}}(undef, D+1)
+
+    for d in 0:D
+        n_coarse_dfaces = num_faces(coarse_mesh, d)
+        final_dface_to_final_nodes = face_nodes(final_mesh, d)
+        final_dface_to_coarse_dface = Vector{Int32}(undef, length(final_dface_to_final_nodes))
+        coarse_dface_to_final_dfaces = Vector{Vector{Int32}}(undef, n_coarse_dfaces)
+        for final_dface in 1:length(final_dface_to_final_nodes)
+            final_nodes = final_dface_to_final_nodes[final_dface]
+            inode = findfirst(final_node -> final_node_to_face_dim[final_node] == d, final_nodes) # TODO: problem here
+            if isnothing(inode) 
+                final_dface_to_coarse_dface[final_dface] = 0
+                continue 
+            end
+            coarse_dface = final_node_to_coarse_dface[final_nodes[inode]] 
+            final_dface_to_coarse_dface[final_dface] = coarse_dface
+        end
+        for coarse_dface in 1:n_coarse_dfaces
+            # TODO: search here introduces nonlinear complexity
+            final_dfaces = findall(i -> i == coarse_dface, final_dface_to_coarse_dface)
+            coarse_dface_to_final_dfaces[coarse_dface] = final_dfaces 
+        end
+
+        d_to_coarse_dface_to_final_dfaces[d+1]  = coarse_dface_to_final_dfaces 
+    end    
+
+    
+ 
     glue = (;
         d_to_coarse_dface_to_final_nodes,
+        d_to_coarse_dface_to_final_dfaces,
         coarse_cell_fine_node_to_final_node,
         d_to_local_dface_to_fine_nodes,
         final_cell_to_coarse_cell)
@@ -3979,6 +4022,7 @@ end
 function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     # TODO for the moment we assume a cell-based partition without ghosts
     # TODO: NEED TO ASSERT CELL BASED PARTITION???
+    # TODO: shorten function
     D = num_dims(fine_mesh)
 
     function setup_local_meshes(my_coarse_mesh)
@@ -4050,7 +4094,7 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         coarse_dface_to_gids_data = map( # this is a map over partition specific data
             get_coarse_dface_to_gids, coarse_dface_partition, glue, final_node_to_gid)
         coarse_dface_to_gids = PVector(coarse_dface_to_gids_data, coarse_dface_partition)
-        consistent!(coarse_dface_to_gids) |> wait # owners give their values to ghosts?
+        consistent!(coarse_dface_to_gids) |> wait # owners give their values to ghosts
 
         # For each d-dimensional coarse face, update the non-partitioned gids 
         # with the partitioned and consistent gids
@@ -4091,8 +4135,12 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
         n_dfaces = sum(n_own_dfaces)
         return variable_partition(n_own_dfaces, n_dfaces)
     end
+
+
+    # TODO: causing problem for label_boundary_faces! for pmesh?
     _face_partition = ntuple(
-        i-> i == (D+1) ? cell_partition : dummy_face_partition(i-1),
+        i-> i == (D+1) ? cell_partition : compute_face_partition(
+            coarse_mesh, mesh_partition, glue, i-1),
         D+1)
 
     final_glue = nothing # TODO: placeholder for parallel glue
@@ -4100,4 +4148,102 @@ function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
     final_mesh = PMesh(
         mesh_partition, node_partition, _face_partition, partition_strategy)
     return final_mesh, final_glue
+end
+
+
+# Build face 
+function compute_face_partition(coarse_mesh, mesh_partition, glue, d) 
+    # mark owernship of dfaces using a local final mesh and local glue
+    function mark_dfaces(final_mesh, local_glue, coarse_indices)
+        d_to_coarse_dface_to_final_dfaces = local_glue.d_to_coarse_dface_to_final_dfaces
+        my_final_dface_to_owner = fill(0,num_faces(final_mesh, d))
+        coarse_dface_to_final_dfaces = d_to_coarse_dface_to_final_dfaces[d+1]
+        coarse_dfaces = face_indices(coarse_indices,d)
+        coarse_dface_to_owner = local_to_owner(coarse_dfaces)
+        n_coarse_dfaces = length(coarse_dface_to_owner)
+        for coarse_dface in 1:n_coarse_dfaces
+            owner = coarse_dface_to_owner[coarse_dface]
+            final_dfaces = coarse_dface_to_final_dfaces[coarse_dface]
+            my_final_dface_to_owner[final_dfaces] .= owner
+        end
+        my_final_dface_to_owner
+    end
+    index_partition_coarse_mesh = index_partition(coarse_mesh) # dface/face ixs per part
+    final_dface_to_owner = map(mark_dfaces, mesh_partition, glue, index_partition_coarse_mesh) 
+    parts = linear_indices(final_dface_to_owner)
+
+    # count the number of owned final mesh dfaces per partition
+    n_own_final_dfaces = map(
+        (owners,part)->count(owner->owner==part,owners),final_dface_to_owner,parts)
+    n_final_dfaces = sum(n_own_final_dfaces) 
+
+    # owned indices of final mesh dfaces for each partition
+    own_dface_partition = variable_partition(n_own_final_dfaces,n_final_dfaces)
+
+    # assign a non-zero global id to final mesh dfaces if they are owned by a partition
+    final_dface_to_gid = map(v->zeros(Int,length(v)),final_dface_to_owner)
+    map(final_dface_to_gid,
+        final_dface_to_owner,
+        own_dface_partition,
+        parts) do gids, owners, own_dfaces, part
+        own = 0
+        for i in 1:length(gids)
+            owner = owners[i]
+            if owner == part
+                own += 1
+                gids[i] = own_dfaces[own]
+            end
+        end
+    end
+
+    # for each dimension of the coarse d-face, handle ownership and ensure consistent data 
+    # For a given d-dimensional (i.e., point, edge, surface, vol) coarse face,
+    # get a map from coarse face to final dface, iterate through the coarse faces,
+    # and get a global id corresponding to that final dface
+    function get_coarse_dface_to_gids(coarse_dfaces, local_glue, gids)
+        @show d
+        @show coarse_dface_to_final_dfaces = local_glue.d_to_coarse_dface_to_final_dfaces[d+1]
+        n_coarse_dfaces = local_length(coarse_dfaces)
+        coarse_dface_to_gids = Vector{Vector{Int}}(undef,n_coarse_dfaces)
+        for coarse_dface in 1:n_coarse_dfaces
+            final_dfaces = coarse_dface_to_final_dfaces[coarse_dface]
+            coarse_dface_to_gids[coarse_dface] = gids[final_dfaces]
+        end
+        JaggedArray(coarse_dface_to_gids)
+    end
+    @show d
+    # TODO: add simple square unit cell example  
+    coarse_dface_partition = face_partition(coarse_mesh, d)
+    coarse_dface_to_gids_data = map( # this is a map over partition specific data
+        get_coarse_dface_to_gids, coarse_dface_partition, glue, final_dface_to_gid)
+    coarse_dface_to_gids = PVector(coarse_dface_to_gids_data, coarse_dface_partition)
+    consistent!(coarse_dface_to_gids) |> wait # owners give their values to ghosts
+
+    # For each d-dimensional coarse face, update the non-partitioned gids 
+    # with the partitioned and consistent gids
+    function update_gids!(coarse_dfaces, coarse_dface_to_gids, local_glue, gids)
+        coarse_dface_to_final_dfaces = local_glue.d_to_coarse_dface_to_final_dfaces[d+1]
+        n_coarse_dfaces = local_length(coarse_dfaces) 
+        for coarse_dface in 1:n_coarse_dfaces
+            final_dfaces = coarse_dface_to_final_dfaces[coarse_dface]
+            gids[final_dfaces] = coarse_dface_to_gids[coarse_dface]
+        end
+    end
+    map(update_gids!, 
+        coarse_dface_partition, 
+        coarse_dface_to_gids_data, 
+        glue, 
+        final_dface_to_gid)
+
+    # For each part, use the final dface (i.e., local id) to global id map
+    # and final dface to owner map to construct arbitrary indices for partitioned 
+    # mesh dfaces 
+    function finalize_dface_partition(part, gids, owners)
+        LocalIndices(n_final_dfaces, part, gids, owners)
+    end
+
+    dface_partition = map(
+        finalize_dface_partition, parts, final_dface_to_gid, final_dface_to_owner)
+
+    dface_partition
 end

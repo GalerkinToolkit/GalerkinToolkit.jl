@@ -12,9 +12,6 @@ function test_solver_periodic_2D_puzzle_piece_mesh()
     tol = 1.0e-8
     
     # Puzzle piece 2D
-    # The puzzle piece has gaps for which there is no labeling of phhysical groups 
-    # and therefore the solution on these gaps essentially does not occur, resulting
-    # in failure of thetests 
     unit_cell_mesh_fpath = joinpath(
         @__DIR__,
         "..",
