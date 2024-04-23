@@ -3,6 +3,7 @@ module Example001Tests
 import GalerkinToolkit as gk
 using GalerkinToolkitExamples: Example001
 using Test
+include("example001_defs.jl")
 
 tol = 1.0e-10
 
@@ -70,31 +71,15 @@ params[:export_vtu] = false
 Example001.main(params)
 Example001.main(params)
 
-# Puzzle piece 2D
-# The puzzle piece has gaps for which there is no labeling of phhysical groups 
-# and therefore the solution on these gaps essentially does not occur, resulting
-# in failure of thetests 
-domain = (0,1,0,1)
-cells = (10,10)
-unit_cell_mesh_fpath = joinpath(
-    @__DIR__,
-    "..", # projectdir?
-    "..",
-    "..",
-    "assets",
-    "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
-fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
-domain = (0,30,0,10)
-cells = (2,2)
-coarse_mesh = gk.cartesian_mesh(domain,cells)
-mesh, = gk.two_level_mesh(coarse_mesh,fine_mesh)
-gk.label_boundary_faces!(mesh; physical_name="boundary")
 
-params = Dict{Symbol,Any}()
-params[:mesh] = mesh
-params[:dirichlet_tags] = ["boundary"] 
-results = Example001.main(params)
-@test results[:eh1] < tol
-@test results[:el2] < tol
+# Serial tests of periodic geometries 
+outdir = joinpath(@__DIR__, "..", "output")
+assetsdir = joinpath(@__DIR__, "..", "..", "..", "assets")
+
+test_solver_periodic_2D_square_mesh(outdir, assetsdir, tol)
+test_solver_periodic_3D_box_mesh(outdir, assetsdir, tol)
+
+test_solver_periodic_2D_puzzle_piece_mesh(outdir, assetsdir, tol)
+test_solver_periodic_3D_puzzle_piece_mesh(outdir, assetsdir, tol)
 
 end # module
