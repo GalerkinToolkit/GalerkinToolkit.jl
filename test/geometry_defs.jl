@@ -1,21 +1,10 @@
 """
-# TODOs:
-[] example002 codes on meshes 
-[] setup experiments 
-[] sequential puzzle piece 3D test
-    [] look at interior of box geometry 3D, requires change to visualization to use
-    the glue and dimension 3
-[] pmesh puzzle piece 3D test
-
 To easily write sequential meshes to vtk, simply call the `visualize_mesh` function.
 Similarly, call `visualize_pmesh` for parallel meshes.
 
 # Notes for Visualizations 
 For visualizations, use threshold and or translations of coordinates to aid in viewing
 only desired parts of the coarse cell ids. 
-
-Opposite faces seem okay, potential problem  with periodicity, edges (i.e., 1-face-i) seems 
-to be the issue.
 
 In GMSH visibility you can change to elementary entities to debug visualization 
 
@@ -34,69 +23,14 @@ unit_cell_<dimension>_<periodic OR nonperiodic> \
 
 # The file naming convention for final meshes vtu (i.e., two level meshes)
 [,coarse_cell_id]_final_mesh_<unit cell vtk file name>_<coarse cell vtk fname>
-
-# geometry_tests.jl
-Has example code for using Metis to partition a mesh to different mpi ranks
-Do this if gmsh doesn't already support parallel mesh  
-Remember: partition_strategy(shouldn't have ghosts)
-Without the galerkin toolkit approach, the standard approach ^ 
-could improve with parmetis... but only binary supported, no interface so far 
-
-
-num of cells in unit cells how todes time change
-numn of cell in coarse mesh how time change
-size of unit cell in 3D --> possible reduction of time 
-
-i.e., 
-t vs. num fine cells
-t vs. num coarse cells 
-
-# for gmsh baseline
-Check if parallel generation is already available
-
-Just make the final geometry, and don't do the unit cell appraoch (since this 
-approach is already covered by galerkintoolkit)
-
-mention: brute force approach of checking each node against node coordinate 
-to determine duplicates was not taken, more intelligent, though complicated
-indirection involved, used to avoid this approach
-
-fixed fine and coarse cells, then increase # of processes 
-
-scale nprocs with ncoarse cells 
-
-include time spent in the sequential approach to show relative improvement 
-
-what is the % of time the meshing time is compared with the different phases
-i.e., time.(solver == assembly == meshing)
-
-# label boundary faces in parallel
-see issues for pseudocode
-
-
-update the two_level_mesh
-
-pvec = pfill(1, face_partition(pmesh))
-assemble!(pvec) |> wait # collect values of interfaces into proper owner 
-only label Dirichlet boundary conditions (i.e., label_boundaries!)
-on nodes that have a single neighbor... this avoids naming BCs at the interface
-between meshes
-
-map(parittion(v), face_partition(mesh))  do myv, myfaces
-    
-end
-
-see struct Pmesh
-face_partition
 """
-module TMP
 
 import GalerkinToolkit as gk
 using WriteVTK
 using Test
 using PartitionedArrays
 
-function test_two_level_mesh_with_nonperiodic_square_unit_cell()
+function test_two_level_mesh_with_nonperiodic_square_unit_cell(outdir::String)
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
     cell_id_to_inspect = 42
@@ -109,7 +43,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
 
     # visualize the glk unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_nonperiodic_glk_square_geometry_quad_4x4_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # initialize 1x1 coarse mesh
     coarse_domain = (0, 10, 0, 10)
@@ -120,7 +54,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # construct the final mesh with 1x1 coarse mesh 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
-    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh
     final_cell_to_inspect = 12 # arbitrary 
@@ -142,7 +76,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # construct the final mesh with a 4x4 coarse mesh     
     final_mesh, _ = gk.two_level_mesh(coarse_mesh, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
-    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh 
     final_cell_to_inspect = 114 # arbitrary 
@@ -173,7 +107,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -206,7 +140,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -245,7 +179,7 @@ function test_two_level_mesh_with_nonperiodic_square_unit_cell()
     test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
-function test_two_level_mesh_with_nonperiodic_box_unit_cell()
+function test_two_level_mesh_with_nonperiodic_box_unit_cell(outdir::String)
     # corresponds to 3D cell in glk mesh
     cell_dim = 3
     cell_id_to_inspect = 42
@@ -258,7 +192,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
 
     # visualize the glk unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # Coarse 1x1x1 mesh 
     coarse_domain = (0, 10, 0, 10, 0, 10)
@@ -269,7 +203,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
-    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1x1 coarse grid 
     final_cell_to_inspect = 32
@@ -296,7 +230,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
-    visualize_mesh(final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # coordinate check for 4x4x4 coarse mesh 
     final_cell_to_inspect = 2048
@@ -332,7 +266,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -368,7 +302,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -469,7 +403,7 @@ function test_two_level_mesh_with_nonperiodic_box_unit_cell()
     test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
-function test_two_level_mesh_with_periodic_square_unit_cell()
+function test_two_level_mesh_with_periodic_square_unit_cell(outdir::String, assetsdir::String)
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
     cell_id_to_inspect = 42
@@ -477,14 +411,13 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     ## Sequential 
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
-        @__DIR__,
-        "assets",
+      assetsdir,
         "unit_cell_2D_periodic_square_geometry_triangular_refcell.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell with triangular refcells 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_square_geometry_triangular_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # Initialize coarse 1x1 mesh 
     coarse_domain = (0, 10, 0, 10)
@@ -495,7 +428,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     # visualize final mesh with 1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 1x1 coarse mesh 
     final_cell_to_inspect = 23
@@ -517,7 +450,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     # visualize final mesh with 4x4 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in 4x4 coarse mesh
     final_cell_to_inspect = 272
@@ -548,7 +481,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -580,7 +513,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -615,7 +548,7 @@ function test_two_level_mesh_with_periodic_square_unit_cell()
     test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
-function test_two_level_mesh_with_periodic_box_unit_cell()
+function test_two_level_mesh_with_periodic_box_unit_cell(outdir::String, assetsdir::String)
     # corresponds to 3D cell in glk mesh
     cell_dim = 3
     cell_id_to_inspect = 42
@@ -629,19 +562,18 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
 
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
-        @__DIR__,
-        "assets",
+      assetsdir,
         "unit_cell_3D_periodic_box_geometry_triangular_refcell.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell with triangular refcells 
     unit_cell_vtk_fname = "unit_cell_mesh_3D_periodic_gmsh_box_geometry_triangular_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
     final_cell_to_inspect = 112
@@ -664,13 +596,13 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # TODO: visualizing coarse cell ids in a 4x4x4 coarse cube with periodic cube unit cell 
     final_mesh_coarse_cell_id_vtk_fname = "coarse_cell_id_"*final_mesh_vtk_fname
     visualize_mesh(
         periodic_final_mesh, 
-        joinpath("output", final_mesh_coarse_cell_id_vtk_fname), 
+        joinpath(outdir, final_mesh_coarse_cell_id_vtk_fname), 
         glue, 
         3)
 
@@ -704,7 +636,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -736,7 +668,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -802,7 +734,7 @@ function test_two_level_mesh_with_periodic_box_unit_cell()
     test_pmesh_coordinates(expected_coordinates, final_pmesh, cell_id_to_inspect, cell_dim)
 end
 
-function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
+function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell(outdir::String, assetsdir::String)
     # corresponds to 2D cell in glk mesh
     cell_dim = 2
     cell_id_to_inspect = 42
@@ -810,14 +742,13 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     ## Sequential 
     # Load periodic fine (unit cell) mesh
     unit_cell_mesh_fpath = joinpath(
-        @__DIR__,
-        "assets",
+      assetsdir,
         "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell 
     unit_cell_vtk_fname = "unit_cell_mesh_2D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # coarse 1x1 mesh
     coarse_domain = (0, 10, 0, 10)
@@ -828,7 +759,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # visualize final mesh with 1x1 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Check coordinates of example refcell in final mesh
     final_cell_to_inspect = 64
@@ -850,7 +781,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # visualize final mesh with 4x4 coarse mesh and puzzle piece unit cell
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Check coordinates  
     final_cell_to_inspect = 256
@@ -882,7 +813,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(periodic_final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -917,7 +848,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
 
     visualize_pmesh(periodic_final_pmesh, parts, nparts, pmesh_vtk_fpath)
@@ -959,7 +890,7 @@ function test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
     # test_pmesh_cell_ownership(cell_ownership, periodic_final_pmesh)
 end
 
-function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
+function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell(outdir::String, assetsdir::String)
     # corresponds to 2D cell in glk mesh
     cell_dim = 3
     cell_id_to_inspect = 42
@@ -973,19 +904,18 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
 
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
-        @__DIR__,
-        "assets",
+      assetsdir,
         "unit_cell_3D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
     unit_cell_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
     # visualize the periodic gmsh unit cell with triangular refcells 
     unit_cell_vtk_fname = "unit_cell_mesh_3D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"
-    visualize_mesh(unit_cell_mesh, joinpath("output", unit_cell_vtk_fname))
+    visualize_mesh(unit_cell_mesh, joinpath(outdir, unit_cell_vtk_fname))
 
     # visualize final mesh with 1x1x1 coarse mesh and periodic unit cell 
     periodic_final_mesh, _ = gk.two_level_mesh(coarse_mesh_1x1x1, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_1x1x1)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # Coordinate check for unit cell in a 1x1x1 coarse mesh 
     expected_coordinates = [
@@ -1003,12 +933,12 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     coarse_mesh_dims = (4, 4, 4)
     coarse_mesh_4x4x4 = gk.cartesian_mesh(coarse_domain, coarse_mesh_dims)
     coarse_cell_vtk_fname_4x4x4 = "coarse_cell_mesh_3D_nonperiodic_glk_box_geometry_quad_4x4x4_refcell"
-    visualize_mesh(coarse_mesh_4x4x4, joinpath("output", coarse_cell_vtk_fname_4x4x4))
+    visualize_mesh(coarse_mesh_4x4x4, joinpath(outdir, coarse_cell_vtk_fname_4x4x4))
 
     # visualize final mesh with 4x4x4 coarse mesh and unit cell 
     periodic_final_mesh, glue = gk.two_level_mesh(coarse_mesh_4x4x4, unit_cell_mesh)
     final_mesh_vtk_fname = "final_mesh_$(unit_cell_vtk_fname)_$(coarse_cell_vtk_fname_4x4x4)"
-    visualize_mesh(periodic_final_mesh, joinpath("output", final_mesh_vtk_fname))
+    visualize_mesh(periodic_final_mesh, joinpath(outdir, final_mesh_vtk_fname))
 
     # coordinate check 
     expected_coordinates = [
@@ -1039,7 +969,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -1071,7 +1001,7 @@ function test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
     # visualize the parallel mesh
     pmesh_vtk_fpath = joinpath(
         @__DIR__,
-        "output",
+        outdir,
         "final_pmesh_$(unit_cell_vtk_fname)_$(coarse_pmesh_vtk_fname)")
     visualize_pmesh(final_pmesh, parts, nparts, pmesh_vtk_fpath)
 
@@ -1275,88 +1205,3 @@ function show_num_nodes(pmesh::gk.PMesh, parts)
         @show gk.num_nodes(mesh) part 
     end 
 end 
-
-"""
-
-In the current scheme, the partition ids in the 2D case are
-
-```
-[3 4
- 1 2]
-```
-and ownership of a node should belong to the partition id with the highest partition id 
-at the interfaces. So do something like 
-
-for each mesh in pmesh 
-    myid = mesh.id 
-    function intersection_owned_by_mesh_4(interface)
-        @test count(owner -> owner == 4, owners(interface)) == 1 
-        # test that the intersection node is at the center of the partitions ???
-    end
-
-    # could get physical group 2 (top) and 4 (right) for mesh 1
-    # top owned by mesh 3 and right owned by mesh 2 
-    if myid == 1
-        top = get_top(mesh)
-        right = get_right(mesh)
-        intersection_owned_by_mesh_4(top)
-        intersection_owned_by_mesh_4(right)
-        @test all(map(owner -> owner == 3 || owner == 4, unique(owners(top))))
-        @test all(map(owner -> owner == 2 || owner == 4, unique(owners(right))))
-
-    # could get physical group 3 (left) and 2 (top) for mesh 2 
-    # left owned by mesh 2 and top owned by mesh 4
-    elseif myid == 2
-        left = get_left(mesh)
-        top = get_top(mesh)
-        intersection_owned_by_mesh_4(left)
-        @test all(map(owner -> owner == 2 || owner == 4, unique(owners(left))))
-        @test all(unique(owners(top)) .== 4)
-
-    # could get physical group 1 (bottom) and 4 (right) for mesh 3
-    # bottom owned by mesh 3 and right owned by mesh 4 
-    elseif myid == 3
-        bottom = get_bottom(mesh)
-        right = get_right(mesh)
-        intersection_owned_by_mesh_4(bottom)
-        @test all(map(owner -> owner == 3 || owner == 4, unique(owners(bottom))))
-        @test all(unique(owners(right)) .== 4)
-
-    # could get physical group 3 (left) and (1) bottom for mesh 4
-    # all owned by mesh 4
-    elseif myid == 4
-        left = get_left(mesh)
-        bottom = get_bottom(mesh)
-        @test all(unique(owners(left)) .== 4)
-        @test all(unique(owners(bottom)) .== 4)
-
-    else 
-        throw("notimplemented")
-    end
-
-
-point at (5, 5, 0) --- given current domain -- should have 4 has owner for all meshes 
-"""
-function test_pmesh_node_ownership(pmesh, parts)
-    map(partition(pmesh), gk.index_partition(pmesh), parts) do mesh, ids, part
-        node_indices = gk.node_indices(ids)
-        node_index_to_owner = local_to_owner(node_indices)
-
-    end
-end
-
-function test_pmesh_cell_ownership(cell_ownership, pmesh)
-    # this is guaranteed currently by uniform mesh partition, but could iterate 
-    # all cells on partition and verify ownership
-end
-
-TMP.test_two_level_mesh_with_nonperiodic_square_unit_cell()
-TMP.test_two_level_mesh_with_periodic_square_unit_cell()
-
-TMP.test_two_level_mesh_with_nonperiodic_box_unit_cell()
-TMP.test_two_level_mesh_with_periodic_box_unit_cell()
-
-TMP.test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell()
-TMP.test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell()
-
-end # module TMP
