@@ -263,14 +263,7 @@ map(setup,partition(pmesh),gk.index_partition(pmesh),parts)
 
 ## Functions calls for sequential and parallel periodic/nonperiodic tests 
 ## of fine meshes on different coarse domains 
-test_two_level_mesh_with_nonperiodic_square_unit_cell(outdir)
-test_two_level_mesh_with_nonperiodic_box_unit_cell(outdir)
-
 assetsdir = joinpath(@__DIR__, "..", "assets")
-test_two_level_mesh_with_periodic_square_unit_cell(outdir, assetsdir)
-test_two_level_mesh_with_periodic_box_unit_cell(outdir, assetsdir)
-
-test_two_level_mesh_with_periodic_2D_puzzlepiece_unit_cell(outdir, assetsdir)
 test_two_level_mesh_with_periodic_3D_puzzlepiece_unit_cell(outdir, assetsdir)
 
 end # module

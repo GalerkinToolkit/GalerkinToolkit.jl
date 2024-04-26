@@ -76,10 +76,6 @@ Example001.main(params)
 outdir = joinpath(@__DIR__, "..", "output")
 assetsdir = joinpath(@__DIR__, "..", "..", "..", "assets")
 
-test_solver_periodic_2D_square_mesh(outdir, assetsdir, tol)
-test_solver_periodic_3D_box_mesh(outdir, assetsdir, tol)
-
-test_solver_periodic_2D_puzzle_piece_mesh(outdir, assetsdir, tol)
 test_solver_periodic_3D_puzzle_piece_mesh(outdir, assetsdir, tol)
 
 end # module

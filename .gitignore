@@ -9,3 +9,4 @@
 /docs/build/
 .vscode
 /extensions/GalerkinToolkitExamples/output/*
+/extensions/GalerkinToolkitExamples/Manifest.toml

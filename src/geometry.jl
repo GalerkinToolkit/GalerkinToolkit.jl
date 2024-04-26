@@ -1280,7 +1280,7 @@ function node_permutations_from_mesh_face(refface,interior_ho_nodes)
                 y += g*x
             end
             pnode = findfirst(i->(norm(i-y)+1)≈1,q)
-            if pnode != nothing
+            if !isnothing(pnode)
                node_to_pnode[iq] = pnode
             end
         end

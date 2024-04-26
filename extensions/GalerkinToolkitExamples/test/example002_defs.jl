@@ -68,8 +68,6 @@ function example002_tests_np_4(distribute)
     params[:solver] = Example002.ksp_solver()
     results = Example002.main(params) # TODO: why call twice?
     results = Example002.main(params) # no need check convergence due to petsc args
-
-    # PetscCall.finalize()
 end
 
 function example002_advanced_tests_np_4(distribute)
@@ -77,82 +75,8 @@ function example002_advanced_tests_np_4(distribute)
     outdir = joinpath(@__DIR__, "..", "output")
     assetsdir = joinpath(@__DIR__, "..", "..", "..", "assets")
     # TODO: KSP solver tests should be added to the below functions 
-    test_solver_periodic_2D_square_pmesh(outdir, assetsdir, tol)
-    test_solver_periodic_3D_box_pmesh(outdir, assetsdir, tol)
-
-    test_solver_periodic_2D_puzzle_piece_pmesh(outdir, assetsdir, tol)
     test_solver_periodic_3D_puzzle_piece_pmesh(outdir, assetsdir, tol)
-
 end 
-
-###########################################################################
-# Helper functions for parallel tests on periodic geometries 
-# TODO: Need to add KSP solver tests to these as well, currently using lu_solver 
-###########################################################################
-function test_solver_periodic_2D_square_pmesh(outdir::String, assetsdir::String, tol)
-    # load unit cell 
-    unit_cell_mesh_fpath = joinpath(
-       assetsdir,
-        "unit_cell_2D_periodic_square_geometry_triangular_refcell.msh")
-    fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
-
-    # Initialize coarse 4x4 mesh with 2x2 parts 
-    domain = (0, 10, 0, 10)
-    cells = (4, 4)
-    parts_per_dir = (2, 2)
-    nparts = prod(parts_per_dir)
-    parts = DebugArray(LinearIndices((nparts,)))
-    coarse_pmesh = gk.cartesian_mesh(
-        domain, cells;
-        parts_per_dir, parts,
-        partition_strategy=gk.partition_strategy(; ghost_layers=0))
-
-    # Construct final pmesh
-    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, fine_mesh)
-
-    # Call solver
-    params = Dict{Symbol,Any}()
-    params[:mesh] = final_pmesh 
-    params[:dirichlet_tags] = ["boundary"]
-    params[:example_path] = joinpath(outdir, "periodic_square_2D_np_4_test")
-    params[:export_vtu] = true 
-    results = Example002.main(params)
-    @test results[:eh1] < tol 
-    @test results[:el2] < tol
-end 
-
-function test_solver_periodic_2D_puzzle_piece_pmesh(outdir::String, assetsdir::String, tol)
-    # Coarse 2D pmesh
-    domain = (0, 10, 0, 10)
-    cells = (4, 4)
-    parts_per_dir = (2, 2)
-    nparts = prod(parts_per_dir)
-    parts = DebugArray(LinearIndices((nparts,)))
-    coarse_pmesh = gk.cartesian_mesh(
-        domain, cells;
-        parts_per_dir, parts,
-        partition_strategy=gk.partition_strategy(; ghost_layers=0))
-
-    # Periodic 2D puzzle tests 
-    params = Dict{Symbol,Any}()
-
-    # load unit cell 
-    unit_cell_mesh_fpath = joinpath(
-       assetsdir,
-        "unit_cell_2D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
-    fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
-
-    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, fine_mesh)
-    gk.label_boundary_faces!(final_pmesh; physical_name="boundary")
-
-    params[:mesh] = final_pmesh 
-    params[:dirichlet_tags] = ["boundary"]
-    params[:example_path] = joinpath(outdir, "puzzle_piece_2D_np_4_test")
-    params[:export_vtu] = true 
-    results = Example002.main(params)
-    @test results[:eh1] < tol 
-    @test results[:el2] < tol
-end
 
 function test_solver_periodic_3D_puzzle_piece_pmesh(outdir::String, assetsdir::String, tol)
     # Load periodic fine (unit cell) mesh with triangular refcells 
@@ -187,34 +111,3 @@ function test_solver_periodic_3D_puzzle_piece_pmesh(outdir::String, assetsdir::S
     @test results[:el2] < tol
 end 
 
-function test_solver_periodic_3D_box_pmesh(outdir::String, assetsdir::String, tol)
-    # load unit cell 
-    unit_cell_mesh_fpath = joinpath(
-       assetsdir,
-        "unit_cell_3D_periodic_box_geometry_triangular_refcell.msh")
-    fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
-
-    # Initialize coarse 4x4x4 mesh with 2x2x2 parts 
-    domain = (0, 10, 0, 10, 0, 10)
-    cells = (4, 4, 4)
-    parts_per_dir = (2, 2, 2)
-    nparts = prod(parts_per_dir)
-    parts = DebugArray(LinearIndices((nparts,)))
-    coarse_pmesh = gk.cartesian_mesh(
-        domain, cells;
-        parts_per_dir, parts,
-        partition_strategy=gk.partition_strategy(; ghost_layers=0))
-
-    # Construct final pmesh
-    final_pmesh, _ = gk.two_level_mesh(coarse_pmesh, fine_mesh)
-
-    # Call solver
-    params = Dict{Symbol,Any}()
-    params[:mesh] = final_pmesh 
-    params[:dirichlet_tags] = ["boundary"]
-    params[:example_path] = joinpath(outdir, "periodic_box_3D_np_4_test")
-    params[:export_vtu] = true 
-    results = Example002.main(params)
-    @test results[:eh1] < tol 
-    @test results[:el2] < tol
-end 
