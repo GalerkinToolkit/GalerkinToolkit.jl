@@ -14,9 +14,6 @@ PetscCall.init(args=split(options))
 
 function example002_tests_np_4(distribute)
     tol = 1.0e-8
-    # options = "-pc_type gamg -ksp_type cg -ksp_error_if_not_converged true -ksp_converged_reason -ksp_rtol 1.0e-6"
-    # PetscCall.init(args=split(options))
-
     params = Dict{Symbol,Any}()
     domain = (0,10,0,10)
     cells_per_dir = (20,20)
@@ -68,20 +65,13 @@ function example002_tests_np_4(distribute)
     params[:solver] = Example002.ksp_solver()
     results = Example002.main(params) # TODO: why call twice?
     results = Example002.main(params) # no need check convergence due to petsc args
-end
 
-function example002_advanced_tests_np_4(distribute)
-    tol = 1.0e-8
+    ## Periodic 3D puzzle piece test 
     outdir = joinpath(@__DIR__, "..", "output")
     assetsdir = joinpath(@__DIR__, "..", "..", "..", "assets")
-    # TODO: KSP solver tests should be added to the below functions 
-    test_solver_periodic_3D_puzzle_piece_pmesh(outdir, assetsdir, tol)
-end 
-
-function test_solver_periodic_3D_puzzle_piece_pmesh(outdir::String, assetsdir::String, tol)
     # Load periodic fine (unit cell) mesh with triangular refcells 
     unit_cell_mesh_fpath = joinpath(
-       assetsdir,
+    assetsdir,
         "unit_cell_3D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
     fine_mesh = gk.mesh_from_gmsh(unit_cell_mesh_fpath)
 
@@ -109,5 +99,6 @@ function test_solver_periodic_3D_puzzle_piece_pmesh(outdir::String, assetsdir::S
     results = Example002.main(params)
     @test results[:eh1] < tol 
     @test results[:el2] < tol
-end 
+end
+
 

@@ -356,25 +356,6 @@ function node_coordinates(fe::AbstractLagrangeMeshFace)
     user_node_to_coords
 end
 
-"""
-    node_coordinates(mesh, face_id, d)
-
-Return node coordinates corresponding to the `d`-dimensional face with `face_id`
-
-Variables matching the pattern `mesh_node*` correspond to the granularity of the supplied 
-`mesh`. For example, if `mesh` is a `final_mesh`, then `mesh_node_to_coordinates`
-is understood as `final_mesh_node_to_coordinates`.
-"""
-function node_coordinates(mesh, face, d)
-    n_dfaces = num_faces(mesh, d)
-    dface_to_local_node_to_mesh_node = face_nodes(mesh, d)
-    mesh_node_to_coordinates = node_coordinates(mesh)
-    @assert face <= n_dfaces "face id is in 1:n_dfaces, got $(face) ∉ 1:$(n_dfaces)"
-    local_node_to_mesh_node = dface_to_local_node_to_mesh_node[face]
-    coordinates = mesh_node_to_coordinates[local_node_to_mesh_node]
-    coordinates
-end 
-
 function primal_basis(fe::AbstractLagrangeMeshFace)
     map(e->(x-> prod(x.^e)),fe|>monomial_exponents)
 end
