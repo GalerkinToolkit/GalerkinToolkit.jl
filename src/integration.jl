@@ -299,3 +299,9 @@ function Base.sum(int::Integral)
     sum(map(sum_contribution,contributions(int)))
 end
 
+function Base.:+(int1::Integral,int2::Integral)
+    # TODO merge contributions on the same domain?
+    contribs = (gk.contributions(int1)...,gk.contributions(int2)...)
+    gk.integral(contribs)
+end
+
