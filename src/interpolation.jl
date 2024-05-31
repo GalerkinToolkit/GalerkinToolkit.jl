@@ -375,10 +375,14 @@ function term(u::DiscreteField)
     basis_term = gk.term(basis)
     index -> begin
         x -> begin
-            ndofs = num_face_dofs(index)
+            index2 = gk.index(
+                              face=index.face,
+                              local_face=index.local_face,
+                              face_around=index.face_around)
+            ndofs = num_face_dofs(index2)
             sum(1:ndofs) do dof
                 dof_per_dim = (nothing,dof)
-                index3 = replace_dof_per_dim(index,dof_per_dim)
+                index3 = replace_dof_per_dim(index2,dof_per_dim)
                 dof = dof_map(index3)
                 f = basis_term(index3)
                 coeff =  dof > 0 ? free_vals[dof] : diri_vals[-dof]
@@ -549,7 +553,8 @@ end
 function num_face_dofs(a::IsoParametricSpace,dim)
     face_to_dofs = face_dofs(a)
     index -> begin
-        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
+        #TODO
+        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         length(face_to_dofs[face])
     end
@@ -558,7 +563,8 @@ end
 function dof_map(a::IsoParametricSpace,dim)
     face_to_dofs = face_dofs(a)
     index -> begin
-        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
+        #TODO
+        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         dof = index.dof_per_dim[dim]
         face_to_dofs[face][dof]

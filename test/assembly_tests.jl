@@ -174,4 +174,35 @@ end
 
 A = gk.assemble_matrix(a,V²,V²)
 
+function a(u,v)
+    ∫(dΩref) do q
+        J = gk.call(ForwardDiff.jacobian,ϕ,q)
+        dVq = gk.call(dV,J)
+        m = gk.call(*,u(q),v(q))
+        gk.call(*,m,dVq)
+    end
+end
+
+f = gk.analytical_field(sum,Ω)
+
+function l(v)
+    ∫(dΩref) do q
+        J = gk.call(ForwardDiff.jacobian,ϕ,q)
+        dVq = gk.call(dV,J)
+        x = ϕ(q)
+        m = gk.call(*,f(x),v(q))
+        gk.call(*,m,dVq)
+    end
+end
+
+
+V = gk.iso_parametric_space(Ωref)
+uh = gk.zero_field(Float64,V)
+
+x,A,b = gk.linear_problem(a,l,V,V,uh)
+x .= A\b
+
+
+
+
 end # module

@@ -350,3 +350,16 @@ function assemble_matrix_compress(state)
     cache = (;I,J,V)
     vec, cache
 end
+
+
+function linear_problem(a,l,U,V,uh)
+    x = free_values(uh)
+    fill!(x,0)
+    T = eltype(x)
+    A = assemble_matrix(a,U,V;T)
+    b = assemble_vector(l,V;T)
+    d = assemble_vector(v->a(uh,v),V)
+    b .= b .- d
+    x,A,b
+end
+
