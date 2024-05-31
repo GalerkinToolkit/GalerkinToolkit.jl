@@ -262,6 +262,7 @@ end
 function index(;
     face=nothing,
     local_face=nothing,
+    face_around=nothing,
     point=nothing,
     field_per_dim =nothing,
     dof_per_dim=nothing,
@@ -270,6 +271,7 @@ function index(;
     Index(
           face,
           local_face,
+          face_around,
           point,
           field_per_dim,
           dof_per_dim,
@@ -277,19 +279,21 @@ function index(;
          )
 end
 
-struct Index{A,B,D,E,F,G}
+struct Index{A,B,D,E,F,G,H}
     face::A
     local_face::B
-    point::D
-    field_per_dim::E
-    dof_per_dim::F
-    face_around_per_dim::G
+    face_around::D
+    point::E
+    field_per_dim::F
+    dof_per_dim::G
+    face_around_per_dim::H
 end
 
 function replace_face(index::Index,face)
     Index(
           face,
           index.local_face,
+          index.face_around,
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -301,6 +305,19 @@ function replace_local_face(index::Index,local_face)
     Index(
           index.face,
           local_face,
+          index.face_around,
+          index.point,
+          index.field_per_dim,
+          index.dof_per_dim,
+          index.face_around_per_dim
+         )
+end
+
+function replace_face_around(index::Index,face_around)
+    Index(
+          index.face,
+          index.local_face,
+          face_around,
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -312,6 +329,7 @@ function replace_point(index::Index,point)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -323,6 +341,7 @@ function replace_field_per_dim(index::Index,field_per_dim)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           index.point,
           field_per_dim,
           index.dof_per_dim,
@@ -334,6 +353,7 @@ function replace_dof_per_dim(index::Index,dof_per_dim)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           index.point,
           index.field_per_dim,
           dof_per_dim,
@@ -607,7 +627,8 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
                 tface = sface_to_tfaces[sface][face_around]
                 lface = sface_to_lfaces[sface][face_around]
                 index2 = replace_face(index,tface)
-                ai = term_a(index2)
+                index3 = replace_face_around(index2,face_around)
+                ai = term_a(index3)
                 y = ys[face_around]
                 ai(y)
             end

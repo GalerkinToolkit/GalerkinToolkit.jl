@@ -567,6 +567,14 @@ function shape_functions(a::IsoParametricSpace,dim)
     gk.shape_functions(a,dim,field)
 end
 
+function shape_function_mask(f,face_around_per_dim,face_around,dim)
+    x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
+end
+
+function shape_function_mask(f,face_around_per_dim::Nothing,face_around::Nothing,dim)
+    f
+end
+
 function shape_functions(a::IsoParametricSpace,dim,field)
     @assert field == 1
     face_to_refid = face_reference_id(a)
@@ -579,7 +587,8 @@ function shape_functions(a::IsoParametricSpace,dim,field)
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
-        refid_to_funs[refid][dof]
+        f = refid_to_funs[refid][dof]
+        shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
     end
 end
 

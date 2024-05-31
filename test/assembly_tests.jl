@@ -95,7 +95,7 @@ function l(v)
 end
 
 b = gk.assemble_vector(l,V)
-@test_broken sum(b)+1 ≈ 1
+@test sum(b)+1 ≈ 1
 
 
 end # module
