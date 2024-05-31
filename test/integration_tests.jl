@@ -36,6 +36,8 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 domain = (0,2,0,2)
 cells = (8,8)
 mesh = gk.cartesian_mesh(domain,cells)
+gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+gk.label_interior_faces!(mesh;physical_name="interior_faces")
 
 Ω = gk.domain(mesh)
 Ωref = gk.domain(mesh;is_reference_domain=true)
@@ -80,5 +82,73 @@ end
 u = gk.analytical_field(x->1,Ω)
 int = ∫(u,dΩ)
 @test sum(int) ≈ 4
+
+
+D = gk.num_dims(mesh)
+Γref = gk.domain(mesh;
+                 face_dim=D-1,
+                 is_reference_domain=true,
+                 physical_names=["1-face-2","1-face-4"])
+
+Γ = gk.physical_domain(Γref)
+
+function dS(J)
+    Jt = transpose(J)
+    sqrt(det(Jt*J))
+end
+
+dΓref = gk.measure(Γref,degree)
+α = gk.domain_map(Γref,Γ)
+β = gk.domain_map(Γref,Ωref;face_around=1)
+
+int = ∫(dΓref) do p
+    J = gk.call(ForwardDiff.jacobian,α,p)
+    dSq = gk.call(dS,J)
+end
+@test sum(int) ≈ 4
+
+uref = gk.analytical_field(x->1,Ωref)
+int = ∫(dΓref) do p
+    q = β(p)
+    J = gk.call(ForwardDiff.jacobian,α,p)
+    dSq = gk.call(dS,J)
+    gk.call(*,uref(q),dSq)
+end
+sum(int) ≈ 4
+
+int = ∫(dΩref) do q
+    J = gk.call(ForwardDiff.jacobian,ϕ,q)
+    dV = gk.call(J->abs(det(J)),J)
+    dV
+end +
+∫(dΓref) do p
+    J = gk.call(ForwardDiff.jacobian,α,p)
+    dSq = gk.call(dS,J)
+end
+
+@test sum(int) ≈ 8
+
+Λref = gk.domain(mesh;
+                 face_dim=D-1,
+                 is_reference_domain=true,
+                 physical_names=["interior_faces"])
+
+Λ = gk.physical_domain(Λref)
+dΛref = gk.measure(Λref,degree)
+ϕ_Λref_Λ = gk.domain_map(Λref,Λ)
+ϕ_Λref_Ωref = gk.domain_map(Λref,Ωref)
+
+jump(u) = u[2]-u[1]
+
+int = ∫(dΛref) do p
+    q = ϕ_Λref_Ωref(p)
+    J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
+    dSq = gk.call(dS,J)
+    jvq = gk.call(jump,uref(q))
+    gk.call(*,jvq,dSq)
+end
+
+@test sum(int) + 1 ≈ 1
+
 
 end # module

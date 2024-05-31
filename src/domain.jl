@@ -83,6 +83,24 @@ function reference_domain(domain::AbstractDomain,::GlobalDomain{true})
     domain
 end
 
+function physical_domain(domain::AbstractDomain)
+    physical_domain(domain,domain |> gk.domain_style)
+end
+
+function physical_domain(domain::AbstractDomain,::GlobalDomain{true})
+    Domain(
+           domain |> gk.mesh,
+           domain |> gk.mesh_id,
+           domain |> gk.physical_names,
+           domain |> gk.face_dim,
+           Val(false),
+          )
+end
+
+function physical_domain(domain::AbstractDomain,::GlobalDomain{false})
+    domain
+end
+
 function faces(domain::AbstractDomain)
     faces(domain,gk.domain_style(domain))
 end
@@ -570,7 +588,7 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
     @assert gk.domain(a) == gk.codomain(phi)
     g = gk.prototype(a)
     f = gk.prototype(phi)
-    prototype = x-> [g(f(x)),g(f(x))]
+    prototype = x-> map(g,f(x))
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)

@@ -562,6 +562,11 @@ function dof_map(a::IsoParametricSpace,dim)
     end
 end
 
+function shape_functions(a::IsoParametricSpace,dim)
+    field=1
+    gk.shape_functions(a,dim,field)
+end
+
 function shape_functions(a::IsoParametricSpace,dim,field)
     @assert field == 1
     face_to_refid = face_reference_id(a)
