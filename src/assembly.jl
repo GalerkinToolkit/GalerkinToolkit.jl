@@ -1,6 +1,4 @@
 function assemble_vector(f,space;kwargs...)
-    num_fields = gk.num_fields(space)
-    fields = ntuple(identity,num_fields)
     dim = 1
     dv = gk.shape_functions(space,dim)
     integral = f(dv)
@@ -144,3 +142,207 @@ function assemble_vector_compress(state)
     vec, cache
 end
 
+function assemble_matrix(f,trial_space,test_space;kwargs...)
+    test_dim = 1
+    trial_dim = 2
+    dv = gk.shape_functions(test_space,test_dim)
+    du = gk.shape_functions(trial_space,trial_dim)
+    integral = f(du,dv)
+    assemble_matrix(integral,trial_space,test_space;kwargs...)
+end
+
+function assemble_matrix(integral::Integral,trial_space,test_space;reuse=false,Ti=Int32,T=Float64)
+    state0 = (;integral,test_space,trial_space,Ti,T)
+    state1 = assemble_matrix_count(state0)
+    state2 = assemble_matrix_allocate(state1)
+    state3 = assemble_matrix_fill(state2)
+    result, cache = assemble_matrix_compress(state3)
+    if reuse == false
+        result
+    else
+        result, cache
+    end
+end
+
+function assemble_matrix_count(state)
+    (;integral,test_space,trial_space) = state
+    contributions = gk.contributions(integral)
+    num_fields_test = gk.num_fields(test_space)
+    num_fields_trial = gk.num_fields(trial_space)
+    fields_test = ntuple(identity,num_fields_test)
+    fields_trial = ntuple(identity,num_fields_trial)
+    glues_test = map(contributions) do domain_and_contribution
+        domain, = domain_and_contribution
+        map(fields_test) do field
+            gk.domain_glue(domain,gk.domain(test_space,field))
+        end
+    end
+    glues_trial = map(contributions) do domain_and_contribution
+        domain, = domain_and_contribution
+        map(fields_trial) do field
+            gk.domain_glue(domain,gk.domain(trial_space,field))
+        end
+    end
+    n = 0
+    function loop(glue_test,glue_trial,field_per_dim)
+        loop(glue_test,glue_trial,domain_glue_style(glue_test),domain_glue_style(glue_trial),field_per_dim)
+    end
+    # TODO cross terms missing
+    function loop(glue_test,glue_trial,style_test::InteriorGlue,style_trial::InteriorGlue,field_per_dim)
+        sface_to_face_test = target_face(glue_test)
+        sface_to_face_trial = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            face_test = sface_to_face_test[sface]
+            face_trial = sface_to_face_trial[sface]
+            index_test = gk.index(;face=face_test,field_per_dim)
+            index_trial = gk.index(;face=face_trial,field_per_dim)
+            ndofs_test = num_face_dofs_test(index_test)
+            ndofs_trial = num_face_dofs_trial(index_trial)
+            n += ndofs_test*ndofs_trial
+        end
+    end
+    function loop(glue_test,glue_trial,style_test::CoboundaryGlue,style_trial::CoboundaryGlue,field_per_dim)
+        sface_to_faces_test, _ = target_face(glue_test)
+        sface_to_faces_trial, _ = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            faces_test = sface_to_faces_test[sface]
+            faces_trial = sface_to_faces_trial[sface]
+            for face_test in faces_test
+                index_test = gk.index(;face=face_test,field_per_dim)
+                ndofs_test = num_face_dofs_test(index_test)
+                for face_trial in faces_trial
+                    index_trial = gk.index(;face=face_trial,field_per_dim)
+                    ndofs_trial = num_face_dofs_trial(index_trial)
+                    n += ndofs_test*ndofs_trial
+                end
+            end
+        end
+    end
+    for (domain_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
+        domain, _ = domain_and_contribution
+        for field_test in fields_test
+            glue_test = field_to_glue_test[field_test]
+            for field_trial in fields_trial
+                glue_trial = field_to_glue_trial[field_trial]
+                field_per_dim = (field_test,field_trial)
+                loop(glue_test,glue_trial,field_per_dim)
+            end
+        end
+    end
+    (;n,glues_test,glues_trial,fields_test,fields_trial,state...)
+end
+
+function assemble_matrix_allocate(state)
+    (;n,Ti,T) = state
+    I = zeros(Ti,n)
+    J = zeros(Ti,n)
+    V = zeros(T,n)
+    (;I,J,V,state...)
+end
+
+function assemble_matrix_fill(state)
+    (;integral,test_space,trial_space,fields_test,fields_trial,I,J,V,glues_test,glues_trial) = state
+    contributions = gk.contributions(integral)
+    num_fields_test = gk.num_fields(test_space)
+    num_fields_trial = gk.num_fields(trial_space)
+    n = 0
+    function loop(glue_test,glue_trial,field_per_dim,contribution)
+        loop(glue_test,glue_trial,domain_glue_style(glue_test),domain_glue_style(glue_trial),field_per_dim,contribution)
+    end
+    # TODO cross terms missing
+    function loop(glue_test,glue_trial,style_test::InteriorGlue,style_trial::InteriorGlue,field_per_dim,contribution)
+        sface_to_face_test = target_face(glue_test)
+        sface_to_face_trial = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(test_space,test_dim)
+        dof_map_test = gk.dof_map(test_space,test_dim)
+        dof_map_trial = gk.dof_map(trial_space,trial_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            face_test = sface_to_face_test[sface]
+            face_trial = sface_to_face_trial[sface]
+            index_test = gk.index(;face=face_test,field_per_dim)
+            index_trial = gk.index(;face=face_trial,field_per_dim)
+            ndofs_test = num_face_dofs_test(index_test)
+            ndofs_trial = num_face_dofs_trial(index_trial)
+            for dof_test in 1:ndofs_test
+                for dof_trial in 1:ndofs_trial
+                    n += 1
+                    dof_per_dim = (dof_test,dof_trial)
+                    index2_test = gk.index(;face=face_test,dof_per_dim,field_per_dim)
+                    index2_trial = gk.index(;face=face_trial,dof_per_dim,field_per_dim)
+                    I[n] = dof_map_test(index2_test)
+                    J[n] = dof_map_trial(index2_trial)
+                    index3 = gk.replace_face(index2_test,sface)
+                    V[n] = gk.term(contribution)(index3)
+                end
+            end
+        end
+    end
+    function loop(glue_test,glue_trial,style_test::CoboundaryGlue,style_trial::CoboundaryGlue,field_per_dim,contribution)
+        sface_to_faces_test, _ = target_face(glue_test)
+        sface_to_faces_trial, _ = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        dof_map_test = gk.dof_map(test_space,test_dim)
+        dof_map_trial = gk.dof_map(trial_space,trial_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            faces_test = sface_to_faces_test[sface]
+            faces_trial = sface_to_faces_trial[sface]
+            for face_test in faces_test
+                index_test = gk.index(;face=face_test,field_per_dim)
+                ndofs_test = num_face_dofs_test(index_test)
+                for face_trial in faces_trial
+                    index_trial = gk.index(;face=face_trial,field_per_dim)
+                    ndofs_trial = num_face_dofs_trial(index_trial)
+                    for dof_test in 1:ndofs_test
+                        for dof_trial in 1:ndofs_trial
+                            n += 1
+                            dof_per_dim = (dof_test,dof_trial)
+                            index2_test = gk.index(;face=face_test,dof_per_dim,field_per_dim)
+                            index2_trial = gk.index(;face=face_trial,dof_per_dim,field_per_dim)
+                            I[n] = dof_map_test(index2_test)
+                            J[n] = dof_map_trial(index2_trial)
+                            index3 = gk.replace_face(index2_test,sface)
+                            V[n] = gk.term(contribution)(index3)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for (domain_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
+        domain, contribution = domain_and_contribution
+        for field_test in fields_test
+            glue_test = field_to_glue_test[field_test]
+            for field_trial in fields_trial
+                glue_trial = field_to_glue_trial[field_trial]
+                field_per_dim = (field_test,field_trial)
+                loop(glue_test,glue_trial,field_per_dim,contribution)
+            end
+        end
+    end
+    state
+end
+
+function assemble_matrix_compress(state)
+    (;I,J,V,test_space,trial_space) = state
+    free_dofs_test = gk.free_dofs(test_space)
+    free_dofs_trial = gk.free_dofs(trial_space)
+    m = length(free_dofs_test)
+    n = length(free_dofs_trial)
+    vec = PartitionedArrays.sparse_matrix(I,J,V,m,n)
+    cache = (;I,J,V)
+    vec, cache
+end
