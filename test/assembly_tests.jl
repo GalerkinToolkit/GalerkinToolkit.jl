@@ -1,7 +1,7 @@
 module AssemblyTests
 
 import GalerkinToolkit as gk
-using GalerkinToolkit: ∫
+using GalerkinToolkit: ∫, ×
 using Test
 import ForwardDiff
 using LinearAlgebra
@@ -97,5 +97,17 @@ end
 b = gk.assemble_vector(l,V)
 @test sum(b)+1 ≈ 1
 
+V² = V × V
+
+function l((v1,v2))
+    ∫(dΩref) do q
+        J = gk.call(ForwardDiff.jacobian,ϕ,q)
+        dVq = gk.call(dV,J)
+        v = gk.call(*,v1(q),v2(q))
+        gk.call(*,v,dVq)
+    end
+end
+
+b = gk.assemble_vector(l,V²)
 
 end # module

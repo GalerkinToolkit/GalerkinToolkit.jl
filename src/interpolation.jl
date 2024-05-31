@@ -164,8 +164,8 @@ struct VectorStrategy{A,B,C}
 end
 
 dofs(a::VectorStrategy) = a.dofs
-allocate_values(a::VectorStrategy) = a.allocate_values
-restrict_values(a::VectorStrategy) = a.restrict_values
+allocate_values(a::VectorStrategy,args...) = a.allocate_values(args...)
+restrict_values(a::VectorStrategy,args...) = a.restrict_values(args...)
 
 function monolithic_field_major_strategy(field_to_dofs)
     offset = 0
@@ -243,6 +243,10 @@ function domain(a::CartesianProductSpace)
     end
 end
 
+function domain(a::CartesianProductSpace,field)
+    gk.domain(gk.component(a,field))
+end
+
 function num_face_dofs(a::CartesianProductSpace,dim)
     terms = map(s->gk.num_face_dofs(s,dim),a.spaces)
     index -> begin
@@ -264,7 +268,15 @@ function dof_map(a::CartesianProductSpace,dim)
 end
 
 function shape_functions(a::CartesianProductSpace,dim)
-    error("Not implemented yet. Not needed in practice.")
+    fields = ntuple(identity,gk.num_fields(a))
+    map(fields) do field
+        gk.shape_functions(a,dim,field)
+    end
+end
+
+function shape_functions(a::CartesianProductSpace,dim,field)
+    f = component(a,field)
+    shape_functions(f,dim)
 end
 
 function dual_basis(a::CartesianProductSpace)
@@ -287,8 +299,8 @@ Base.getindex(m::DiscreteField,field::Integer) = component(m,field)
 Base.length(m::DiscreteField) = num_fields(m)
 
 function undef_field(::Type{T},space::AbstractSpace) where T
-    free_values = allocate_values(free_values_strategy(space))(T)
-    dirichlet_values = allocate_values(dirichlet_values_strategy(space))(T)
+    free_values = allocate_values(free_values_strategy(space),T)
+    dirichlet_values = allocate_values(dirichlet_values_strategy(space),T)
     discrete_field(space,free_values,dirichlet_values)
 end
 
@@ -320,8 +332,8 @@ end
 function component(u::DiscreteField,field::Integer)
     space = gk.space(u)
     space_field = component(space,field)
-    free_values_field = restrict_values(free_values_strategy(space))(free_values(u),field)
-    dirichlet_values_field = restrict_values(dirichlet_values_strategy(space))(dirichlet_values(u),field)
+    free_values_field = restrict_values(free_values_strategy(space),free_values(u),field)
+    dirichlet_values_field = restrict_values(dirichlet_values_strategy(space),dirichlet_values(u),field)
     discrete_field(space_field,free_values_field,dirichlet_values_field)
 end
 
@@ -353,30 +365,24 @@ function prototype(u::DiscreteField)
 end
 
 function term(u::DiscreteField)
-    field_to_u = components(u)
-    field_to_free_vals = map(free_values,field_to_u)
-    field_to_diri_vals = map(dirichlet_values,field_to_u)
     space = gk.space(u)
+    free_vals = gk.free_values(u)
+    diri_vals = gk.dirichlet_values(u)
     dim = 2
     dof_map = gk.dof_map(space,dim)
     num_face_dofs = gk.num_face_dofs(space,dim)
     basis = gk.shape_functions(space,dim)
     basis_term = gk.term(basis)
-    nfields = num_fields(u)
     index -> begin
         x -> begin
-            sum(1:nfields) do field
-                field_per_dim = (nothing,field)
-                index2 = replace_field_per_dim(index,field_per_dim)
-                ndofs = num_face_dofs(index2)
-                sum(1:ndofs) do dof
-                    dof_per_dim = (nothing,dof)
-                    index3 = replace_dof_per_dim(index2,dof_per_dim)
-                    dof = dof_map(index3)
-                    f = basis_term(index3)
-                    coeff =  dof > 0 ? field_to_free_vals[field][dof] : field_to_diri_vals[field][-dof]
-                    f(x)*coeff
-                end
+            ndofs = num_face_dofs(index)
+            sum(1:ndofs) do dof
+                dof_per_dim = (nothing,dof)
+                index3 = replace_dof_per_dim(index,dof_per_dim)
+                dof = dof_map(index3)
+                f = basis_term(index3)
+                coeff =  dof > 0 ? free_vals[dof] : diri_vals[-dof]
+                f(x)*coeff
             end
         end
     end
@@ -410,9 +416,8 @@ function interpolate_dirichlet!(f,u::DiscreteField)
 end
 
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
-    field_to_u = components(u)
-    field_to_free_vals = map(free_values,field_to_u)
-    field_to_diri_vals = map(dirichlet_values,field_to_u)
+    free_vals = gk.free_values(u)
+    diri_vals = gk.dirichlet_values(u)
     space = gk.space(u)
     dim = 1
     sigma = gk.dual_basis(space,dim)
@@ -422,20 +427,18 @@ function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDiric
     domain = gk.domain(space)
     num_face_dofs = gk.num_face_dofs(space,dim)
     for face in 1:gk.num_faces(domain)
-        for field in 1:num_fields(space)
-            index = gk.index(;face,field_per_dim=(field,))
-            for dof in 1:num_face_dofs(index)
-                index2 = replace_dof_per_dim(index,(dof,))
-                v = vals_term(index2)
-                dof = dof_map(index2)
-                if dof > 0
-                    if free_or_diri != DIRICHLET
-                        field_to_free_vals[field][dof] = v
-                    end
-                else
-                    if free_or_diri != FREE
-                        field_to_diri_vals[field][-dof] = v
-                    end
+        index = gk.index(;face)
+        for dof in 1:num_face_dofs(index)
+            index2 = replace_dof_per_dim(index,(dof,))
+            v = vals_term(index2)
+            dof = dof_map(index2)
+            if dof > 0
+                if free_or_diri != DIRICHLET
+                    free_vals[dof] = v
+                end
+            else
+                if free_or_diri != FREE
+                    diri_vals[-dof] = v
                 end
             end
         end
@@ -571,24 +574,23 @@ function shape_function_mask(f,face_around_per_dim,face_around,dim)
     x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
 end
 
-function shape_function_mask(f,face_around_per_dim::Nothing,face_around::Nothing,dim)
+function shape_function_mask(f,face_around_per_dim::Nothing,face_around,dim)
     f
 end
 
 function shape_functions(a::IsoParametricSpace,dim,field)
-    @assert field == 1
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(gk.shape_functions,refid_to_reffes)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
     gk.quantity(prototype,domain) do index
-        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
         f = refid_to_funs[refid][dof]
-        shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
+        g = shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
+        shape_function_mask(g,index.field_per_dim,field,dim)
     end
 end
 
@@ -599,11 +601,9 @@ function dual_basis(a::IsoParametricSpace,dim)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
     gk.quantity(prototype,domain) do index
-        index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
-        field = index.field_per_dim[dim]
         refid_to_funs[refid][dof]
     end
 end

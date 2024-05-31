@@ -38,17 +38,21 @@ function assemble_vector_count(state)
     function aux(glue,style::InteriorGlue,sface,field)
         sface_to_face = target_face(glue)
         face = sface_to_face[sface]
-        num_face_dofs = gk.num_face_dofs(space,field)
-        index = gk.index(;face)
+        dim = 1
+        num_face_dofs = gk.num_face_dofs(space,dim)
+        field_per_dim = (field,)
+        index = gk.index(;face,field_per_dim)
         ndofs = num_face_dofs(index)
         n += ndofs
     end
     function aux(glue,style::CoboundaryGlue,sface,field)
         sface_to_faces, _ = target_face(glue)
-        num_face_dofs = gk.num_face_dofs(space,field)
+        dim = 1
+        num_face_dofs = gk.num_face_dofs(space,dim)
         faces = sface_to_faces[sface]
         for face in faces
-            index = gk.index(;face)
+            field_per_dim = (field,)
+            index = gk.index(;face,field_per_dim)
             ndofs = num_face_dofs(index)
             n += ndofs
         end
@@ -57,6 +61,7 @@ function assemble_vector_count(state)
         domain, _ = domain_and_contribution
         map(fields,field_to_glue) do field,glue
             for face in 1:gk.num_faces(domain)
+                # TODO move this call outside the loop over faces
                 aux(glue,face,field)
             end
         end
@@ -82,11 +87,12 @@ function assemble_vector_fill(state)
     function aux(glue,style::InteriorGlue,sface,field,contribution)
         sface_to_face = target_face(glue)
         face = sface_to_face[sface]
-        num_face_dofs = gk.num_face_dofs(space,field)
-        index = gk.index(;face)
-        ndofs = num_face_dofs(index)
-        dof_map = gk.dof_map(space,1)
         field_per_dim = (field,)
+        dim = 1
+        num_face_dofs = gk.num_face_dofs(space,dim)
+        index = gk.index(;face,field_per_dim)
+        ndofs = num_face_dofs(index)
+        dof_map = gk.dof_map(space,dim)
         for dof in 1:ndofs
             n += 1
             dof_per_dim = (dof,)
@@ -100,12 +106,12 @@ function assemble_vector_fill(state)
         sface_to_faces, _ = target_face(glue)
         dim =1
         dof_map = gk.dof_map(space,dim)
-        num_face_dofs = gk.num_face_dofs(space,field)
+        num_face_dofs = gk.num_face_dofs(space,dim)
         faces = sface_to_faces[sface]
         field_per_dim = (field,)
         for (face_around,face) in enumerate(faces)
             face_around_per_dim = (face_around,)
-            index = gk.index(;face)
+            index = gk.index(;face,field_per_dim)
             ndofs = num_face_dofs(index)
             for dof in 1:ndofs
                 n += 1
@@ -121,6 +127,7 @@ function assemble_vector_fill(state)
         domain, contribution = domain_and_contribution
         map(fields,field_to_glue) do field,glue
             for face in 1:gk.num_faces(domain)
+                # TODO move this call outside the loop over faces
                 aux(glue,face,field,contribution)
             end
         end

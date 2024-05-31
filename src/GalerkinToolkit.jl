@@ -5,6 +5,7 @@ using WriteVTK
 using FastGaussQuadrature
 using StaticArrays
 using LinearAlgebra
+import LinearAlgebra: ×
 using ForwardDiff
 using Gmsh
 using PartitionedArrays
