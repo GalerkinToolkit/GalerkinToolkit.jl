@@ -105,6 +105,15 @@ function l((v1,v2))
         dVq = gk.call(dV,J)
         v = gk.call(*,v1(q),v2(q))
         gk.call(*,v,dVq)
+    end +
+    ∫(dΛref) do p
+        q = ϕ_Λref_Ωref(p)
+        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
+        dSq = gk.call(dS,J)
+        jv1q = gk.call(jump,v1(q))
+        jv2q = gk.call(jump,v2(q))
+        jvq = gk.call(*,jv1q,jv2q)
+        gk.call(*,jvq,dSq)
     end
 end
 
