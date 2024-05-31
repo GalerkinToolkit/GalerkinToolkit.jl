@@ -538,6 +538,11 @@ function domain(a::IsoParametricSpace)
     a.domain
 end
 
+function domain(a::IsoParametricSpace,field)
+    @assert field == 1
+    a.domain
+end
+
 function num_face_dofs(a::IsoParametricSpace,dim)
     face_to_dofs = face_dofs(a)
     index -> begin
@@ -557,7 +562,8 @@ function dof_map(a::IsoParametricSpace,dim)
     end
 end
 
-function shape_functions(a::IsoParametricSpace,dim)
+function shape_functions(a::IsoParametricSpace,dim,field)
+    @assert field == 1
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(gk.shape_functions,refid_to_reffes)

@@ -34,6 +34,7 @@ end
 abstract type AbstractDomainStyle <: gk.AbstractType end
 is_reference_domain(a::AbstractDomainStyle) = a.is_reference_domain |> gk.val_parameter
 
+#TODO these names suggest domain, not domain styles
 struct GlobalDomain{A} <: AbstractDomainStyle
     is_reference_domain::Val{A}
 end
@@ -118,6 +119,7 @@ abstract type AbstractDomainGlueStyle <: gk.AbstractType end
 domain_style(a::AbstractDomainGlueStyle) = a.domain_style
 codomain_style(a::AbstractDomainGlueStyle) = a.codomain_style
 
+#TODO these names suggest glues, not glue styles
 struct InteriorGlue{A,B} <: AbstractDomainGlueStyle
     domain_style::GlobalDomain{A}
     codomain_style::GlobalDomain{B}

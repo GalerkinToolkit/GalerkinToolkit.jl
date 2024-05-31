@@ -16,5 +16,6 @@ include("geometry.jl")
 include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")
+include("assembly.jl")
 
 end # module
