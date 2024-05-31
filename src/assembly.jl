@@ -1,3 +1,7 @@
+
+# TODO monothinic matrix and vector for the moment
+# add a strategy to build the matrix and vector
+
 function assemble_vector(f,space;kwargs...)
     dim = 1
     dv = gk.shape_functions(space,dim)

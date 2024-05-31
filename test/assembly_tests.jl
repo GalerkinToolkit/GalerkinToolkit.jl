@@ -148,4 +148,30 @@ end
 
 A = gk.assemble_matrix(a,V,V)
 
+function a((u1,u2),(v1,v2))
+    ∫(dΩref) do q
+        J = gk.call(ForwardDiff.jacobian,ϕ,q)
+        dVq = gk.call(dV,J)
+        v = gk.call(*,v1(q),v2(q))
+        u = gk.call(*,u1(q),u2(q))
+        m = gk.call(*,u,v)
+        gk.call(*,m,dVq)
+    end +
+    ∫(dΛref) do p
+        q = ϕ_Λref_Ωref(p)
+        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
+        dSq = gk.call(dS,J)
+        jv1q = gk.call(jump,v1(q))
+        jv2q = gk.call(jump,v2(q))
+        jvq = gk.call(*,jv1q,jv2q)
+        ju1q = gk.call(jump,u1(q))
+        ju2q = gk.call(jump,u2(q))
+        juq = gk.call(*,ju1q,ju2q)
+        m = gk.call(*,juq,jvq)
+        gk.call(*,m,dSq)
+    end
+end
+
+A = gk.assemble_matrix(a,V²,V²)
+
 end # module
