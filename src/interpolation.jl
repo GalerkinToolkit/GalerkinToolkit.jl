@@ -197,15 +197,15 @@ struct CartesianProductSpace{A,B,C} <: gk.AbstractSpace
     dirichlet_values_strategy::C
 end
 
-function ×(a::AbstractSpace,b::AbstractSpace)
+function LinearAlgebra.:×(a::AbstractSpace,b::AbstractSpace)
     cartesian_product(a,b)
 end
 
-function ×(a::CartesianProductSpace,b::AbstractSpace)
+function LinearAlgebra.:×(a::CartesianProductSpace,b::AbstractSpace)
     cartesian_product(a.spaces...,b)
 end
 
-function ×(a::AbstractSpace,b::CartesianProductSpace)
+function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
     cartesian_product(a,b.spaces...)
 end
 

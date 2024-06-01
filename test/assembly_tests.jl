@@ -55,30 +55,24 @@ end
 function dS(J)
     Jt = transpose(J)
     sqrt(det(Jt*J))
-    1
 end
 
 jump(u) = u[2]-u[1]
 
 function l(v)
     ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        gk.call(*,v(q),dVq)
+        J = ForwardDiff.jacobian(ϕ,q)
+        v(q)*dV(J)
     end +
     ∫(dΓref) do p
         q = β(p)
-        J = gk.call(ForwardDiff.jacobian,α,p)
-        dSq = gk.call(dS,J)
-        gk.call(*,v(q),dSq)
-        v(q)
+        J = ForwardDiff.jacobian(α,p)
+        v(q)*dS(J)
     end +
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
-        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-        dSq = gk.call(dS,J)
-        jvq = gk.call(jump,v(q))
-        gk.call(*,jvq,dSq)
+        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        jump(v(q))*dS(J)
     end
 end
 
@@ -87,10 +81,8 @@ b = gk.assemble_vector(l,V)
 function l(v)
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
-        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-        dSq = gk.call(dS,J)
-        jvq = gk.call(jump,v(q))
-        gk.call(*,jvq,dSq)
+        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        jump(v(q))*dS(J)
     end
 end
 
@@ -101,48 +93,32 @@ V² = V × V
 
 function l((v1,v2))
     ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        v = gk.call(*,v1(q),v2(q))
-        gk.call(*,v,dVq)
+        J = ForwardDiff.jacobian(ϕ,q)
+        v1(q)*v2(q)*dV(J)
     end +
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
-        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-        dSq = gk.call(dS,J)
-        jv1q = gk.call(jump,v1(q))
-        jv2q = gk.call(jump,v2(q))
-        jvq = gk.call(*,jv1q,jv2q)
-        gk.call(*,jvq,dSq)
+        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        jump(v1(q))*jump(v2(q))*dS(J)
     end
 end
 
 b = gk.assemble_vector(l,V²)
 
-
 function a(u,v)
     ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        m = gk.call(*,u(q),v(q))
-        gk.call(*,m,dVq)
+        J = ForwardDiff.jacobian(ϕ,q)
+        u(q)*v(q)*dV(J)
     end +
     ∫(dΓref) do p
         q = β(p)
-        J = gk.call(ForwardDiff.jacobian,α,p)
-        dSq = gk.call(dS,J)
-        m = gk.call(*,u(q),v(q))
-        gk.call(*,m,dSq)
-        v(q)
+        J = ForwardDiff.jacobian(α,p)
+        u(q)*v(q)*dS(J)
     end +
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
-        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-        dSq = gk.call(dS,J)
-        jvq = gk.call(jump,v(q))
-        juq = gk.call(jump,u(q))
-        m = gk.call(*,jvq,juq)
-        gk.call(*,m,dSq)
+        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        jump(v(q))*jump(u(q))*dS(J)
     end
 end
 
@@ -150,59 +126,44 @@ A = gk.assemble_matrix(a,V,V)
 
 function a((u1,u2),(v1,v2))
     ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        v = gk.call(*,v1(q),v2(q))
-        u = gk.call(*,u1(q),u2(q))
-        m = gk.call(*,u,v)
-        gk.call(*,m,dVq)
+        J = ForwardDiff.jacobian(ϕ,q)
+        v1(q)*v2(q)*u1(q)*u2(q)*dV(J)
     end +
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
-        J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-        dSq = gk.call(dS,J)
-        jv1q = gk.call(jump,v1(q))
-        jv2q = gk.call(jump,v2(q))
-        jvq = gk.call(*,jv1q,jv2q)
-        ju1q = gk.call(jump,u1(q))
-        ju2q = gk.call(jump,u2(q))
-        juq = gk.call(*,ju1q,ju2q)
-        m = gk.call(*,juq,jvq)
-        gk.call(*,m,dSq)
+        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        jump(v1(q))*jump(v2(q))*jump(u1(q))*jump(u2(q))*dS(J)
     end
 end
 
 A = gk.assemble_matrix(a,V²,V²)
 
-function a(u,v)
-    ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        m = gk.call(*,u(q),v(q))
-        gk.call(*,m,dVq)
-    end
+function dV(ϕ,q)
+    J = ForwardDiff.jacobian(ϕ,q)
+    abs(det(J))
 end
+
+a(u,v) = ∫( q->u(q)*v(q)*dV(ϕ,q), dΩref)
 
 f = gk.analytical_field(sum,Ω)
 
-function l(v)
-    ∫(dΩref) do q
-        J = gk.call(ForwardDiff.jacobian,ϕ,q)
-        dVq = gk.call(dV,J)
-        x = ϕ(q)
-        m = gk.call(*,f(x),v(q))
-        gk.call(*,m,dVq)
-    end
-end
-
+l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
 V = gk.iso_parametric_space(Ωref)
 uh = gk.zero_field(Float64,V)
 
-x,A,b = gk.linear_problem(a,l,V,V,uh)
+x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b
 
+function ∇(u,phi,q)
+   J = ForwardDiff.jacobian(phi,q)
+   g = ForwardDiff.gradient(u,q)
+   J\g
+end
 
+a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
 
+x,A,b = gk.linear_problem(uh,a,l)
+x .= A\b
 
 end # module

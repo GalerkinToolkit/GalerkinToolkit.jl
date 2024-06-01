@@ -48,25 +48,16 @@ degree = 2
 dΩref = gk.measure(Ωref,degree)
 int = ∫(dΩref) do q
     x = ϕ(q)
-    J = gk.call(ForwardDiff.jacobian,ϕ,q)
-    dV = gk.call(J->abs(det(J)),J)
-    gk.call(*,u(x),dV)
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
+    u(x)*dV
 end
-
-#int = ∫(dΩref) do q
-#    @magic begin
-#        x = ϕ(q)
-#        J = ForwardDiff.jacobian(ϕ,q)
-#        dV = abs(det(J))
-#        u(x)*dV
-#    end
-#end
 
 @test sum(int) ≈ 8
 
 int = ∫(dΩref) do q
-    J = gk.call(ForwardDiff.jacobian,ϕ,q)
-    dV = gk.call(J->abs(det(J)),J)
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
     dV
 end
 
@@ -102,28 +93,27 @@ dΓref = gk.measure(Γref,degree)
 β = gk.domain_map(Γref,Ωref;face_around=1)
 
 int = ∫(dΓref) do p
-    J = gk.call(ForwardDiff.jacobian,α,p)
-    dSq = gk.call(dS,J)
+    J = ForwardDiff.jacobian(α,p)
+    dS(J)
 end
 @test sum(int) ≈ 4
 
 uref = gk.analytical_field(x->1,Ωref)
 int = ∫(dΓref) do p
     q = β(p)
-    J = gk.call(ForwardDiff.jacobian,α,p)
-    dSq = gk.call(dS,J)
-    gk.call(*,uref(q),dSq)
+    J = ForwardDiff.jacobian(α,p)
+    uref(q)*dS(J)
 end
 sum(int) ≈ 4
 
 int = ∫(dΩref) do q
-    J = gk.call(ForwardDiff.jacobian,ϕ,q)
-    dV = gk.call(J->abs(det(J)),J)
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
     dV
 end +
 ∫(dΓref) do p
-    J = gk.call(ForwardDiff.jacobian,α,p)
-    dSq = gk.call(dS,J)
+    J = ForwardDiff.jacobian(α,p)
+    dS(J)
 end
 
 @test sum(int) ≈ 8
@@ -142,10 +132,8 @@ jump(u) = u[2]-u[1]
 
 int = ∫(dΛref) do p
     q = ϕ_Λref_Ωref(p)
-    J = gk.call(ForwardDiff.jacobian,ϕ_Λref_Λ,p)
-    dSq = gk.call(dS,J)
-    jvq = gk.call(jump,uref(q))
-    gk.call(*,jvq,dSq)
+    J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+    jump(uref(q))*dS(J)
 end
 
 @test sum(int) + 1 ≈ 1

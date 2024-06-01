@@ -900,3 +900,44 @@ function plot!(plt::VtkPlot,field;label)
     plt
 end
 
+# Operations
+
+# Base
+
+function Base.getindex(a::AbstractQuantity,i::Integer...)
+    call(b->b[i...],a)
+end
+
+for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
+  @eval begin
+    (Base.$op)(a::AbstractQuantity) = call(Base.$op,a)
+  end
+end
+
+for op in (:+,:-,:*,:/,:\)
+  @eval begin
+      (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
+  end
+end
+
+# LinearAlgebra
+
+for op in (:inv,:det)
+  @eval begin
+    (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
+  end
+end
+
+for op in (:dot,:cross)
+  @eval begin
+      (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
+  end
+end
+
+# ForwardDiff
+
+for op in (:gradient,:jacobian,:hessian)
+  @eval begin
+      (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(ForwardDiff.$op,a,b)
+  end
+end

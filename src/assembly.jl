@@ -352,7 +352,8 @@ function assemble_matrix_compress(state)
 end
 
 
-function linear_problem(a,l,U,V,uh)
+function linear_problem(uh,a,l,V=gk.space(uh))
+    U = gk.space(uh)
     x = free_values(uh)
     fill!(x,0)
     T = eltype(x)
