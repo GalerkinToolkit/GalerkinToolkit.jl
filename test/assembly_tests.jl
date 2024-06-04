@@ -162,6 +162,7 @@ function ∇(u,phi,q)
 end
 
 a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
+l(v) = 0
 
 x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b

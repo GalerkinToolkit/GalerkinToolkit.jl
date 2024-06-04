@@ -9,6 +9,13 @@ function assemble_vector(f,space;kwargs...)
     assemble_vector(integral,space;kwargs...)
 end
 
+function assemble_vector(integral::Number,space;reuse=false,Ti=Int32,T=Float64)
+    @assert integral == 0
+    free_dofs = gk.free_dofs(space)
+    n = length(free_dofs)
+    zeros(T,n)
+end
+
 function assemble_vector(integral::Integral,space;reuse=false,Ti=Int32,T=Float64)
     state0 = (;integral,space,Ti,T)
     state1 = assemble_vector_count(state0)
