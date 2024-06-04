@@ -305,3 +305,19 @@ function Base.:+(int1::Integral,int2::Integral)
     gk.integral(contribs)
 end
 
+function Base.:*(v::Number,int::Integral)
+    contribs = map(gk.contributions(int)) do domain_and_contribution
+        domain, contribution = domain_and_contribution
+        domain => v*contribution
+    end
+    integral(contribs)
+end
+
+function Base.:*(int::Integral,v::Number)
+    v*int
+end
+
+function Base.:/(int::Integral,v::Number)
+    (1/v)*int
+end
+

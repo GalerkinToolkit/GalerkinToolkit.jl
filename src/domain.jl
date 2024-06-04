@@ -259,6 +259,12 @@ struct Quantity{T,B,C} <: AbstractQuantity
     domain::C
 end
 
+function constant_quantity(v,domain)
+    gk.quantity(v,domain) do index
+        v
+    end
+end
+
 function index(;
     face=nothing,
     local_face=nothing,
@@ -384,6 +390,7 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     call(call,f,x)
 end
 
+# TODO this is just a constant quantity
 function analytical_field(f,dom)
     AnalyticalField(f,dom)
 end
@@ -917,6 +924,8 @@ end
 for op in (:+,:-,:*,:/,:\)
   @eval begin
       (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
+      (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,gk.constant_quantity(b,domain(a)))
   end
 end
 
@@ -931,6 +940,8 @@ end
 for op in (:dot,:cross)
   @eval begin
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
+      (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,gk.constant_quantity(b,domain(a)))
   end
 end
 
@@ -939,5 +950,7 @@ end
 for op in (:gradient,:jacobian,:hessian)
   @eval begin
       (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(ForwardDiff.$op,a,b)
+      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call(ForwardDiff.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call(ForwardDiff.$op,a,gk.constant_quantity(b,domain(a)))
   end
 end

@@ -130,13 +130,14 @@ dΛref = gk.measure(Λref,degree)
 
 jump(u) = u[2]-u[1]
 
-int = ∫(dΛref) do p
+int = 10*∫(dΛref) do p
     q = ϕ_Λref_Ωref(p)
     J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-    jump(uref(q))*dS(J)
+    3*jump(uref(q))*dS(J)
 end
 
-@test sum(int) + 1 ≈ 1
+@test sum(int*1) + 1 ≈ 1
+@test sum(int/1) + 1 ≈ 1
 
 
 end # module
