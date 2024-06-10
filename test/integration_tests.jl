@@ -139,5 +139,4 @@ end
 @test sum(int*1) + 1 ≈ 1
 @test sum(int/1) + 1 ≈ 1
 
-
 end # module
