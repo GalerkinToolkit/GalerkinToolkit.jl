@@ -1117,6 +1117,52 @@ function boundary_from_mesh_face(refface)
         ref_faces)
 end
 
+function face_nodes(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if d == D
+        [collect(Int32,1:gk.num_nodes(fe))]
+    else
+        boundary = gk.boundary(fe)
+        gk.face_nodes(boundary,d)
+    end
+end
+
+function face_interior_nodes(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if  d == D
+        [gk.interior_nodes(fe)]
+    else
+        boundary = gk.boundary(fe)
+        dface_to_lnode_to_node = gk.face_nodes(boundary,d)
+        dface_to_ftype = gk.face_reference_id(boundary,d)
+        ftype_to_refdface = gk.reference_faces(boundary,d)
+        ftype_to_lnodes = map(gk.interior_nodes,ftype_to_refdface)
+        map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
+            lnodes = ftype_to_lnodes[ftype]
+            lnode_to_node[lnodes]
+        end
+    end
+end
+
+function num_interior_nodes(fe::AbstractMeshFace)
+    length(interior_nodes(fe))
+end
+
+function face_interior_node_permutations(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if  d == D
+        [[ collect(1:num_interior_nodes(fe)) ]]
+    else
+        boundary = gk.boundary(fe)
+        dface_to_ftype = gk.face_reference_id(boundary,d)
+        ftype_to_refdface = gk.reference_faces(boundary,d)
+        ftype_to_perms = map(gk.interior_node_permutations,ftype_to_refdface)
+        map(dface_to_ftype) do ftype
+            perms = ftype_to_perms[ftype]
+        end
+    end
+end
+
 function interior_nodes(fe::AbstractMeshFace)
     interior_nodes_from_mesh_face(fe)
 end
@@ -1129,7 +1175,7 @@ function interior_nodes_from_mesh_face(fe)
     else
         node_is_touched = fill(true,nnodes)
         mesh = boundary(fe)
-        for d in 0:D
+        for d in 0:(D-1)
             face_to_nodes = face_nodes(fe,d)
             for nodes in face_to_nodes
                 node_is_touched[nodes] .= false

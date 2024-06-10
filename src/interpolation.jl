@@ -109,6 +109,26 @@ function dual_basis(fe::AbstractLagrangeFE)
     end
 end
 
+function face_dofs(a::AbstractLagrangeFE,d)
+    @assert a.shape == SCALAR_SHAPE
+    face_nodes(a,d)
+end
+
+function face_own_dofs(a::AbstractLagrangeFE,d)
+    @assert a.shape == SCALAR_SHAPE
+    face_interior_nodes(a,d)
+end
+
+function face_own_dof_permutations(a::AbstractLagrangeFE,d)
+    @assert a.shape == SCALAR_SHAPE
+    face_interior_node_permutations(a,d)
+end
+
+function num_dofs(a::AbstractLagrangeFE)
+    @assert a.shape == SCALAR_SHAPE
+    num_nodes(a)
+end
+
 abstract type AbstractSpace <: gk.AbstractType end
 
 Base.iterate(m::AbstractSpace) = iterate(components(m))
@@ -405,6 +425,8 @@ end
 # but we can ask for an addition kwarg domain
 # to confirm that we want the domain of f
 # and we can also provide another one witht he glue?
+# Solution: Two options: u is defined either on the domain of the space
+# or on the Dirichlet boundary
 
 function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
@@ -613,4 +635,283 @@ function dual_basis(a::IsoParametricSpace,dim)
         refid_to_funs[refid][dof]
     end
 end
+
+
+# TODO remove this one
+# implement all this for AbstractSpace
+struct SpaceFromReferenceFEs{A,B,C,D,E,F,G,H} <: AbstractSpace
+    domain::A
+    dirichlet_boundary::B
+    reference_fes::C
+    face_reference_id::D
+    free_values_strategy::E
+    dirichlet_values_strategy::F
+    primal_map::G
+    dual_map::H
+end
+
+domain(space::SpaceFromReferenceFEs) = space.domain
+reference_fes(space::SpaceFromReferenceFEs) = space.reference_fes
+face_reference_id(space::SpaceFromReferenceFEs) = space.face_reference_id
+dirichlet_boundary(space::SpaceFromReferenceFEs) = space.dirichlet_boundary
+
+function generate_dof_ids(space::SpaceFromReferenceFEs)
+    generate_dof_ids(space,domain_style(space.domain),space.dirichlet_boundary)
+end
+
+function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
+    domain = space |> gk.domain
+    D = gk.num_dims(domain)
+    cell_to_Dface = domain |> gk.faces
+    mesh = domain |> gk.mesh
+    topology = mesh |> gk.topology
+    ctype_to_reference_fe = space |> gk.reference_fes
+    cell_to_ctype = space |> gk.face_reference_id
+    d_to_dface_to_dof_offset = map(d->zeros(Int32,gk.num_faces(topology,d)),0:D)
+    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(fe->length.(gk.face_own_dofs(fe,d)),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_own_dofs = map(d->map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->gk.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
+    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
+    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
+    ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+    ncells = length(cell_to_ctype)
+    dof_offset = 0
+    for d in 0:D
+        ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
+        dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
+        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        ndfaces = length(dface_to_dof_offset)
+        for cell in 1:ncells
+            ctype = cell_to_ctype[cell]
+            Dface = cell_to_Dface[cell]
+            ldface_to_num_own_dofs = ctype_to_ldface_to_num_own_dofs[ctype]
+            ldface_to_dface = Dface_to_dfaces[Dface]
+            nldfaces = length(ldface_to_num_own_dofs)
+            for ldface in 1:nldfaces
+                num_own_dofs = ldface_to_num_own_dofs[ldface]
+                dface = ldface_to_dface[ldface]
+                dface_to_dof_offset[dface] = num_own_dofs
+            end
+        end
+        for dface in 1:ndfaces
+            num_own_dofs = dface_to_dof_offset[dface]
+            dface_to_dof_offset[dface] = dof_offset
+            dof_offset += num_own_dofs
+        end
+    end
+    ndofs = dof_offset
+    cell_to_ptrs = zeros(Int32,ncells+1)
+    for cell in 1:ncells
+        ctype = cell_to_ctype[cell]
+        num_dofs = ctype_to_num_dofs[ctype]
+        cell_to_ptrs[cell+1] = num_dofs
+    end
+    length_to_ptrs!(cell_to_ptrs)
+    ndata = cell_to_ptrs[end]-1
+    cell_to_dofs = JaggedArray(zeros(Int32,ndata),cell_to_ptrs)
+    # TODO we assume non oriented
+    # Optimize for the oriented case?
+    # TODO add different numbering strategies
+    for d in 0:D
+        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
+        ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
+        dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
+        ndfaces = length(dface_to_dof_offset)
+        Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
+        for cell in 1:ncells
+            ctype = cell_to_ctype[cell]
+            Dface = cell_to_Dface[cell]
+            ldof_to_dof = cell_to_dofs[cell]
+            ldface_to_dface = Dface_to_dfaces[Dface]
+            ldface_to_own_ldofs = ctype_to_ldface_to_own_ldofs[ctype]
+            ldface_to_pindex_to_perm = ctype_to_ldface_to_pindex_to_perm[ctype]
+            ldface_to_pindex = Dface_to_ldface_to_pindex[Dface]
+            nldfaces = length(ldface_to_dface)
+            for ldface in 1:nldfaces
+                dface = ldface_to_dface[ldface]
+                own_ldofs = ldface_to_own_ldofs[ldface]
+                dof_offset = dface_to_dof_offset[dface]
+                pindex_to_perm = ldface_to_pindex_to_perm[ldface]
+                pindex = ldface_to_pindex[ldface]
+                perm = pindex_to_perm[pindex]
+                n_own_dofs = length(own_ldofs)
+                for i in 1:n_own_dofs
+                    j = perm[i]
+                    dof = j + dof_offset
+                    own_dof = own_ldofs[i]
+                    ldof_to_dof[own_dof] = dof
+                end
+            end
+        end
+    end
+    # TODO move this to a separate function which dispatches
+    # in function of the type of dirichlet_boundary
+    dof_to_tag = zeros(Int32,ndofs)
+    if dirichlet_boundary !== nothing
+        N = gk.num_dims(dirichlet_boundary)
+        physical_names = dirichlet_boundary |> gk.physical_names
+        Nface_to_tag = zeros(Int32,gk.num_faces(topology,N))
+        classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+        let d = N
+            Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+            ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
+            ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
+            dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
+            ndfaces = length(dface_to_dof_offset)
+            for cell in 1:ncells
+                ctype = cell_to_ctype[cell]
+                Dface = cell_to_Dface[cell]
+                ldof_to_dof = cell_to_dofs[cell]
+                ldface_to_dface = Dface_to_dfaces[Dface]
+                nldfaces = length(ldface_to_dface)
+                dofs = cell_to_dofs[cell]
+                for ldface in 1:nldfaces
+                    dface = ldface_to_dface[ldface]
+                    Nface = dface
+                    tag = Nface_to_tag[Nface]
+                    dof_to_tag[dofs] .= tag
+                end
+            end
+        end
+    end
+    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_tag)
+    dof_permutation = gk.permutation(free_and_dirichlet_dofs)
+    n_free_dofs = length(first(free_and_dirichlet_dofs))
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    data = cell_to_dofs.data
+    data .= f.(data)
+    cell_to_dofs, free_and_dirichlet_dofs
+end
+
+function face_dofs(space::SpaceFromReferenceFEs)
+    face_to_dofs, _ = generate_dof_ids(space)
+    face_to_dofs
+end
+
+function free_and_dirichlet_dofs(V::SpaceFromReferenceFEs)
+    _, free_and_diri_dofs = generate_dof_ids(V)
+    free_and_diri_dofs
+end
+
+function free_values_strategy(a::SpaceFromReferenceFEs)
+    n = length(first(free_and_dirichlet_dofs(a)))
+    a.free_values_strategy( (Base.OneTo(n),) )
+end
+
+function dirichlet_values_strategy(a::SpaceFromReferenceFEs)
+    n = length(last(free_and_dirichlet_dofs(a)))
+    a.dirichlet_values_strategy( (Base.OneTo(n),) )
+end
+
+# TODO duplicated from IsoParametricSpace
+function num_face_dofs(a::SpaceFromReferenceFEs,dim)
+    face_to_dofs = face_dofs(a)
+    index -> begin
+        #TODO
+        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
+        face = index.face
+        length(face_to_dofs[face])
+    end
+end
+
+# TODO duplicated from IsoParametricSpace
+function dof_map(a::SpaceFromReferenceFEs,dim)
+    face_to_dofs = face_dofs(a)
+    index -> begin
+        #TODO
+        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
+        face = index.face
+        dof = index.dof_per_dim[dim]
+        face_to_dofs[face][dof]
+    end
+end
+
+# TODO duplicated from IsoParametricSpace
+function shape_functions(a::SpaceFromReferenceFEs,dim)
+    field=1
+    gk.shape_functions(a,dim,field)
+end
+
+# TODO duplicated from IsoParametricSpace
+function shape_functions(a::SpaceFromReferenceFEs,dim,field)
+    @assert a.primal_map === nothing
+    @assert is_reference_domain(a.domain)
+    face_to_refid = face_reference_id(a)
+    refid_to_reffes = reference_fes(a)
+    refid_to_funs = map(gk.shape_functions,refid_to_reffes)
+    domain = gk.domain(a)
+    prototype = first(first(refid_to_funs))
+    gk.quantity(prototype,domain) do index
+        face = index.face
+        refid = face_to_refid[face]
+        dof = index.dof_per_dim[dim]
+        f = refid_to_funs[refid][dof]
+        g = shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
+        shape_function_mask(g,index.field_per_dim,field,dim)
+    end
+end
+
+# TODO duplicated from IsoParametricSpace
+function dual_basis(a::SpaceFromReferenceFEs,dim)
+    @assert a.dual_map === nothing
+    @assert is_reference_domain(a.domain)
+    face_to_refid = face_reference_id(a)
+    refid_to_reffes = reference_fes(a)
+    refid_to_funs = map(gk.dual_basis,refid_to_reffes)
+    domain = gk.domain(a)
+    prototype = first(first(refid_to_funs))
+    gk.quantity(prototype,domain) do index
+        face = index.face
+        refid = face_to_refid[face]
+        dof = index.dof_per_dim[dim]
+        refid_to_funs[refid][dof]
+    end
+end
+
+# TODO rename kwarg space?
+function lagrange_space(domain,order;
+    dirichlet_boundary=nothing,
+    free_values_strategy = gk.monolithic_field_major_strategy,
+    dirichlet_values_strategy = gk.monolithic_field_major_strategy,
+    space=nothing,
+    major=:component,
+    shape=SCALAR_SHAPE)
+
+    mesh = domain |> gk.mesh
+    D = domain |> gk.num_dims
+    ctype_to_refface = gk.reference_faces(mesh,D)
+    ctype_to_geometry = map(gk.geometry,ctype_to_refface)
+    ctype_to_reffe = map(ctype_to_geometry) do geometry
+        space2 = space === nothing ? default_space(geometry) : space
+        lagrangian_fe(geometry,order;space=space2,major,shape)
+    end
+    cell_to_Dface = domain |> gk.faces
+    Dface_to_ctype = gk.face_reference_id(mesh,D)
+    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+
+    primal_map = nothing
+    dual_map = nothing
+
+    SpaceFromReferenceFEs(
+                          domain,
+                          dirichlet_boundary,
+                          ctype_to_reffe,
+                          cell_to_ctype,
+                          free_values_strategy,
+                          dirichlet_values_strategy,
+                          primal_map,
+                          dual_map)
+
+end
+
+
 

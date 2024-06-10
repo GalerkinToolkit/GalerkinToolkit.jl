@@ -5,6 +5,8 @@ mesh(a::AbstractDomain) = a.mesh
 mesh_id(a::AbstractDomain) = a.mesh_id
 physical_names(a::AbstractDomain) = a.physical_names
 face_dim(a::AbstractDomain) = gk.val_parameter(a.face_dim)
+# TODO two functions for the same
+num_dims(a::AbstractDomain) = face_dim(a)
 is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> gk.val_parameter
 
 function domain(mesh;
