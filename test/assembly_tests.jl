@@ -167,4 +167,56 @@ l(v) = 0
 x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b
 
+# Poisson solve
+
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = gk.cartesian_mesh(domain,cells)
+gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+
+Ω = gk.domain(mesh)
+Ωref = gk.reference_domain(Ω)
+ϕ = gk.domain_map(Ωref,Ω)
+
+D = gk.num_dims(mesh)
+Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["boundary_faces"])
+
+V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+
+u = gk.analytical_field(sum,Ω)
+uh = gk.zero_field(Float64,V)
+# TODO
+#gk.interpolate_dirichlet!(q->u(ϕ(q)),uh)
+gk.interpolate_dirichlet!(u∘ϕ,uh)
+
+function ∇(u,q)
+   J = ForwardDiff.jacobian(ϕ,q)
+   g = ForwardDiff.gradient(u,q)
+   J\g
+end
+
+function dV(q)
+    J = ForwardDiff.jacobian(ϕ,q)
+    abs(det(J))
+end
+
+degree = 2
+dΩref = gk.measure(Ωref,degree)
+
+a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
+l(v) = 0
+
+x,A,b = gk.linear_problem(uh,a,l)
+x .= A\b
+
+eh(q) = u(ϕ(q)) - uh(q)
+∇eh(q) = ForwardDiff.gradient(u,ϕ(q)) - ∇(uh,q)
+
+tol = 1.e-12
+el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
+@test el2 < tol
+
 end # module

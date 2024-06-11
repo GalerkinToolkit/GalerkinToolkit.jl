@@ -380,8 +380,10 @@ end
 function call(g,args::AbstractQuantity...)
     fs = map(gk.term,args)
     domain = args |> first |> gk.domain
-    msg = "All quantities need to be defined on the same domain"
-    @assert all(dom->dom==domain,map(gk.domain,args)) msg
+    #msg = "All quantities need to be defined on the same domain"
+    #@assert all(dom->dom==domain,map(gk.domain,args)) msg
+    # TODO check everything except reference/physical domain?
+    # Maybe check reference/physical domain only when evaluating functions?
     prototype = gk.return_prototype(g,map(gk.prototype,args)...)
     gk.quantity(prototype,domain) do index
         g(map(f->f(index),fs)...)
@@ -759,6 +761,9 @@ end
 struct MappedPoint{A,B} <: AbstractQuantity
     phi::A
     x::B
+end
+function domain(q::MappedPoint)
+    q.phi |> gk.codomain
 end
 function prototype(y::MappedPoint)
     phi = y.phi
