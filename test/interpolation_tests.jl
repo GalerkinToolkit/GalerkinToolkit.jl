@@ -1,8 +1,10 @@
 module InterpolationTests
 
 import GalerkinToolkit as gk
-using GalerkinToolkit: ×
+using GalerkinToolkit: ∫, ×
 using Test
+import ForwardDiff
+using LinearAlgebra
 
 D = 2
 order = 3
@@ -35,8 +37,9 @@ gk.face_own_dof_permutations(fe,2)
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
 domain = (0,1,0,1)
-cells = (4,4)
+cells = (3,3)
 mesh = gk.cartesian_mesh(domain,cells)
+gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
 topo = gk.topology(mesh)
 
@@ -49,7 +52,7 @@ gk.face_permutation_ids(topo,2,2)
 ϕ = gk.domain_map(Ωref,Ω)
 
 D = gk.num_dims(mesh)
-Γdiri = gk.domain(mesh;face_dim=D-1)
+Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["boundary_faces"])
 
 V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
@@ -75,18 +78,37 @@ gk.face_dofs(V)
 
 w = gk.zero_field(Float64,V)
 w2 = gk.zero_field(Float64,V)
+w3 = gk.zero_field(Float64,V)
 
 gk.interpolate!(uref,w)
 gk.interpolate_dirichlet!(uref,w2)
+gk.interpolate_dirichlet!(uref,w3)
 
-gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=4) do plt
+x = gk.free_values(w3)
+x .= rand(length(x))
+
+gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
     gk.plot!(plt,v;label="v")
     gk.plot!(plt,v2;label="v2")
     gk.plot!(plt,y1;label="y1")
     gk.plot!(plt,y2;label="y2")
-    gk.plot!(plt,v;label="w")
-    gk.plot!(plt,v2;label="w2")
+    gk.plot!(plt,w;label="w")
+    gk.plot!(plt,w2;label="w2")
+    gk.plot!(plt,w3;label="w3")
 end
+
+uh = gk.zero_field(Float64,V)
+gk.interpolate!(uref,uh)
+eh(q) = u(ϕ(q)) - uh(q)
+tol = 1.e-12
+degree = 2
+dΩref = gk.measure(Ωref,degree)
+function dV(q)
+    J = ForwardDiff.jacobian(ϕ,q)
+    abs(det(J))
+end
+el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
+@test el2 < tol
 
 V = gk.lagrange_space(Γdiri,order)
 gk.face_dofs(V)

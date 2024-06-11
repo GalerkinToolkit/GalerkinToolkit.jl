@@ -651,6 +651,10 @@ struct SpaceFromReferenceFEs{A,B,C,D,E,F,G,H} <: AbstractSpace
 end
 
 domain(space::SpaceFromReferenceFEs) = space.domain
+function domain(space::SpaceFromReferenceFEs,field)
+    @assert field == 1
+    space.domain
+end
 reference_fes(space::SpaceFromReferenceFEs) = space.reference_fes
 face_reference_id(space::SpaceFromReferenceFEs) = space.face_reference_id
 dirichlet_boundary(space::SpaceFromReferenceFEs) = space.dirichlet_boundary
@@ -756,7 +760,7 @@ function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
         classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
         let d = N
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
-            ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
+            ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
             ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
             dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
             ndfaces = length(dface_to_dof_offset)
@@ -765,13 +769,18 @@ function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
                 Dface = cell_to_Dface[cell]
                 ldof_to_dof = cell_to_dofs[cell]
                 ldface_to_dface = Dface_to_dfaces[Dface]
+                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
                 nldfaces = length(ldface_to_dface)
                 dofs = cell_to_dofs[cell]
                 for ldface in 1:nldfaces
+                    ldofs = ldface_to_ldofs[ldface]
                     dface = ldface_to_dface[ldface]
                     Nface = dface
                     tag = Nface_to_tag[Nface]
-                    dof_to_tag[dofs] .= tag
+                    if tag == 0
+                        continue
+                    end
+                    dof_to_tag[view(dofs,ldofs)] .= tag
                 end
             end
         end

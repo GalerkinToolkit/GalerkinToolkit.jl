@@ -181,7 +181,11 @@ gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 D = gk.num_dims(mesh)
 Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["boundary_faces"])
 
-V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+#V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+
+# TODO not working for order > 2
+order = 2
+V = gk.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
 u = gk.analytical_field(sum,Ω)
 uh = gk.zero_field(Float64,V)
@@ -209,6 +213,10 @@ l(v) = 0
 x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b
 
+
+# TODO
+# Functions like this ones should
+# work as AbstractQuantities?
 eh(q) = u(ϕ(q)) - uh(q)
 ∇eh(q) = ForwardDiff.gradient(u,ϕ(q)) - ∇(uh,q)
 
