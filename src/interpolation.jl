@@ -184,15 +184,17 @@ function values(a,free_or_diri::FreeOrDirichlet)
 end
 
 function generate_dof_ids(space::AbstractSpace)
-    generate_dof_ids(space,domain_style(space |> gk.domain),space |> gk.dirichlet_boundary)
+    state = generate_dof_ids_step_1(space,domain_style(space |> gk.domain))
+    generate_dof_ids_step_2(state,space |> gk.dirichlet_boundary)
 end
 
-function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
+function generate_dof_ids_step_1(space,domain_style::GlobalDomain)
     domain = space |> gk.domain
     D = gk.num_dims(domain)
     cell_to_Dface = domain |> gk.faces
     mesh = domain |> gk.mesh
     topology = mesh |> gk.topology
+    d_to_ndfaces = map(d->gk.num_faces(topology,d),0:D)
     ctype_to_reference_fe = space |> gk.reference_fes
     cell_to_ctype = space |> gk.face_reference_id
     d_to_dface_to_dof_offset = map(d->zeros(Int32,gk.num_faces(topology,d)),0:D)
@@ -246,7 +248,6 @@ function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
         ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
         ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
-        ndfaces = length(dface_to_dof_offset)
         Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
         for cell in 1:ncells
             ctype = cell_to_ctype[cell]
@@ -274,38 +275,49 @@ function generate_dof_ids(space,domain_style::GlobalDomain,dirichlet_boundary)
             end
         end
     end
-    # TODO move this to a separate function which dispatches
-    # in function of the type of dirichlet_boundary
+    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
+     d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
+     cell_to_ctype,cell_to_Dface)
+end
+
+function generate_dof_ids_step_2(state,dirichlet_boundary::Nothing)
+    (;ndofs,cell_to_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
-    if dirichlet_boundary !== nothing
-        N = gk.num_dims(dirichlet_boundary)
-        physical_names = dirichlet_boundary |> gk.physical_names
-        Nface_to_tag = zeros(Int32,gk.num_faces(topology,N))
-        classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
-        let d = N
-            Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
-            ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
-            ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
-            dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
-            ndfaces = length(dface_to_dof_offset)
-            for cell in 1:ncells
-                ctype = cell_to_ctype[cell]
-                Dface = cell_to_Dface[cell]
-                ldof_to_dof = cell_to_dofs[cell]
-                ldface_to_dface = Dface_to_dfaces[Dface]
-                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
-                nldfaces = length(ldface_to_dface)
-                dofs = cell_to_dofs[cell]
-                for ldface in 1:nldfaces
-                    ldofs = ldface_to_ldofs[ldface]
-                    dface = ldface_to_dface[ldface]
-                    Nface = dface
-                    tag = Nface_to_tag[Nface]
-                    if tag == 0
-                        continue
-                    end
-                    dof_to_tag[view(dofs,ldofs)] .= tag
+    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_tag)
+    cell_to_dofs, free_and_dirichlet_dofs
+end
+
+function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
+    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
+     d_to_ctype_to_ldface_to_dofs,
+     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+    dof_to_tag = zeros(Int32,ndofs)
+    N = gk.num_dims(dirichlet_boundary)
+    physical_names = dirichlet_boundary |> gk.physical_names
+    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+    mesh = dirichlet_boundary |> gk.mesh
+    classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    ncells = length(cell_to_dofs)
+    let d = N
+        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
+        for cell in 1:ncells
+            ctype = cell_to_ctype[cell]
+            Dface = cell_to_Dface[cell]
+            ldof_to_dof = cell_to_dofs[cell]
+            ldface_to_dface = Dface_to_dfaces[Dface]
+            ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+            nldfaces = length(ldface_to_dface)
+            dofs = cell_to_dofs[cell]
+            for ldface in 1:nldfaces
+                ldofs = ldface_to_ldofs[ldface]
+                dface = ldface_to_dface[ldface]
+                Nface = dface
+                tag = Nface_to_tag[Nface]
+                if tag == 0
+                    continue
                 end
+                dof_to_tag[view(dofs,ldofs)] .= tag
             end
         end
     end
