@@ -183,8 +183,7 @@ D = gk.num_dims(mesh)
 
 #V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
-# TODO not working for order > 2
-order = 2
+order = 3
 V = gk.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
 u = gk.analytical_field(sum,Ω)
@@ -204,7 +203,7 @@ function dV(q)
     abs(det(J))
 end
 
-degree = 2
+degree = 2*order
 dΩref = gk.measure(Ωref,degree)
 
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
