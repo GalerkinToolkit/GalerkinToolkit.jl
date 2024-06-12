@@ -118,6 +118,7 @@ u1 = gk.analytical_field(x->1.0,Ωref)
 u2 = gk.analytical_field(x->2.0,Ωref)
 u3 = gk.analytical_field(x->3.0,Ωref)
 
+# TODO better names than piecewiese_field and piecewiese_domain?
 udiri = gk.piecewiese_field(u1,u2,u3)
 Γdiri = gk.piecewiese_domain(Γ1,Γ2,Γ3)
 

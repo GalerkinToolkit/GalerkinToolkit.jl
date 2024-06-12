@@ -1,6 +1,7 @@
 module DomainTests
 
 import GalerkinToolkit as gk
+import PartitionedArrays as pa
 using Test
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
@@ -63,5 +64,19 @@ gk.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
         gk.call(jump,uref(x))
     end
 end
+
+# Parallel
+
+domain = (0,1,0,1)
+cells_per_dir = (4,4)
+parts_per_dir = (2,2)
+np = prod(parts_per_dir)
+parts = pa.DebugArray(LinearIndices((np,)))
+mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
+gk.label_interior_faces!(mesh;physical_name="interior_faces")
+gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+
+Ω = gk.domain(mesh)
+Ωref = gk.domain(mesh;is_reference_domain=true)
 
 end # module
