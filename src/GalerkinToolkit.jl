@@ -5,7 +5,8 @@ using WriteVTK
 using FastGaussQuadrature
 using StaticArrays
 using LinearAlgebra
-using ForwardDiff
+import LinearAlgebra
+import ForwardDiff
 using Gmsh
 using PartitionedArrays
 using Combinatorics
@@ -16,5 +17,6 @@ include("geometry.jl")
 include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")
+include("assembly.jl")
 
 end # module

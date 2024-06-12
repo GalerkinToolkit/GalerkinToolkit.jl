@@ -142,3 +142,186 @@ function default_quadrature(geo,degree)
     end
 end
 
+function measure(dom::AbstractDomain,degree)
+    measure(default_quadrature,dom,degree)
+end
+
+function measure(f,dom::AbstractDomain,degree)
+    Measure(f,dom,degree)
+end
+
+struct Measure{A,B,C}
+    quadrature_rule::A
+    domain::B
+    degree::C
+end
+
+domain(a::Measure) = a.domain
+
+function reference_quadratures(measure::Measure)
+    domain = gk.domain(measure)
+    @assert isa(gk.domain_style(domain),GlobalDomain)
+    mesh = gk.mesh(domain)
+    d = gk.face_dim(domain)
+    drefid_refdface = gk.reference_faces(mesh,d)
+    refid_to_quad = map(drefid_refdface) do refdface
+        geo = gk.geometry(refdface)
+        measure.quadrature_rule(geo,measure.degree)
+    end
+    refid_to_quad
+end
+
+function coordinates(measure::Measure)
+    domain = gk.domain(measure)
+    coordinates(measure,domain,gk.domain_style(domain))
+end
+
+function coordinates(measure::Measure,domain,stype::GlobalDomain{true})
+    mesh = gk.mesh(domain)
+    d = gk.face_dim(domain)
+    face_to_refid = gk.face_reference_id(mesh,d)
+    domface_to_face = gk.faces(domain)
+    refid_to_quad = reference_quadratures(measure)
+    refid_to_coords = map(gk.coordinates,refid_to_quad)
+    prototype = first(gk.coordinates(first(refid_to_quad)))
+    gk.quantity(prototype,domain) do index
+        domface = index.face
+        face = domface_to_face[domface]
+        refid = face_to_refid[face]
+        coords = refid_to_coords[refid]
+        point = index.point
+        coords[point]
+    end
+end
+
+function coordinates(measure::Measure,domain,stype::GlobalDomain{false})
+    Ω = domain
+    Ωref = gk.reference_domain(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    ϕ(x)
+end
+
+function weights(measure::Measure)
+    domain = gk.domain(measure)
+    weights(measure,domain,gk.domain_style(domain))
+end
+
+function weights(measure::Measure,domain,stype::GlobalDomain{true})
+    mesh = gk.mesh(domain)
+    d = gk.face_dim(domain)
+    face_to_refid = gk.face_reference_id(mesh,d)
+    domface_to_face = gk.faces(domain)
+    refid_to_quad = reference_quadratures(measure)
+    refid_to_w = map(gk.weights,refid_to_quad)
+    prototype = first(gk.weights(first(refid_to_quad)))
+    gk.quantity(prototype,domain) do index
+        domface = index.face
+        face = domface_to_face[domface]
+        refid = face_to_refid[face]
+        w = refid_to_w[refid]
+        point = index.point
+        w[point]
+    end
+end
+
+function weights(measure::Measure,domain,stype::GlobalDomain{false})
+    Ω = domain
+    Ωref = gk.reference_domain(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    w = gk.weights(measure,Ωref,domain_style(Ωref))
+    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    f(J) = sqrt(det(transpose(J)*J))
+    J = gk.call(ForwardDiff.jacobian,ϕ,x)
+    dV = gk.call(f,J)
+    gk.call(*,w,dV)
+end
+
+function num_points(measure::Measure)
+    domain = gk.domain(measure)
+    @assert isa(gk.domain_style(domain),gk.GlobalDomain)
+    mesh = gk.mesh(domain)
+    d = gk.face_dim(domain)
+    face_to_refid = gk.face_reference_id(mesh,d)
+    domface_to_face = gk.faces(domain)
+    refid_to_quad = reference_quadratures(measure)
+    refid_to_w = map(gk.weights,refid_to_quad)
+    index -> begin
+        domface = index.face
+        face = domface_to_face[domface]
+        refid = face_to_refid[face]
+        w = refid_to_w[refid]
+        length(w)
+    end
+end
+
+function integrate(f,measure::Measure)
+    domain = gk.domain(measure)
+    x = gk.coordinates(measure)
+    w = gk.weights(measure)
+    fx = f(x)
+    p_fx = gk.prototype(fx)
+    p_w = gk.prototype(w)
+    t_fx = gk.term(fx)
+    t_w = gk.term(w)
+    prototype = p_fx*p_w + p_fx*p_w
+    num_points = gk.num_points(measure)
+    contrib = gk.quantity(prototype,domain) do index
+        np = num_points(index)
+        sum(1:np) do point
+            index2 = replace_point(index,point)
+            t_fx(index2)*t_w(index2)
+        end
+    end
+    integral((domain=>contrib,))
+end
+const ∫ = integrate
+
+integral(contribs) = Integral(contribs)
+struct Integral{A}
+    contributions::A
+end
+contributions(a::Integral) = a.contributions
+
+function sum_contribution(contrib)
+    domain, qty = contrib
+    z = zero(gk.prototype(qty))
+    nfaces = gk.num_faces(domain)
+    term = gk.term(qty)
+    for face in 1:nfaces
+        index = gk.index(;face)
+        z += term(index)
+    end
+    z
+end
+
+function Base.sum(int::Integral)
+    sum(map(sum_contribution,contributions(int)))
+end
+
+function Base.:+(int1::Integral,int2::Integral)
+    # TODO merge contributions on the same domain?
+    contribs = (gk.contributions(int1)...,gk.contributions(int2)...)
+    gk.integral(contribs)
+end
+
+function Base.:-(int1::Integral,int2::Integral)
+    int1 + (-1)*int2
+end
+
+function Base.:*(v::Number,int::Integral)
+    contribs = map(gk.contributions(int)) do domain_and_contribution
+        domain, contribution = domain_and_contribution
+        domain => v*contribution
+    end
+    integral(contribs)
+end
+
+function Base.:*(int::Integral,v::Number)
+    v*int
+end
+
+function Base.:/(int::Integral,v::Number)
+    (1/v)*int
+end
+

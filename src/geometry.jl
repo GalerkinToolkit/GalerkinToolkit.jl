@@ -479,6 +479,7 @@ end
 """
 abstract type AbstractFEMesh <: gk.AbstractType end
 
+# TODO rename to Mesh
 struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     node_coordinates::A
     face_nodes::B
@@ -489,6 +490,7 @@ struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     outwards_normals::G
 end
 
+# TODO rename to mesh
 function fe_mesh(args...)
     GenericFEMesh(args...)
 end
@@ -1120,6 +1122,52 @@ function boundary_from_mesh_face(refface)
         ref_faces)
 end
 
+function face_nodes(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if d == D
+        [collect(Int32,1:gk.num_nodes(fe))]
+    else
+        boundary = gk.boundary(fe)
+        gk.face_nodes(boundary,d)
+    end
+end
+
+function face_interior_nodes(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if  d == D
+        [gk.interior_nodes(fe)]
+    else
+        boundary = gk.boundary(fe)
+        dface_to_lnode_to_node = gk.face_nodes(boundary,d)
+        dface_to_ftype = gk.face_reference_id(boundary,d)
+        ftype_to_refdface = gk.reference_faces(boundary,d)
+        ftype_to_lnodes = map(gk.interior_nodes,ftype_to_refdface)
+        map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
+            lnodes = ftype_to_lnodes[ftype]
+            lnode_to_node[lnodes]
+        end
+    end
+end
+
+function num_interior_nodes(fe::AbstractMeshFace)
+    length(interior_nodes(fe))
+end
+
+function face_interior_node_permutations(fe::AbstractMeshFace,d)
+    D = num_dims(fe)
+    if  d == D
+        [[ collect(1:num_interior_nodes(fe)) ]]
+    else
+        boundary = gk.boundary(fe)
+        dface_to_ftype = gk.face_reference_id(boundary,d)
+        ftype_to_refdface = gk.reference_faces(boundary,d)
+        ftype_to_perms = map(gk.interior_node_permutations,ftype_to_refdface)
+        map(dface_to_ftype) do ftype
+            perms = ftype_to_perms[ftype]
+        end
+    end
+end
+
 function interior_nodes(fe::AbstractMeshFace)
     interior_nodes_from_mesh_face(fe)
 end
@@ -1132,7 +1180,7 @@ function interior_nodes_from_mesh_face(fe)
     else
         node_is_touched = fill(true,nnodes)
         mesh = boundary(fe)
-        for d in 0:D
+        for d in 0:(D-1)
             face_to_nodes = face_nodes(fe,d)
             for nodes in face_to_nodes
                 node_is_touched[nodes] .= false
@@ -3413,6 +3461,11 @@ function num_nodes(mesh::PMesh)
     length(PRange(mesh.node_partition))
 end
 
+function num_faces(mesh::PMesh)
+    D = num_dims(mesh)
+    [ num_faces(mesh,d) for d in 0:D]
+end
+
 function num_faces(mesh::PMesh,d)
     length(PRange(mesh.face_partition[d+1]))
 end
@@ -3420,6 +3473,74 @@ end
 function num_dims(mesh::PMesh)
     length(mesh.face_partition) - 1
 end
+
+function physical_names(pmesh::PMesh,d)
+     map(pmesh.mesh_partition) do mesh
+        gk.physical_names(mesh,d)
+    end |> PartitionedArrays.getany
+end
+
+function physical_faces(pmesh::PMesh,d)
+    names = physical_names(pmesh,d)
+    map(collect(names)) do name
+        name => map(pmesh.mesh_partition) do mesh
+            gk.physical_faces(mesh,d)[name]
+        end
+    end |> Dict
+end
+
+function node_coordinates(pmesh::PMesh)
+    data = map(gk.node_coordinates,pmesh.mesh_partition)
+    PVector(data,pmesh.node_partition)
+end
+
+function face_nodes(mesh::PMesh)
+    D = num_dims(mesh)
+    [ face_nodes(mesh,d) for d in 0:D]
+end
+
+function face_nodes(pmesh::PMesh,d)
+    data = map(mesh->gk.face_nodes(mesh,d),pmesh.mesh_partition)
+    PVector(data,pmesh.face_partition[d+1])
+end
+
+function face_reference_id(mesh::PMesh)
+    D = num_dims(mesh)
+    [ face_reference_id(mesh,d) for d in 0:D]
+end
+
+function face_reference_id(pmesh::PMesh,d)
+    data = map(mesh->gk.face_reference_id(mesh,d),pmesh.mesh_partition)
+    PVector(data,pmesh.face_partition[d+1])
+end
+
+function reference_faces(mesh::PMesh)
+    D = num_dims(mesh)
+    [ reference_faces(mesh,d) for d in 0:D]
+end
+
+function reference_faces(pmesh::PMesh,d)
+    map(mesh->gk.reference_faces(mesh,d),pmesh.mesh_partition)
+end
+
+function periodic_nodes(pmesh::PMesh)
+    map(gk.periodic_nodes,pmesh.mesh_partition)
+end
+
+function outwards_normals(pmesh::PMesh)
+    data = map(gk.outwards_normals,pmesh.mesh_partition)
+    if eltype(data) <: Nothing
+        nothing
+    else
+        data
+    end
+end
+
+#function visualization_mesh(pmesh::PMesh,d,domface_to_face;kwargs...)
+#    map(pmesh.mesh_partition,domface_to_face) do mesh, faces
+#        visualization_mesh(mesh,d,faces;kwargs...)
+#    end
+#end
 
 """
     label_boundary_faces!(mesh::PMesh;physical_name="boundary")

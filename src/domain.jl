@@ -5,6 +5,8 @@ mesh(a::AbstractDomain) = a.mesh
 mesh_id(a::AbstractDomain) = a.mesh_id
 physical_names(a::AbstractDomain) = a.physical_names
 face_dim(a::AbstractDomain) = gk.val_parameter(a.face_dim)
+# TODO two functions for the same
+num_dims(a::AbstractDomain) = face_dim(a)
 is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> gk.val_parameter
 
 function domain(mesh;
@@ -31,9 +33,26 @@ struct Domain{A,B,C,D,E} <: AbstractDomain
     is_reference_domain::E
 end
 
+function replace_mesh(domain::Domain,mesh)
+    Domain(
+           mesh,
+           domain.mesh_id,
+           domain.physical_names,
+           domain.face_dim,
+           domain.is_reference_domain)
+end
+
+function PartitionedArrays.partition(domain::Domain)
+    pmesh = domain.mesh
+    map(pmesh.mesh_partition) do mesh
+        replace_mesh(domain,mesh)
+    end
+end
+
 abstract type AbstractDomainStyle <: gk.AbstractType end
 is_reference_domain(a::AbstractDomainStyle) = a.is_reference_domain |> gk.val_parameter
 
+#TODO these names suggest domain, not domain styles
 struct GlobalDomain{A} <: AbstractDomainStyle
     is_reference_domain::Val{A}
 end
@@ -57,6 +76,7 @@ end
 
 function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
     flag = true
+    # TODO check also that one mesh is not a sequential one and the other a parallel one
     flag = flag && (gk.mesh_id(a) == gk.mesh_id(b))
     flag = flag && (gk.physical_names(a) == gk.physical_names(b))
     flag = flag && (gk.face_dim(a) == gk.face_dim(b))
@@ -82,18 +102,44 @@ function reference_domain(domain::AbstractDomain,::GlobalDomain{true})
     domain
 end
 
+function physical_domain(domain::AbstractDomain)
+    physical_domain(domain,domain |> gk.domain_style)
+end
+
+function physical_domain(domain::AbstractDomain,::GlobalDomain{true})
+    Domain(
+           domain |> gk.mesh,
+           domain |> gk.mesh_id,
+           domain |> gk.physical_names,
+           domain |> gk.face_dim,
+           Val(false),
+          )
+end
+
+function physical_domain(domain::AbstractDomain,::GlobalDomain{false})
+    domain
+end
+
 function faces(domain::AbstractDomain)
     faces(domain,gk.domain_style(domain))
 end
 
 function faces(domain::AbstractDomain,::GlobalDomain)
-    D = gk.face_dim(domain)
+    # TODO we are dispatching a lot on the mesh
+    # better: add a parallel domain/style type and dispatch on this one
+    function impl(mesh::AbstractFEMesh)
+        D = gk.face_dim(domain)
+        Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
+        tag_to_name = gk.physical_names(domain)
+        gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
+        physical_Dfaces = findall(i->i!=0,Dface_to_tag)
+        physical_Dfaces
+    end
+    function impl(pmesh::PMesh)
+        map(gk.faces,partition(domain))
+    end
     mesh = gk.mesh(domain)
-    Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
-    tag_to_name = gk.physical_names(domain)
-    gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
-    physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-    physical_Dfaces
+    impl(mesh)
 end
 
 function num_faces(domain::AbstractDomain)
@@ -118,6 +164,7 @@ abstract type AbstractDomainGlueStyle <: gk.AbstractType end
 domain_style(a::AbstractDomainGlueStyle) = a.domain_style
 codomain_style(a::AbstractDomainGlueStyle) = a.codomain_style
 
+#TODO these names suggest glues, not glue styles
 struct InteriorGlue{A,B} <: AbstractDomainGlueStyle
     domain_style::GlobalDomain{A}
     codomain_style::GlobalDomain{B}
@@ -231,6 +278,12 @@ abstract type AbstractQuantity <: gk.AbstractType end
 term(a::AbstractQuantity) = a.term
 prototype(a::AbstractQuantity) = a.prototype
 domain(a::AbstractQuantity) = a.domain
+function PartitionedArrays.partition(a::AbstractQuantity)
+    prototype = a |> gk.prototype
+    map(gk.term(a),partition(gk.domain(a))) do term,domain
+        gk.quantity(term,prototype,domain)
+    end
+end
 
 quantity(term,prototype,domain) = Quantity(term,prototype,domain)
 struct Quantity{T,B,C} <: AbstractQuantity
@@ -239,9 +292,16 @@ struct Quantity{T,B,C} <: AbstractQuantity
     domain::C
 end
 
+function constant_quantity(v,domain)
+    gk.quantity(v,domain) do index
+        v
+    end
+end
+
 function index(;
     face=nothing,
     local_face=nothing,
+    face_around=nothing,
     point=nothing,
     field_per_dim =nothing,
     dof_per_dim=nothing,
@@ -250,6 +310,7 @@ function index(;
     Index(
           face,
           local_face,
+          face_around,
           point,
           field_per_dim,
           dof_per_dim,
@@ -257,19 +318,21 @@ function index(;
          )
 end
 
-struct Index{A,B,D,E,F,G}
+struct Index{A,B,D,E,F,G,H}
     face::A
     local_face::B
-    point::D
-    field_per_dim::E
-    dof_per_dim::F
-    face_around_per_dim::G
+    face_around::D
+    point::E
+    field_per_dim::F
+    dof_per_dim::G
+    face_around_per_dim::H
 end
 
 function replace_face(index::Index,face)
     Index(
           face,
           index.local_face,
+          index.face_around,
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -281,6 +344,19 @@ function replace_local_face(index::Index,local_face)
     Index(
           index.face,
           local_face,
+          index.face_around,
+          index.point,
+          index.field_per_dim,
+          index.dof_per_dim,
+          index.face_around_per_dim
+         )
+end
+
+function replace_face_around(index::Index,face_around)
+    Index(
+          index.face,
+          index.local_face,
+          face_around,
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -292,6 +368,7 @@ function replace_point(index::Index,point)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           point,
           index.field_per_dim,
           index.dof_per_dim,
@@ -303,6 +380,7 @@ function replace_field_per_dim(index::Index,field_per_dim)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           index.point,
           field_per_dim,
           index.dof_per_dim,
@@ -314,6 +392,7 @@ function replace_dof_per_dim(index::Index,dof_per_dim)
     Index(
           index.face,
           index.local_face,
+          index.face_around,
           index.point,
           index.field_per_dim,
           dof_per_dim,
@@ -332,8 +411,10 @@ end
 function call(g,args::AbstractQuantity...)
     fs = map(gk.term,args)
     domain = args |> first |> gk.domain
-    msg = "All quantities need to be defined on the same domain"
-    @assert all(dom->dom==domain,map(gk.domain,args)) msg
+    #msg = "All quantities need to be defined on the same domain"
+    #@assert all(dom->dom==domain,map(gk.domain,args)) msg
+    # TODO check everything except reference/physical domain?
+    # Maybe check reference/physical domain only when evaluating functions?
     prototype = gk.return_prototype(g,map(gk.prototype,args)...)
     gk.quantity(prototype,domain) do index
         g(map(f->f(index),fs)...)
@@ -344,6 +425,7 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     call(call,f,x)
 end
 
+# TODO this is just a constant quantity
 function analytical_field(f,dom)
     AnalyticalField(f,dom)
 end
@@ -352,7 +434,19 @@ struct AnalyticalField{A,B} <: AbstractQuantity
     f::A
     domain::B
 end
-term(a::AnalyticalField) = index -> a.f
+function term(a::AnalyticalField)
+    # TODO
+    function impl(mesh::AbstractFEMesh)
+        index -> a.f
+    end
+    function impl(pmesh::PMesh)
+        map(pmesh.mesh_partition) do _
+            index -> a.f
+        end
+    end
+    mesh = a.domain |> gk.mesh
+    impl(mesh)
+end
 prototype(a::AnalyticalField) = a.f
 
 function domain_map(domain,codomain;kwargs...)
@@ -568,7 +662,7 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
     @assert gk.domain(a) == gk.codomain(phi)
     g = gk.prototype(a)
     f = gk.prototype(phi)
-    prototype = x-> [g(f(x)),g(f(x))]
+    prototype = x-> map(g,f(x))
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)
@@ -587,7 +681,8 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
                 tface = sface_to_tfaces[sface][face_around]
                 lface = sface_to_lfaces[sface][face_around]
                 index2 = replace_face(index,tface)
-                ai = term_a(index2)
+                index3 = replace_face_around(index2,face_around)
+                ai = term_a(index3)
                 y = ys[face_around]
                 ai(y)
             end
@@ -710,6 +805,9 @@ struct MappedPoint{A,B} <: AbstractQuantity
     phi::A
     x::B
 end
+function domain(q::MappedPoint)
+    q.phi |> gk.codomain
+end
 function prototype(y::MappedPoint)
     phi = y.phi
     x = y.x
@@ -739,14 +837,24 @@ function plot(domain::AbstractDomain;kwargs...)
 end
 
 function plot(domain::AbstractDomain,::GlobalDomain;kwargs...)
-    style = domain |> gk.domain_style
-    d = gk.face_dim(domain)
-    domface_to_face = gk.faces(domain)
+    # TODO
+    function impl(mesh::AbstractFEMesh)
+        style = domain |> gk.domain_style
+        d = gk.face_dim(domain)
+        domface_to_face = gk.faces(domain)
+        vismesh = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
+        node_data = Dict{String,Any}()
+        face_data = Dict{String,Any}()
+        Plot(domain,vismesh,node_data,face_data)
+    end
+    function impl(mesh::PMesh)
+        plts = map(partition(domain)) do mydom
+            plot(mydom;kwargs...)
+        end
+        PPlot(plts,domain)
+    end
     mesh = gk.mesh(domain)
-    vismesh = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
-    node_data = Dict{String,Any}()
-    face_data = Dict{String,Any}()
-    Plot(domain,vismesh,node_data,face_data)
+    impl(mesh)
 end
 
 function plot(domain::AbstractDomain,style;kwargs...)
@@ -761,6 +869,12 @@ struct Plot{A,B,C,D}
 end
 domain(plt::Plot) = plt.domain
 visualization_mesh(plt::Plot) = plt.visualization_mesh
+
+# TODO maybe this one is not needed if we have a PDomain type
+struct PPlot{A,B}
+    plts::A
+    domain::B
+end
 
 function reference_coordinates(plt::Plot)
     domain = gk.reference_domain(plt.domain)
@@ -829,13 +943,43 @@ function plot_impl!(field,plt::Plot;label)
     data, :node_data
 end
 
+function plot_impl!(field,pplt::PPlot;label)
+    data = map(partition(field),pplt.plts) do f, plt
+        plot_impl!(f,plt;label)
+    end
+    data, :parallel_data
+end
+
 function vtk_plot(f,filename,args...;kwargs...)
     plt = gk.plot(args...;kwargs...)
-    vmesh, = plt.visualization_mesh
+    vtk_plot(f,filename,plt)
+end
+
+function vtk_plot(f,filename,plt::Plot)
+    vmesh,_ = plt.visualization_mesh
     d = gk.face_dim(plt.domain)
     vtk_grid(filename,gk.vtk_args(vmesh,d)...) do vtk
         f(VtkPlot(plt,vtk))
     end
+end
+
+function vtk_plot(f,filename,pplt::PPlot)
+    pmesh = pplt.domain |> gk.mesh
+    d = gk.face_dim(pplt.domain)
+    parts = linear_indices(pplt.plts)
+    nparts = length(parts)
+    vtk = map(pplt.plts,pmesh.face_partition[d+1],parts) do plt,myfaces,part
+        vmesh,vglue = plt.visualization_mesh
+        vcell_to_islocal =Int.(local_to_owner(myfaces) .== part)[vglue.parent_face]
+        vcell_to_owner =local_to_owner(myfaces)[vglue.parent_face]
+        myvtk = pvtk_grid(filename,gk.vtk_args(vmesh,d)...;part,nparts)
+        myvtk["__PART__",WriteVTK.VTKCellData()] = fill(part,num_faces(vmesh,d))
+        myvtk["__LOCAL__",WriteVTK.VTKCellData()] = vcell_to_islocal
+        myvtk["__OWNER__",WriteVTK.VTKCellData()] = vcell_to_owner
+        myvtk
+    end
+    f(VtkPlot(pplt,vtk))
+    map(vtk_save,vtk)
 end
 
 struct VtkPlot{A,B}
@@ -853,9 +997,89 @@ function plot!(plt::VtkPlot,field;label)
         plt.vtk[label,WriteVTK.VTKPointData()] = data
     elseif data_type === :face_data
         plt.vtk[label,WriteVTK.VTKCellData()] = data
+    elseif data_type === :parallel_data
+        # TODO some code duplication
+        map(data,plt.vtk) do mydata,vtk
+            dat,dat_type = mydata
+            if dat_type === :node_data
+                vtk[label,WriteVTK.VTKPointData()] = dat
+            elseif dat_type === :face_data
+                vtk[label,WriteVTK.VTKCellData()] = dat
+            else
+                error("Unreachable line reached")
+            end
+        end
     else
         error("Unreachable line reached")
     end
     plt
 end
 
+function piecewiese_field(fields::AbstractQuantity...)
+    PiecewiseField(fields)
+end
+
+struct PiecewiseField{A}
+    fields::A
+end
+
+function domain(u::PiecewiseField)
+    domains = map(gk.domain,u.fields)
+    PiecewiseDomain(domains)
+end
+
+function piecewiese_domain(domains::AbstractDomain...)
+    PiecewiseDomain(domains)
+end
+
+struct PiecewiseDomain{A}
+    domains::A
+end
+
+# Operations
+
+# Base
+
+function Base.getindex(a::AbstractQuantity,i::Integer...)
+    call(b->b[i...],a)
+end
+
+for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
+  @eval begin
+    (Base.$op)(a::AbstractQuantity) = call(Base.$op,a)
+  end
+end
+
+for op in (:+,:-,:*,:/,:\)
+  @eval begin
+      (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
+      (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,gk.constant_quantity(b,domain(a)))
+  end
+end
+
+# LinearAlgebra
+
+for op in (:inv,:det)
+  @eval begin
+    (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
+  end
+end
+
+for op in (:dot,:cross)
+  @eval begin
+      (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
+      (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,gk.constant_quantity(b,domain(a)))
+  end
+end
+
+# ForwardDiff
+
+for op in (:gradient,:jacobian,:hessian)
+  @eval begin
+      (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(ForwardDiff.$op,a,b)
+      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call(ForwardDiff.$op,gk.constant_quantity(a,gk.domain(b)),b)
+      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call(ForwardDiff.$op,a,gk.constant_quantity(b,domain(a)))
+  end
+end
