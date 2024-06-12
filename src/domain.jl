@@ -914,6 +914,27 @@ function plot!(plt::VtkPlot,field;label)
     plt
 end
 
+function piecewiese_field(fields::AbstractQuantity...)
+    PiecewiseField(fields)
+end
+
+struct PiecewiseField{A}
+    fields::A
+end
+
+function domain(u::PiecewiseField)
+    domains = map(gk.domain,u.fields)
+    PiecewiseDomain(domains)
+end
+
+function piecewiese_domain(domains::AbstractDomain...)
+    PiecewiseDomain(domains)
+end
+
+struct PiecewiseDomain{A}
+    domains::A
+end
+
 # Operations
 
 # Base

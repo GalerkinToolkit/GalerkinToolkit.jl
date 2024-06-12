@@ -284,7 +284,8 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::Nothing)
     (;ndofs,cell_to_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
     free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_tag)
-    cell_to_dofs, free_and_dirichlet_dofs
+    dirichlet_dof_location = zeros(Int32,0)
+    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
 end
 
 function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
@@ -334,17 +335,81 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
     end
     data = cell_to_dofs.data
     data .= f.(data)
-    cell_to_dofs, free_and_dirichlet_dofs
+    ndiri = length(last(free_and_dirichlet_dofs))
+    dirichlet_dof_location = ones(Int32,ndiri)
+    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+end
+
+function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
+    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
+     d_to_ctype_to_ldface_to_dofs,
+     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+    dof_to_location = zeros(Int32,ndofs)
+    D = length(d_to_ndfaces)-1
+    for d in D:-1:0
+        for (location,dirichlet_boundary) in dirichlet_boundary_all.domains |> enumerate
+            N = gk.num_dims(dirichlet_boundary)
+            if d != N
+                continue
+            end
+            physical_names = dirichlet_boundary |> gk.physical_names
+            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+            mesh = dirichlet_boundary |> gk.mesh
+            classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            ncells = length(cell_to_dofs)
+            Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+            ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
+            for cell in 1:ncells
+                ctype = cell_to_ctype[cell]
+                Dface = cell_to_Dface[cell]
+                ldof_to_dof = cell_to_dofs[cell]
+                ldface_to_dface = Dface_to_dfaces[Dface]
+                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+                nldfaces = length(ldface_to_dface)
+                dofs = cell_to_dofs[cell]
+                for ldface in 1:nldfaces
+                    ldofs = ldface_to_ldofs[ldface]
+                    dface = ldface_to_dface[ldface]
+                    Nface = dface
+                    tag = Nface_to_tag[Nface]
+                    if tag == 0
+                        continue
+                    end
+                    dof_to_location[view(dofs,ldofs)] .= location
+                end
+            end
+        end
+    end
+    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_location)
+    dof_permutation = gk.permutation(free_and_dirichlet_dofs)
+    n_free_dofs = length(first(free_and_dirichlet_dofs))
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    data = cell_to_dofs.data
+    data .= f.(data)
+    dirichlet_dof_location = dof_to_location[last(free_and_dirichlet_dofs)]
+    (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
 function face_dofs(space::AbstractSpace)
-    face_to_dofs, _ = generate_dof_ids(space)
-    face_to_dofs
+    state = generate_dof_ids(space)
+    state.cell_to_dofs # TODO rename face_dofs ?
 end
 
 function free_and_dirichlet_dofs(V::AbstractSpace)
-    _, free_and_diri_dofs = generate_dof_ids(V)
-    free_and_diri_dofs
+    state = generate_dof_ids(V)
+    state.free_and_dirichlet_dofs
+end
+
+function dirichlet_dof_location(V::AbstractSpace)
+    state = generate_dof_ids(V)
+    state.dirichlet_dof_location
 end
 
 function num_face_dofs(a::AbstractSpace,dim)
@@ -691,6 +756,10 @@ function interpolate_dirichlet!(f,u::DiscreteField)
 end
 
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
+    interpolate_impl!(f,u,free_or_diri)
+end
+
+function interpolate_impl!(f,u,free_or_diri;location=1)
     free_vals = gk.free_values(u)
     diri_vals = gk.dirichlet_values(u)
     space = gk.space(u)
@@ -701,6 +770,7 @@ function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDiric
     vals_term = gk.term(vals)
     domain = gk.domain(space)
     num_face_dofs = gk.num_face_dofs(space,dim)
+    dirichlet_dof_location = gk.dirichlet_dof_location(space)
     for face in 1:gk.num_faces(domain)
         index = gk.index(;face)
         for dof in 1:num_face_dofs(index)
@@ -712,11 +782,18 @@ function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDiric
                     free_vals[dof] = v
                 end
             else
-                if free_or_diri != FREE
-                    diri_vals[-dof] = v
+                diri_dof = -dof
+                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                    diri_vals[diri_dof] = v
                 end
             end
         end
+    end
+end
+
+function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
+    for (location,field) in f.fields |> enumerate
+        interpolate_impl!(field,u,free_or_diri;location)
     end
 end
 
@@ -756,6 +833,15 @@ function free_and_dirichlet_nodes(V::IsoParametricSpace,dirichlet_boundary::Abst
     tag_to_name = dirichlet_boundary |> gk.physical_names
     gk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
     gk.partition_from_mask(i->i==0,node_to_tag)
+end
+
+function free_and_dirichlet_dofs(V::IsoParametricSpace)
+    free_and_dirichlet_nodes(V)
+end
+
+function dirichlet_dof_location(V::IsoParametricSpace)
+    ndiri = length(last(free_and_dirichlet_nodes(V)))
+    ones(Int32,ndiri)
 end
 
 function face_dofs(V::IsoParametricSpace)

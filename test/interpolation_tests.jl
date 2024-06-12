@@ -34,8 +34,6 @@ gk.face_own_dof_permutations(fe,0)
 gk.face_own_dof_permutations(fe,1)
 gk.face_own_dof_permutations(fe,2)
 
-outdir = mkpath(joinpath(@__DIR__,"..","output"))
-
 domain = (0,1,0,1)
 cells = (3,3)
 mesh = gk.cartesian_mesh(domain,cells)
@@ -87,16 +85,6 @@ gk.interpolate_dirichlet!(uref,w3)
 x = gk.free_values(w3)
 x .= rand(length(x))
 
-gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
-    gk.plot!(plt,v;label="v")
-    gk.plot!(plt,v2;label="v2")
-    gk.plot!(plt,y1;label="y1")
-    gk.plot!(plt,y2;label="y2")
-    gk.plot!(plt,w;label="w")
-    gk.plot!(plt,w2;label="w2")
-    gk.plot!(plt,w3;label="w3")
-end
-
 uh = gk.zero_field(Float64,V)
 gk.interpolate!(uref,uh)
 eh(q) = u(ϕ(q)) - uh(q)
@@ -110,7 +98,49 @@ end
 el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 @test el2 < tol
 
+# TODO
+#udiri = gk.analytical_field(sum,Γdiri)
+#uh = gk.zero_field(Float64,V)
+#gk.interpolate_free!(uref,uh)
+#gk.interpolate_dirichlet!(udiri,uh)
+#eh(q) = u(ϕ(q)) - uh(q)
+#el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
+#@test el2 < tol
+
 V = gk.lagrange_space(Γdiri,order)
 gk.face_dofs(V)
+
+Γ1 = gk.domain(mesh;face_dim=D-1,physical_names=["1-face-1"])
+Γ2 = gk.domain(mesh;face_dim=D-1,physical_names=["1-face-3"])
+Γ3 = gk.domain(mesh;face_dim=D-2,physical_names=["0-face-1"])
+
+u1 = gk.analytical_field(x->1.0,Ωref)
+u2 = gk.analytical_field(x->2.0,Ωref)
+u3 = gk.analytical_field(x->3.0,Ωref)
+
+udiri = gk.piecewiese_field(u1,u2,u3)
+Γdiri = gk.piecewiese_domain(Γ1,Γ2,Γ3)
+
+order = 1
+V = gk.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
+
+gk.face_dofs(V)
+
+V |> gk.dirichlet_dof_location
+
+uh2 = gk.zero_field(Float64,V)
+gk.interpolate_dirichlet!(udiri,uh2)
+
+outdir = mkpath(joinpath(@__DIR__,"..","output"))
+gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
+    gk.plot!(plt,v;label="v")
+    gk.plot!(plt,v2;label="v2")
+    gk.plot!(plt,y1;label="y1")
+    gk.plot!(plt,y2;label="y2")
+    gk.plot!(plt,w;label="w")
+    gk.plot!(plt,w2;label="w2")
+    gk.plot!(plt,w3;label="w3")
+    gk.plot!(plt,uh2;label="uh2")
+end
 
 end #module
