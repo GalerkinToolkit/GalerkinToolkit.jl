@@ -5,8 +5,8 @@
 # reference_faces
 #
 
-abstract type GalerkinToolkitDataType end
-function Base.show(io::IO,data::GalerkinToolkitDataType)
+abstract type AbstractType end
+function Base.show(io::IO,data::gk.AbstractType)
     print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
 end
 
@@ -52,7 +52,10 @@ has_physical_faces(a) = hasproperty(a,:physical_faces) && a.physical_faces !== n
 """
 """
 periodic_nodes(a) = a.periodic_nodes
-has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && a.periodic_nodes !== nothing
+# The uncommented code would also ensure that an empty periodic node list 
+# corresponds to mesh with non-periodic BCs
+has_periodic_nodes(a) = hasproperty(a,:periodic_nodes) && 
+    a.periodic_nodes !== nothing # && length(a.periodic_nodes.first) != 0
 """
 """
 geometry(a) = a.geometry
@@ -128,6 +131,25 @@ repeat_per_dir(geo,a::NTuple) = a
 reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
 face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2)+1]
+function face_local_faces(topo,d,D)
+    dface_to_Dfaces = JaggedArray(gk.face_incidence(topo,d,D))
+    Dface_to_dfaces = gk.face_incidence(topo,D,d)
+    dface_to_lfaces_data = similar(dface_to_Dfaces.data) 
+    fill!(dface_to_lfaces_data,0)
+    dface_to_lfaces_ptrs = dface_to_Dfaces.ptrs
+    dface_to_lfaces = JaggedArray(dface_to_lfaces_data,dface_to_lfaces_ptrs)
+    for (dface1,Dfaces) in enumerate(dface_to_Dfaces)
+        for (lface1,Dface) in enumerate(Dfaces)
+            dfaces = Dface_to_dfaces[Dface]
+            for (lface2,dface2) in enumerate(dfaces)
+                if dface1 == dface2
+                    dface_to_lfaces[dface1][lface1] = lface2
+                end
+            end
+        end
+    end
+    dface_to_lfaces
+end
 face_reference_id(a,d) = face_reference_id(a)[val_parameter(d)+1]
 num_faces(a) = map(length,face_reference_id(a))
 num_faces(a,d) = length(face_reference_id(a,d))
@@ -189,10 +211,10 @@ end
 
 # Supertype hierarchy
 
-    AbstractFaceGeometry <: GalerkinToolkitDataType
+    AbstractFaceGeometry <: gk.AbstractType
 
 """
-abstract type AbstractFaceGeometry <: GalerkinToolkitDataType end
+abstract type AbstractFaceGeometry <: gk.AbstractType end
 
 struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
     extrusion::NTuple{D,Bool}
@@ -277,7 +299,7 @@ end
 - [`lagrange_mesh_face`](@ref)
 
 """
-abstract type AbstractMeshFace <: GalerkinToolkitDataType end
+abstract type AbstractMeshFace <: gk.AbstractType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
@@ -455,7 +477,7 @@ end
 - [`mesh_from_chain`](@ref)
 
 """
-abstract type AbstractFEMesh <: GalerkinToolkitDataType end
+abstract type AbstractFEMesh <: gk.AbstractType end
 
 struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     node_coordinates::A
@@ -1190,11 +1212,18 @@ end
 """
 """
 function interior_node_permutations(fe::AbstractMeshFace)
-    interior_node_permutations_from_mesh_face(fe)
+    interior_ho_nodes = interior_nodes(fe)
+    node_permutations_from_mesh_face(fe,interior_ho_nodes)
 end
 
-function interior_node_permutations_from_mesh_face(refface)
-    interior_ho_nodes = interior_nodes(refface)
+"""
+"""
+function node_permutations(fe::AbstractMeshFace)
+    interior_ho_nodes = 1:num_nodes(fe)
+    node_permutations_from_mesh_face(fe,interior_ho_nodes)
+end
+
+function node_permutations_from_mesh_face(refface,interior_ho_nodes)
     ho_nodes_coordinates = node_coordinates(refface)
     geo = geometry(refface)
     vertex_perms = vertex_permutations(geo)
@@ -1207,7 +1236,7 @@ function interior_node_permutations_from_mesh_face(refface)
     geo_mesh = boundary(geo)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
     vertex_to_geo_node = map(first,vertex_to_geo_nodes)
-    ref_face = lagrangian_reference_face(geo)
+    ref_face = lagrange_mesh_face(geo,1)
     fun_mesh = boundary(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
@@ -1232,7 +1261,7 @@ function interior_node_permutations_from_mesh_face(refface)
                 y += g*x
             end
             pnode = findfirst(i->(norm(i-y)+1)≈1,q)
-            if pnode != nothing
+            if !isnothing(pnode)
                node_to_pnode[iq] = pnode
             end
         end
@@ -1256,7 +1285,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractMeshTopology <: GalerkinToolkitDataType end
+abstract type AbstractMeshTopology <: gk.AbstractType end
 
 struct GenericMeshTopology{A,B,C,D} <: AbstractMeshTopology
     face_incidence::A
@@ -1604,7 +1633,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractFaceTopology <: GalerkinToolkitDataType end
+abstract type AbstractFaceTopology <: gk.AbstractType end
 
 struct GenericFaceTopology{A,B} <: AbstractFaceTopology
     boundary::A
@@ -1973,7 +2002,7 @@ function generate_face_boundary(
                             break
                         end
                     end
-                    @boundscheck @assert ldface2 != INVALID_ID
+                    @boundscheck @assert ldface2 != INVALID_ID # TODO: issue gmsh quad eles
                     Dface_to_dfaces[Dface1][ldface2] = dface2
                 end
             end
@@ -2154,6 +2183,20 @@ function classify_mesh_nodes!(node_to_tag,mesh,tag_to_name,dmax=num_dims(mesh))
     node_to_tag
 end
 
+function classify_mesh_faces!(dface_to_tag,mesh,d,tag_to_name)
+    fill!(dface_to_tag,zero(eltype(dface_to_tag)))
+    face_groups = physical_faces(mesh,d)
+    for (tag,name) in enumerate(tag_to_name)
+        for (name2,faces) in face_groups
+            if name != name2
+                continue
+            end
+            dface_to_tag[faces] .= tag
+        end
+    end
+    dface_to_tag
+end
+
 """
 """
 function physical_names(mesh,d)
@@ -2168,6 +2211,28 @@ function physical_names(mesh;merge_dims=Val(false))
         return d_to_names
     end
     reduce(union,d_to_names)
+end
+
+function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==2,face_to_cells)
+    groups[physical_name] = faces
+    mesh
+end
+
+function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+    D = num_dims(mesh)
+    d = D-1
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    groups = physical_faces(mesh,d)
+    faces = findall(cells->length(cells)==1,face_to_cells)
+    groups[physical_name] = faces
+    mesh
 end
 
 """
@@ -2189,7 +2254,7 @@ abstract type AbstractFEChain
 - [`fe_chain`](@ref)
 
 """
-abstract type AbstractFEChain <: GalerkinToolkitDataType end
+abstract type AbstractFEChain <: gk.AbstractType end
 
 struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
     node_coordinates::A
@@ -2285,7 +2350,7 @@ end
 
 function simplexify_unit_simplex(geo)
     @assert is_unit_simplex(geo)
-    refface = lagrangian_reference_face(geo)
+    refface = lagrange_mesh_face(geo,1)
     mesh_from_reference_face(refface)
 end
 
@@ -2375,7 +2440,7 @@ function simplexify_reference_face(ref_face)
     # We need the same order in all directions
     # for this to make sense
     my_order = order(ref_face)
-    ref_faces_inter = map(r_geom->lagrangian_reference_face(geometry(r_geom),order=my_order),ref_faces_geom)
+    ref_faces_inter = map(r_geom->lagrange_mesh_face(geometry(r_geom),my_order),ref_faces_geom)
     s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
         m = num_nodes(r)
         n = num_nodes(r_geom)
@@ -2848,7 +2913,7 @@ function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
-function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,resolution=nothing)
+function visualization_mesh_from_mesh(mesh,dim,ids=num_faces(mesh,dim);order=nothing,refinement=nothing)
     function barrier(
             refid_to_tabulation,
             refid_to_scell_to_snodes,
@@ -2962,20 +3027,20 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,reso
     end # barrier
     refid_to_refface = reference_faces(mesh,dim)
     refid_to_refmesh = map(refid_to_refface) do ref_face
-        if order === nothing && resolution === nothing
+        if order === nothing && refinement === nothing
             # Use the given cells as visualization cells
             mesh_from_reference_face(ref_face)
-        elseif order !== nothing && resolution === nothing
+        elseif order !== nothing && refinement === nothing
             # Use cells of given order as visualization cells
             geo = geometry(ref_face)
-            ref_face_ho = lagrangian_reference_face(geo;order)
+            ref_face_ho = lagrange_mesh_face(geo,order)
             mesh_from_reference_face(ref_face_ho)
-        elseif order === nothing && resolution !== nothing
-            # Use linear sub-cells with $resolution per direction per direction
+        elseif order === nothing && refinement !== nothing
+            # Use linear sub-cells with $refinement per direction per direction
             geom = geometry(ref_face)
-            refine_reference_geometry(geom,resolution)
+            refine_reference_geometry(geom,refinement)
         else
-            error("order and resolution kw-arguments can not be given at the same time")
+            error("order and refinement kw-arguments can not be given at the same time")
         end
     end
     refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
@@ -2988,8 +3053,8 @@ function visualization_mesh_from_mesh(mesh,dim=num_dims(mesh);order=nothing,reso
     refid_to_srefid_to_vrefface = map(refmesh->reference_faces(refmesh,dim),refid_to_refmesh)
     refid_to_snode_to_coords = map(node_coordinates,refid_to_refmesh)
     node_to_coords = node_coordinates(mesh)
-    cell_to_nodes = face_nodes(mesh,dim)
-    cell_to_refid = face_reference_id(mesh,dim)
+    cell_to_nodes = view(face_nodes(mesh,dim),ids)
+    cell_to_refid = view(face_reference_id(mesh,dim),ids)
     Dn = num_ambient_dims(mesh)
     barrier(
             refid_to_tabulation,
@@ -3042,7 +3107,7 @@ function refine_reference_geometry(geo,resolution)
             end
           end
         end
-        refface = lagrangian_reference_face(geo)
+        refface = lagrange_mesh_face(geo,1)
         chain = Chain(;
                        num_dims=Val(2),
                        node_coordinates = X,
@@ -3219,7 +3284,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
-struct PartitionStrategy{A,B} <: GalerkinToolkitDataType
+struct PartitionStrategy{A,B} <: gk.AbstractType
     graph_nodes::Symbol
     graph_edges::Symbol
     graph_nodes_dim::A
@@ -3327,7 +3392,7 @@ function mesh_graph(mesh::AbstractFEMesh;
     end
 end
 
-struct PMesh{A,B,C,D} <: GalerkinToolkitDataType
+struct PMesh{A,B,C,D} <: gk.AbstractType
     mesh_partition::A
     node_partition::B
     face_partition::C
@@ -3356,7 +3421,36 @@ function num_dims(mesh::PMesh)
     length(mesh.face_partition) - 1
 end
 
-struct PMeshLocalIds{A,B} <: GalerkinToolkitDataType
+"""
+    label_boundary_faces!(mesh::PMesh;physical_name="boundary")
+
+Update `mesh` inplace by using partition ownership of faces to label only the boundary of 
+meshes in a parallel mesh where the boundary is defined as a face owned by a given partition 
+and not incident with any other faces on another partition (i.e., not on the interface). 
+"""
+function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
+    D = num_dims(mesh)
+    d = D - 1
+    face_parts = face_partition(mesh, d)
+    v = pfill(1,face_parts)
+    assemble!(v) |> wait
+    map(partition(mesh),partition(v),face_parts) do mymesh, myv, myfaces
+        topo = topology(mymesh)
+        face_to_cells = face_incidence(topo,d,D)
+        local_to_owner_face = local_to_owner(myfaces)
+        part = part_id(myfaces)
+        let face = 0
+            faces = findall(face_to_cells) do cells
+                face += 1
+                myv[face] == 1 && local_to_owner_face[face] == part && length(cells) == 1
+            end
+            physical_faces(mymesh,d)[physical_name] = faces
+        end
+    end
+    mesh
+end
+
+struct PMeshLocalIds{A,B} <: gk.AbstractType
     node_indices::A
     face_indices::B
 end
@@ -3577,7 +3671,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     D = num_dims(fine_mesh)
     n_fine_cells = num_faces(fine_mesh,D)
     n_fine_nodes = num_nodes(fine_mesh)
-    refcell = first(reference_faces(fine_mesh,D))
+    fine_refcell = first(reference_faces(fine_mesh,D))
+    coarse_refcell = first(reference_faces(coarse_mesh,D))
     n_coarse_cells = num_faces(coarse_mesh,D)
     fine_cell_local_node_to_fine_node = face_nodes(fine_mesh,D)
     coarse_cell_lnode_to_coarse_node = face_nodes(coarse_mesh,D)
@@ -3588,7 +3683,8 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # but we give some default value
     if boundary_names === nothing
         boundary_names = [
-            [ "$d-face-$face" for face in 1:num_faces(boundary(refcell),d)] for d in 0:(D-1)]
+            [ "$d-face-$face" for face in 1:num_faces(boundary(coarse_refcell),d)] 
+            for d in 0:(D-1)]
     end
     name_priority = reduce(vcat,boundary_names)
     fine_node_groups = physical_nodes(fine_mesh;merge_dims=true,disjoint=true,name_priority)
@@ -3597,7 +3693,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     d_to_local_dface_to_fine_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     fine_node_mask = fill(true,n_fine_nodes)
     for d in 0:(D-1)
-        n_local_dfaces = num_faces(boundary(refcell),d)
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
         local_dface_to_fine_nodes = Vector{Vector{Int}}(undef,n_local_dfaces)
         for local_dface in 1:n_local_dfaces
             fine_nodes = fine_node_groups[boundary_names[d+1][local_dface]]
@@ -3607,10 +3703,117 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         d_to_local_dface_to_fine_nodes[d+1] = local_dface_to_fine_nodes
     end
     d_to_local_dface_to_fine_nodes[D+1] = [findall(fine_node_mask)]
+    fine_node_to_d = zeros(Int,n_fine_nodes)
+    fine_node_to_local_dface = zeros(Int,n_fine_nodes)
+    for d in 0:D
+        n_local_dfaces = length(d_to_local_dface_to_fine_nodes[d+1])
+        for local_dface in 1:n_local_dfaces
+            fine_nodes = d_to_local_dface_to_fine_nodes[d+1][local_dface]
+            fine_node_to_d[fine_nodes] .= d
+            fine_node_to_local_dface[fine_nodes] .= local_dface
+        end
+    end
 
-    # Coordinates
+    ## Ensure consistent mapping of periodic nodes on opposite faces 
+    # Get periodicity information
+    fine_node_to_master_node = collect(1:n_fine_nodes)
+    d_to_local_dface_to_permutation = Vector{Vector{Vector{Int}}}(undef, D+1)
+    periodic_node_to_fine_node, periodic_node_to_master_node = periodic_nodes(
+        fine_mesh)
+    fine_node_to_master_node[periodic_node_to_fine_node] = periodic_node_to_master_node
+
+    # Fixing vertices indirection for unit cell
+    # Assumes one level of indirection for periodicity (e.g., vertex -> master -> master)
+    # TODO: d-1 levels of indirection
+    for _ in 1:(D-1)
+        for fine_node in 1:n_fine_nodes
+            master_node = fine_node_to_master_node[fine_node]
+            if fine_node == master_node
+                continue  
+            end
+            master_master_node = fine_node_to_master_node[master_node]
+            fine_node_to_master_node[fine_node] = master_master_node 
+        end 
+    end
+
+    # Sort edges according master node (only needed in 3D)
+    if D==3
+        let d=1
+            n_local_dfaces = length(d_to_local_dface_to_fine_nodes[d+1])
+            for local_dface in 1:n_local_dfaces
+                fine_nodes = d_to_local_dface_to_fine_nodes[d+1][local_dface]
+                master_nodes = fine_node_to_master_node[fine_nodes]
+                d_to_local_dface_to_fine_nodes[d+1][local_dface] = fine_nodes[sortperm(master_nodes)]
+            end
+        end
+    end
+
+    fine_node_to_permuted_node = zeros(Int, n_fine_nodes)
+    fine_node_to_face_node = zeros(Int, n_fine_nodes)
+    d_to_local_dface_to_opposite_dface = opposite_faces(geometry(coarse_refcell))
+    d_to_local_dface_to_is_master = Vector{Vector{Bool}}(undef, D+1)
+    for d in 0:(D-1)
+        local_dface_to_is_master = similar(d_to_local_dface_to_opposite_dface[d+1], Bool) 
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
+        for local_dface in 1:n_local_dfaces 
+            local_dface_to_is_master[local_dface] = true
+        end
+        for local_dface in 1:n_local_dfaces 
+            if  local_dface_to_is_master[local_dface] == false
+                continue
+            end
+            opposite_local_dface = d_to_local_dface_to_opposite_dface[d+1][local_dface]
+            local_dface_to_is_master[opposite_local_dface] = false
+        end
+        d_to_local_dface_to_is_master[d+1] = local_dface_to_is_master
+    end 
+    
+    for d in 0:(D-1)
+        n_local_dfaces = num_faces(boundary(coarse_refcell),d)
+        local_dface_to_permutation = Vector{Vector{Int}}(undef, n_local_dfaces)
+        local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
+        for local_dface_1 in 1:n_local_dfaces
+
+            fine_nodes_1 = local_dface_to_fine_nodes[local_dface_1]
+            master_nodes_1 = fine_node_to_master_node[fine_nodes_1]
+
+            # NB! The permutation thing only works for D-1 objects!
+            # Handle nonperiodic case with identity permutation 
+            # assumes consistent numbering of node ids on opposite faces... 
+            # Also handles case where there are periodic nodes but the master nodes 
+            # will use the identity permutation
+            # TODO: in 3d geometry, since surfaces represent the periodic copies,
+            # the opposite edges can end up being a map from slaves to slave, and therefore
+            # this condition below fails because there is no obvious master (as in the 2d case) 
+            if d !=D-1 || length(periodic_node_to_fine_node) == 0 || d_to_local_dface_to_is_master[d+1][local_dface_1] 
+
+                permutation = collect(1:length(local_dface_to_fine_nodes[local_dface_1]))
+                local_dface_to_permutation[local_dface_1] = permutation
+                fine_node_to_permuted_node[fine_nodes_1] = permutation
+                fine_node_to_face_node[fine_nodes_1] = 1:length(fine_nodes_1)
+                continue 
+            end
+
+            # Handle periodic case: use a local reference cell and its opposite 
+            # face to get the corresponding fine nodes and the master of those fine nodes.
+            # Then ensure that a given local d-face has the same ordering as the opposite
+            # face....
+            local_dface_2 = d_to_local_dface_to_opposite_dface[d+1][local_dface_1]
+            fine_nodes_2 = local_dface_to_fine_nodes[local_dface_2]
+            master_nodes_2 = fine_node_to_master_node[fine_nodes_2]
+            permutation = indexin(master_nodes_2, master_nodes_1)
+            local_dface_to_permutation[local_dface_1] = permutation
+            fine_node_to_permuted_node[fine_nodes_1] = permutation
+            fine_node_to_face_node[fine_nodes_1] = 1:length(fine_nodes_1)
+        end
+        d_to_local_dface_to_permutation[d+1] = local_dface_to_permutation
+    end
+    d_to_local_dface_to_permutation[D+1] = [
+        collect(1:length(d_to_local_dface_to_fine_nodes[D+1][1]))]
+
+    # Setup the map of fine nodes to physical coordinates via finite element interpolation
     fine_node_to_x = node_coordinates(fine_mesh)
-    A = tabulator(refcell)(value,fine_node_to_x)
+    A = tabulator(coarse_refcell)(value,fine_node_to_x)
     coarse_cell_fine_node_to_x = Vector{Vector{SVector{D,Float64}}}(undef,n_coarse_cells)
     for coarse_cell in 1:n_coarse_cells
         lnode_to_coarse_node = coarse_cell_lnode_to_coarse_node[coarse_cell]
@@ -3643,63 +3846,75 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
         d_coarse_dface_to_offset[d+1] = coarse_dface_to_offset
     end
-    n_final_nodes = final_node
+    n_final_nodes = final_node # renaming of counter variable for clarity 
+
+    # Initialize map of coarse cell to final node mediated by fine node
     coarse_cell_fine_node_to_final_node = Vector{Vector{Int}}(undef,n_coarse_cells)
     for coarse_cell in 1:n_coarse_cells
         coarse_cell_fine_node_to_final_node[coarse_cell] = zeros(Int,n_fine_nodes)
     end
+
+    # Map each dimension to final nodes mediated by coarse d-dimensional face
     n_coarse_nodes = num_nodes(coarse_mesh)
+    d_to_coarse_dface_to_final_nodes = Vector{Vector{Vector{Int}}}(undef,D+1)
     for d in 0:D
         local_dface_to_fine_nodes = d_to_local_dface_to_fine_nodes[d+1]
         coarse_dface_to_coarse_cells = face_incidence(topo,d,D)
         coarse_cell_to_coarse_dfaces = face_incidence(topo,D,d)
         n_coarse_dfaces = num_faces(coarse_mesh,d)
+        coarse_dface_to_final_nodes = Vector{Vector{Int}}(undef,n_coarse_dfaces)
         for coarse_dface in 1:n_coarse_dfaces
             offset = d_coarse_dface_to_offset[d+1][coarse_dface]
             coarse_cells = coarse_dface_to_coarse_cells[coarse_dface]
             for coarse_cell in coarse_cells
                 coarse_dfaces = coarse_cell_to_coarse_dfaces[coarse_cell]
                 local_dface = findfirst(i->coarse_dface==i,coarse_dfaces)
-                fine_nodes = local_dface_to_fine_nodes[local_dface]
-                final_nodes =  offset .+ (1:length(fine_nodes)) # TODO, we need a permutation here defined by the boundary conditions
+                permutation = d_to_local_dface_to_permutation[d+1][local_dface]
+                fine_nodes = local_dface_to_fine_nodes[local_dface][permutation]
+                final_nodes =  offset .+ (1:length(fine_nodes)) 
                 coarse_cell_fine_node_to_final_node[coarse_cell][fine_nodes] = final_nodes
+                coarse_dface_to_final_nodes[coarse_dface] = final_nodes
             end    
         end
+        d_to_coarse_dface_to_final_nodes[d+1] = coarse_dface_to_final_nodes
     end
 
+    # Apply the coordinate transformation to the final nodes 
     final_node_to_x = zeros(SVector{D,Float64},n_final_nodes)
     for coarse_cell in 1:n_coarse_cells
-        fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]
-        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell]
+        fine_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell]  
+        fine_node_to_x = coarse_cell_fine_node_to_x[coarse_cell] 
         final_node_to_x[fine_node_to_final_node] = fine_node_to_x
     end
 
+    # Map final cells to final node mediated by local (finite element) reference entities
     n_final_cells = n_coarse_cells*n_fine_cells
     final_cell_local_node_to_final_node = Vector{Vector{Int}}(undef,n_final_cells)
-    for final_cell in 1:n_final_cells
-        final_cell_local_node_to_final_node[final_cell] = zeros(Int,n_final_nodes)
-    end
+
     final_cell = 0
+    final_cell_to_coarse_cell = Vector{Int}(undef, n_final_cells)
     for coarse_cell in 1:n_coarse_cells
         for fine_cell in 1:n_fine_cells
             local_node_to_fine_node = fine_cell_local_node_to_fine_node[fine_cell]
-            local_node_to_final_node = coarse_cell_fine_node_to_final_node[coarse_cell][local_node_to_fine_node]
+            local_node_to_final_node = coarse_cell_fine_node_to_final_node[
+                coarse_cell][local_node_to_fine_node]
             final_cell += 1
             final_cell_local_node_to_final_node[final_cell] = local_node_to_final_node
+            final_cell_to_coarse_cell[final_cell] = coarse_cell
         end
     end
     final_cell_to_refid = fill(1,n_final_cells)
-    refid_to_refcell = [refcell]
+    refid_to_fine_refcell = [fine_refcell]
 
     chain = fe_chain(
-                        final_node_to_x,
-                        JaggedArray(final_cell_local_node_to_final_node),
-                        final_cell_to_refid,
-                        refid_to_refcell)
+                final_node_to_x,
+                JaggedArray(final_cell_local_node_to_final_node),
+                final_cell_to_refid,
+                refid_to_fine_refcell)
 
     # TODO we could avoid this call to complexify by using
     # the fine faces (just as we did with the fine nodes)
-    # TODO maybe we don't need to simplexify and only find the faces
+    # TODO maybe we don't need to complexify and only find the faces
     # needed for the physical groups
     final_mesh, = mesh_from_chain(chain) |> complexify
 
@@ -3733,7 +3948,137 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
         end
     end
 
-    glue = (;coarse_cell_fine_node_to_final_node,d_to_local_dface_to_fine_nodes)
+    glue = (;
+        d_to_coarse_dface_to_final_nodes,
+        coarse_cell_fine_node_to_final_node,
+        d_to_local_dface_to_fine_nodes,
+        final_cell_to_coarse_cell)
+
     final_mesh, glue
 end
 
+function two_level_mesh(coarse_mesh::PMesh,fine_mesh;kwargs...)
+    # TODO for the moment we assume a cell-based partition without ghosts
+    # TODO: NEED TO ASSERT CELL BASED PARTITION???
+    D = num_dims(fine_mesh)
+
+    function setup_local_meshes(my_coarse_mesh)
+        two_level_mesh(my_coarse_mesh,fine_mesh; kwargs...)
+    end
+    mesh_partition, glue = map(setup_local_meshes, partition(coarse_mesh)) |> tuple_of_arrays
+
+    # mark owernship of nodes using a local final mesh and local glue
+    function mark_nodes(final_mesh, local_glue, coarse_indices)
+        d_to_coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes
+        my_final_node_to_owner = fill(0,num_nodes(final_mesh))
+        for d in 0:D
+            coarse_dface_to_final_nodes = d_to_coarse_dface_to_final_nodes[d+1]
+            coarse_dfaces = face_indices(coarse_indices,d)
+            coarse_dface_to_owner = local_to_owner(coarse_dfaces)
+            n_coarse_dfaces = length(coarse_dface_to_owner)
+            for coarse_dface in 1:n_coarse_dfaces
+                owner = coarse_dface_to_owner[coarse_dface]
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                my_final_node_to_owner[final_nodes] .= owner
+            end
+        end
+        my_final_node_to_owner
+    end
+    index_partition_coarse_mesh = index_partition(coarse_mesh) # node/face ixs per part
+    final_node_to_owner = map(mark_nodes, mesh_partition, glue, index_partition_coarse_mesh) 
+    parts = linear_indices(final_node_to_owner)
+
+    # count the number of owned final mesh nodes per partition
+    n_own_final_nodes = map(
+        (owners,part)->count(owner->owner==part,owners),final_node_to_owner,parts)
+    n_final_nodes = sum(n_own_final_nodes) 
+
+    # owned indices of final mesh nodes for each partition
+    own_node_partition = variable_partition(n_own_final_nodes,n_final_nodes)
+
+    # assign a non-zero global id to final mesh nodes if they are owned by a partition
+    final_node_to_gid = map(v->zeros(Int,length(v)),final_node_to_owner)
+    map(final_node_to_gid,
+        final_node_to_owner,
+        own_node_partition,
+        parts) do gids, owners, own_nodes, part
+        own = 0
+        for i in 1:length(gids)
+            owner = owners[i]
+            if owner == part
+                own += 1
+                gids[i] = own_nodes[own]
+            end
+        end
+    end
+
+    # for each dimension of the coarse d-face, handle ownership and ensure consistent data 
+    for d in 0:D
+        # For a given d-dimensional (i.e., point, edge, surface, vol) coarse face,
+        # get a map from coarse face to final node, iterate through the coarse faces,
+        # and get a global id corresponding to that final node
+        function get_coarse_dface_to_gids(coarse_dfaces, local_glue, gids)
+            coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
+            n_coarse_dfaces = local_length(coarse_dfaces)
+            coarse_dface_to_gids = Vector{Vector{Int}}(undef,n_coarse_dfaces)
+            for coarse_dface in 1:n_coarse_dfaces
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                coarse_dface_to_gids[coarse_dface] = gids[final_nodes]
+            end
+            JaggedArray(coarse_dface_to_gids)
+        end
+        coarse_dface_partition = face_partition(coarse_mesh, d)
+        coarse_dface_to_gids_data = map( # this is a map over partition specific data
+            get_coarse_dface_to_gids, coarse_dface_partition, glue, final_node_to_gid)
+        coarse_dface_to_gids = PVector(coarse_dface_to_gids_data, coarse_dface_partition)
+        consistent!(coarse_dface_to_gids) |> wait # owners give their values to ghosts?
+
+        # For each d-dimensional coarse face, update the non-partitioned gids 
+        # with the partitioned and consistent gids
+        function update_gids!(coarse_dfaces, coarse_dface_to_gids, local_glue, gids)
+            coarse_dface_to_final_nodes = local_glue.d_to_coarse_dface_to_final_nodes[d+1]
+            n_coarse_dfaces = local_length(coarse_dfaces) 
+            for coarse_dface in 1:n_coarse_dfaces
+                final_nodes = coarse_dface_to_final_nodes[coarse_dface]
+                gids[final_nodes] = coarse_dface_to_gids[coarse_dface]
+            end
+        end
+        map(update_gids!, 
+            coarse_dface_partition, 
+            coarse_dface_to_gids_data, 
+            glue, 
+            final_node_to_gid)
+    end
+
+    # For each part, use the final node (i.e., local id) to global id map
+    # and final node to owner map to construct arbitrary indices for partitioned 
+    # mesh nodes 
+    function finalize_node_partition(part, gids, owners)
+        LocalIndices(n_final_nodes, part, gids, owners)
+    end
+    node_partition = map(
+        finalize_node_partition, parts, final_node_to_gid, final_node_to_owner)
+
+    # TODO: variable_partition has ghosts and periodic positional args... how to handle this?
+    n_own_cells = map(final_mesh -> num_faces(final_mesh, D), mesh_partition) 
+    n_cells = sum(n_own_cells)
+    cell_partition = variable_partition(n_own_cells, n_cells) 
+
+   
+    # TODO: 0 and 1 dimensional faces have ghost cells, so the use of
+    # variable_partition here is just a placeholder and is not accurate
+    function dummy_face_partition(d)
+        n_own_dfaces = map(mesh -> num_faces(mesh, d), mesh_partition)
+        n_dfaces = sum(n_own_dfaces)
+        return variable_partition(n_own_dfaces, n_dfaces)
+    end
+    _face_partition = ntuple(
+        i-> i == (D+1) ? cell_partition : dummy_face_partition(i-1),
+        D+1)
+
+    final_glue = nothing # TODO: placeholder for parallel glue
+    partition_strategy = coarse_mesh.partition_strategy # TODO: is this right? 
+    final_mesh = PMesh(
+        mesh_partition, node_partition, _face_partition, partition_strategy)
+    return final_mesh, final_glue
+end

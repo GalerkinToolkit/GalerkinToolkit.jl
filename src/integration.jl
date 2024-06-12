@@ -14,15 +14,15 @@
 
 # Supertype hierarchy
 
-    AbstractQuadrature <: GalerkinToolkitDataType
+    AbstractQuadrature <: gk.AbstractType
 """
-abstract type AbstractQuadrature <: GalerkinToolkitDataType end
+abstract type AbstractQuadrature <: gk.AbstractType end
 
 struct GenericCuadrature{A,B} <: AbstractQuadrature
     coordinates::A
     weights::B
 end
-struct Cuadrature{D,T} <: GalerkinToolkitDataType
+struct Cuadrature{D,T} <: gk.AbstractType
     coordinates::Vector{SVector{D,T}}
     weights::Vector{T}
 end
