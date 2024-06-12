@@ -2,6 +2,12 @@
 *.jl.cov
 *.jl.mem
 *.swp
+*.swn
+*.swo
 /output
 /Manifest.toml
 /docs/build/
+.vscode
+/extensions/GalerkinToolkitExamples/output/*
+/extensions/GalerkinToolkitExamples/Manifest.toml
+*LocalPreferences.toml
