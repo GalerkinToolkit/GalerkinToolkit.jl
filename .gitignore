@@ -10,3 +10,4 @@
 .vscode
 /extensions/GalerkinToolkitExamples/output/*
 /extensions/GalerkinToolkitExamples/Manifest.toml
+*LocalPreferences.toml

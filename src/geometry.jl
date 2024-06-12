@@ -3890,9 +3890,6 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # Map final cells to final node mediated by local (finite element) reference entities
     n_final_cells = n_coarse_cells*n_fine_cells
     final_cell_local_node_to_final_node = Vector{Vector{Int}}(undef,n_final_cells)
-    for final_cell in 1:n_final_cells
-        final_cell_local_node_to_final_node[final_cell] = zeros(Int,n_final_nodes)
-    end
 
     final_cell = 0
     final_cell_to_coarse_cell = Vector{Int}(undef, n_final_cells)
