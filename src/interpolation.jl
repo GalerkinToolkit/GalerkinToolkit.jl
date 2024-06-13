@@ -184,11 +184,11 @@ function values(a,free_or_diri::FreeOrDirichlet)
 end
 
 function generate_dof_ids(space::AbstractSpace)
-    state = generate_dof_ids_step_1(space,domain_style(space |> gk.domain))
+    state = generate_dof_ids_step_1(space)
     generate_dof_ids_step_2(state,space |> gk.dirichlet_boundary)
 end
 
-function generate_dof_ids_step_1(space,domain_style::GlobalDomain)
+function generate_dof_ids_step_1(space)
     domain = space |> gk.domain
     D = gk.num_dims(domain)
     cell_to_Dface = domain |> gk.faces
@@ -564,7 +564,7 @@ end
 function domain(a::CartesianProductSpace)
     domains = map(gk.domain,a.spaces)
     domain = first(domains)
-    if all(dom == domain,domains)
+    if all(dom -> dom == domain,domains)
         domain
     else
         # TODO generalize the concept of AbstractQuantity
@@ -616,13 +616,15 @@ function dual_basis(a::CartesianProductSpace)
 end
 
 function discrete_field(space,free_values,dirichlet_values)
-    DiscreteField(space,free_values,dirichlet_values)
+    mesh = space |> gk.domain |> gk.mesh
+    DiscreteField(mesh,space,free_values,dirichlet_values)
 end
 
-struct DiscreteField{A,B,C} <: gk.AbstractQuantity
-    space::A
-    free_values::B
-    dirichlet_values::C
+struct DiscreteField{A,B,C,D} <: gk.AbstractQuantity{A}
+    mesh::A
+    space::B
+    free_values::C
+    dirichlet_values::D
 end
 
 Base.iterate(m::DiscreteField) = iterate(components(m))
@@ -800,13 +802,11 @@ end
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
 # TODO think about free_values_strategy and dirichlet_values_strategy
-function iso_parametric_space(dom::AbstractDomain;
+function iso_parametric_space(dom::ReferenceDomain;
         dirichlet_boundary=nothing,
         free_values_strategy = gk.monolithic_field_major_strategy,
         dirichlet_values_strategy = gk.monolithic_field_major_strategy,
     )
-    style = domain_style(dom)
-    @assert isa(style,GlobalDomain{true}) "iso_parametric_space only accepts domains in the reference space"
     IsoParametricSpace(dom,dirichlet_boundary,free_values_strategy,dirichlet_values_strategy)
 end
 

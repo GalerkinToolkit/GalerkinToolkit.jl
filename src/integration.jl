@@ -160,7 +160,6 @@ domain(a::Measure) = a.domain
 
 function reference_quadratures(measure::Measure)
     domain = gk.domain(measure)
-    @assert isa(gk.domain_style(domain),GlobalDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     drefid_refdface = gk.reference_faces(mesh,d)
@@ -173,10 +172,10 @@ end
 
 function coordinates(measure::Measure)
     domain = gk.domain(measure)
-    coordinates(measure,domain,gk.domain_style(domain))
+    coordinates(measure,domain)
 end
 
-function coordinates(measure::Measure,domain,stype::GlobalDomain{true})
+function coordinates(measure::Measure,domain::ReferenceDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
@@ -194,20 +193,20 @@ function coordinates(measure::Measure,domain,stype::GlobalDomain{true})
     end
 end
 
-function coordinates(measure::Measure,domain,stype::GlobalDomain{false})
+function coordinates(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = gk.reference_domain(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
-    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    x = gk.coordinates(measure,Ωref)
     ϕ(x)
 end
 
 function weights(measure::Measure)
     domain = gk.domain(measure)
-    weights(measure,domain,gk.domain_style(domain))
+    weights(measure,domain)
 end
 
-function weights(measure::Measure,domain,stype::GlobalDomain{true})
+function weights(measure::Measure,domain::ReferenceDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
@@ -225,12 +224,12 @@ function weights(measure::Measure,domain,stype::GlobalDomain{true})
     end
 end
 
-function weights(measure::Measure,domain,stype::GlobalDomain{false})
+function weights(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = gk.reference_domain(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
-    w = gk.weights(measure,Ωref,domain_style(Ωref))
-    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    w = gk.weights(measure,Ωref)
+    x = gk.coordinates(measure,Ωref)
     f(J) = sqrt(det(transpose(J)*J))
     J = gk.call(ForwardDiff.jacobian,ϕ,x)
     dV = gk.call(f,J)
@@ -239,7 +238,6 @@ end
 
 function num_points(measure::Measure)
     domain = gk.domain(measure)
-    @assert isa(gk.domain_style(domain),gk.GlobalDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
