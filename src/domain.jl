@@ -65,31 +65,6 @@ function PartitionedArrays.partition(domain::AbstractDomain{<:PMesh})
     end
 end
 
-#abstract type AbstractDomainStyle <: gk.AbstractType end
-#is_reference_domain(a::AbstractDomainStyle) = a.is_reference_domain |> gk.val_parameter
-#
-##TODO these names suggest domain, not domain styles
-#struct GlobalDomain{A} <: AbstractDomainStyle
-#    is_reference_domain::Val{A}
-#end
-#
-#struct LocalDomain{A} <: AbstractDomainStyle
-#    is_reference_domain::Val{A}
-#end
-#
-#function domain_style(domain::AbstractDomain)
-#    flag = gk.is_reference_domain(domain)
-#    domain_style(domain,flag)
-#end
-#
-#function domain_style(domain::AbstractDomain,is_reference_domain::Bool)
-#    GlobalDomain(Val(is_reference_domain))
-#end
-#
-#function domain_style(domain::AbstractDomain,is_reference_domain::Tuple{Bool,Bool})
-#    LocalDomain(Val(is_reference_domain))
-#end
-
 function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
     flag = true
     # TODO check also that one mesh is not a sequential one and the other a parallel one
@@ -139,24 +114,6 @@ end
 function faces(domain::AbstractDomain{<:PMesh})
     map(gk.faces,partition(domain))
 end
-
-#function faces(domain::AbstractDomain,::GlobalDomain)
-#    # TODO we are dispatching a lot on the mesh
-#    # better: add a parallel domain/style type and dispatch on this one
-#    function impl(mesh::AbstractFEMesh)
-#        D = gk.face_dim(domain)
-#        Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
-#        tag_to_name = gk.physical_names(domain)
-#        gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
-#        physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-#        physical_Dfaces
-#    end
-#    function impl(pmesh::PMesh)
-#        map(gk.faces,partition(domain))
-#    end
-#    mesh = gk.mesh(domain)
-#    impl(mesh)
-#end
 
 function num_faces(domain::AbstractDomain)
     length(faces(domain))
@@ -208,76 +165,6 @@ struct CoboundaryGlue{A,B,C} <: AbstractDomainGlue{A}
     domain::B
     codomain::C
 end
-
-##InteriorGlue{<:PMesh}
-##BoundaryGlue{<:PMesh}
-##CoboundaryGlue{<:PMesh}
-#
-#abstract type AbstractDomainGlueStyle <: gk.AbstractType end
-#domain_style(a::AbstractDomainGlueStyle) = a.domain_style
-#codomain_style(a::AbstractDomainGlueStyle) = a.codomain_style
-#
-##TODO these names suggest glues, not glue styles
-#struct InteriorGlue{A,B} <: AbstractDomainGlueStyle
-#    domain_style::GlobalDomain{A}
-#    codomain_style::GlobalDomain{B}
-#end
-#
-#struct LocalBoundaryGlue{A,B} <: AbstractDomainGlueStyle
-#    domain_style::LocalDomain{A}
-#    codomain_style::GlobalDomain{B}
-#end
-#
-#struct CoboundaryGlue{A,B} <: AbstractDomainGlueStyle
-#    domain_style::GlobalDomain{A}
-#    codomain_style::GlobalDomain{B}
-#end
-#
-#struct BoundaryGlue{A,B} <: AbstractDomainGlueStyle
-#    domain_style::GlobalDomain{A}
-#    codomain_style::GlobalDomain{B}
-#    face_around::Int
-#end
-#
-#function domain_glue_style(glue::DomainGlue)
-#    style1 = domain_style(glue.domain)
-#    style2 = domain_style(glue.codomain)
-#    domain_glue_style(glue,style1,style2)
-#end
-#
-#function domain_glue_style(glue::DomainGlue,domain_style::GlobalDomain,codomain_style::GlobalDomain)
-#    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
-#    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
-#    if d1 == d2
-#        InteriorGlue(domain_style,codomain_style)
-#    elseif d1 < d2
-#        if glue.face_around === nothing
-#            CoboundaryGlue(domain_style,codomain_style)
-#        else
-#            BoundaryGlue(domain_style,codomain_style,glue.face_around)
-#        end
-#    else
-#        error("This case does not make sense")
-#    end
-#end
-#
-#function domain_glue_style(glue::DomainGlue,domain_style::LocalDomain,codomain_style::GlobalDomain)
-#    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
-#    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
-#    d1g,d1l = d1
-#    if d1l == d2
-#        LocalBoundaryGlue(domain_style,codomain_style)
-#    elseif d1l < d2
-#        error("Case not supported yet")
-#    else
-#        error("This case does not make sense")
-#    end
-#end
-
-#function target_face(glue::DomainGlue)
-#    glue_style = gk.domain_glue_style(glue)
-#    target_face(glue,glue_style)
-#end
 
 function target_face(glue::InteriorGlue)
     mesh = glue |> gk.domain |> gk.mesh
@@ -499,30 +386,6 @@ end
 function analytical_field(f,dom::AbstractDomain)
     constant_quantity(f,dom)
 end
-
-# TODO this is just a constant quantity
-#function analytical_field(f,dom)
-#    AnalyticalField(f,dom)
-#end
-#
-#struct AnalyticalField{A,B} <: AbstractQuantity
-#    f::A
-#    domain::B
-#end
-#function term(a::AnalyticalField)
-#    # TODO
-#    function impl(mesh::AbstractFEMesh)
-#        index -> a.f
-#    end
-#    function impl(pmesh::PMesh)
-#        map(pmesh.mesh_partition) do _
-#            index -> a.f
-#        end
-#    end
-#    mesh = a.domain |> gk.mesh
-#    impl(mesh)
-#end
-#prototype(a::AnalyticalField) = a.f
 
 function domain_map(domain::AbstractDomain,codomain::AbstractDomain;kwargs...)
     glue = gk.domain_glue(domain,codomain;kwargs...)
@@ -1050,59 +913,6 @@ function vtk_plot_impl(f,filename,pplt::Plot{<:PMesh})
     end
     r
 end
-
-#function vtk_plot(f,filename,pplt::Plot{<:PMesh})
-#    pmesh = pplt.domain |> gk.mesh
-#    d = gk.face_dim(pplt.domain)
-#    parts = linear_indices(pplt.plts)
-#    nparts = length(parts)
-#    vtk = map(pplt.plts,pmesh.face_partition[d+1],parts) do plt,myfaces,part
-#        vmesh,vglue = plt.visualization_mesh
-#        vcell_to_islocal =Int.(local_to_owner(myfaces) .== part)[vglue.parent_face]
-#        vcell_to_owner =local_to_owner(myfaces)[vglue.parent_face]
-#        myvtk = pvtk_grid(filename,gk.vtk_args(vmesh,d)...;part,nparts)
-#        myvtk["__PART__",WriteVTK.VTKCellData()] = fill(part,num_faces(vmesh,d))
-#        myvtk["__LOCAL__",WriteVTK.VTKCellData()] = vcell_to_islocal
-#        myvtk["__OWNER__",WriteVTK.VTKCellData()] = vcell_to_owner
-#        myvtk
-#    end
-#    f(VtkPlot(pplt,vtk))
-#    map(vtk_save,vtk)
-#end
-#
-#
-#struct VtkPlot{A,B}
-#    plt::A
-#    vtk::B
-#end
-#
-#function plot!(field,plt::VtkPlot;label)
-#    plot!(plt,field;label)
-#end
-#
-#function plot!(plt::VtkPlot,field;label)
-#    data,data_type = plot_impl!(field,plt.plt;label)
-#    if data_type === :node_data
-#        plt.vtk[label,WriteVTK.VTKPointData()] = data
-#    elseif data_type === :face_data
-#        plt.vtk[label,WriteVTK.VTKCellData()] = data
-#    elseif data_type === :parallel_data
-#        # TODO some code duplication
-#        map(data,plt.vtk) do mydata,vtk
-#            dat,dat_type = mydata
-#            if dat_type === :node_data
-#                vtk[label,WriteVTK.VTKPointData()] = dat
-#            elseif dat_type === :face_data
-#                vtk[label,WriteVTK.VTKCellData()] = dat
-#            else
-#                error("Unreachable line reached")
-#            end
-#        end
-#    else
-#        error("Unreachable line reached")
-#    end
-#    plt
-#end
 
 function piecewiese_field(fields::AbstractQuantity...)
     PiecewiseField(fields)
