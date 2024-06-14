@@ -2,6 +2,7 @@ module IntegrationTests
 
 using Test
 import GalerkinToolkit as gk
+import PartitionedArrays as pa
 using GalerkinToolkit: ∫
 using LinearAlgebra
 import ForwardDiff
@@ -139,5 +140,96 @@ end
 
 @test sum(int*1) + 1 ≈ 1
 @test sum(int/1) + 1 ≈ 1
+
+# Parallel
+
+domain = (0,2,0,2)
+cells_per_dir = (4,4)
+parts_per_dir = (2,2)
+np = prod(parts_per_dir)
+parts = pa.DebugArray(LinearIndices((np,)))
+partition_strategy = gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
+
+gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+Ω = gk.domain(mesh)
+Ωref = gk.domain(mesh;is_reference_domain=true)
+u = gk.analytical_field(x->sum(x),Ω)
+ϕ = gk.domain_map(Ωref,Ω)
+uref = u∘ϕ
+
+degree = 2
+dΩref = gk.measure(Ωref,degree)
+int = ∫(dΩref) do q
+    x = ϕ(q)
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
+    u(x)*dV
+end
+
+@test sum(int) ≈ 8
+
+int = ∫(dΩref) do q
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
+    dV
+end
+
+@test sum(int) ≈ 4
+
+dΩ = gk.measure(Ω,degree)
+int = ∫(dΩ) do x
+    u(x)
+end
+
+@test sum(int) ≈ 8
+
+u = gk.analytical_field(x->1,Ω)
+int = ∫(u,dΩ)
+@test sum(int) ≈ 4
+
+D = gk.num_dims(mesh)
+Γref = gk.domain(mesh;
+                 face_dim=D-1,
+                 is_reference_domain=true,
+                 physical_names=["1-face-2","1-face-4"])
+
+Γ = gk.physical_domain(Γref)
+
+function dS(J)
+    Jt = transpose(J)
+    sqrt(det(Jt*J))
+end
+
+dΓref = gk.measure(Γref,degree)
+α = gk.domain_map(Γref,Γ)
+
+β = gk.domain_map(Γref,Ωref;face_around=1)
+
+int = ∫(dΓref) do p
+    J = ForwardDiff.jacobian(α,p)
+    dS(J)
+end
+@test sum(int) ≈ 4
+
+uref = gk.analytical_field(x->1,Ωref)
+int = ∫(dΓref) do p
+    q = β(p)
+    J = ForwardDiff.jacobian(α,p)
+    uref(q)*dS(J)
+end
+sum(int) ≈ 4
+
+int = ∫(dΩref) do q
+    J = ForwardDiff.jacobian(ϕ,q)
+    dV = abs(det(J))
+    dV
+end +
+∫(dΓref) do p
+    J = ForwardDiff.jacobian(α,p)
+    dS(J)
+end
+
+@test sum(int) ≈ 8
 
 end # module
