@@ -57,7 +57,7 @@ jobs:
       - uses: julia-actions/cache@v1
       - uses: julia-actions/julia-buildpkg@v1
       - run: |
-          julia --project=extensions/GalerkinToolkitExamples -e '
+          julia --project=GalerkinToolkitExamples -e '
             using Pkg
             Pkg.develop(path=".")
             Pkg.test("GalerkinToolkitExamples")'
