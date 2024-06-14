@@ -99,8 +99,7 @@ gk.faces(Ω)
 
 gk.vtk_plot(joinpath(outdir,"p_omega"),Ω;refinement=4) do plt
     gk.plot!(plt,u;label="u")
-    # TODO
-    # gk.plot!(plt,q->u(q);label="u")
+    gk.plot!(plt,q->u(q);label="u2")
 end
 
 end # module

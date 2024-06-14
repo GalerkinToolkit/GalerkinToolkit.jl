@@ -128,6 +128,16 @@ mesh(a::AbstractDomainGlue) = a.mesh
 domain(a::AbstractDomainGlue) = a.domain
 codomain(a::AbstractDomainGlue) = a.codomain
 
+function PartitionedArrays.partition(a::AbstractDomainGlue{<:PMesh})
+    if hasproperty(a,:face_around)
+        map(partition(gk.domain(a)),partition(gk.codomain(a))) do dom,cod
+            gk.domain_glue(dom,cod;a.face_around)
+        end
+    else
+        map(gk.domain_glue,partition(gk.domain(a)),partition(gk.codomain(a)))
+    end
+end
+
 function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;face_around=nothing)
     msg = "Trying to combine domains on different meshes"
     @assert gk.mesh_id(domain) == gk.mesh_id(codomain) msg
@@ -376,7 +386,14 @@ function call(g,args::AbstractQuantity...)
 end
 
 function call(g,args::AbstractQuantity{<:PMesh}...)
-    error("TODO")
+    pargs = map(partition,args)
+    q = map(pargs...) do myargs...
+        gk.call(g,myargs...)
+    end
+    domain = args |> first |> gk.domain
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    gk.quantity(term,prototype,domain)
 end
 
 function (f::AbstractQuantity)(x::AbstractQuantity)
@@ -405,6 +422,9 @@ domain_glue(a::DomainMap) = a.domain_glue
 domain(a::DomainMap) = a |> gk.domain_glue |> gk.domain
 codomain(a::DomainMap) = a |> gk.domain_glue |> gk.codomain
 mesh(a::DomainMap) = a.mesh
+function PartitionedArrays.partition(a::DomainMap)
+    map(gk.domain_map,partition(a.domain_glue))
+end
 
 function prototype(a::DomainMap)
     glue = a |> gk.domain_glue
@@ -654,6 +674,14 @@ function compose(a::AbstractQuantity,phi::DomainMap)
     compose(a,phi,glue)
 end
 
+function compose(a::AbstractQuantity{<:PMesh},phi::DomainMap{<:PMesh})
+    q = map(gk.compose,partition(a),partition(phi))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = gk.domain(phi)
+    gk.quantity(term,prototype,domain)
+end
+
 function compose(a::AbstractQuantity,phi::DomainMap,::InteriorGlue)
     @assert gk.domain(a) == gk.codomain(phi)
     g = gk.prototype(a)
@@ -764,6 +792,10 @@ function (a::AbstractQuantity)(y::MappedPoint)
     gk.compose(a,phi)(x)
 end
 
+function PartitionedArrays.partition(a::MappedPoint{<:PMesh})
+    map(MappedPoint,partition(a.mesh),partition(a.phi),partition(a.x))
+end
+
 function plot(domain::AbstractDomain;kwargs...)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
@@ -781,10 +813,6 @@ function plot(domain::AbstractDomain{<:PMesh};kwargs...)
         (plt.visualization_mesh, plt.node_data, plt.face_data)
     end |> tuple_of_arrays
     Plot(mesh,domain,args...)
-end
-
-function plot(domain::AbstractDomain,style;kwargs...)
-    error("case not implemented")
 end
 
 struct Plot{A,B,C,D,E}
@@ -821,6 +849,13 @@ function reference_coordinates(plt::Plot)
     end
 end
 
+function reference_coordinates(plt::Plot{<:PMesh})
+    q = map(gk.reference_coordinates,partition(plt))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    gk.quantity(term,prototype,plt.domain)
+end
+
 function coordinates(plt::Plot)
     domain = plt |> gk.domain
     gk.coordinates(plt,domain)
@@ -847,6 +882,10 @@ function plot!(plt::Plot,field;label)
     f_q = field(q)
     term = gk.term(f_q)
     T = typeof(gk.prototype(f_q))
+    plot_impl!(plt,term,label,T)
+end
+
+function plot_impl!(plt,term,label,::Type{T}) where T
     vmesh,vglue = plt.visualization_mesh
     nnodes = gk.num_nodes(vmesh)
     data = zeros(T,nnodes)
@@ -864,9 +903,14 @@ function plot!(plt::Plot,field;label)
 end
 
 function plot!(plt::Plot{<:PMesh},field;label)
-    map(partition(field),partition(plt)) do f, myplt
-        plot!(myplt,f;label)
+    q = gk.coordinates(plt)
+    f_q = field(q)
+    term = gk.term(f_q)
+    T = typeof(gk.prototype(f_q))
+    map(partition(plt),term) do myplt, myterm
+        plot_impl!(myplt,myterm,label,T)
     end
+    plt
 end
 
 function vtk_plot(f,filename,args...;kwargs...)
