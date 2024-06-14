@@ -147,20 +147,26 @@ function measure(dom::AbstractDomain,degree)
 end
 
 function measure(f,dom::AbstractDomain,degree)
-    Measure(f,dom,degree)
+    mesh = gk.mesh(dom)
+    Measure(mesh,f,dom,degree)
 end
 
-struct Measure{A,B,C}
-    quadrature_rule::A
-    domain::B
-    degree::C
+struct Measure{A,B,C,D}
+    mesh::A
+    quadrature_rule::B
+    domain::C
+    degree::D
 end
 
 domain(a::Measure) = a.domain
+function PartitionedArrays.partition(a::Measure{<:PMesh})
+    map(partition(a.domain)) do domain
+        gk.measure(a.quadrature_rule,domain,a.degree)
+    end
+end
 
 function reference_quadratures(measure::Measure)
     domain = gk.domain(measure)
-    @assert isa(gk.domain_style(domain),GlobalDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     drefid_refdface = gk.reference_faces(mesh,d)
@@ -173,10 +179,18 @@ end
 
 function coordinates(measure::Measure)
     domain = gk.domain(measure)
-    coordinates(measure,domain,gk.domain_style(domain))
+    coordinates(measure,domain)
 end
 
-function coordinates(measure::Measure,domain,stype::GlobalDomain{true})
+function coordinates(measure::Measure{<:PMesh})
+    q = map(gk.coordinates,partition(measure))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = measure.domain
+    gk.quantity(term,prototype,domain)
+end
+
+function coordinates(measure::Measure,domain::ReferenceDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
@@ -194,20 +208,28 @@ function coordinates(measure::Measure,domain,stype::GlobalDomain{true})
     end
 end
 
-function coordinates(measure::Measure,domain,stype::GlobalDomain{false})
+function coordinates(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = gk.reference_domain(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
-    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    x = gk.coordinates(measure,Ωref)
     ϕ(x)
 end
 
 function weights(measure::Measure)
     domain = gk.domain(measure)
-    weights(measure,domain,gk.domain_style(domain))
+    weights(measure,domain)
 end
 
-function weights(measure::Measure,domain,stype::GlobalDomain{true})
+function weights(measure::Measure{<:PMesh})
+    q = map(gk.weights,partition(measure))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = measure.domain
+    gk.quantity(term,prototype,domain)
+end
+
+function weights(measure::Measure,domain::ReferenceDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
@@ -225,12 +247,12 @@ function weights(measure::Measure,domain,stype::GlobalDomain{true})
     end
 end
 
-function weights(measure::Measure,domain,stype::GlobalDomain{false})
+function weights(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = gk.reference_domain(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
-    w = gk.weights(measure,Ωref,domain_style(Ωref))
-    x = gk.coordinates(measure,Ωref,domain_style(Ωref))
+    w = gk.weights(measure,Ωref)
+    x = gk.coordinates(measure,Ωref)
     f(J) = sqrt(det(transpose(J)*J))
     J = gk.call(ForwardDiff.jacobian,ϕ,x)
     dV = gk.call(f,J)
@@ -239,7 +261,6 @@ end
 
 function num_points(measure::Measure)
     domain = gk.domain(measure)
-    @assert isa(gk.domain_style(domain),gk.GlobalDomain)
     mesh = gk.mesh(domain)
     d = gk.face_dim(domain)
     face_to_refid = gk.face_reference_id(mesh,d)
@@ -258,45 +279,86 @@ end
 function integrate(f,measure::Measure)
     domain = gk.domain(measure)
     x = gk.coordinates(measure)
-    w = gk.weights(measure)
     fx = f(x)
+    contrib = integrate_impl(fx,measure)
+    integral((domain=>contrib,))
+end
+const ∫ = integrate
+
+function integrate_impl(fx,measure)
+    w = gk.weights(measure)
     p_fx = gk.prototype(fx)
     p_w = gk.prototype(w)
     t_fx = gk.term(fx)
     t_w = gk.term(w)
     prototype = p_fx*p_w + p_fx*p_w
     num_points = gk.num_points(measure)
-    contrib = gk.quantity(prototype,domain) do index
+    contrib = gk.quantity(prototype,gk.domain(measure)) do index
         np = num_points(index)
         sum(1:np) do point
             index2 = replace_point(index,point)
             t_fx(index2)*t_w(index2)
         end
     end
+end
+
+function integrate(f,measure::Measure{<:PMesh})
+    x = gk.coordinates(measure)
+    fx = f(x)
+    q = map(gk.integrate_impl,partition(fx),partition(measure))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = measure |> gk.domain
+    contrib = gk.quantity(term,prototype,domain)
     integral((domain=>contrib,))
 end
-const ∫ = integrate
 
-integral(contribs) = Integral(contribs)
+function integral(contribs)
+    Integral(contribs)
+end
+
 struct Integral{A}
     contributions::A
 end
 contributions(a::Integral) = a.contributions
 
+function Base.sum(int::Integral)
+    sum(map(sum_contribution,contributions(int)))
+end
+
 function sum_contribution(contrib)
     domain, qty = contrib
-    z = zero(gk.prototype(qty))
+    sum_contribution(domain,qty)
+end
+
+function sum_contribution(domain,qty)
     nfaces = gk.num_faces(domain)
+    facemask = fill(true,nfaces)
+    sum_contribution_impl(qty,facemask)
+end
+
+function sum_contribution(domain::AbstractDomain{<:PMesh},qty::AbstractQuantity{<:PMesh})
+    mesh = domain |> gk.mesh
+    d = gk.num_dims(domain)
+    # TODO allow the user to skip or not to skip ghosts
+    map(partition(domain),partition(qty),gk.face_partition(mesh,d)) do mydom,myqty,myfaces
+        facemask = (part_id(myfaces) .== local_to_owner(myfaces))[gk.faces(mydom)]
+        sum_contribution_impl(myqty,facemask)
+    end |> sum
+end
+
+function sum_contribution_impl(qty,facemask)
+    z = zero(gk.prototype(qty))
+    nfaces = length(facemask)
     term = gk.term(qty)
     for face in 1:nfaces
+        if ! facemask[face]
+            continue
+        end
         index = gk.index(;face)
         z += term(index)
     end
     z
-end
-
-function Base.sum(int::Integral)
-    sum(map(sum_contribution,contributions(int)))
 end
 
 function Base.:+(int1::Integral,int2::Integral)

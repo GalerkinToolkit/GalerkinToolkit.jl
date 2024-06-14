@@ -1,5 +1,5 @@
 
-abstract type AbstractDomain <: gk.AbstractType end
+abstract type AbstractDomain{A} <: gk.AbstractType end
 domain(a::AbstractDomain) = a
 mesh(a::AbstractDomain) = a.mesh
 mesh_id(a::AbstractDomain) = a.mesh_id
@@ -11,67 +11,58 @@ is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> gk.val_paramet
 
 function domain(mesh;
     mesh_id = objectid(mesh),
-    face_dim = gk.num_dims(mesh),
+    face_dim = Val(gk.num_dims(mesh)),
     physical_names=gk.physical_names(mesh,face_dim),
     is_reference_domain = Val(false),
     )
 
-    Domain(
-           mesh,
-           mesh_id,
-           physical_names,
-           face_dim,
-           is_reference_domain,
-          )
+    if val_parameter(is_reference_domain)
+        ReferenceDomain(
+                        mesh,
+                        mesh_id,
+                        physical_names,
+                        Val(val_parameter(face_dim)),
+                       )
+    else
+        PhysicalDomain(
+                        mesh,
+                        mesh_id,
+                        physical_names,
+                        Val(val_parameter(face_dim)),
+                       )
+    end
+
 end
 
-struct Domain{A,B,C,D,E} <: AbstractDomain
+struct PhysicalDomain{A,B,C,D} <: AbstractDomain{A}
     mesh::A
     mesh_id::B
     physical_names::C
-    face_dim::D
-    is_reference_domain::E
+    face_dim::Val{D}
+end
+is_reference_domain(a::PhysicalDomain) = false
+
+struct ReferenceDomain{A,B,C,D} <: AbstractDomain{A}
+    mesh::A
+    mesh_id::B
+    physical_names::C
+    face_dim::Val{D}
+end
+is_reference_domain(a::ReferenceDomain) = true
+
+function replace_mesh(domain::AbstractDomain,mesh)
+    face_dim = gk.face_dim(domain)
+    mesh_id = gk.mesh_id(domain)
+    physical_names = gk.physical_names(domain)
+    is_reference_domain = gk.is_reference_domain(domain)
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain)
 end
 
-function replace_mesh(domain::Domain,mesh)
-    Domain(
-           mesh,
-           domain.mesh_id,
-           domain.physical_names,
-           domain.face_dim,
-           domain.is_reference_domain)
-end
-
-function PartitionedArrays.partition(domain::Domain)
-    pmesh = domain.mesh
+function PartitionedArrays.partition(domain::AbstractDomain{<:PMesh})
+    pmesh = gk.mesh(domain)
     map(pmesh.mesh_partition) do mesh
         replace_mesh(domain,mesh)
     end
-end
-
-abstract type AbstractDomainStyle <: gk.AbstractType end
-is_reference_domain(a::AbstractDomainStyle) = a.is_reference_domain |> gk.val_parameter
-
-#TODO these names suggest domain, not domain styles
-struct GlobalDomain{A} <: AbstractDomainStyle
-    is_reference_domain::Val{A}
-end
-
-struct LocalDomain{A} <: AbstractDomainStyle
-    is_reference_domain::Val{A}
-end
-
-function domain_style(domain::AbstractDomain)
-    flag = gk.is_reference_domain(domain)
-    domain_style(domain,flag)
-end
-
-function domain_style(domain::AbstractDomain,is_reference_domain::Bool)
-    GlobalDomain(Val(is_reference_domain))
-end
-
-function domain_style(domain::AbstractDomain,is_reference_domain::Tuple{Bool,Bool})
-    LocalDomain(Val(is_reference_domain))
 end
 
 function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
@@ -84,149 +75,108 @@ function Base.:(==)(a::AbstractDomain,b::AbstractDomain)
     flag
 end
 
-function reference_domain(domain::AbstractDomain)
-    reference_domain(domain,domain |> gk.domain_style)
+function reference_domain(domain::PhysicalDomain)
+    mesh = gk.mesh(domain)
+    face_dim = gk.face_dim(domain)
+    mesh_id = gk.mesh_id(domain)
+    physical_names = gk.physical_names(domain)
+    is_reference_domain = Val(true)
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain)
 end
 
-function reference_domain(domain::AbstractDomain,::GlobalDomain{false})
-    Domain(
-           domain |> gk.mesh,
-           domain |> gk.mesh_id,
-           domain |> gk.physical_names,
-           domain |> gk.face_dim,
-           Val(true),
-          )
-end
-
-function reference_domain(domain::AbstractDomain,::GlobalDomain{true})
+function reference_domain(domain::ReferenceDomain)
     domain
 end
 
-function physical_domain(domain::AbstractDomain)
-    physical_domain(domain,domain |> gk.domain_style)
+function physical_domain(domain::ReferenceDomain)
+    mesh = gk.mesh(domain)
+    face_dim = gk.face_dim(domain)
+    mesh_id = gk.mesh_id(domain)
+    physical_names = gk.physical_names(domain)
+    is_reference_domain = Val(false)
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain)
 end
 
-function physical_domain(domain::AbstractDomain,::GlobalDomain{true})
-    Domain(
-           domain |> gk.mesh,
-           domain |> gk.mesh_id,
-           domain |> gk.physical_names,
-           domain |> gk.face_dim,
-           Val(false),
-          )
-end
-
-function physical_domain(domain::AbstractDomain,::GlobalDomain{false})
+function physical_domain(domain::PhysicalDomain)
     domain
 end
 
 function faces(domain::AbstractDomain)
-    faces(domain,gk.domain_style(domain))
+    mesh = domain |> gk.mesh
+    D = gk.face_dim(domain)
+    Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
+    tag_to_name = gk.physical_names(domain)
+    gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
+    physical_Dfaces = findall(i->i!=0,Dface_to_tag)
+    physical_Dfaces
 end
 
-function faces(domain::AbstractDomain,::GlobalDomain)
-    # TODO we are dispatching a lot on the mesh
-    # better: add a parallel domain/style type and dispatch on this one
-    function impl(mesh::AbstractFEMesh)
-        D = gk.face_dim(domain)
-        Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
-        tag_to_name = gk.physical_names(domain)
-        gk.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
-        physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-        physical_Dfaces
-    end
-    function impl(pmesh::PMesh)
-        map(gk.faces,partition(domain))
-    end
-    mesh = gk.mesh(domain)
-    impl(mesh)
+function faces(domain::AbstractDomain{<:PMesh})
+    map(gk.faces,partition(domain))
 end
 
 function num_faces(domain::AbstractDomain)
     length(faces(domain))
 end
 
-function domain_glue(domain,codomain;face_around=nothing)
+function num_faces(domain::AbstractDomain{<:PMesh})
+    map(gk.num_faces,partition(domain))
+end
+
+abstract type AbstractDomainGlue{A} <: gk.AbstractType end
+mesh(a::AbstractDomainGlue) = a.mesh
+domain(a::AbstractDomainGlue) = a.domain
+codomain(a::AbstractDomainGlue) = a.codomain
+
+function PartitionedArrays.partition(a::AbstractDomainGlue{<:PMesh})
+    if hasproperty(a,:face_around)
+        map(partition(gk.domain(a)),partition(gk.codomain(a))) do dom,cod
+            gk.domain_glue(dom,cod;a.face_around)
+        end
+    else
+        map(gk.domain_glue,partition(gk.domain(a)),partition(gk.codomain(a)))
+    end
+end
+
+function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;face_around=nothing)
     msg = "Trying to combine domains on different meshes"
     @assert gk.mesh_id(domain) == gk.mesh_id(codomain) msg
-    DomainGlue(domain,codomain,face_around)
-end
-
-struct DomainGlue{A,B,C}
-    domain::A
-    codomain::B
-    face_around::C
-end
-domain(a::DomainGlue) = a.domain
-codomain(a::DomainGlue) = a.codomain
-
-abstract type AbstractDomainGlueStyle <: gk.AbstractType end
-domain_style(a::AbstractDomainGlueStyle) = a.domain_style
-codomain_style(a::AbstractDomainGlueStyle) = a.codomain_style
-
-#TODO these names suggest glues, not glue styles
-struct InteriorGlue{A,B} <: AbstractDomainGlueStyle
-    domain_style::GlobalDomain{A}
-    codomain_style::GlobalDomain{B}
-end
-
-struct LocalBoundaryGlue{A,B} <: AbstractDomainGlueStyle
-    domain_style::LocalDomain{A}
-    codomain_style::GlobalDomain{B}
-end
-
-struct CoboundaryGlue{A,B} <: AbstractDomainGlueStyle
-    domain_style::GlobalDomain{A}
-    codomain_style::GlobalDomain{B}
-end
-
-struct BoundaryGlue{A,B} <: AbstractDomainGlueStyle
-    domain_style::GlobalDomain{A}
-    codomain_style::GlobalDomain{B}
-    face_around::Int
-end
-
-function domain_glue_style(glue::DomainGlue)
-    style1 = domain_style(glue.domain)
-    style2 = domain_style(glue.codomain)
-    domain_glue_style(glue,style1,style2)
-end
-
-function domain_glue_style(glue::DomainGlue,domain_style::GlobalDomain,codomain_style::GlobalDomain)
-    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
-    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
-    if d1 == d2
-        InteriorGlue(domain_style,codomain_style)
-    elseif d1 < d2
-        if glue.face_around === nothing
-            CoboundaryGlue(domain_style,codomain_style)
+    mesh = gk.mesh(domain)
+    Ddom = gk.face_dim(domain)
+    Dcod = gk.face_dim(codomain)
+    if Ddom == Dcod
+        InteriorGlue(mesh,domain,codomain)
+    elseif Ddom < Dcod
+        if face_around === nothing
+            CoboundaryGlue(mesh,domain,codomain)
         else
-            BoundaryGlue(domain_style,codomain_style,glue.face_around)
+            BoundaryGlue(mesh,domain,codomain,face_around)
         end
     else
         error("This case does not make sense")
     end
 end
 
-function domain_glue_style(glue::DomainGlue,domain_style::LocalDomain,codomain_style::GlobalDomain)
-    d1 = glue |> gk.domain |> gk.face_dim |> gk.val_parameter
-    d2 = glue |> gk.codomain |> gk.face_dim |> gk.val_parameter
-    d1g,d1l = d1
-    if d1l == d2
-        LocalBoundaryGlue(domain_style,codomain_style)
-    elseif d1l < d2
-        error("Case not supported yet")
-    else
-        error("This case does not make sense")
-    end
+struct InteriorGlue{A,B,C} <: AbstractDomainGlue{A}
+    mesh::A
+    domain::B
+    codomain::C
 end
 
-function target_face(glue::DomainGlue)
-    glue_style = gk.domain_glue_style(glue)
-    target_face(glue,glue_style)
+struct BoundaryGlue{A,B,C,D} <: AbstractDomainGlue{A}
+    mesh::A
+    domain::B
+    codomain::C
+    face_around::D
 end
 
-function target_face(glue::DomainGlue,style::InteriorGlue)
+struct CoboundaryGlue{A,B,C} <: AbstractDomainGlue{A}
+    mesh::A
+    domain::B
+    codomain::C
+end
+
+function target_face(glue::InteriorGlue)
     mesh = glue |> gk.domain |> gk.mesh
     domain = glue |> gk.domain
     codomain = glue |> gk.codomain
@@ -241,7 +191,7 @@ function target_face(glue::DomainGlue,style::InteriorGlue)
     sface_to_tface = Dface_to_tface[sface_to_dface]
 end
 
-function target_face(glue::DomainGlue,style::CoboundaryGlue)
+function target_face(glue::CoboundaryGlue)
     mesh = glue |> gk.domain |> gk.mesh
     domain = glue |> gk.domain
     codomain = glue |> gk.codomain
@@ -265,16 +215,17 @@ function target_face(glue::DomainGlue,style::CoboundaryGlue)
     sface_to_tfaces, sface_to_lfaces
 end
 
-function target_face(glue::DomainGlue,style::BoundaryGlue)
-    style2 = CoboundaryGlue(style.domain_style,style.codomain_style)
-    sface_to_tfaces, sface_to_lfaces = target_face(glue,style2)
+function target_face(glue::BoundaryGlue)
+    glue2 = domain_glue(glue.domain,glue.codomain)
+    sface_to_tfaces, sface_to_lfaces = target_face(glue2)
     face_around = glue.face_around
     sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
     sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
     sface_to_tface, sface_to_lface
 end
 
-abstract type AbstractQuantity <: gk.AbstractType end
+abstract type AbstractQuantity{A} <: gk.AbstractType end
+mesh(a::AbstractQuantity) = a.mesh
 term(a::AbstractQuantity) = a.term
 prototype(a::AbstractQuantity) = a.prototype
 domain(a::AbstractQuantity) = a.domain
@@ -285,17 +236,30 @@ function PartitionedArrays.partition(a::AbstractQuantity)
     end
 end
 
-quantity(term,prototype,domain) = Quantity(term,prototype,domain)
-struct Quantity{T,B,C} <: AbstractQuantity
-    term::T
-    prototype::B
-    domain::C
+function quantity(term,prototype,domain)
+    mesh = gk.mesh(domain)
+    Quantity(mesh,term,prototype,domain)
 end
 
-function constant_quantity(v,domain)
+struct Quantity{A,B,C,D} <: AbstractQuantity{A}
+    mesh::A
+    term::B
+    prototype::C
+    domain::D
+end
+
+function constant_quantity(v,domain::AbstractDomain)
     gk.quantity(v,domain) do index
         v
     end
+end
+
+function constant_quantity(v,domain::AbstractDomain{<:PMesh})
+    pmesh = gk.mesh(domain)
+    term = map(pmesh.mesh_partition) do _
+        index -> v
+    end
+    gk.quantity(term,v,domain)
 end
 
 function index(;
@@ -421,99 +385,129 @@ function call(g,args::AbstractQuantity...)
     end
 end
 
+function call(g,args::AbstractQuantity{<:PMesh}...)
+    pargs = map(partition,args)
+    q = map(pargs...) do myargs...
+        gk.call(g,myargs...)
+    end
+    domain = args |> first |> gk.domain
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    gk.quantity(term,prototype,domain)
+end
+
 function (f::AbstractQuantity)(x::AbstractQuantity)
     call(call,f,x)
 end
 
-# TODO this is just a constant quantity
-function analytical_field(f,dom)
-    AnalyticalField(f,dom)
+function analytical_field(f,dom::AbstractDomain)
+    constant_quantity(f,dom)
 end
 
-struct AnalyticalField{A,B} <: AbstractQuantity
-    f::A
-    domain::B
-end
-function term(a::AnalyticalField)
-    # TODO
-    function impl(mesh::AbstractFEMesh)
-        index -> a.f
-    end
-    function impl(pmesh::PMesh)
-        map(pmesh.mesh_partition) do _
-            index -> a.f
-        end
-    end
-    mesh = a.domain |> gk.mesh
-    impl(mesh)
-end
-prototype(a::AnalyticalField) = a.f
-
-function domain_map(domain,codomain;kwargs...)
+function domain_map(domain::AbstractDomain,codomain::AbstractDomain;kwargs...)
     glue = gk.domain_glue(domain,codomain;kwargs...)
     domain_map(glue)
 end
 
-function domain_map(glue)
-    DomainMap(glue)
+function domain_map(glue::AbstractDomainGlue)
+    mesh = glue |> gk.domain |> gk.mesh
+    DomainMap(mesh,glue)
 end
 
-struct DomainMap{A} <: AbstractQuantity
-    domain_glue::A
+struct DomainMap{A,B} <: AbstractQuantity{A}
+    mesh::A
+    domain_glue::B
 end
 domain_glue(a::DomainMap) = a.domain_glue
 domain(a::DomainMap) = a |> gk.domain_glue |> gk.domain
 codomain(a::DomainMap) = a |> gk.domain_glue |> gk.codomain
+mesh(a::DomainMap) = a.mesh
+function PartitionedArrays.partition(a::DomainMap)
+    map(gk.domain_map,partition(a.domain_glue))
+end
 
 function prototype(a::DomainMap)
-    glue_style = a |> gk.domain_glue |> gk.domain_glue_style
-    prototype(a,glue_style)
-end
-
-function term(a::DomainMap)
-    glue_style = a |> gk.domain_glue |> gk.domain_glue_style
-    term(a,glue_style)
-end
-
-function compose(a::AbstractQuantity,phi::DomainMap)
-    glue_style = phi |> gk.domain_glue |> gk.domain_glue_style
-    compose(a,phi,glue_style)
-end
-
-function Base.:∘(a::AbstractQuantity,phi::DomainMap)
-    compose(a,phi)
-end
-
-function prototype(a::DomainMap,::InteriorGlue{true,true})
-    identity
-end
-
-function prototype(a::DomainMap,::InteriorGlue{false,false})
-    identity
-end
-
-function prototype(a::DomainMap,::InteriorGlue{true,false})
     glue = a |> gk.domain_glue
-    domain = glue |> gk.domain
+    domain = gk.domain(a)
+    codomain = gk.codomain(a)
+    prototype(a,glue,domain,codomain)
+end
+
+function prototype(a::DomainMap,::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
+    identity
+end
+
+function prototype(a::DomainMap,::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
+    identity
+end
+
+function prototype(a::DomainMap,glue::InteriorGlue,domain::ReferenceDomain,::PhysicalDomain)
     mesh = domain |> gk.mesh
     T = eltype(gk.node_coordinates(mesh))
     x = zero(T)
     y->x
 end
 
-function prototype(a::DomainMap,::InteriorGlue{false,true})
+function prototype(a::DomainMap,::InteriorGlue,::PhysicalDomain,::ReferenceDomain)
     error("Physical to reference map not implemented yet")
 end
 
-function term(a::DomainMap,::InteriorGlue{true,true})
+function prototype(phi::DomainMap,::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
+    glue = phi |> gk.domain_glue
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    y -> [x,x]
+end
+
+function prototype(a::DomainMap,::CoboundaryGlue,::AbstractDomain,::AbstractDomain)
+    error("Case not yet implemented")
+end
+
+function prototype(phi::DomainMap,::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
+    glue = phi |> gk.domain_glue
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    y -> x
+end
+
+function prototype(a::DomainMap,::BoundaryGlue,::AbstractDomain,::AbstractDomain)
+    error("Case not yet implemented")
+end
+
+function term(a::DomainMap)
+    glue = a |> gk.domain_glue
+    domain = gk.domain(a)
+    codomain = gk.codomain(a)
+    term(a,glue,domain,codomain)
+end
+
+function term(a::DomainMap{<:PMesh})
+    map(gk.term,partition(a))
+end
+
+function term(a::DomainMap,::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
     index -> identity
 end
 
-function term(a::DomainMap,::InteriorGlue{false,false})
+function term(a::DomainMap,::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
     index -> identity
 end
 
-function term(a::DomainMap,::InteriorGlue{true,false})
+function term(a::DomainMap,::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     glue = a |> gk.domain_glue
     domain = glue |> gk.domain
     mesh = domain |> gk.mesh
@@ -542,54 +536,11 @@ function term(a::DomainMap,::InteriorGlue{true,false})
     end
 end
 
-function term(a::DomainMap,::InteriorGlue{false,true})
+function term(a::DomainMap,::InteriorGlue, ::PhysicalDomain, ::ReferenceDomain)
     error("Physical to reference map not implemented yet")
 end
 
-function compose(a::AbstractQuantity,phi::DomainMap,::InteriorGlue)
-    @assert gk.domain(a) == gk.codomain(phi)
-    g = gk.prototype(a)
-    f = gk.prototype(phi)
-    prototype = x-> g(f(x))
-    domain = phi |> gk.domain
-    term_a = gk.term(a)
-    term_phi = gk.term(phi)
-    glue = domain_glue(phi)
-    sface_to_tface = gk.target_face(glue)
-    gk.quantity(prototype,domain) do index
-        sface = index.face
-        tface = sface_to_tface[sface]
-        index2 = replace_face(index,tface)
-        ai = term_a(index2)
-        phii = term_phi(index)
-        x-> ai(phii(x))
-    end
-
-end
-
-function prototype(phi::DomainMap,::CoboundaryGlue{true,true})
-    glue = phi |> gk.domain_glue
-    codomain = glue |> gk.codomain
-    mesh = codomain |> gk.mesh
-    D = codomain |> gk.face_dim
-    Drefid_to_refDface = gk.reference_faces(mesh,D)
-    refDface = first(Drefid_to_refDface)
-    boundary = refDface |> gk.geometry |> gk.boundary
-    node_to_coords = gk.node_coordinates(boundary)
-    T = eltype(node_to_coords)
-    x = zero(T)
-    y -> [x,x]
-end
-
-function prototype(a::DomainMap,::CoboundaryGlue{false,false})
-    error("Case not yet implemented")
-end
-
-function prototype(a::DomainMap,::CoboundaryGlue)
-    error("Case not yet implemented")
-end
-
-function term(phi::DomainMap,::CoboundaryGlue{true,true})
+function term(phi::DomainMap,::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     glue = phi |> gk.domain_glue
     domain = glue |> gk.domain
     codomain = glue |> gk.codomain
@@ -650,69 +601,11 @@ function term(phi::DomainMap,::CoboundaryGlue{true,true})
     end
 end
 
-function term(a::DomainMap,::CoboundaryGlue{false,false})
+function term(a::DomainMap,::CoboundaryGlue,::AbstractDomain,::AbstractDomain)
     error("Case not yet implemented")
 end
 
-function term(a::DomainMap,::CoboundaryGlue)
-    error("Case not yet implemented")
-end
-
-function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
-    @assert gk.domain(a) == gk.codomain(phi)
-    g = gk.prototype(a)
-    f = gk.prototype(phi)
-    prototype = x-> map(g,f(x))
-    domain = phi |> gk.domain
-    term_a = gk.term(a)
-    term_phi = gk.term(phi)
-    glue = domain_glue(phi)
-    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
-    gk.quantity(prototype,domain) do index
-        sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        n_faces_around = length(tfaces)
-        phii = term_phi(index)
-        x -> begin
-            ys = phii(x)
-            # TODO This should be a tuple
-            map(1:n_faces_around) do face_around
-                tface = sface_to_tfaces[sface][face_around]
-                lface = sface_to_lfaces[sface][face_around]
-                index2 = replace_face(index,tface)
-                index3 = replace_face_around(index2,face_around)
-                ai = term_a(index3)
-                y = ys[face_around]
-                ai(y)
-            end
-        end
-    end
-end
-
-function prototype(phi::DomainMap,::BoundaryGlue{true,true})
-    glue = phi |> gk.domain_glue
-    codomain = glue |> gk.codomain
-    mesh = codomain |> gk.mesh
-    D = codomain |> gk.face_dim
-    Drefid_to_refDface = gk.reference_faces(mesh,D)
-    refDface = first(Drefid_to_refDface)
-    boundary = refDface |> gk.geometry |> gk.boundary
-    node_to_coords = gk.node_coordinates(boundary)
-    T = eltype(node_to_coords)
-    x = zero(T)
-    y -> x
-end
-
-function prototype(a::DomainMap,::BoundaryGlue{false,false})
-    error("Case not yet implemented")
-end
-
-function prototype(a::DomainMap,::BoundaryGlue)
-    error("Case not yet implemented")
-end
-
-function term(phi::DomainMap,::BoundaryGlue{true,true})
+function term(phi::DomainMap,::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     glue = phi |> gk.domain_glue
     domain = glue |> gk.domain
     codomain = glue |> gk.codomain
@@ -768,12 +661,78 @@ function term(phi::DomainMap,::BoundaryGlue{true,true})
     end
 end
 
-function term(a::DomainMap,::BoundaryGlue{false,false})
+function term(a::DomainMap,::BoundaryGlue,::AbstractDomain,::AbstractDomain)
     error("Case not yet implemented")
 end
 
-function term(a::DomainMap,::BoundaryGlue)
-    error("Case not yet implemented")
+function Base.:∘(a::AbstractQuantity,phi::DomainMap)
+    compose(a,phi)
+end
+
+function compose(a::AbstractQuantity,phi::DomainMap)
+    glue = phi |> gk.domain_glue
+    compose(a,phi,glue)
+end
+
+function compose(a::AbstractQuantity{<:PMesh},phi::DomainMap{<:PMesh})
+    q = map(gk.compose,partition(a),partition(phi))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = gk.domain(phi)
+    gk.quantity(term,prototype,domain)
+end
+
+function compose(a::AbstractQuantity,phi::DomainMap,::InteriorGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    sface_to_tface = gk.target_face(glue)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        phii = term_phi(index)
+        x-> ai(phii(x))
+    end
+
+end
+
+function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> map(g,f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    glue = domain_glue(phi)
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        phii = term_phi(index)
+        x -> begin
+            ys = phii(x)
+            # TODO This should be a tuple
+            map(1:n_faces_around) do face_around
+                tface = sface_to_tfaces[sface][face_around]
+                lface = sface_to_lfaces[sface][face_around]
+                index2 = replace_face(index,tface)
+                index3 = replace_face_around(index2,face_around)
+                ai = term_a(index3)
+                y = ys[face_around]
+                ai(y)
+            end
+        end
+    end
 end
 
 function compose(a::AbstractQuantity,phi::DomainMap,::BoundaryGlue)
@@ -798,12 +757,13 @@ function compose(a::AbstractQuantity,phi::DomainMap,::BoundaryGlue)
 end
 
 function (phi::DomainMap)(x::AbstractQuantity)
-    MappedPoint(phi,x)
+    MappedPoint(phi.mesh,phi,x)
 end
 
-struct MappedPoint{A,B} <: AbstractQuantity
-    phi::A
-    x::B
+struct MappedPoint{A,B,C} <: AbstractQuantity{A}
+    mesh::A
+    phi::B
+    x::C
 end
 function domain(q::MappedPoint)
     q.phi |> gk.codomain
@@ -832,48 +792,42 @@ function (a::AbstractQuantity)(y::MappedPoint)
     gk.compose(a,phi)(x)
 end
 
+function PartitionedArrays.partition(a::MappedPoint{<:PMesh})
+    map(MappedPoint,partition(a.mesh),partition(a.phi),partition(a.x))
+end
+
 function plot(domain::AbstractDomain;kwargs...)
-    plot(domain,gk.domain_style(domain);kwargs...)
-end
-
-function plot(domain::AbstractDomain,::GlobalDomain;kwargs...)
-    # TODO
-    function impl(mesh::AbstractFEMesh)
-        style = domain |> gk.domain_style
-        d = gk.face_dim(domain)
-        domface_to_face = gk.faces(domain)
-        vismesh = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
-        node_data = Dict{String,Any}()
-        face_data = Dict{String,Any}()
-        Plot(domain,vismesh,node_data,face_data)
-    end
-    function impl(mesh::PMesh)
-        plts = map(partition(domain)) do mydom
-            plot(mydom;kwargs...)
-        end
-        PPlot(plts,domain)
-    end
     mesh = gk.mesh(domain)
-    impl(mesh)
+    d = gk.face_dim(domain)
+    domface_to_face = gk.faces(domain)
+    vismesh = gk.visualization_mesh(mesh,d,domface_to_face;kwargs...)
+    node_data = Dict{String,Any}()
+    face_data = Dict{String,Any}()
+    Plot(mesh,domain,vismesh,node_data,face_data)
 end
 
-function plot(domain::AbstractDomain,style;kwargs...)
-    error("case not implemented")
+function plot(domain::AbstractDomain{<:PMesh};kwargs...)
+    mesh = gk.mesh(domain)
+    args = map(partition(domain)) do mydom
+        plt = plot(mydom;kwargs...)
+        (plt.visualization_mesh, plt.node_data, plt.face_data)
+    end |> tuple_of_arrays
+    Plot(mesh,domain,args...)
 end
 
-struct Plot{A,B,C,D}
-    domain::A
-    visualization_mesh::B
-    node_data::C
-    face_data::D
+struct Plot{A,B,C,D,E}
+    mesh::A
+    domain::B
+    visualization_mesh::C
+    node_data::D
+    face_data::E
 end
 domain(plt::Plot) = plt.domain
 visualization_mesh(plt::Plot) = plt.visualization_mesh
-
-# TODO maybe this one is not needed if we have a PDomain type
-struct PPlot{A,B}
-    plts::A
-    domain::B
+function PartitionedArrays.partition(plt::Plot{<:PMesh})
+    map(Plot,
+        partition(plt.mesh),partition(plt.domain),
+        plt.visualization_mesh,plt.node_data,plt.face_data)
 end
 
 function reference_coordinates(plt::Plot)
@@ -895,16 +849,23 @@ function reference_coordinates(plt::Plot)
     end
 end
 
-function coordinates(plt::Plot)
-    style = plt |> gk.domain |> gk.domain_style
-    gk.coordinates(plt,style)
+function reference_coordinates(plt::Plot{<:PMesh})
+    q = map(gk.reference_coordinates,partition(plt))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    gk.quantity(term,prototype,plt.domain)
 end
 
-function coordinates(plt::Plot,::GlobalDomain{true})
+function coordinates(plt::Plot)
+    domain = plt |> gk.domain
+    gk.coordinates(plt,domain)
+end
+
+function coordinates(plt::Plot,::ReferenceDomain)
     gk.reference_coordinates(plt)
 end
 
-function coordinates(plt::Plot,::GlobalDomain{false})
+function coordinates(plt::Plot,::PhysicalDomain)
     domain_phys = plt |> gk.domain
     domain_ref = domain_phys |> reference_domain
     phi = gk.domain_map(domain_ref,domain_phys)
@@ -912,21 +873,19 @@ function coordinates(plt::Plot,::GlobalDomain{false})
     phi(q)
 end
 
-function plot!(plt::Plot,field;label)
-    plot_impl!(field,plt;label)
-    plt
-end
-
 function plot!(field,plt::Plot;label)
-    plot_impl!(field,plt;label)
-    plt
+    plot!(plt,field;label)
 end
 
-function plot_impl!(field,plt::Plot;label)
+function plot!(plt::Plot,field;label)
     q = gk.coordinates(plt)
     f_q = field(q)
     term = gk.term(f_q)
     T = typeof(gk.prototype(f_q))
+    plot_impl!(plt,term,label,T)
+end
+
+function plot_impl!(plt,term,label,::Type{T}) where T
     vmesh,vglue = plt.visualization_mesh
     nnodes = gk.num_nodes(vmesh)
     data = zeros(T,nnodes)
@@ -940,79 +899,63 @@ function plot_impl!(field,plt::Plot;label)
         end
     end
     plt.node_data[label] = data
-    data, :node_data
+    plt
 end
 
-function plot_impl!(field,pplt::PPlot;label)
-    data = map(partition(field),pplt.plts) do f, plt
-        plot_impl!(f,plt;label)
+function plot!(plt::Plot{<:PMesh},field;label)
+    q = gk.coordinates(plt)
+    f_q = field(q)
+    term = gk.term(f_q)
+    T = typeof(gk.prototype(f_q))
+    map(partition(plt),term) do myplt, myterm
+        plot_impl!(myplt,myterm,label,T)
     end
-    data, :parallel_data
+    plt
 end
 
 function vtk_plot(f,filename,args...;kwargs...)
     plt = gk.plot(args...;kwargs...)
-    vtk_plot(f,filename,plt)
+    vtk_plot_impl(f,filename,plt)
 end
 
-function vtk_plot(f,filename,plt::Plot)
+function vtk_plot_impl(f,filename,plt::Plot)
     vmesh,_ = plt.visualization_mesh
     d = gk.face_dim(plt.domain)
+    r = f(plt)
     vtk_grid(filename,gk.vtk_args(vmesh,d)...) do vtk
-        f(VtkPlot(plt,vtk))
+        for (k,v) in plt.node_data
+            vtk[k,WriteVTK.VTKPointData()] = v
+        end
+        for (k,v) in plt.face_data
+            vtk[k,WriteVTK.VTKPointData()] = v
+        end
+        r
     end
 end
 
-function vtk_plot(f,filename,pplt::PPlot)
-    pmesh = pplt.domain |> gk.mesh
+function vtk_plot_impl(f,filename,pplt::Plot{<:PMesh})
+    r = f(pplt)
+    pmesh = pplt.mesh
     d = gk.face_dim(pplt.domain)
-    parts = linear_indices(pplt.plts)
+    parts = linear_indices(pmesh.mesh_partition)
     nparts = length(parts)
-    vtk = map(pplt.plts,pmesh.face_partition[d+1],parts) do plt,myfaces,part
+    map(partition(pplt),pmesh.face_partition[d+1],parts) do plt,myfaces,part
         vmesh,vglue = plt.visualization_mesh
         vcell_to_islocal =Int.(local_to_owner(myfaces) .== part)[vglue.parent_face]
         vcell_to_owner =local_to_owner(myfaces)[vglue.parent_face]
-        myvtk = pvtk_grid(filename,gk.vtk_args(vmesh,d)...;part,nparts)
-        myvtk["__PART__",WriteVTK.VTKCellData()] = fill(part,num_faces(vmesh,d))
-        myvtk["__LOCAL__",WriteVTK.VTKCellData()] = vcell_to_islocal
-        myvtk["__OWNER__",WriteVTK.VTKCellData()] = vcell_to_owner
-        myvtk
-    end
-    f(VtkPlot(pplt,vtk))
-    map(vtk_save,vtk)
-end
-
-struct VtkPlot{A,B}
-    plt::A
-    vtk::B
-end
-
-function plot!(field,plt::VtkPlot;label)
-    plot!(plt,field;label)
-end
-
-function plot!(plt::VtkPlot,field;label)
-    data,data_type = plot_impl!(field,plt.plt;label)
-    if data_type === :node_data
-        plt.vtk[label,WriteVTK.VTKPointData()] = data
-    elseif data_type === :face_data
-        plt.vtk[label,WriteVTK.VTKCellData()] = data
-    elseif data_type === :parallel_data
-        # TODO some code duplication
-        map(data,plt.vtk) do mydata,vtk
-            dat,dat_type = mydata
-            if dat_type === :node_data
-                vtk[label,WriteVTK.VTKPointData()] = dat
-            elseif dat_type === :face_data
-                vtk[label,WriteVTK.VTKCellData()] = dat
-            else
-                error("Unreachable line reached")
+        pvtk_grid(filename,gk.vtk_args(vmesh,d)...;part,nparts) do vtk
+            vtk["__PART__",WriteVTK.VTKCellData()] = fill(part,num_faces(vmesh,d))
+            vtk["__LOCAL__",WriteVTK.VTKCellData()] = vcell_to_islocal
+            vtk["__OWNER__",WriteVTK.VTKCellData()] = vcell_to_owner
+            for (k,v) in plt.node_data
+                vtk[k,WriteVTK.VTKPointData()] = v
+            end
+            for (k,v) in plt.face_data
+                vtk[k,WriteVTK.VTKPointData()] = v
             end
         end
-    else
-        error("Unreachable line reached")
     end
-    plt
+    r
 end
 
 function piecewiese_field(fields::AbstractQuantity...)

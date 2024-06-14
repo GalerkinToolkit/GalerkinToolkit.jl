@@ -72,7 +72,9 @@ cells_per_dir = (4,4)
 parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = pa.DebugArray(LinearIndices((np,)))
-mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
+# TODO make this strategy the default one
+partition_strategy = gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
 
 gk.physical_faces(mesh,1)
 gk.node_coordinates(mesh)
@@ -83,6 +85,7 @@ gk.outwards_normals(mesh)
 
 # TODO
 #gk.label_interior_faces!(mesh;physical_name="interior_faces")
+# TODO There is a bug when using a ghost layer
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
 Ω = gk.domain(mesh)
@@ -92,6 +95,8 @@ gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 @test Ω != Ωref
 
 u = gk.analytical_field(x->sum(x),Ω)
+ϕ = gk.domain_map(Ωref,Ω)
+uref = u∘ϕ
 
 pa.partition(Ω)
 
@@ -99,8 +104,24 @@ gk.faces(Ω)
 
 gk.vtk_plot(joinpath(outdir,"p_omega"),Ω;refinement=4) do plt
     gk.plot!(plt,u;label="u")
-    # TODO
-    # gk.plot!(plt,q->u(q);label="u")
+    gk.plot!(plt,q->u(q);label="u2")
+end
+
+D = gk.num_dims(mesh)
+Γref = gk.domain(mesh;
+                 face_dim=D-1,
+                 is_reference_domain=true,
+                 physical_names=["boundary_faces"])
+
+ϕ = gk.domain_map(Γref,Ωref;face_around=1)
+g = uref∘ϕ
+
+gk.vtk_plot(joinpath(outdir,"p_gamma_ref"),Γref) do plt
+    gk.plot!(plt,g;label="u")
+    gk.plot!(plt;label="u2") do q
+        x = ϕ(q)
+        uref(x)
+    end
 end
 
 end # module
