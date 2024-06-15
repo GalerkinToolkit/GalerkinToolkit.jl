@@ -969,8 +969,7 @@ function unit_normal(domain::AbstractDomain)
     error("not implemented yet")
 end
 
-# TODO is face_around == 1 a good default?
-function unit_normal(domain::AbstractDomain,codomain::AbstractDomain;face_around=1)
+function unit_normal(domain::AbstractDomain,codomain::AbstractDomain;face_around)
     Γref = domain
     Ω = codomain
     Ωref = gk.reference_domain(Ω)
