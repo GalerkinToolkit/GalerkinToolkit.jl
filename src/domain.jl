@@ -965,29 +965,19 @@ function vtk_plot_impl(f,filename,pplt::Plot{<:PMesh})
     r
 end
 
+function unit_normal(domain::AbstractDomain)
+    error("not implemented yet")
+end
+
 # TODO is face_around == 1 a good default?
-function unit_normal(domain::AbstractDomain;face_around=1)
-    mesh = gk.mesh(domain)
-    D = gk.num_dims(mesh)
-    # TODO we are relying on the tags defined in the mesh
-    # We only need the neighboring cells
-    Ωref = gk.domain(mesh;is_reference_domain=true)
+function unit_normal(domain::AbstractDomain,codomain::AbstractDomain;face_around=1)
     Γref = domain
-    ϕ = gk.domain_map(Γref,Ωref;face_around)
-    unit_normal(ϕ)
-end
-
-function unit_normal(domain_map::DomainMap)
-    unit_normal(domain_map,domain_map.domain_glue)
-end
-
-function unit_normal(domain_map::DomainMap,glue::BoundaryGlue)
-    Γref = domain_map |> gk.domain
-    Ωref = domain_map |> gk.codomain
-    Ω = gk.physical_domain(Ωref)
+    Ω = codomain
+    Ωref = gk.reference_domain(Ω)
     D = gk.num_dims(Ω)
     mesh = gk.mesh(Ω)
-    φ = domain_map
+    φ = domain_map(Γref,Ωref;face_around)
+    glue = gk.domain_glue(φ)
     ϕ = gk.domain_map(Ωref,Ω)
     sface_to_tface, sface_to_lface = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
