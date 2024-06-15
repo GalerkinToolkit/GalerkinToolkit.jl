@@ -40,8 +40,11 @@ D = gk.num_dims(mesh)
 ϕ = gk.domain_map(Γref,Ωref;face_around=1)
 g = uref∘ϕ
 
+n = gk.unit_normal(Γref)
+
 gk.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
     gk.plot!(plt,g;label="u")
+    gk.plot!(plt,n;label="n")
     gk.plot!(plt;label="u2") do q
         x = ϕ(q)
         uref(x)

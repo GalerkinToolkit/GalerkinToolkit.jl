@@ -919,15 +919,22 @@ function vtk_plot(f,filename,args...;kwargs...)
 end
 
 function vtk_plot_impl(f,filename,plt::Plot)
+    function translate(v)
+        v
+    end
+    function translate(v::AbstractVector{<:SVector{2}})
+        z = zero(eltype(eltype(v)))
+        map(vi->SVector((vi...,z)),v)
+    end
     vmesh,_ = plt.visualization_mesh
     d = gk.face_dim(plt.domain)
     r = f(plt)
     vtk_grid(filename,gk.vtk_args(vmesh,d)...) do vtk
         for (k,v) in plt.node_data
-            vtk[k,WriteVTK.VTKPointData()] = v
+            vtk[k,WriteVTK.VTKPointData()] = translate(v)
         end
         for (k,v) in plt.face_data
-            vtk[k,WriteVTK.VTKPointData()] = v
+            vtk[k,WriteVTK.VTKPointData()] = translate(v)
         end
         r
     end
@@ -956,6 +963,68 @@ function vtk_plot_impl(f,filename,pplt::Plot{<:PMesh})
         end
     end
     r
+end
+
+# TODO is face_around == 1 a good default?
+function unit_normal(domain::AbstractDomain;face_around=1)
+    mesh = gk.mesh(domain)
+    D = gk.num_dims(mesh)
+    # TODO we are relying on the tags defined in the mesh
+    # We only need the neighboring cells
+    Ωref = gk.domain(mesh;is_reference_domain=true)
+    Γref = domain
+    ϕ = gk.domain_map(Γref,Ωref;face_around)
+    unit_normal(ϕ)
+end
+
+function unit_normal(domain_map::DomainMap)
+    unit_normal(domain_map,domain_map.domain_glue)
+end
+
+function unit_normal(domain_map::DomainMap,glue::BoundaryGlue)
+    Γref = domain_map |> gk.domain
+    Ωref = domain_map |> gk.codomain
+    Ω = gk.physical_domain(Ωref)
+    D = gk.num_dims(Ω)
+    mesh = gk.mesh(Ω)
+    φ = domain_map
+    ϕ = gk.domain_map(Ωref,Ω)
+    sface_to_tface, sface_to_lface = gk.target_face(glue)
+    tface_to_face = gk.faces(Ωref)
+    face_to_ctype = gk.face_reference_id(mesh,D)
+    ctype_to_refface = gk.reference_faces(mesh,D)
+    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+        boundary = refface |> gk.geometry |> gk.boundary
+        boundary |> gk.outwards_normals # TODO also rename?
+    end
+    ϕ_term = gk.term(ϕ)
+    φ_term = gk.term(φ)
+    prototype = gk.prototype(ϕ)
+    gk.quantity(prototype,Γref) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lface[sface]
+        face = tface_to_face[tface]
+        ctype = face_to_ctype[face]
+        lface_to_n = ctype_to_lface_to_n[ctype]
+        n = lface_to_n[lface]
+        index2 = replace_face(index,tface)
+        ϕ_fun = ϕ_term(index2)
+        φ_fun = φ_term(index)
+        q -> begin
+            p = φ_fun(q)
+            J = ForwardDiff.jacobian(ϕ_fun,p)
+            Jt = transpose(J)
+            pinvJt = transpose(inv(Jt*J)*Jt)
+            v = pinvJt*n
+            m = sqrt(inner(v,v))
+            if m < eps()
+                return zero(v)
+            else
+                return v/m
+            end
+        end
+    end
 end
 
 function piecewiese_field(fields::AbstractQuantity...)

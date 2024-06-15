@@ -118,6 +118,8 @@ real_type(a) = a.real_type
 """
 """
 int_type(a) = a.int_type
+
+# TODO rename for unit_normals
 """
 """
 outwards_normals(a) = a.outwards_normals
