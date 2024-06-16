@@ -79,8 +79,6 @@ function main_automatic(params)
     dΩref = gk.measure(Ωref,integration_degree)
     dΓref = gk.measure(Γref,integration_degree)
 
-
-
     # Weak form
     a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
     l(v) =

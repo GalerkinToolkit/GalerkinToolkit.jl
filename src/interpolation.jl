@@ -198,8 +198,9 @@ function generate_dof_ids_step_1(space)
     ctype_to_reference_fe = space |> gk.reference_fes
     cell_to_ctype = space |> gk.face_reference_id
     d_to_dface_to_dof_offset = map(d->zeros(Int32,gk.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(fe->length.(gk.face_own_dofs(fe,d)),ctype_to_reference_fe),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_own_dofs = map(d->gk.reference_face_own_dofs(space,d),0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->gk.reference_face_own_dof_permutations(space,d),0:D)
+    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
     d_to_ctype_to_ldface_to_dofs = map(d->map(fe->gk.face_dofs(fe,d),ctype_to_reference_fe),0:D)
     d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
@@ -906,6 +907,7 @@ end
 
 # TODO rename kwarg space?
 function lagrange_space(domain,order;
+    conformity = :H1,
     dirichlet_boundary=nothing,
     free_values_strategy = gk.monolithic_field_major_strategy,
     dirichlet_values_strategy = gk.monolithic_field_major_strategy,
@@ -913,9 +915,12 @@ function lagrange_space(domain,order;
     major=:component,
     shape=SCALAR_SHAPE)
 
+    @assert conformity in (:H1,:L2)
+
     LagrangeSpace(
                   domain,
                   order,
+                  conformity,
                   dirichlet_boundary,
                   free_values_strategy,
                   dirichlet_values_strategy,
@@ -928,6 +933,7 @@ end
 struct LagrangeSpace{A,B,C,D,E,F,G,H} <: AbstractSpace
     domain::A
     order::B
+    conformity::Symbol
     dirichlet_boundary::C
     free_values_strategy::D
     dirichlet_values_strategy::E
@@ -969,6 +975,56 @@ function reference_fes(space::LagrangeSpace)
         lagrangian_fe(geometry,order;space=space2,major,shape)
     end
     ctype_to_reffe
+end
+
+function reference_face_own_dofs(space::LagrangeSpace,d)
+    ctype_to_reference_fe = reference_fes(space)
+    ctype_to_ldface_to_own_ldofs = map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe)
+    if space.conformity === :H1
+        ctype_to_ldface_to_own_ldofs
+    elseif space.conformity === :L2
+        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+        domain = space |> gk.domain
+        D = gk.num_dims(domain)
+        map(ctype_to_num_dofs,ctype_to_ldface_to_own_ldofs) do ndofs,ldface_to_own_ldofs
+            map(ldface_to_own_ldofs) do own_ldofs
+                dofs = if d == D
+                    collect(1:ndofs)
+                else
+                    Int[]
+                end
+                convert(typeof(own_ldofs),dofs)
+            end
+        end
+    else
+        error("This line cannot be reached")
+    end
+end
+
+function reference_face_own_dof_permutations(space::LagrangeSpace,d)
+    ctype_to_reference_fe = reference_fes(space)
+    ctype_to_ldface_to_pindex_to_perm = map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
+    if space.conformity === :H1
+        ctype_to_ldface_to_pindex_to_perm
+    elseif space.conformity === :L2
+        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+        domain = space |> gk.domain
+        D = gk.num_dims(domain)
+        map(ctype_to_num_dofs,ctype_to_ldface_to_pindex_to_perm) do ndofs,ldface_to_pindex_to_perm
+            map(ldface_to_pindex_to_perm) do pindex_to_perm
+                map(pindex_to_perm) do perm
+                    dofs = if d == D
+                        collect(1:ndofs)
+                    else
+                        Int[]
+                    end
+                    convert(typeof(perm),dofs)
+                end
+            end
+        end
+    else
+        error("This line cannot be reached")
+    end
 end
 
 function free_values_strategy(a::LagrangeSpace)
