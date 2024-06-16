@@ -735,7 +735,7 @@ function compose(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
     end
 end
 
-function compose(a::AbstractQuantity,phi::DomainMap,::BoundaryGlue)
+function compose(a::AbstractQuantity,phi::DomainMap,glue::BoundaryGlue)
     @assert gk.domain(a) == gk.codomain(phi)
     g = gk.prototype(a)
     f = gk.prototype(phi)
@@ -745,12 +745,14 @@ function compose(a::AbstractQuantity,phi::DomainMap,::BoundaryGlue)
     term_phi = gk.term(phi)
     glue = domain_glue(phi)
     sface_to_tface, sface_to_lface = glue |> gk.target_face
+    face_around = glue.face_around
     gk.quantity(prototype,domain) do index
         sface = index.face
         tface = sface_to_tface[sface]
         lface = sface_to_lface[sface]
         index2 = replace_face(index,tface)
-        ai = term_a(index2)
+        index3 = replace_face_around(index2,face_around)
+        ai = term_a(index3)
         phii = term_phi(index)
         x -> ai(phii(x))
     end

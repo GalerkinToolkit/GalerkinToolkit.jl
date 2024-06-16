@@ -435,6 +435,7 @@ function dof_map(a::AbstractSpace,dim)
 end
 
 function shape_function_mask(f,face_around_per_dim,face_around,dim)
+    @assert face_around !== nothing
     x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
 end
 

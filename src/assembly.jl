@@ -124,7 +124,8 @@ function assemble_vector_fill(state)
                     index2 = gk.index(;face,dof_per_dim,field_per_dim,face_around_per_dim)
                     I[n] = dof_map(index2)
                     index3 = gk.replace_face(index2,sface)
-                    V[n] = gk.term(contribution)(index3)
+                    vn = gk.term(contribution)(index3)
+                    V[n] = vn
                 end
             end
         end

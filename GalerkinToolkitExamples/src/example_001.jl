@@ -1,5 +1,5 @@
 """
-This implements a vanilla Poisson solver
+This implements a Poisson solver with several methods
 """
 module Example001
 
@@ -43,11 +43,11 @@ function main_automatic(params)
     # Geometrical map
     ϕ_Ωref_Ω = gk.domain_map(Ωref,Ω)
     ϕ_Γref_Γ = gk.domain_map(Γref,Γ)
-    ϕ_Γref_Ωref = gk.domain_map(Γref,Ωref)
+    ϕ_Γref_Ωref = gk.domain_map(Γref,Ωref;face_around=1)
     function ∇(u,q)
         J = ForwardDiff.jacobian(ϕ_Ωref_Ω,q)
-        g = ForwardDiff.gradient(u,q)
-        J\g
+        grad = ForwardDiff.gradient(u,q)
+        J\grad
     end
     function dV(q)
         J = ForwardDiff.jacobian(ϕ_Ωref_Ω,q)
@@ -63,6 +63,8 @@ function main_automatic(params)
     # Manufactured functions
     u = gk.analytical_field(params[:u],Ω)
     f(x) = -gk.call(Δ,u,x) # TODO
+    n = gk.unit_normal(Γref,Ω;face_around=1)
+    g(q) = n(q)⋅ForwardDiff.gradient(u,ϕ_Γref_Γ(q))
 
     # Interpolation
     @timeit timer "interpolation" begin
@@ -77,11 +79,13 @@ function main_automatic(params)
     dΩref = gk.measure(Ωref,integration_degree)
     dΓref = gk.measure(Γref,integration_degree)
 
+
+
     # Weak form
     a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
     l(v) =
-        ∫( q->f(ϕ_Ωref_Ω(q))*v(q)*dV(q) , dΩref) #+
-        #∫( q->g(ϕ_Γref_Γ(q))*v(ϕ_Γref_Ωref(q))*dS(q) , dΓref)
+        ∫( q->f(ϕ_Ωref_Ω(q))*v(q)*dV(q) , dΩref) +
+        ∫( q->g(q)*v(ϕ_Γref_Ωref(q))*dS(q) , dΓref)
 
     # FE assembly
     @timeit timer "assembly" begin
@@ -105,10 +109,15 @@ function main_automatic(params)
     end
 
     # Vtk output
-    @timeit timer "vtk" if ! params[:export_vtu]
-        gk.vtk_plot(params[:example_path],Ωref;refinement=4) do plt
+    @timeit timer "vtk" if params[:export_vtu]
+        gk.vtk_plot(params[:example_path]*"_Ωref",Ωref;refinement=4) do plt
             gk.plot!(plt,q->u(ϕ_Ωref_Ω(q));label="u")
-            gk.plot!(plt,uh;label="u")
+            gk.plot!(plt,q->f(ϕ_Ωref_Ω(q));label="f")
+            gk.plot!(plt,uh;label="uh")
+        end
+        gk.vtk_plot(params[:example_path]*"_Γref",Γref;refinement=4) do plt
+            gk.plot!(plt,n;label="n")
+            gk.plot!(plt,g;label="g")
         end
     end
 
