@@ -404,6 +404,14 @@ function analytical_field(f,dom::AbstractDomain)
     constant_quantity(f,dom)
 end
 
+function face_constant_field(data,dom::AbstractDomain)
+    prototype = x->zero(eltype(data))
+    gk.quantity(prototype,dom) do index
+        face = index.face
+        x->data[face]
+    end
+end
+
 function domain_map(domain::AbstractDomain,codomain::AbstractDomain;kwargs...)
     glue = gk.domain_glue(domain,codomain;kwargs...)
     domain_map(glue)

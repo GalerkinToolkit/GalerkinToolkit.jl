@@ -120,6 +120,10 @@ end
 
 @test sum(int) ≈ 8
 
+@test sum(gk.face_diameter(Γ)) ≈ 4
+
+h = gk.face_diameter_field(Γ)
+
 Λref = gk.domain(mesh;
                  face_dim=D-1,
                  is_reference_domain=true,
@@ -231,5 +235,6 @@ end +
 end
 
 @test sum(int) ≈ 8
+
 
 end # module

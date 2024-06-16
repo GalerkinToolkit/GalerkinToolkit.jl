@@ -147,5 +147,4 @@ gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
     gk.plot!(plt,uh2;label="uh2")
 end
 
-
 end #module
