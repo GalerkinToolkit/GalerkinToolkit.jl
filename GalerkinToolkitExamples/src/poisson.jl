@@ -1,7 +1,7 @@
 """
 This implements a Poisson solver with several methods
 """
-module Example001
+module Poisson
 
 import GalerkinToolkit as gk
 using GalerkinToolkit: ∫

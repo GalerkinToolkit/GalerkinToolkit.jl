@@ -1,7 +1,7 @@
 module Example001Tests
 
 import GalerkinToolkit as gk
-using GalerkinToolkitExamples: Example001
+using GalerkinToolkitExamples: Poisson
 using Test
 
 tol = 1.0e-10
@@ -14,7 +14,7 @@ for dirichlet_method in (:strong,)#:nitsche)
     params[:dirichlet_tags] = ["1-face-1","1-face-3","1-face-4"]
     params[:neumann_tags] = ["1-face-2"]
     params[:dirichlet_method] = dirichlet_method
-    results = Example001.main(params)
+    results = Poisson.main(params)
     @test results[:error_h1_norm] < tol
     @test results[:error_l2_norm] < tol
 end
