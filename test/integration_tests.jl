@@ -40,8 +40,8 @@ mesh = gk.cartesian_mesh(domain,cells)
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 gk.label_interior_faces!(mesh;physical_name="interior_faces")
 
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 ϕ = gk.domain_map(Ωref,Ω)
 u = gk.analytical_field(x->sum(x),Ω)
 
@@ -77,8 +77,7 @@ int = ∫(u,dΩ)
 
 
 D = gk.num_dims(mesh)
-Γref = gk.domain(mesh;
-                 face_dim=D-1,
+Γref = gk.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["1-face-2","1-face-4"])
 
@@ -92,7 +91,7 @@ end
 dΓref = gk.measure(Γref,degree)
 α = gk.domain_map(Γref,Γ)
 
-β = gk.domain_map(Γref,Ωref;face_around=1)
+β = gk.domain_map(Γref,Ωref)
 
 int = ∫(dΓref) do p
     J = ForwardDiff.jacobian(α,p)
@@ -124,8 +123,7 @@ end
 
 h = gk.face_diameter_field(Γ)
 
-Λref = gk.domain(mesh;
-                 face_dim=D-1,
+Λref = gk.skeleton(mesh;
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
 
@@ -156,8 +154,8 @@ partition_strategy = gk.partition_strategy(graph_nodes=:cells,graph_edges=:nodes
 mesh = gk.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
 
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 u = gk.analytical_field(x->sum(x),Ω)
 ϕ = gk.domain_map(Ωref,Ω)
 uref = u∘ϕ
@@ -193,8 +191,7 @@ int = ∫(u,dΩ)
 @test sum(int) ≈ 4
 
 D = gk.num_dims(mesh)
-Γref = gk.domain(mesh;
-                 face_dim=D-1,
+Γref = gk.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["1-face-2","1-face-4"])
 
@@ -208,7 +205,7 @@ end
 dΓref = gk.measure(Γref,degree)
 α = gk.domain_map(Γref,Γ)
 
-β = gk.domain_map(Γref,Ωref;face_around=1)
+β = gk.domain_map(Γref,Ωref)
 
 int = ∫(dΓref) do p
     J = ForwardDiff.jacobian(α,p)
