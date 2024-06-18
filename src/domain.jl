@@ -673,6 +673,83 @@ function term(a::DomainMap,::BoundaryGlue,::AbstractDomain,::AbstractDomain)
     error("Case not yet implemented")
 end
 
+function compose_index(a::AbstractQuantity,phi::DomainMap)
+    glue = phi |> gk.domain_glue
+    compose_index(a,phi,glue)
+end
+
+function compose_index(a::AbstractQuantity{<:PMesh},phi::DomainMap{<:PMesh})
+    q = map(gk.compose_index,partition(a),partition(phi))
+    term = map(gk.term,q)
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    domain = gk.domain(phi)
+    gk.quantity(term,prototype,domain)
+end
+
+function compose_index(a::AbstractQuantity,phi::DomainMap,::InteriorGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    glue = domain_glue(phi)
+    sface_to_tface = gk.target_face(glue)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+    end
+end
+
+function compose_index(a::AbstractQuantity,phi::DomainMap,::CoboundaryGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> map(g,f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    glue = domain_glue(phi)
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        # TODO This should be a tuple
+        map(1:n_faces_around) do face_around
+            tface = sface_to_tfaces[sface][face_around]
+            lface = sface_to_lfaces[sface][face_around]
+            index2 = replace_face(index,tface)
+            index3 = replace_face_around(index2,face_around)
+            ai = term_a(index3)
+            ai
+        end
+    end
+end
+
+function compose_index(a::AbstractQuantity,phi::DomainMap,glue::BoundaryGlue)
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    prototype = x-> g(f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    glue = domain_glue(phi)
+    sface_to_tface, sface_to_lface = glue |> gk.target_face
+    face_around = glue.face_around
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lface[sface]
+        index2 = replace_face(index,tface)
+        index3 = replace_face_around(index2,face_around)
+        ai = term_a(index3)
+        ai
+    end
+end
+
 function Base.:∘(a::AbstractQuantity,phi::DomainMap)
     compose(a,phi)
 end
@@ -796,10 +873,13 @@ function term(y::MappedPoint)
         f(term_x(index))
     end
 end
-function (a::AbstractQuantity)(y::MappedPoint)
+
+# TODO this solves binary operations when the second operand
+# is a MappedPoint.  A more general strategy is needed
+function call(f,a::AbstractQuantity,y::MappedPoint)
     phi = y.phi
-    x = y.x
-    gk.compose(a,phi)(x)
+    q = gk.quantity(gk.term(y),gk.prototype(y),gk.domain(phi))
+    gk.call(f,gk.compose_index(a,phi),q)
 end
 
 function PartitionedArrays.partition(a::MappedPoint{<:PMesh})

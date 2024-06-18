@@ -46,7 +46,7 @@ function main_automatic(params)
     u = gk.analytical_field(params[:u],Ω)
     f(x) = -gk.call(Δ,u,x) # TODO
     nn = gk.unit_normal(Γnr,Ω;face_around=1)
-    g(q) = nn(q)⋅ForwardDiff.gradient(u,ϕ_Γnr_Γn(q))
+    g(q) = nn(q)⋅ForwardDiff.gradient(u,ϕ_Ωr_Ω(ϕ_Γnr_Ωr(q)))
 
     function ∇(u,q)
         J = ForwardDiff.jacobian(ϕ_Ωr_Ω,q)
@@ -105,8 +105,8 @@ function main_automatic(params)
         ∫( q->g(q)*v(ϕ_Γnr_Ωr(q))*dSn(q) , dΓnr)
         if params[:dirichlet_method] == :nitsche
             r += ∫( q->
-                (γ/hd(q))*v(ϕ_Γdr_Ωr(q))*u(ϕ_Γdr_Γd(q))*dSd(q)-
-                (nd(q)⋅∇(v,ϕ_Γdr_Ωr(q)))*u(ϕ_Γdr_Γd(q))*dSd(q), dΓdr)
+                (γ/hd(q))*v(ϕ_Γdr_Ωr(q))*(u∘ϕ_Ωr_Ω)(ϕ_Γdr_Ωr(q))*dSd(q)-
+                (nd(q)⋅∇(v,ϕ_Γdr_Ωr(q)))*(u∘ϕ_Ωr_Ω)(ϕ_Γdr_Ωr(q))*dSd(q), dΓdr)
         end
         r
     end
