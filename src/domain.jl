@@ -419,10 +419,7 @@ end
 
 function domain_map_2(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
     domain = glue.domain
-    mesh = domain |> gk.mesh
-    T = eltype(gk.node_coordinates(mesh))
-    x = zero(T)
-    prototype = y->x
+    prototype = identity
     term = identity
     gk.quantity(term,prototype,domain)
 end
@@ -444,6 +441,9 @@ function domain_map_2(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     face_to_refid = gk.face_reference_id(mesh,d)
     refid_to_refface = gk.reference_faces(mesh,d)
     refid_to_funs = map(gk.shape_functions,refid_to_refface)
+    T = eltype(gk.node_coordinates(mesh))
+    x = zero(T)
+    prototype = y->x
     gk.quantity(prototype,domain) do index
         sface = index.face
         face = sface_to_face[sface]
@@ -551,7 +551,6 @@ end
 
 function domain_map_2(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     domain = glue.domain
-    glue = phi |> gk.domain_glue
     codomain = glue |> gk.codomain
     mesh = codomain |> gk.mesh
     D = codomain |> gk.face_dim
@@ -620,16 +619,16 @@ function domain_map_2(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
     error("Case not yet implemented")
 end
 
-function trace(a::AbstractQuantity,domain::AbstractDomain)
-    glue = gk.domain_glue(domain,gk.domain(a))
-    trace(a,glue)
+function align_with(a::AbstractQuantity,domain::AbstractDomain;kwargs...)
+    glue = gk.domain_glue(domain,gk.domain(a);kwargs...)
+    align_with(a,glue)
 end
 
-function trace(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
+function align_with(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
     error("Case not yet implemented")
 end
 
-function trace(a::AbstractQuantity,glue::InteriorGlue)
+function align_with(a::AbstractQuantity,glue::InteriorGlue)
     domain = glue |> gk.domain
     prototype = gk.prototype(a)
     term_a = gk.term(a)
@@ -643,9 +642,9 @@ function trace(a::AbstractQuantity,glue::InteriorGlue)
     end
 end
 
-function trace(a::AbstractQuantity,glue::CoboundaryGlue)
+function align_with(a::AbstractQuantity,glue::CoboundaryGlue)
     prototype = gk.prototype(a)
-    domain = phi |> gk.domain
+    domain = glue |> gk.domain
     term_a = gk.term(a)
     sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
     gk.quantity(prototype,domain) do index
@@ -653,23 +652,21 @@ function trace(a::AbstractQuantity,glue::CoboundaryGlue)
         tfaces = sface_to_tfaces[sface]
         lfaces = sface_to_lfaces[sface]
         n_faces_around = length(tfaces)
-        x -> begin
-            # TODO This should be a tuple
-            map(1:n_faces_around) do face_around
-                tface = sface_to_tfaces[sface][face_around]
-                lface = sface_to_lfaces[sface][face_around]
-                index2 = replace_face(index,tface)
-                index3 = replace_face_around(index2,face_around)
-                ai = term_a(index3)
-                ai
-            end
+        # TODO This should be a tuple
+        map(1:n_faces_around) do face_around
+            tface = sface_to_tfaces[sface][face_around]
+            lface = sface_to_lfaces[sface][face_around]
+            index2 = replace_face(index,tface)
+            index3 = replace_face_around(index2,face_around)
+            ai = term_a(index3)
+            ai
         end
     end
 end
 
-function trace(a::AbstractQuantity,glue::BoundaryGlue)
+function align_with(a::AbstractQuantity,glue::BoundaryGlue)
     prototype = gk.prototype(a)
-    domain = phi |> gk.domain
+    domain = glue |> gk.domain
     term_a = gk.term(a)
     sface_to_tface, sface_to_lface = glue |> gk.target_face
     face_around = glue.face_around
