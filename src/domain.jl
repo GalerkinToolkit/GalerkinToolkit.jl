@@ -412,6 +412,278 @@ function face_constant_field(data,dom::AbstractDomain)
     end
 end
 
+function domain_map_2(domain::AbstractDomain,codomain::AbstractDomain;kwargs...)
+    glue = gk.domain_glue(domain,codomain;kwargs...)
+    domain_map_2(glue,domain,codomain)
+end
+
+function domain_map_2(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
+    domain = glue.domain
+    mesh = domain |> gk.mesh
+    T = eltype(gk.node_coordinates(mesh))
+    x = zero(T)
+    prototype = y->x
+    term = identity
+    gk.quantity(term,prototype,domain)
+end
+
+function domain_map_2(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
+    domain = glue.domain
+    prototype = identity
+    term = identity
+    gk.quantity(term,prototype,domain)
+end
+
+function domain_map_2(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
+    domain = glue.domain
+    mesh = domain |> gk.mesh
+    d = domain |> gk.face_dim
+    node_to_coords = gk.node_coordinates(mesh)
+    sface_to_face = domain |> gk.faces
+    face_to_nodes = gk.face_nodes(mesh,d)
+    face_to_refid = gk.face_reference_id(mesh,d)
+    refid_to_refface = gk.reference_faces(mesh,d)
+    refid_to_funs = map(gk.shape_functions,refid_to_refface)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        face = sface_to_face[sface]
+        refid = face_to_refid[face]
+        funs = refid_to_funs[refid]
+        nodes = face_to_nodes[face]
+        coords = node_to_coords[nodes]
+        q -> begin
+            sum(1:length(coords)) do i
+                x = coords[i]
+                fun = funs[i]
+                coeff = fun(q)
+                coeff*x
+            end
+        end
+    end
+end
+
+function domain_map_2(glue::InteriorGlue,::PhysicalDomain,::ReferenceDomain)
+    error("Physical to reference map not implemented yet")
+end
+
+function domain_map_2(glue::CoboundaryGlue,::PhysicalDomain,::PhysicalDomain)
+    error("Case not yet implemented")
+end
+
+function domain_map_2(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
+    domain = glue.domain
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    prototype = y -> [x,x]
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    tface_to_Dface = codomain |> gk.faces
+    d = domain |> gk.face_dim
+    topo = mesh |> gk.topology
+    Dface_to_lface_to_perm = gk.face_permutation_ids(topo,D,d)
+    Dface_to_Drefid = gk.face_reference_id(mesh,D)
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+        boundary = refDface |> gk.geometry |> gk.boundary
+        lface_to_nodes = gk.face_nodes(boundary,d)
+        node_to_coords = gk.node_coordinates(boundary)
+        lface_to_lrefid = gk.face_reference_id(boundary,d)
+        lrefid_to_lrefface = gk.reference_faces(boundary,d)
+        lrefid_to_perm_to_ids = map(gk.node_permutations,lrefid_to_lrefface)
+        map(1:gk.num_faces(boundary,d)) do lface
+            lrefid = lface_to_lrefid[lface]
+            nodes = lface_to_nodes[lface]
+            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+            map(perm_to_ids) do ids
+                coords = node_to_coords[nodes[ids]]
+                coords
+            end
+        end
+    end
+    sface_to_dface = domain |> gk.faces
+    dface_to_drefid = gk.face_reference_id(mesh,d)
+    drefid_to_refdface = gk.reference_faces(mesh,d)
+    drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(lfaces)
+        q -> begin
+            map(1:n_faces_around) do face_around
+                tface = tfaces[face_around]
+                lface = lfaces[face_around]
+                Dface = tface_to_Dface[tface]
+                dface = sface_to_dface[sface]
+                perm = Dface_to_lface_to_perm[Dface][lface]
+                Drefid = Dface_to_Drefid[Dface]
+                drefid = dface_to_drefid[dface]
+                coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+                funs = drefid_to_funs[drefid]
+                sum(1:length(coords)) do i
+                    x = coords[i]
+                    fun = funs[i]
+                    coeff = fun(q)
+                    coeff*x
+                end
+            end
+        end
+    end
+end
+
+function domain_map_2(glue::CoboundaryGlue,::ReferenceDomain,::PhysicalDomain)
+    error("Case not yet implemented")
+end
+
+function domain_map_2(glue::CoboundaryGlue,::PhysicalDomain,::ReferenceDomain)
+    error("Case not yet implemented")
+end
+
+function domain_map_2(glue::BoundaryGlue,::PhysicalDomain,::PhysicalDomain)
+    error("Case not yet implemented")
+end
+
+function domain_map_2(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
+    domain = glue.domain
+    glue = phi |> gk.domain_glue
+    codomain = glue |> gk.codomain
+    mesh = codomain |> gk.mesh
+    D = codomain |> gk.face_dim
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    refDface = first(Drefid_to_refDface)
+    boundary = refDface |> gk.geometry |> gk.boundary
+    node_to_coords = gk.node_coordinates(boundary)
+    T = eltype(node_to_coords)
+    x = zero(T)
+    prototype = y -> x
+    sface_to_tface, sface_to_lfaces = glue |> gk.target_face
+    tface_to_Dface = codomain |> gk.faces
+    d = domain |> gk.face_dim
+    topo = mesh |> gk.topology
+    Dface_to_lface_to_perm = gk.face_permutation_ids(topo,D,d)
+    Dface_to_Drefid = gk.face_reference_id(mesh,D)
+    Drefid_to_refDface = gk.reference_faces(mesh,D)
+    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+        boundary = refDface |> gk.geometry |> gk.boundary
+        lface_to_nodes = gk.face_nodes(boundary,d)
+        node_to_coords = gk.node_coordinates(boundary)
+        lface_to_lrefid = gk.face_reference_id(boundary,d)
+        lrefid_to_lrefface = gk.reference_faces(boundary,d)
+        lrefid_to_perm_to_ids = map(gk.node_permutations,lrefid_to_lrefface)
+        map(1:gk.num_faces(boundary,d)) do lface
+            lrefid = lface_to_lrefid[lface]
+            nodes = lface_to_nodes[lface]
+            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+            map(perm_to_ids) do ids
+                coords = node_to_coords[nodes[ids]]
+                coords
+            end
+        end
+    end
+    sface_to_dface = domain |> gk.faces
+    dface_to_drefid = gk.face_reference_id(mesh,d)
+    drefid_to_refdface = gk.reference_faces(mesh,d)
+    drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lfaces[sface]
+        Dface = tface_to_Dface[tface]
+        dface = sface_to_dface[sface]
+        perm = Dface_to_lface_to_perm[Dface][lface]
+        Drefid = Dface_to_Drefid[Dface]
+        drefid = dface_to_drefid[dface]
+        coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+        funs = drefid_to_funs[drefid]
+        q -> begin
+            sum(1:length(coords)) do i
+                x = coords[i]
+                fun = funs[i]
+                coeff = fun(q)
+                coeff*x
+            end
+        end
+    end
+end
+
+function domain_map_2(glue::BoundaryGlue,::ReferenceDomain,::PhysicalDomain)
+    error("Case not yet implemented")
+end
+
+function domain_map_2(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
+    error("Case not yet implemented")
+end
+
+function trace(a::AbstractQuantity,domain::AbstractDomain)
+    glue = gk.domain_glue(domain,gk.domain(a))
+    trace(a,glue)
+end
+
+function trace(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
+    error("Case not yet implemented")
+end
+
+function trace(a::AbstractQuantity,glue::InteriorGlue)
+    domain = glue |> gk.domain
+    prototype = gk.prototype(a)
+    term_a = gk.term(a)
+    sface_to_tface = gk.target_face(glue)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        ai
+    end
+end
+
+function trace(a::AbstractQuantity,glue::CoboundaryGlue)
+    prototype = gk.prototype(a)
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        x -> begin
+            # TODO This should be a tuple
+            map(1:n_faces_around) do face_around
+                tface = sface_to_tfaces[sface][face_around]
+                lface = sface_to_lfaces[sface][face_around]
+                index2 = replace_face(index,tface)
+                index3 = replace_face_around(index2,face_around)
+                ai = term_a(index3)
+                ai
+            end
+        end
+    end
+end
+
+function trace(a::AbstractQuantity,glue::BoundaryGlue)
+    prototype = gk.prototype(a)
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    sface_to_tface, sface_to_lface = glue |> gk.target_face
+    face_around = glue.face_around
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lface[sface]
+        index2 = replace_face(index,tface)
+        index3 = replace_face_around(index2,face_around)
+        ai = term_a(index3)
+        ai
+    end
+end
+
 function domain_map(domain::AbstractDomain,codomain::AbstractDomain;kwargs...)
     glue = gk.domain_glue(domain,codomain;kwargs...)
     domain_map(glue)
