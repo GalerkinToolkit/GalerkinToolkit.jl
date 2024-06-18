@@ -874,16 +874,112 @@ function term(y::MappedPoint)
     end
 end
 
+function PartitionedArrays.partition(a::MappedPoint{<:PMesh})
+    map(MappedPoint,partition(a.mesh),partition(a.phi),partition(a.x))
+end
+
 # TODO this solves binary operations when the second operand
 # is a MappedPoint.  A more general strategy is needed
 function call(f,a::AbstractQuantity,y::MappedPoint)
-    phi = y.phi
-    q = gk.quantity(gk.term(y),gk.prototype(y),gk.domain(phi))
-    gk.call(f,gk.compose_index(a,phi),q)
+    glue = y.phi |> gk.domain_glue
+    call_impl(f,a,y,glue)
 end
 
-function PartitionedArrays.partition(a::MappedPoint{<:PMesh})
-    map(MappedPoint,partition(a.mesh),partition(a.phi),partition(a.x))
+function call(f,a::AbstractQuantity{<:PMesh},y::MappedPoint{<:PMesh})
+    q = map(partition(a),partition(y)) do ai,yi
+        call(f,ai,yi)
+    end
+    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    term = map(gk.term,q)
+    domain = y.phi |> gk.domain
+    gk.quantity(term,prototype,domain)
+end
+
+function call_impl(fun,a::AbstractQuantity,y::MappedPoint,::InteriorGlue)
+    phi = y.phi
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    x = gk.prototype(y.x)
+    prototype = fun(g,f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    term_x = gk.term(y.x)
+    glue = domain_glue(phi)
+    sface_to_tface = gk.target_face(glue)
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        phii = term_phi(index)
+        xi = term_x(index)
+        fun(ai,phii(xi))
+    end
+end
+
+function call_impl(fun,a::AbstractQuantity,y::MappedPoint,::CoboundaryGlue)
+    phi = y.phi
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    x = gk.prototype(y.x)
+    prototype = map(f(x)) do qi
+        fun(g,qi)
+    end
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    term_x = gk.term(y.x)
+    glue = domain_glue(phi)
+    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        phii = term_phi(index)
+        xi = term_x(index)
+        ys = phii(xi)
+        # TODO This should be a tuple
+        map(1:n_faces_around) do face_around
+            tface = sface_to_tfaces[sface][face_around]
+            lface = sface_to_lfaces[sface][face_around]
+            index2 = replace_face(index,tface)
+            index3 = replace_face_around(index2,face_around)
+            ai = term_a(index3)
+            y = ys[face_around]
+            fun(ai,y)
+        end
+    end
+end
+
+function call_impl(fun,a::AbstractQuantity,y::MappedPoint,glue::BoundaryGlue)
+    phi = y.phi
+    @assert gk.domain(a) == gk.codomain(phi)
+    g = gk.prototype(a)
+    f = gk.prototype(phi)
+    x = gk.prototype(y.x)
+    prototype = fun(g,f(x))
+    domain = phi |> gk.domain
+    term_a = gk.term(a)
+    term_phi = gk.term(phi)
+    term_x = gk.term(y.x)
+    glue = domain_glue(phi)
+    sface_to_tface, sface_to_lface = glue |> gk.target_face
+    face_around = glue.face_around
+    gk.quantity(prototype,domain) do index
+        sface = index.face
+        tface = sface_to_tface[sface]
+        lface = sface_to_lface[sface]
+        index2 = replace_face(index,tface)
+        index3 = replace_face_around(index2,face_around)
+        ai = term_a(index3)
+        phii = term_phi(index)
+        xi = term_x(index)
+        fun(ai,phii(xi))
+    end
 end
 
 function plot(domain::AbstractDomain;kwargs...)
