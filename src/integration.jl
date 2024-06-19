@@ -317,6 +317,7 @@ function integral(contribs)
     Integral(contribs)
 end
 
+# TODO Rename contributions with domain_contribution
 struct Integral{A}
     contributions::A
 end
@@ -348,6 +349,7 @@ function sum_contribution(domain::AbstractDomain{<:PMesh},qty::AbstractQuantity{
 end
 
 function sum_contribution_impl(qty,facemask)
+    # TODO some code duplication with face_contribution_impl
     z = zero(gk.prototype(qty))
     nfaces = length(facemask)
     term = gk.term(qty)
@@ -359,6 +361,51 @@ function sum_contribution_impl(qty,facemask)
         z += term(index)
     end
     z
+end
+
+function face_contribution(int::Integral,domain)
+    for (domain2,qty) in int.contributions
+        if domain2 == domain
+            return face_contribution(domain2,qty)
+        end
+    end
+    error("Domain not in integral")
+end
+
+function face_contribution(domain,qty)
+    nfaces = gk.num_faces(domain)
+    facemask = fill(true,nfaces)
+    face_contribution_impl(qty,facemask)
+end
+
+function face_contribution_impl(qty,facemask)
+    z = zero(gk.prototype(qty))
+    nfaces = length(facemask)
+    r = fill(z,nfaces)
+    term = gk.term(qty)
+    for face in 1:nfaces
+        if ! facemask[face]
+            continue
+        end
+        index = gk.index(;face)
+        r[face] = term(index)
+    end
+    r
+end
+
+function face_diameter(Ω)
+    dΩ = gk.measure(Ω,1)
+    d = gk.num_dims(Ω)
+    u = gk.analytical_field(x->1,Ω)
+    int = ∫(u,dΩ)
+    r = face_contribution(int,Ω)
+    r .= r .^ (1/d)
+    r
+end
+
+function face_diameter_field(Ω)
+    dims = gk.face_diameter(Ω)
+    face_constant_field(dims,Ω)
 end
 
 function Base.:+(int1::Integral,int2::Integral)

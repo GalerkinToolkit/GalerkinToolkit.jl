@@ -1,5 +1,5 @@
 module GalerkinToolkitExamples
 
-include("example_001.jl")
+include("poisson.jl")
 
 end # module

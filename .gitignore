@@ -8,6 +8,6 @@
 /Manifest.toml
 /docs/build/
 .vscode
-/extensions/GalerkinToolkitExamples/output/*
-/extensions/GalerkinToolkitExamples/Manifest.toml
+GalerkinToolkitExamples_output/
+GalerkinToolkitExamples/Manifest.toml
 *LocalPreferences.toml

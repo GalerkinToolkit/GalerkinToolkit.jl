@@ -12,56 +12,90 @@ mesh = gk.cartesian_mesh(domain,cells)
 gk.label_interior_faces!(mesh;physical_name="interior_faces")
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 
 @test Ω == Ω
 @test Ω != Ωref
 
 u = gk.analytical_field(x->sum(x),Ω)
+ϕ = gk.domain_map(Ωref,Ω)
+ϕinv = gk.inverse_map(ϕ)
+
+uref = u∘ϕ
+u2 = uref∘ϕinv
 
 gk.vtk_plot(joinpath(outdir,"omega"),Ω;refinement=4) do plt
     gk.plot!(plt,u;label="u")
+    gk.plot!(plt,u2;label="u2")
 end
 
-ϕ = gk.domain_map(Ωref,Ω)
-uref = u∘ϕ
 
 gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=4) do plt
     gk.plot!(plt,uref;label="u")
 end
 
 D = gk.num_dims(mesh)
-Γref = gk.domain(mesh;
-                 face_dim=D-1,
+Γref = gk.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["boundary_faces"])
 
-ϕ = gk.domain_map(Γref,Ωref;face_around=1)
+ϕ = gk.domain_map(Γref,Ωref)
 g = uref∘ϕ
+@test gk.domain(g) === gk.domain(ϕ)
+@test gk.domain(g) === Γref
+Γ = gk.physical_domain(Γref)
+
+n = gk.unit_normal(Γref,Ω)
+n2 = gk.unit_normal(Γ,Ω)
+h = gk.face_diameter_field(Γ)
 
 gk.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
     gk.plot!(plt,g;label="u")
+    gk.plot!(plt,n;label="n")
+    gk.plot!(plt,q->n2(ϕ(q));label="n2")
+    gk.plot!(plt,h;label="h")
     gk.plot!(plt;label="u2") do q
         x = ϕ(q)
         uref(x)
     end
 end
 
-Λref = gk.domain(mesh;
-                 face_dim=D-1,
+gk.vtk_plot(joinpath(outdir,"gamma"),Γ) do plt
+    gk.plot!(plt,u;label="u")
+    gk.plot!(plt,n;label="n")
+    gk.plot!(plt,n2;label="n2")
+    gk.plot!(plt,h;label="h")
+end
+
+Λref = gk.skeleton(mesh;
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
 
 ϕ = gk.domain_map(Λref,Ωref)
 
+Λ = gk.physical_domain(Λref)
+
 jump(u) = u[2]-u[1]
+jump(u,x) = u(x[2])[2]-u(x[1])[1]
 
 gk.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
+    gk.plot!(plt;label="jump_u2") do q
+        jump((uref∘ϕ)(q))
+    end
     gk.plot!(plt;label="jump_u") do q
         x = ϕ(q)
-        uq = uref(x)
-        gk.call(jump,uref(x))
+        jump(uref,x)
+    end
+end
+
+jump(u,x) = u(x)[2]-u(x)[1]
+gk.vtk_plot(joinpath(outdir,"lambda"),Λ) do plt
+    gk.plot!(plt;label="jump_u") do q
+        jump(u,q)
+    end
+    gk.plot!(plt;label="jump_u2") do q
+        jump(u(q))
     end
 end
 
@@ -83,13 +117,14 @@ gk.face_nodes(mesh)
 gk.periodic_nodes(mesh)
 gk.outwards_normals(mesh)
 
+
 # TODO
 #gk.label_interior_faces!(mesh;physical_name="interior_faces")
 # TODO There is a bug when using a ghost layer
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 
 @test Ω == Ω
 @test Ω != Ωref
@@ -108,12 +143,11 @@ gk.vtk_plot(joinpath(outdir,"p_omega"),Ω;refinement=4) do plt
 end
 
 D = gk.num_dims(mesh)
-Γref = gk.domain(mesh;
-                 face_dim=D-1,
+Γref = gk.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["boundary_faces"])
 
-ϕ = gk.domain_map(Γref,Ωref;face_around=1)
+ϕ = gk.domain_map(Γref,Ωref)
 g = uref∘ϕ
 
 gk.vtk_plot(joinpath(outdir,"p_gamma_ref"),Γref) do plt
