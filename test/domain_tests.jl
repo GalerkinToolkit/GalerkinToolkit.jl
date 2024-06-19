@@ -47,11 +47,13 @@ g = uref∘ϕ
 Γ = gk.physical_domain(Γref)
 
 n = gk.unit_normal(Γref,Ω)
+n2 = gk.unit_normal(Γ,Ω)
 h = gk.face_diameter_field(Γ)
 
 gk.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
     gk.plot!(plt,g;label="u")
     gk.plot!(plt,n;label="n")
+    gk.plot!(plt,q->n2(ϕ(q));label="n2")
     gk.plot!(plt,h;label="h")
     gk.plot!(plt;label="u2") do q
         x = ϕ(q)
@@ -62,6 +64,7 @@ end
 gk.vtk_plot(joinpath(outdir,"gamma"),Γ) do plt
     gk.plot!(plt,u;label="u")
     gk.plot!(plt,n;label="n")
+    gk.plot!(plt,n2;label="n2")
     gk.plot!(plt,h;label="h")
 end
 

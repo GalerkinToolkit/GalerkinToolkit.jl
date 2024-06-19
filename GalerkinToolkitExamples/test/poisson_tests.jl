@@ -6,6 +6,8 @@ using Test
 
 tol = 1.0e-10
 
+# TODO do not use a large value of n here.
+# The code now is VERY slow.
 n = 2
 mesh = gk.cartesian_mesh((0,2,0,2),(n,n))
 for dirichlet_method in (:nitsche,:strong)
