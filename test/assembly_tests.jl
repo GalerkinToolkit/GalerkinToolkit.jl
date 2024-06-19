@@ -165,7 +165,7 @@ l(v) = 0
 x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b
 
-# Poisson solve
+# Poisson solve (reference domain)
 
 domain = (0,1,0,1)
 cells = (4,4)
@@ -221,6 +221,32 @@ el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 @test el2 < tol
 
 eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
+@test el2 < tol
+
+# Poisson solve (API in physical domain)
+
+V = gk.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+
+uh = gk.zero_field(Float64,V)
+gk.interpolate_dirichlet!(u,uh)
+
+dΩ = gk.measure(Ω,degree)
+
+∇(u,q) = ForwardDiff.gradient(u,q)
+
+a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
+l(v) = 0
+
+x,A,b = gk.linear_problem(uh,a,l)
+x .= A\b
+
+eh(q) = u(q) - uh(q)
+∇eh(q) = ∇(u,q) - ∇(uh,q)
+
+el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 @test el2 < tol
 
 end # module
