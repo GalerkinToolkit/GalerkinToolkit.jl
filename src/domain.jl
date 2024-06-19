@@ -10,19 +10,29 @@ num_dims(a::AbstractDomain) = face_dim(a)
 is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> gk.val_parameter
 face_around(a::AbstractDomain) = a.face_around
 
-function interior(mesh;kwargs...)
+function interior(mesh;
+    mesh_id = objectid(mesh),
+    physical_names=gk.physical_names(mesh,num_dims(mesh)),
+    is_reference_domain = Val(false))
     D = num_dims(mesh)
-    domain(mesh;face_dim=D,face_around=nothing,kwargs...)
+    domain(mesh;face_dim=D,face_around=nothing,mesh_id,physical_names,is_reference_domain)
 end
 
-function skeleton(mesh;kwargs...)
+function skeleton(mesh;
+    mesh_id = objectid(mesh),
+    physical_names=gk.physical_names(mesh,num_dims(mesh)-1),
+    is_reference_domain = Val(false))
     D = num_dims(mesh)
-    domain(mesh;face_dim=D-1,face_around=nothing,kwargs...)
+    domain(mesh;face_dim=D-1,face_around=nothing,mesh_id,physical_names,is_reference_domain)
 end
 
-function boundary(mesh::Union{AbstractFEMesh,PMesh};face_around=1,kwargs...)
+function boundary(mesh::Union{AbstractFEMesh,PMesh};
+    face_around=1,
+    mesh_id = objectid(mesh),
+    physical_names=gk.physical_names(mesh,num_dims(mesh)-1),
+    is_reference_domain = Val(false))
     D = num_dims(mesh)
-    domain(mesh;face_dim=D-1,face_around,kwargs...)
+    domain(mesh;face_dim=D-1,face_around,mesh_id,physical_names,is_reference_domain)
 end
 
 function domain(mesh;

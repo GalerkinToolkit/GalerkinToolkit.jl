@@ -459,13 +459,12 @@ end
 
 function shape_functions(a::AbstractSpace,dim,field)
     @assert primal_map(a) === nothing
-    @assert is_reference_domain(gk.domain(a))
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(gk.shape_functions,refid_to_reffes)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
-    gk.quantity(prototype,domain) do index
+    qty = gk.quantity(prototype,domain) do index
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
@@ -473,22 +472,36 @@ function shape_functions(a::AbstractSpace,dim,field)
         g = shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
         shape_function_mask(g,index.field_per_dim,field,dim)
     end
+    if is_reference_domain(gk.domain(a))
+        return qty
+    end
+    Ω = gk.domain(a)
+    Ωref = gk.reference_domain(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    ϕinv = gk.inverse_map(ϕ)
+    compose(qty,ϕinv)
 end
 
 function dual_basis(a::AbstractSpace,dim)
     @assert dual_map(a) === nothing
-    @assert is_reference_domain(gk.domain(a))
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(gk.dual_basis,refid_to_reffes)
     domain = gk.domain(a)
     prototype = first(first(refid_to_funs))
-    gk.quantity(prototype,domain) do index
+    qty = gk.quantity(prototype,domain) do index
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
         refid_to_funs[refid][dof]
     end
+    if is_reference_domain(gk.domain(a))
+        return qty
+    end
+    Ω = gk.domain(a)
+    Ωref = gk.reference_domain(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    u -> qty(compose(u,ϕ))
 end
 
 struct VectorStrategy{A,B,C}

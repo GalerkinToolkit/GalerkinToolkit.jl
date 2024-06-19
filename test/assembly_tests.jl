@@ -38,7 +38,6 @@ dΓref = gk.measure(Γref,degree)
 β = gk.domain_map(Γref,Ωref)
 
 Λref = gk.skeleton(mesh;
-                 face_dim=D-1,
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
 
@@ -173,12 +172,12 @@ cells = (4,4)
 mesh = gk.cartesian_mesh(domain,cells)
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.domain(mesh)
+Ω = gk.interior(mesh)
 Ωref = gk.reference_domain(Ω)
 ϕ = gk.domain_map(Ωref,Ω)
 
 D = gk.num_dims(mesh)
-Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["boundary_faces"])
+Γdiri = gk.boundary(mesh;physical_names=["boundary_faces"])
 
 #V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
@@ -210,7 +209,6 @@ l(v) = 0
 
 x,A,b = gk.linear_problem(uh,a,l)
 x .= A\b
-
 
 # TODO
 # Functions like this ones should
