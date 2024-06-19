@@ -438,7 +438,7 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     if flag
         call(call,f,x)
     else
-        g = gk.align_with(f,domain)
+        g = gk.align_field(f,domain)
         call(call,g,x)
     end
 end
@@ -669,19 +669,19 @@ function domain_map(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
     error("Case not yet implemented")
 end
 
-function align_with(a::AbstractQuantity,domain::AbstractDomain)
+function align_field(a::AbstractQuantity,domain::AbstractDomain)
     glue = gk.domain_glue(domain,gk.domain(a))
-    align_with(a,glue)
+    align_field(a,glue)
 end
 
-function align_with(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
-    q = map(gk.align_with,partition(a),partition(domain))
+function align_field(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
+    q = map(gk.align_field,partition(a),partition(domain))
     prototype = map(gk.prototype,q) |> PartitionedArrays.getany
     term = map(gk.term,q)
     gk.quantity(term,prototype,domain)
 end
 
-function align_with(a::AbstractQuantity,glue::InteriorGlue)
+function align_field(a::AbstractQuantity,glue::InteriorGlue)
     domain = glue |> gk.domain
     prototype = gk.prototype(a)
     term_a = gk.term(a)
@@ -695,7 +695,7 @@ function align_with(a::AbstractQuantity,glue::InteriorGlue)
     end
 end
 
-function align_with(a::AbstractQuantity,glue::CoboundaryGlue)
+function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
     pa = gk.prototype(a)
     prototype = x -> [pa(x),pa(x)]
     domain = glue |> gk.domain
@@ -720,7 +720,7 @@ function align_with(a::AbstractQuantity,glue::CoboundaryGlue)
     end
 end
 
-function align_with(a::AbstractQuantity,glue::BoundaryGlue)
+function align_field(a::AbstractQuantity,glue::BoundaryGlue)
     prototype = gk.prototype(a)
     domain = glue |> gk.domain
     term_a = gk.term(a)

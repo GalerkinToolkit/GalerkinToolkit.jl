@@ -45,12 +45,12 @@ gk.face_permutation_ids(topo,2,0)
 gk.face_permutation_ids(topo,2,1)
 gk.face_permutation_ids(topo,2,2)
 
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 ϕ = gk.domain_map(Ωref,Ω)
 
 D = gk.num_dims(mesh)
-Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["boundary_faces"])
+Γdiri = gk.boundary(mesh;physical_names=["boundary_faces"])
 
 V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
@@ -110,9 +110,9 @@ el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 V = gk.lagrange_space(Γdiri,order)
 gk.face_dofs(V)
 
-Γ1 = gk.domain(mesh;face_dim=D-1,physical_names=["1-face-1"])
-Γ2 = gk.domain(mesh;face_dim=D-1,physical_names=["1-face-3"])
-Γ3 = gk.domain(mesh;face_dim=D-2,physical_names=["0-face-1"])
+Γ1 = gk.boundary(mesh;physical_names=["1-face-1"])
+Γ2 = gk.boundary(mesh;physical_names=["1-face-3"])
+Γ3 = gk.boundary(mesh;physical_names=["0-face-1"])
 
 u1 = gk.analytical_field(x->1.0,Ωref)
 u2 = gk.analytical_field(x->2.0,Ωref)

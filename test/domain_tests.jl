@@ -74,21 +74,25 @@ end
 Λ = gk.physical_domain(Λref)
 
 jump(u) = u[2]-u[1]
+jump(u,x) = u(x[2])[2]-u(x[1])[1]
 
 gk.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
     gk.plot!(plt;label="jump_u2") do q
-        gk.call(jump,(uref∘ϕ)(q))
+        jump((uref∘ϕ)(q))
     end
-    # TODO
-    #gk.plot!(plt;label="jump_u") do q
-    #    x = ϕ(q)
-    #    gk.call(jump,uref(x))
-    #end
+    gk.plot!(plt;label="jump_u") do q
+        x = ϕ(q)
+        jump(uref,x)
+    end
 end
 
+jump(u,x) = u(x)[2]-u(x)[1]
 gk.vtk_plot(joinpath(outdir,"lambda"),Λ) do plt
+    gk.plot!(plt;label="jump_u") do q
+        jump(u,q)
+    end
     gk.plot!(plt;label="jump_u2") do q
-        gk.call(jump,u(q))
+        jump(u(q))
     end
 end
 

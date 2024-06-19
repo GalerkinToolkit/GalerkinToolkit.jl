@@ -14,15 +14,14 @@ mesh = gk.cartesian_mesh(domain,cells)
 gk.label_interior_faces!(mesh;physical_name="interior_faces")
 gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.domain(mesh)
-Ωref = gk.domain(mesh;is_reference_domain=true)
+Ω = gk.interior(mesh)
+Ωref = gk.interior(mesh;is_reference_domain=true)
 ϕ = gk.domain_map(Ωref,Ω)
 
 D = gk.num_dims(mesh)
-Γdiri = gk.domain(mesh;face_dim=D-1,physical_names=["1-face-1","1-face-3"])
+Γdiri = gk.boundary(mesh;physical_names=["1-face-1","1-face-3"])
 
-Γref = gk.domain(mesh;
-                 face_dim=D-1,
+Γref = gk.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["1-face-2","1-face-4"])
 
@@ -36,9 +35,9 @@ dΩref = gk.measure(Ωref,degree)
 
 dΓref = gk.measure(Γref,degree)
 α = gk.domain_map(Γref,Γ)
-β = gk.domain_map(Γref,Ωref;face_around=1)
+β = gk.domain_map(Γref,Ωref)
 
-Λref = gk.domain(mesh;
+Λref = gk.skeleton(mesh;
                  face_dim=D-1,
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
@@ -57,7 +56,7 @@ function dS(J)
     sqrt(det(Jt*J))
 end
 
-jump(u) = u[2]-u[1]
+jump(u,x) = u(x[2])[2]-u(x[1])[1]
 
 function l(v)
     ∫(dΩref) do q
@@ -72,7 +71,7 @@ function l(v)
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v(q))*dS(J)
+        jump(v,q)*dS(J)
     end
 end
 
@@ -82,7 +81,7 @@ function l(v)
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v(q))*dS(J)
+        jump(v,q)*dS(J)
     end
 end
 
@@ -99,7 +98,7 @@ function l((v1,v2))
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1(q))*jump(v2(q))*dS(J)
+        jump(v1,q)*jump(v2,q)*dS(J)
     end
 end
 
@@ -118,7 +117,7 @@ function a(u,v)
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v(q))*jump(u(q))*dS(J)
+        jump(v,q)*jump(u,q)*dS(J)
     end
 end
 
@@ -132,7 +131,7 @@ function a((u1,u2),(v1,v2))
     ∫(dΛref) do p
         q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1(q))*jump(v2(q))*jump(u1(q))*jump(u2(q))*dS(J)
+        jump(v1,q)*jump(v2,q)*jump(u1,q)*jump(u2,q)*dS(J)
     end
 end
 
