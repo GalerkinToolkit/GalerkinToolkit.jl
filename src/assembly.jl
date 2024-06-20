@@ -37,10 +37,12 @@ function assemble_vector_count(state)
     glues = map(contributions) do domain_and_contribution
         domain, = domain_and_contribution
         map(fields) do field
-            gk.domain_glue(domain,gk.domain(space,field))
+            gk.domain_glue(domain,gk.domain(space,field);strict=false)
         end
     end
     n = 0
+    function loop(glue::Nothing,field)
+    end
     function loop(glue::InteriorGlue,field)
         sface_to_face = target_face(glue)
         dim = 1
@@ -98,6 +100,8 @@ function assemble_vector_fill(state)
     contributions = gk.contributions(integral)
     num_fields = gk.num_fields(space)
     n = 0
+    function loop(glue::Nothing,field,contribution)
+    end
     function loop(glue::InteriorGlue,field,contribution)
         sface_to_face = target_face(glue)
         field_per_dim = (field,)
@@ -215,24 +219,24 @@ function assemble_matrix_count(state)
     glues_test = map(contributions) do domain_and_contribution
         domain, = domain_and_contribution
         map(fields_test) do field
-            gk.domain_glue(domain,gk.domain(test_space,field))
+            gk.domain_glue(domain,gk.domain(test_space,field),strict=false)
         end
     end
     glues_trial = map(contributions) do domain_and_contribution
         domain, = domain_and_contribution
         map(fields_trial) do field
-            gk.domain_glue(domain,gk.domain(trial_space,field))
+            gk.domain_glue(domain,gk.domain(trial_space,field),strict=false)
         end
     end
     n = 0
-    # TODO cross terms missing
+    # TODO some cross terms missing
     function loop(glue_test::InteriorGlue,glue_trial::InteriorGlue,field_per_dim)
         sface_to_face_test = target_face(glue_test)
         sface_to_face_trial = target_face(glue_trial)
         test_dim = 1
         trial_dim = 2
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
             face_test = sface_to_face_test[sface]
             face_trial = sface_to_face_trial[sface]
@@ -249,7 +253,7 @@ function assemble_matrix_count(state)
         test_dim = 1
         trial_dim = 2
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
             faces_test = sface_to_faces_test[sface]
             faces_trial = sface_to_faces_trial[sface]
@@ -270,7 +274,41 @@ function assemble_matrix_count(state)
         test_dim = 1
         trial_dim = 2
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            face_test = sface_to_face_test[sface]
+            face_trial = sface_to_face_trial[sface]
+            index_test = gk.index(;face=face_test,field_per_dim)
+            ndofs_test = num_face_dofs_test(index_test)
+            index_trial = gk.index(;face=face_trial,field_per_dim)
+            ndofs_trial = num_face_dofs_trial(index_trial)
+            n += ndofs_test*ndofs_trial
+        end
+    end
+    function loop(glue_test::InteriorGlue,glue_trial::BoundaryGlue,field_per_dim)
+        sface_to_face_test = target_face(glue_test)
+        sface_to_face_trial, _ = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
+        for sface in 1:gk.num_faces(gk.domain(glue_test))
+            face_test = sface_to_face_test[sface]
+            face_trial = sface_to_face_trial[sface]
+            index_test = gk.index(;face=face_test,field_per_dim)
+            ndofs_test = num_face_dofs_test(index_test)
+            index_trial = gk.index(;face=face_trial,field_per_dim)
+            ndofs_trial = num_face_dofs_trial(index_trial)
+            n += ndofs_test*ndofs_trial
+        end
+    end
+    function loop(glue_test::BoundaryGlue,glue_trial::InteriorGlue,field_per_dim)
+        sface_to_face_test, _ = target_face(glue_test)
+        sface_to_face_trial = target_face(glue_trial)
+        test_dim = 1
+        trial_dim = 2
+        num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
             face_test = sface_to_face_test[sface]
             face_trial = sface_to_face_trial[sface]
@@ -287,6 +325,9 @@ function assemble_matrix_count(state)
             glue_test = field_to_glue_test[field_test]
             for field_trial in fields_trial
                 glue_trial = field_to_glue_trial[field_trial]
+                if glue_test === nothing || glue_trial == nothing
+                    continue
+                end
                 field_per_dim = (field_test,field_trial)
                 loop(glue_test,glue_trial,field_per_dim)
             end
@@ -316,7 +357,7 @@ function assemble_matrix_fill(state)
         test_dim = 1
         trial_dim = 2
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(test_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(test_space,trial_dim)
         dof_map_test = gk.dof_map(test_space,test_dim)
         dof_map_trial = gk.dof_map(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
@@ -346,7 +387,7 @@ function assemble_matrix_fill(state)
         test_dim = 1
         trial_dim = 2
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
         dof_map_test = gk.dof_map(test_space,test_dim)
         dof_map_trial = gk.dof_map(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
@@ -384,7 +425,7 @@ function assemble_matrix_fill(state)
         face_around_trial = glue_trial.face_around
         face_around_per_dim = (face_around_test,face_around_trial)
         num_face_dofs_test = gk.num_face_dofs(test_space,test_dim)
-        num_face_dofs_trial = gk.num_face_dofs(trial_space,test_dim)
+        num_face_dofs_trial = gk.num_face_dofs(trial_space,trial_dim)
         dof_map_test = gk.dof_map(test_space,test_dim)
         dof_map_trial = gk.dof_map(trial_space,trial_dim)
         for sface in 1:gk.num_faces(gk.domain(glue_test))
@@ -414,6 +455,9 @@ function assemble_matrix_fill(state)
             glue_test = field_to_glue_test[field_test]
             for field_trial in fields_trial
                 glue_trial = field_to_glue_trial[field_trial]
+                if glue_test === nothing || glue_trial == nothing
+                    continue
+                end
                 field_per_dim = (field_test,field_trial)
                 loop(glue_test,glue_trial,field_per_dim,contribution)
             end

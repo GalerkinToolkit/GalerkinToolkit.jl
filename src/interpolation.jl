@@ -450,7 +450,6 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
     end
 end
 
-
 function face_dofs(space::AbstractSpace)
     state = generate_dof_ids(space)
     state.cell_to_dofs # TODO rename face_dofs ?
@@ -494,6 +493,14 @@ function shape_function_mask(f,face_around_per_dim,face_around,dim)
 end
 
 function shape_function_mask(f,face_around_per_dim::Nothing,face_around,dim)
+    f
+end
+
+function shape_function_mask(f,face_around_per_dim::Nothing,face_around::Nothing,dim)
+    f
+end
+
+function shape_function_mask(f,face_around_per_dim,face_around::Nothing,dim)
     f
 end
 

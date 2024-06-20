@@ -181,7 +181,7 @@ function PartitionedArrays.partition(a::AbstractDomainGlue{<:PMesh})
     end
 end
 
-function domain_glue(domain::AbstractDomain,codomain::AbstractDomain)
+function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;strict=true)
     msg = "Trying to combine domains on different meshes"
     @assert gk.mesh_id(domain) == gk.mesh_id(codomain) msg
     mesh = gk.mesh(domain)
@@ -197,7 +197,11 @@ function domain_glue(domain::AbstractDomain,codomain::AbstractDomain)
             BoundaryGlue(mesh,domain,codomain,face_around)
         end
     else
-        error("This case does not make sense")
+        if strict
+            error("This case does not make sense")
+        else
+            return nothing
+        end
     end
 end
 
@@ -747,14 +751,15 @@ function align_field(a::AbstractQuantity,glue::BoundaryGlue)
     end
 end
 
-function inverse_map(f)
+function inverse_map_impl(f,x0)
     function invf(fx)
-        x = zero(fx)
+        x = x0
         tol = 1.0e-12
+        J = nothing
         niters = 100
         for _ in 1:niters
             J = ForwardDiff.jacobian(f,x)
-            dx = J\(fx-f(x))
+            dx = pinv(J)*(fx-f(x))
             x += dx
             if norm(dx) < tol
                 return x
@@ -765,13 +770,15 @@ function inverse_map(f)
     end
 end
 
-function return_prototype(f::typeof(inverse_map),g)
-    g
+function return_prototype(::typeof(inverse_map_impl),f,x0)
+    fx -> x0
 end
 
 function inverse_map(q::AbstractQuantity)
-
-    gk.call(inverse_map,q)
+    D = q |> gk.domain |> gk.num_dims
+    x0 = zero(SVector{D,Float64})
+    x = constant_quantity(x0,gk.domain(q))
+    gk.call(inverse_map_impl,q,x)
 end
 
 function Base.:∘(a::AbstractQuantity,phi::AbstractQuantity)
