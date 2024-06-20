@@ -134,6 +134,9 @@ gk.interpolate_dirichlet!(udiri,uh2)
 
 order = 1
 V = gk.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,conformity=:L2)
+gk.face_dofs(V)
+V = gk.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,conformity=:L2)
+gk.face_dofs(V)
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
@@ -146,5 +149,13 @@ gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
     gk.plot!(plt,w3;label="w3")
     gk.plot!(plt,uh2;label="uh2")
 end
+
+Γ = gk.boundary(mesh;physical_names=["boundary_faces"])
+
+V = gk.lagrange_space(Γ,order;conformity=:L2)
+gk.face_dofs(V)
+V = gk.lagrange_space(Γ,order-1;conformity=:L2)
+gk.reference_fes(V) # TODO why 2 reference fes?
+gk.face_dofs(V)
 
 end #module

@@ -65,6 +65,13 @@ function main_automatic(params)
         uh = gk.zero_field(Float64,V)
     end
 
+    if params[:dirichlet_method] === :multipliers
+        Q = gk.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        VxQ = V × Q
+        uh_qh = gk.zero_field(Float64,VxQ)
+        uh, qh = uh_qh
+    end
+
     function a(u,v)
         r = ∫( x->∇(u,x)⋅∇(v,x), dΩ)
         if params[:dirichlet_method] === :nitsche
@@ -82,9 +89,27 @@ function main_automatic(params)
         r
     end
 
+    if params[:dirichlet_method] === :multipliers
+        function A((u,p),(v,q))
+            r = a(u,v)
+            r += ∫(x->(u(x)+p(x))*(v(x)+q(x))-u(x)*v(x)-p(x)*q(x), dΓd)
+            r
+        end
+        function L((v,q))
+            r = l(v)
+            r += ∫(x->u(x)*q(x), dΓd)
+            r
+        end
+        Uh = uh_qh
+    else
+        A = a
+        L = l
+        Uh = uh
+    end
+
     @timeit timer "assembly" begin
         # TODO give a hint when dirichlet BCS are homogeneous or not present
-        x,A,b = gk.linear_problem(uh,a,l)
+        x,A,b = gk.linear_problem(Uh,A,L)
     end
 
     @timeit timer "solver" begin
@@ -150,8 +175,8 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:dirichlet_method] = :strong
-    params[:integration_degree] = 2
-    params[:interpolation_degree] = 1
+    params[:integration_degree] = 1
+    params[:interpolation_degree] = 2*params[:integration_degree]
     params[:solver] = ps.lu_solver()
     params[:example_path] = joinpath(mkpath(joinpath(@__DIR__,"..","output")),"example_001")
     params[:export_vtu] = true

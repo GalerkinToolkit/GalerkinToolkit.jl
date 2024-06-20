@@ -137,6 +137,8 @@ Base.iterate(m::AbstractSpace,state) = iterate(components(m),state)
 Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
 Base.length(m::AbstractSpace) = num_fields(m)
 
+mesh(a::AbstractSpace) = gk.mesh(gk.domain(a))
+
 function free_dofs(a::AbstractSpace)
     gk.dofs(free_values_strategy(a))
 end
@@ -202,7 +204,7 @@ function generate_dof_ids_step_1(space)
     d_to_ctype_to_ldface_to_pindex_to_perm = map(d->gk.reference_face_own_dof_permutations(space,d),0:D)
     d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
     d_to_ctype_to_ldface_to_dofs = map(d->map(fe->gk.face_dofs(fe,d),ctype_to_reference_fe),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
+    #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
     ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
@@ -398,6 +400,57 @@ function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
     (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
+function reference_face_own_dofs(space::AbstractSpace,d)
+    ctype_to_reference_fe = reference_fes(space)
+    ctype_to_ldface_to_own_ldofs = map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe)
+    if gk.conformity(space) === :default
+        ctype_to_ldface_to_own_ldofs
+    elseif gk.conformity(space) === :L2
+        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+        domain = space |> gk.domain
+        D = gk.num_dims(domain)
+        map(ctype_to_num_dofs,ctype_to_ldface_to_own_ldofs) do ndofs,ldface_to_own_ldofs
+            map(ldface_to_own_ldofs) do own_ldofs
+                dofs = if d == D
+                    collect(1:ndofs)
+                else
+                    Int[]
+                end
+                convert(typeof(own_ldofs),dofs)
+            end
+        end
+    else
+        error("This line cannot be reached")
+    end
+end
+
+function reference_face_own_dof_permutations(space::AbstractSpace,d)
+    ctype_to_reference_fe = reference_fes(space)
+    ctype_to_ldface_to_pindex_to_perm = map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
+    if gk.conformity(space) === :default
+        ctype_to_ldface_to_pindex_to_perm
+    elseif gk.conformity(space) === :L2
+        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+        domain = space |> gk.domain
+        D = gk.num_dims(domain)
+        map(ctype_to_num_dofs,ctype_to_ldface_to_pindex_to_perm) do ndofs,ldface_to_pindex_to_perm
+            map(ldface_to_pindex_to_perm) do pindex_to_perm
+                map(pindex_to_perm) do perm
+                    dofs = if d == D
+                        collect(1:ndofs)
+                    else
+                        Int[]
+                    end
+                    convert(typeof(perm),dofs)
+                end
+            end
+        end
+    else
+        error("This line cannot be reached")
+    end
+end
+
+
 function face_dofs(space::AbstractSpace)
     state = generate_dof_ids(space)
     state.cell_to_dofs # TODO rename face_dofs ?
@@ -544,6 +597,10 @@ struct CartesianProductSpace{A,B,C} <: gk.AbstractSpace
     dirichlet_values_strategy::C
 end
 
+function mesh(space::CartesianProductSpace)
+    gk.mesh(first(space.spaces))
+end
+
 function LinearAlgebra.:×(a::AbstractSpace,b::AbstractSpace)
     cartesian_product(a,b)
 end
@@ -631,7 +688,7 @@ function dual_basis(a::CartesianProductSpace)
 end
 
 function discrete_field(space,free_values,dirichlet_values)
-    mesh = space |> gk.domain |> gk.mesh
+    mesh = space |> gk.mesh
     DiscreteField(mesh,space,free_values,dirichlet_values)
 end
 
@@ -920,7 +977,7 @@ end
 
 # TODO rename kwarg space?
 function lagrange_space(domain,order;
-    conformity = :H1,
+    conformity = :default,
     dirichlet_boundary=nothing,
     free_values_strategy = gk.monolithic_field_major_strategy,
     dirichlet_values_strategy = gk.monolithic_field_major_strategy,
@@ -928,7 +985,7 @@ function lagrange_space(domain,order;
     major=:component,
     shape=SCALAR_SHAPE)
 
-    @assert conformity in (:H1,:L2)
+    @assert conformity in (:default,:L2)
 
     LagrangeSpace(
                   domain,
@@ -954,6 +1011,8 @@ struct LagrangeSpace{A,B,C,D,E,F,G,H} <: AbstractSpace
     major::G
     shape::H
 end
+
+conformity(space::LagrangeSpace) = space.conformity
 
 function domain(space::LagrangeSpace)
     space.domain
@@ -988,56 +1047,6 @@ function reference_fes(space::LagrangeSpace)
         lagrangian_fe(geometry,order;space=space2,major,shape)
     end
     ctype_to_reffe
-end
-
-function reference_face_own_dofs(space::LagrangeSpace,d)
-    ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_own_ldofs = map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe)
-    if space.conformity === :H1
-        ctype_to_ldface_to_own_ldofs
-    elseif space.conformity === :L2
-        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
-        domain = space |> gk.domain
-        D = gk.num_dims(domain)
-        map(ctype_to_num_dofs,ctype_to_ldface_to_own_ldofs) do ndofs,ldface_to_own_ldofs
-            map(ldface_to_own_ldofs) do own_ldofs
-                dofs = if d == D
-                    collect(1:ndofs)
-                else
-                    Int[]
-                end
-                convert(typeof(own_ldofs),dofs)
-            end
-        end
-    else
-        error("This line cannot be reached")
-    end
-end
-
-function reference_face_own_dof_permutations(space::LagrangeSpace,d)
-    ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_pindex_to_perm = map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    if space.conformity === :H1
-        ctype_to_ldface_to_pindex_to_perm
-    elseif space.conformity === :L2
-        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
-        domain = space |> gk.domain
-        D = gk.num_dims(domain)
-        map(ctype_to_num_dofs,ctype_to_ldface_to_pindex_to_perm) do ndofs,ldface_to_pindex_to_perm
-            map(ldface_to_pindex_to_perm) do pindex_to_perm
-                map(pindex_to_perm) do perm
-                    dofs = if d == D
-                        collect(1:ndofs)
-                    else
-                        Int[]
-                    end
-                    convert(typeof(perm),dofs)
-                end
-            end
-        end
-    else
-        error("This line cannot be reached")
-    end
 end
 
 function free_values_strategy(a::LagrangeSpace)
