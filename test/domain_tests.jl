@@ -76,13 +76,21 @@ end
 
 Λ = gk.physical_domain(Λref)
 
+n = gk.unit_normal(Λref,Ω)
+
+n2 = gk.unit_normal(Λ,Ω)
+h = gk.face_diameter_field(Λ)
+
 jump(u) = u[2]-u[1]
 jump(u,x) = u(x[2])[2]-u(x[1])[1]
 
 gk.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
+    gk.plot!(plt,n[1];label="n1")
+    gk.plot!(plt,n[2];label="n2")
     gk.plot!(plt;label="jump_u2") do q
         jump((uref∘ϕ)(q))
     end
+    gk.plot!(plt,h;label="h")
     gk.plot!(plt;label="jump_u") do q
         x = ϕ(q)
         jump(uref,x)
@@ -91,12 +99,15 @@ end
 
 jump(u,x) = u(x)[2]-u(x)[1]
 gk.vtk_plot(joinpath(outdir,"lambda"),Λ) do plt
+    gk.plot!(plt,n2[1];label="n1")
+    gk.plot!(plt,n2[2];label="n2")
     gk.plot!(plt;label="jump_u") do q
         jump(u,q)
     end
     gk.plot!(plt;label="jump_u2") do q
         jump(u(q))
     end
+    gk.plot!(plt,h;label="h")
 end
 
 # Parallel

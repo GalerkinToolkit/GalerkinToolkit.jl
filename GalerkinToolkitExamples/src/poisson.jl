@@ -29,8 +29,13 @@ gradient(u) = x->ForwardDiff.gradient(u,x)
 jacobian(u) = x->ForwardDiff.jacobian(u,x)
 laplacian(u) = x-> tr(ForwardDiff.jacobian(y->ForwardDiff.gradient(u,y),x))
 
-Δ(u,x) = gk.call(laplacian,u)(x)
-∇(u,x) = gk.call(gradient,u)(x)
+Δ(u) = gk.call(laplacian,u)
+∇(u) = gk.call(gradient,u)
+Δ(u,x) = Δ(u)(x)
+∇(u,x) = ∇(u)(x)
+
+mean(u,x) = 0.5*(u(x)[1]+u(x)[2])
+jump(u,n,x) = u(x)[1]*n[1](x) + u(x)[2]*n[2](x)
 
 function main_automatic(params)
     timer = params[:timer]
@@ -51,18 +56,39 @@ function main_automatic(params)
     g(x) = n_Γn(x)⋅∇(u,x)
 
     interpolation_degree = params[:interpolation_degree]
+    γ = integration_degree*(integration_degree+1)
+    γ = γ/10.0
+
+    @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
+
+    if params[:discretization_method] !== :continuous_galerkin
+        conformity = :L2
+        gk.label_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
+        Λ = gk.skeleton(mesh;physical_names=["__INTERIOR_FACES__"])
+        dΛ = gk.measure(Λ,integration_degree)
+        n_Λ = gk.unit_normal(Λ,Ω)
+        h_Λ = gk.face_diameter_field(Λ)
+    else
+        conformity = :default
+    end
+
     if params[:dirichlet_method] === :strong
-        V = gk.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
+        V = gk.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
         uh = gk.zero_field(Float64,V)
         gk.interpolate_dirichlet!(u,uh)
     else
         n_Γd = gk.unit_normal(Γd,Ω)
         h_Γd = gk.face_diameter_field(Γd)
         dΓd = gk.measure(Γd,integration_degree)
-        γ = integration_degree*(integration_degree+1)
-        γ = γ/10.0
-        V = gk.lagrange_space(Ω,interpolation_degree)
+        V = gk.lagrange_space(Ω,interpolation_degree;conformity)
         uh = gk.zero_field(Float64,V)
+    end
+
+    if params[:dirichlet_method] === :multipliers
+        Q = gk.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        VxQ = V × Q
+        uh_qh = gk.zero_field(Float64,VxQ)
+        uh, qh = uh_qh
     end
 
     function a(u,v)
@@ -70,6 +96,10 @@ function main_automatic(params)
         if params[:dirichlet_method] === :nitsche
             r += ∫( x->
                    (γ/h_Γd(x))*v(x)*u(x)-v(x)*n_Γd(x)⋅∇(u,x)-n_Γd(x)⋅∇(v,x)*u(x), dΓd)
+        end
+        if params[:discretization_method] === :interior_penalty
+            r += ∫( x->
+                   (γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇(u),x)-mean(∇(v),x)⋅jump(u,n_Λ,x), dΛ)
         end
         r
     end
@@ -82,9 +112,27 @@ function main_automatic(params)
         r
     end
 
+    if params[:dirichlet_method] === :multipliers
+        function A((u,p),(v,q))
+            r = a(u,v)
+            r += ∫(x->(u(x)+p(x))*(v(x)+q(x))-u(x)*v(x)-p(x)*q(x), dΓd)
+            r
+        end
+        function L((v,q))
+            r = l(v)
+            r += ∫(x->u(x)*q(x), dΓd)
+            r
+        end
+        Uh = uh_qh
+    else
+        A = a
+        L = l
+        Uh = uh
+    end
+
     @timeit timer "assembly" begin
         # TODO give a hint when dirichlet BCS are homogeneous or not present
-        x,A,b = gk.linear_problem(uh,a,l)
+        x,A,b = gk.linear_problem(Uh,A,L)
     end
 
     @timeit timer "solver" begin
@@ -142,6 +190,7 @@ end
 function default_params()
     params = Dict{Symbol,Any}()
     params[:implementation] = :automatic
+    params[:discretization_method] = :continuous_galerkin
     params[:verbose] = true
     params[:timer] = TimerOutput()
     params[:mesh] = gk.cartesian_mesh((0,1,0,1),(10,10))
@@ -150,8 +199,8 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:dirichlet_method] = :strong
-    params[:integration_degree] = 2
-    params[:interpolation_degree] = 1
+    params[:integration_degree] = 1
+    params[:interpolation_degree] = 2*params[:integration_degree]
     params[:solver] = ps.lu_solver()
     params[:example_path] = joinpath(mkpath(joinpath(@__DIR__,"..","output")),"example_001")
     params[:export_vtu] = true
