@@ -132,12 +132,11 @@ dΛref = gk.measure(Λref,degree)
 ϕ_Λref_Λ = gk.domain_map(Λref,Λ)
 ϕ_Λref_Ωref = gk.domain_map(Λref,Ωref)
 
-jump(u) = u[2]-u[1]
+jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
 
 int = 10*∫(dΛref) do p
-    q = ϕ_Λref_Ωref(p)
     J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-    3*jump(uref(q))*dS(J)
+    3*jump(uref,ϕ_Λref_Ωref,p)*dS(J)
 end
 
 @test sum(int*1) + 1 ≈ 1
