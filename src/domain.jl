@@ -237,6 +237,12 @@ function target_face(glue::InteriorGlue)
     tface_to_tface = LinearIndices(tface_to_Dface)
     Dface_to_tface[tface_to_Dface] = tface_to_tface
     sface_to_tface = Dface_to_tface[sface_to_dface]
+    #nsfaces = length(sface_to_tface)
+    #ptrs = collect(Int32,1:nsfaces)
+    #sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+    #sface_to_lfaces = JaggedArray(fill(Int32(1),nsfaces),ptrs)
+    #sface_to_tfaces, sface_to_lfaces
+    sface_to_tface
 end
 
 function target_face(glue::CoboundaryGlue)
@@ -270,6 +276,11 @@ function target_face(glue::BoundaryGlue)
     face_around = glue.face_around
     sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
     sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
+    #nsfaces = length(sface_to_tface)
+    #ptrs = collect(Int32,1:nsfaces)
+    #sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+    #sface_to_lfaces = JaggedArray(sface_to_lface,ptrs)
+    #sface_to_tfaces, sface_to_lfaces
     sface_to_tface, sface_to_lface
 end
 
@@ -1044,14 +1055,19 @@ function unit_normal(domain::AbstractDomain)
     error("not implemented yet")
 end
 
-function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain)
+function unit_normal(domain::AbstractDomain,codomain::AbstractDomain)
+    glue = gk.domain_glue(domain,codomain)
+    unit_normal(domain,codomain,glue)
+end
+
+# TODO a lot of code duplication
+function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
     Γref = domain
     Ω = codomain
     Ωref = gk.reference_domain(Ω)
     D = gk.num_dims(Ω)
     mesh = gk.mesh(Ω)
     φ = domain_map(Γref,Ωref)
-    glue = gk.domain_glue(Γref,Ωref)
     ϕ = gk.domain_map(Ωref,Ω)
     sface_to_tface, sface_to_lface = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
@@ -1091,7 +1107,8 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain)
     end
 end
 
-function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain)
+# TODO a lot of code duplication
+function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
     Γ = domain
     Γref = gk.physical_domain(Γ)
     Ω = codomain
@@ -1101,7 +1118,6 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain)
     mesh = gk.mesh(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
     ϕinv = gk.inverse_map(ϕ)
-    glue = gk.domain_glue(Γref,Ωref)
     sface_to_tface, sface_to_lface = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
     face_to_ctype = gk.face_reference_id(mesh,D)
@@ -1126,7 +1142,6 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain)
         ϕ_fun = ϕ_term(index2)
         x -> begin
             q = ϕinv_fun(x)
-            # TODO code duplication with function above
             J = ForwardDiff.jacobian(ϕ_fun,q)
             Jt = transpose(J)
             pinvJt = transpose(inv(Jt*J)*Jt)
@@ -1136,6 +1151,114 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain)
                 return zero(v)
             else
                 return v/m
+            end
+        end
+    end
+end
+
+# TODO a lot of code duplication
+function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
+    Γref = domain
+    Ω = codomain
+    Ωref = gk.reference_domain(Ω)
+    D = gk.num_dims(Ω)
+    mesh = gk.mesh(Ω)
+    φ = domain_map(Γref,Ωref)
+    ϕ = gk.domain_map(Ωref,Ω)
+    sface_to_tfaces, sface_to_lfaces = gk.target_face(glue)
+    tface_to_face = gk.faces(Ωref)
+    face_to_ctype = gk.face_reference_id(mesh,D)
+    ctype_to_refface = gk.reference_faces(mesh,D)
+    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+        boundary = refface |> gk.geometry |> gk.boundary
+        boundary |> gk.outwards_normals # TODO also rename?
+    end
+    ϕ_term = gk.term(ϕ)
+    φ_term = gk.term(φ)
+    fun_φ = gk.prototype(φ)
+    prototype = [q->(fun_φ(q)[1]),q->(fun_φ(q)[1])]
+    gk.quantity(prototype,Γref) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        n_faces_around = length(tfaces)
+        map(1:n_faces_around) do face_around
+            tface = tfaces[face_around]
+            lface = lfaces[face_around]
+            face = tface_to_face[tface]
+            ctype = face_to_ctype[face]
+            lface_to_n = ctype_to_lface_to_n[ctype]
+            n = lface_to_n[lface]
+            index2 = replace_face(index,tface)
+            ϕ_fun = ϕ_term(index2)
+            φ_fun = φ_term(index)
+            # TODO this is not consistent with align_map
+            # which one is the good one?
+            q -> begin
+                p = φ_fun(q)[face_around]
+                J = ForwardDiff.jacobian(ϕ_fun,p)
+                Jt = transpose(J)
+                pinvJt = transpose(inv(Jt*J)*Jt)
+                v = pinvJt*n
+                m = sqrt(inner(v,v))
+                if m < eps()
+                    return zero(v)
+                else
+                    return v/m
+                end
+            end
+        end
+    end
+end
+
+# TODO a lot of code duplication
+function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
+    Γ = domain
+    Γref = gk.physical_domain(Γ)
+    Ω = codomain
+    Ωref = gk.reference_domain(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    D = gk.num_dims(Ω)
+    mesh = gk.mesh(Ω)
+    ϕ = gk.domain_map(Ωref,Ω)
+    ϕinv = gk.inverse_map(ϕ)
+    sface_to_tfaces, sface_to_lfaces = gk.target_face(glue)
+    tface_to_face = gk.faces(Ωref)
+    face_to_ctype = gk.face_reference_id(mesh,D)
+    ctype_to_refface = gk.reference_faces(mesh,D)
+    ctype_to_lface_to_n = map(ctype_to_refface) do refface
+        boundary = refface |> gk.geometry |> gk.boundary
+        boundary |> gk.outwards_normals # TODO also rename?
+    end
+    ϕinv_term = gk.term(ϕinv)
+    ϕ_term = gk.term(ϕ)
+    prototype = [gk.prototype(ϕ),gk.prototype(ϕ)]
+    gk.quantity(prototype,Γref) do index
+        sface = index.face
+        tfaces = sface_to_tfaces[sface]
+        lfaces = sface_to_lfaces[sface]
+        map(tfaces,lfaces) do tface,lface
+            face = tface_to_face[tface]
+            ctype = face_to_ctype[face]
+            lface_to_n = ctype_to_lface_to_n[ctype]
+            n = lface_to_n[lface]
+            index2 = replace_face(index,tface)
+            ϕinv_fun = ϕinv_term(index2)
+            ϕ_fun = ϕ_term(index2)
+            # TODO this is not consistent with align_map
+            # which one is the good one?
+            x -> begin
+                q = ϕinv_fun(x)
+                J = ForwardDiff.jacobian(ϕ_fun,q)
+                Jt = transpose(J)
+                pinvJt = transpose(inv(Jt*J)*Jt)
+                v = pinvJt*n
+                m = sqrt(inner(v,v))
+                if m < eps()
+                    return zero(v)
+                else
+                    return v/m
+                end
             end
         end
     end

@@ -56,6 +56,8 @@ function main_automatic(params)
     g(x) = n_Γn(x)⋅∇(u,x)
 
     interpolation_degree = params[:interpolation_degree]
+    γ = integration_degree*(integration_degree+1)
+    γ = γ/10.0
 
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
@@ -78,8 +80,6 @@ function main_automatic(params)
         n_Γd = gk.unit_normal(Γd,Ω)
         h_Γd = gk.face_diameter_field(Γd)
         dΓd = gk.measure(Γd,integration_degree)
-        γ = integration_degree*(integration_degree+1)
-        γ = γ/10.0
         V = gk.lagrange_space(Ω,interpolation_degree;conformity)
         uh = gk.zero_field(Float64,V)
     end
@@ -99,7 +99,7 @@ function main_automatic(params)
         end
         if params[:discretization_method] === :interior_penalty
             r += ∫( x->
-                   (γ/h_Γd(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇(u),x)-mean(∇(v),x)⋅jump(u,n_Λ,x), dΛ)
+                   (γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇(u),x)-mean(∇(v),x)⋅jump(u,n_Λ,x), dΛ)
         end
         r
     end
