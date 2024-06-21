@@ -15,7 +15,7 @@ function interior(mesh;
     physical_names=gk.physical_names(mesh,num_dims(mesh)),
     is_reference_domain = Val(false))
     D = num_dims(mesh)
-    domain(mesh;face_dim=D,face_around=nothing,mesh_id,physical_names,is_reference_domain)
+    domain(mesh;face_dim=D,face_around=1,mesh_id,physical_names,is_reference_domain)
 end
 
 function skeleton(mesh;
@@ -194,7 +194,7 @@ function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;strict=true
         if face_around === nothing
             CoboundaryGlue(mesh,domain,codomain)
         else
-            BoundaryGlue(mesh,domain,codomain,face_around)
+            BoundaryGlue(mesh,domain,codomain)
         end
     else
         if strict
@@ -211,11 +211,10 @@ struct InteriorGlue{A,B,C} <: AbstractDomainGlue{A}
     codomain::C
 end
 
-struct BoundaryGlue{A,B,C,D} <: AbstractDomainGlue{A}
+struct BoundaryGlue{A,B,C} <: AbstractDomainGlue{A}
     mesh::A
     domain::B
     codomain::C
-    face_around::D
 end
 
 struct CoboundaryGlue{A,B,C} <: AbstractDomainGlue{A}
@@ -237,12 +236,13 @@ function target_face(glue::InteriorGlue)
     tface_to_tface = LinearIndices(tface_to_Dface)
     Dface_to_tface[tface_to_Dface] = tface_to_tface
     sface_to_tface = Dface_to_tface[sface_to_dface]
-    #nsfaces = length(sface_to_tface)
-    #ptrs = collect(Int32,1:nsfaces)
-    #sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
-    #sface_to_lfaces = JaggedArray(fill(Int32(1),nsfaces),ptrs)
-    #sface_to_tfaces, sface_to_lfaces
-    sface_to_tface
+    nsfaces = length(sface_to_tface)
+    ptrs = collect(Int32,1:(nsfaces+1))
+    face_around = 1
+    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+    sface_to_lfaces = JaggedArray(fill(Int32(1),nsfaces),ptrs)
+    sface_to_faces_around = JaggedArray(fill(Int32(face_around),nsfaces),ptrs)
+    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
 end
 
 function target_face(glue::CoboundaryGlue)
@@ -266,22 +266,34 @@ function target_face(glue::CoboundaryGlue)
     f(Dface) = Dface_to_tface[Dface]
     data .= f.(data)
     sface_to_tfaces = sface_to_Dfaces
-    sface_to_tfaces, sface_to_lfaces
+    sface_to_faces_around_data = zeros(Int32,length(data))
+    ptrs = sface_to_tfaces.ptrs
+    nsfaces = length(sface_to_tfaces)
+    for sface in 1:nsfaces
+        pini = ptrs[sface]
+        pend = ptrs[sface+1]-1
+        for (ip,p) in enumerate(pini:pend)
+            sface_to_faces_around_data[p] = ip
+        end
+    end
+    sface_to_faces_around = JaggedArray(sface_to_faces_around_data,ptrs)
+    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
 end
 
 function target_face(glue::BoundaryGlue)
     domain = replace_face_around(glue.domain,nothing)
     glue2 = domain_glue(domain,glue.codomain)
-    sface_to_tfaces, sface_to_lfaces = target_face(glue2)
-    face_around = glue.face_around
+    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around = target_face(glue2)
+    face_around = gk.face_around(glue.domain)
     sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
     sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
-    #nsfaces = length(sface_to_tface)
-    #ptrs = collect(Int32,1:nsfaces)
-    #sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
-    #sface_to_lfaces = JaggedArray(sface_to_lface,ptrs)
-    #sface_to_tfaces, sface_to_lfaces
-    sface_to_tface, sface_to_lface
+    sface_to_face_around = map(tfaces->tfaces[face_around],sface_to_faces_around)
+    nsfaces = length(sface_to_tface)
+    ptrs = collect(Int32,1:(nsfaces+1))
+    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+    sface_to_lfaces = JaggedArray(sface_to_lface,ptrs)
+    sface_to_faces_around = JaggedArray(sface_to_face_around,ptrs)
+    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
 end
 
 abstract type AbstractQuantity{A} <: gk.AbstractType end
@@ -579,7 +591,7 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     T = eltype(node_to_coords)
     x = zero(T)
     prototype = [y->x,y->x]
-    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around = glue |> gk.target_face
     tface_to_Dface = codomain |> gk.faces
     d = domain |> gk.face_dim
     topo = mesh |> gk.topology
@@ -611,8 +623,9 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
         sface = index.face
         tfaces = sface_to_tfaces[sface]
         lfaces = sface_to_lfaces[sface]
+        faces_around = sface_to_faces_around[sface]
         n_faces_around = length(lfaces)
-        map(1:n_faces_around) do face_around
+        map(faces_around) do face_around
             tface = tfaces[face_around]
             lface = lfaces[face_around]
             Dface = tface_to_Dface[tface]
@@ -658,7 +671,7 @@ function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     T = eltype(node_to_coords)
     x = zero(T)
     prototype = y -> x
-    sface_to_tface, sface_to_lfaces = glue |> gk.target_face
+    sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
     tface_to_Dface = codomain |> gk.faces
     d = domain |> gk.face_dim
     topo = mesh |> gk.topology
@@ -688,8 +701,8 @@ function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tface[sface]
-        lface = sface_to_lfaces[sface]
+        tface = sface_to_tfaces[sface][1]
+        lface = sface_to_lfaces[sface][1]
         Dface = tface_to_Dface[tface]
         dface = sface_to_dface[sface]
         perm = Dface_to_lface_to_perm[Dface][lface]
@@ -732,10 +745,10 @@ function align_field(a::AbstractQuantity,glue::InteriorGlue)
     domain = glue |> gk.domain
     prototype = gk.prototype(a)
     term_a = gk.term(a)
-    sface_to_tface = gk.target_face(glue)
+    sface_to_tfaces, = gk.target_face(glue)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tface[sface]
+        tface = sface_to_tfaces[sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         ai
@@ -747,7 +760,7 @@ function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
     prototype = [pa,pa]
     domain = glue |> gk.domain
     term_a = gk.term(a)
-    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
     gk.quantity(prototype,domain) do index
         sface = index.face
         tfaces = sface_to_tfaces[sface]
@@ -769,12 +782,12 @@ function align_field(a::AbstractQuantity,glue::BoundaryGlue)
     prototype = gk.prototype(a)
     domain = glue |> gk.domain
     term_a = gk.term(a)
-    sface_to_tface, sface_to_lface = glue |> gk.target_face
-    face_around = glue.face_around
+    sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
+    face_around = gk.face_around(glue.domain)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tface[sface]
-        lface = sface_to_lface[sface]
+        tface = sface_to_tfaces[sface][1]
+        lface = sface_to_lfaces[sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
@@ -837,10 +850,10 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)
-    sface_to_tface = gk.target_face(glue)
+    sface_to_tfaces, = gk.target_face(glue)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tface[sface]
+        tface = sface_to_tfaces[sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         phii = term_phi(index)
@@ -857,7 +870,7 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)
-    sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
+    sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
     gk.quantity(prototype,domain) do index
         sface = index.face
         tfaces = sface_to_tfaces[sface]
@@ -884,12 +897,12 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::BoundaryGlue)
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)
-    sface_to_tface, sface_to_lface = glue |> gk.target_face
-    face_around = glue.face_around
+    sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
+    face_around = gk.face_around(glue.domain)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tface[sface]
-        lface = sface_to_lface[sface]
+        tface = sface_to_tfaces[sface][1]
+        lface = sface_to_lfaces[sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
@@ -1085,7 +1098,7 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Boun
     mesh = gk.mesh(Ω)
     φ = domain_map(Γref,Ωref)
     ϕ = gk.domain_map(Ωref,Ω)
-    sface_to_tface, sface_to_lface = gk.target_face(glue)
+    sface_to_tfaces, sface_to_lfaces, = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
     face_to_ctype = gk.face_reference_id(mesh,D)
     ctype_to_refface = gk.reference_faces(mesh,D)
@@ -1098,8 +1111,8 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Boun
     prototype = gk.prototype(φ)
     gk.quantity(prototype,Γref) do index
         sface = index.face
-        tface = sface_to_tface[sface]
-        lface = sface_to_lface[sface]
+        tface = sface_to_tfaces[sface][1]
+        lface = sface_to_lfaces[sface][1]
         face = tface_to_face[tface]
         ctype = face_to_ctype[face]
         lface_to_n = ctype_to_lface_to_n[ctype]
@@ -1134,7 +1147,7 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::Bound
     mesh = gk.mesh(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
     ϕinv = gk.inverse_map(ϕ)
-    sface_to_tface, sface_to_lface = gk.target_face(glue)
+    sface_to_tfaces, sface_to_lfaces, = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
     face_to_ctype = gk.face_reference_id(mesh,D)
     ctype_to_refface = gk.reference_faces(mesh,D)
@@ -1147,8 +1160,8 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::Bound
     prototype = gk.prototype(ϕ)
     gk.quantity(prototype,Γref) do index
         sface = index.face
-        tface = sface_to_tface[sface]
-        lface = sface_to_lface[sface]
+        tface = sface_to_tfaces[sface][1]
+        lface = sface_to_lfaces[sface][1]
         face = tface_to_face[tface]
         ctype = face_to_ctype[face]
         lface_to_n = ctype_to_lface_to_n[ctype]
@@ -1181,7 +1194,7 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Cobo
     mesh = gk.mesh(Ω)
     φ = domain_map(Γref,Ωref)
     ϕ = gk.domain_map(Ωref,Ω)
-    sface_to_tfaces, sface_to_lfaces = gk.target_face(glue)
+    sface_to_tfaces, sface_to_lfaces, = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
     face_to_ctype = gk.face_reference_id(mesh,D)
     ctype_to_refface = gk.reference_faces(mesh,D)
@@ -1239,7 +1252,7 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::Cobou
     mesh = gk.mesh(Ω)
     ϕ = gk.domain_map(Ωref,Ω)
     ϕinv = gk.inverse_map(ϕ)
-    sface_to_tfaces, sface_to_lfaces = gk.target_face(glue)
+    sface_to_tfaces, sface_to_lfaces, = gk.target_face(glue)
     tface_to_face = gk.faces(Ωref)
     face_to_ctype = gk.face_reference_id(mesh,D)
     ctype_to_refface = gk.reference_faces(mesh,D)
