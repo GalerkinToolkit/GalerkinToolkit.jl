@@ -466,27 +466,40 @@ function dirichlet_dof_location(V::AbstractSpace)
 end
 
 function num_face_dofs(a::AbstractSpace,dim)
+    field = 1
+    num_face_dofs(a,dim,field)
+end
+
+function num_face_dofs(a::AbstractSpace,dim,field)
     face_to_dofs = face_dofs(a)
     index -> begin
-        #TODO
-        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
+        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
+            return 0
+        end
         length(face_to_dofs[face])
     end
 end
 
-# TODO duplicated from IsoParametricSpace
 function dof_map(a::AbstractSpace,dim)
+    field = 1
+    dof_map(a,dim,field)
+end
+
+function dof_map(a::AbstractSpace,dim,field)
     face_to_dofs = face_dofs(a)
+    T = eltype(eltype(face_to_dofs))
     index -> begin
-        #TODO
-        #index.field_per_dim !== nothing && @assert index.field_per_dim[dim] == 1
         face = index.face
+        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
+            return T(-1)
+        end
         dof = index.dof_per_dim[dim]
         face_to_dofs[face][dof]
     end
 end
 
+# TODO I guess this is not needed anymore
 function shape_function_mask(f,face_around_per_dim,face_around,dim)
     @assert face_around !== nothing
     x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
@@ -526,6 +539,9 @@ function shape_functions(a::AbstractSpace,dim,field)
     prototype = first(first(refid_to_funs))
     qty = gk.quantity(prototype,domain) do index
         face = index.face
+        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
+            return x -> zero(prototype(x))
+        end
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
         f = refid_to_funs[refid][dof]
@@ -564,15 +580,17 @@ function dual_basis(a::AbstractSpace,dim)
     u -> qty(compose(u,ϕ))
 end
 
-struct VectorStrategy{A,B,C}
+struct VectorStrategy{A,B,C,D}
     dofs::A
     allocate_values::B
     restrict_values::C
+    prolongate_dof::D
 end
 
 dofs(a::VectorStrategy) = a.dofs
 allocate_values(a::VectorStrategy,args...) = a.allocate_values(args...)
 restrict_values(a::VectorStrategy,args...) = a.restrict_values(args...)
+prolongate_dof(a::VectorStrategy,args...) = a.prolongate_dof(args...)
 
 function monolithic_field_major_strategy(field_to_dofs)
     offset = 0
@@ -585,7 +603,8 @@ function monolithic_field_major_strategy(field_to_dofs)
     dofs = Base.OneTo(ndofs)
     allocate_values(::Type{T}) where T = Vector{T}(undef,ndofs)
     restrict_values(v,field) = view(v,field_to_dofs[field])
-    VectorStrategy(dofs,allocate_values,restrict_values)
+    prolongate_dof(dof,field) = dof + field_to_offset[field]
+    VectorStrategy(dofs,allocate_values,restrict_values,prolongate_dof)
 end
 
 function cartesian_product(spaces::AbstractSpace...;
@@ -659,23 +678,40 @@ function domain(a::CartesianProductSpace,field)
 end
 
 function num_face_dofs(a::CartesianProductSpace,dim)
-    terms = map(s->gk.num_face_dofs(s,dim),a.spaces)
-    index -> begin
-        field = index.field_per_dim[dim]
-        @assert field !== nothing
-        index2 = replace_field_per_dim(index,nothing)
-        terms[field](index2)
-    end
+    error("Casenot implemented (perhaps not needed in practice)")
+end
+
+function num_face_dofs(a::CartesianProductSpace,dim,field)
+    f = component(a,field)
+    num_face_dofs(f,dim,field)
+    #terms = map(s->gk.num_face_dofs(s,dim),a.spaces)
+    #index -> begin
+    #    field = index.field_per_dim[dim]
+    #    @assert field !== nothing
+    #    index2 = replace_field_per_dim(index,nothing)
+    #    terms[field](index2)
+    #end
 end
 
 function dof_map(a::CartesianProductSpace,dim)
-    terms = map(s->gk.dof_map(s,dim),a.spaces)
+    error("Casenot implemented (perhaps not needed in practice)")
+end
+
+function dof_map(a::CartesianProductSpace,dim,field)
+    strategy = gk.free_values_strategy(a)
+    f = component(a,field)
+    term = dof_map(f,dim,field)
     index -> begin
-        field = index.field_per_dim[dim]
-        @assert field !== nothing
-        index2 = replace_field_per_dim(index,nothing)
-        terms[field](index2)
+        dof = term(index)
+        prolongate_dof(strategy,dof,field)
     end
+    #terms = map(s->gk.dof_map(s,dim),a.spaces)
+    #index -> begin
+    #    field = index.field_per_dim[dim]
+    #    @assert field !== nothing
+    #    index2 = replace_field_per_dim(index,nothing)
+    #    terms[field](index2)
+    #end
 end
 
 function shape_functions(a::CartesianProductSpace,dim)
@@ -687,7 +723,7 @@ end
 
 function shape_functions(a::CartesianProductSpace,dim,field)
     f = component(a,field)
-    shape_functions(f,dim)
+    shape_functions(f,dim,field)
 end
 
 function dual_basis(a::CartesianProductSpace)
