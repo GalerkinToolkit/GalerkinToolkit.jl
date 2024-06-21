@@ -463,9 +463,31 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     if flag
         call(call,f,x)
     else
-        g = gk.align_field(f,domain)
-        call(call,g,x)
+        align_and_call(f,x)
     end
+end
+
+function align_and_call(f,x)
+    domain = gk.domain(x)
+    codomain = gk.domain(f)
+    glue = gk.domain_glue(domain,codomain)
+    align_and_call(f,x,glue)
+end
+
+function align_and_call(f,x,glue::InteriorGlue)
+    g = gk.align_field(f,gk.domain(glue))
+    call(call,g,x)
+end
+
+function align_and_call(f,x,glue::BoundaryGlue)
+    g = gk.align_field(f,gk.domain(glue))
+    call(call,g,x)
+end
+
+function align_and_call(f,x,glue::CoboundaryGlue)
+    aligned_call(g,x) = map(gi->gi(x),g)
+    g = gk.align_field(f,gk.domain(glue))
+    call(aligned_call,g,x)
 end
 
 function analytical_field(f,dom::AbstractDomain)
@@ -556,7 +578,7 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     node_to_coords = gk.node_coordinates(boundary)
     T = eltype(node_to_coords)
     x = zero(T)
-    prototype = y -> [x,x]
+    prototype = [y->x,y->x]
     sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
     tface_to_Dface = codomain |> gk.faces
     d = domain |> gk.face_dim
@@ -590,17 +612,17 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
         tfaces = sface_to_tfaces[sface]
         lfaces = sface_to_lfaces[sface]
         n_faces_around = length(lfaces)
-        q -> begin
-            map(1:n_faces_around) do face_around
-                tface = tfaces[face_around]
-                lface = lfaces[face_around]
-                Dface = tface_to_Dface[tface]
-                dface = sface_to_dface[sface]
-                perm = Dface_to_lface_to_perm[Dface][lface]
-                Drefid = Dface_to_Drefid[Dface]
-                drefid = dface_to_drefid[dface]
-                coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-                funs = drefid_to_funs[drefid]
+        map(1:n_faces_around) do face_around
+            tface = tfaces[face_around]
+            lface = lfaces[face_around]
+            Dface = tface_to_Dface[tface]
+            dface = sface_to_dface[sface]
+            perm = Dface_to_lface_to_perm[Dface][lface]
+            Drefid = Dface_to_Drefid[Dface]
+            drefid = dface_to_drefid[dface]
+            coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+            funs = drefid_to_funs[drefid]
+            q -> begin
                 sum(1:length(coords)) do i
                     x = coords[i]
                     fun = funs[i]
@@ -722,7 +744,7 @@ end
 
 function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
     pa = gk.prototype(a)
-    prototype = x -> [pa(x),pa(x)]
+    prototype = [pa,pa]
     domain = glue |> gk.domain
     term_a = gk.term(a)
     sface_to_tfaces, sface_to_lfaces = glue |> gk.target_face
@@ -731,16 +753,14 @@ function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
         tfaces = sface_to_tfaces[sface]
         lfaces = sface_to_lfaces[sface]
         n_faces_around = length(tfaces)
-        x -> begin
-            # TODO This should be a tuple
-            map(1:n_faces_around) do face_around
-                tface = sface_to_tfaces[sface][face_around]
-                lface = sface_to_lfaces[sface][face_around]
-                index2 = replace_face(index,tface)
-                index3 = replace_face_around(index2,face_around)
-                ai = term_a(index3)
-                ai(x)
-            end
+        # TODO This should be a tuple
+        map(1:n_faces_around) do face_around
+            tface = sface_to_tfaces[sface][face_around]
+            lface = sface_to_lfaces[sface][face_around]
+            index2 = replace_face(index,tface)
+            index3 = replace_face_around(index2,face_around)
+            ai = term_a(index3)
+            ai
         end
     end
 end
@@ -833,7 +853,7 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
     @assert gk.domain(a) == gk.codomain(glue)
     g = gk.prototype(a)
     f = gk.prototype(phi)
-    prototype = x-> map(g,f(x))
+    prototype = map(fi->(x->g(fi(x))),f)
     domain = phi |> gk.domain
     term_a = gk.term(a)
     term_phi = gk.term(phi)
@@ -844,18 +864,14 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
         lfaces = sface_to_lfaces[sface]
         n_faces_around = length(tfaces)
         phii = term_phi(index)
-        x -> begin
-            ys = phii(x)
-            # TODO This should be a tuple
-            map(1:n_faces_around) do face_around
-                tface = sface_to_tfaces[sface][face_around]
-                lface = sface_to_lfaces[sface][face_around]
-                index2 = replace_face(index,tface)
-                index3 = replace_face_around(index2,face_around)
-                ai = term_a(index3)
-                y = ys[face_around]
-                ai(y)
-            end
+        # TODO This should be a tuple
+        map(1:n_faces_around) do face_around
+            tface = sface_to_tfaces[sface][face_around]
+            lface = sface_to_lfaces[sface][face_around]
+            index2 = replace_face(index,tface)
+            index3 = replace_face_around(index2,face_around)
+            ai = term_a(index3)
+            x -> ai(phii[face_around](x))
         end
     end
 end
@@ -1175,8 +1191,9 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Cobo
     end
     ϕ_term = gk.term(ϕ)
     φ_term = gk.term(φ)
-    fun_φ = gk.prototype(φ)
-    prototype = [q->(fun_φ(q)[1]),q->(fun_φ(q)[1])]
+    #fun_φ = gk.prototype(φ)
+    #prototype = [q->(fun_φ(q)[1]),q->(fun_φ(q)[1])]
+    prototype = gk.prototype(φ)
     gk.quantity(prototype,Γref) do index
         sface = index.face
         tfaces = sface_to_tfaces[sface]
@@ -1195,7 +1212,7 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Cobo
             # TODO this is not consistent with align_map
             # which one is the good one?
             q -> begin
-                p = φ_fun(q)[face_around]
+                p = φ_fun[face_around](q)
                 J = ForwardDiff.jacobian(ϕ_fun,p)
                 Jt = transpose(J)
                 pinvJt = transpose(inv(Jt*J)*Jt)

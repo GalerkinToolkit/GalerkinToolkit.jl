@@ -55,7 +55,7 @@ function dS(J)
     sqrt(det(Jt*J))
 end
 
-jump(u,x) = u(x[2])[2]-u(x[1])[1]
+jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
 
 function l(v)
     ∫(dΩref) do q
@@ -68,9 +68,8 @@ function l(v)
         v(q)*dS(J)
     end +
     ∫(dΛref) do p
-        q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v,q)*dS(J)
+        jump(v,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
 
@@ -78,9 +77,8 @@ b = gk.assemble_vector(l,V)
 
 function l(v)
     ∫(dΛref) do p
-        q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v,q)*dS(J)
+        jump(v,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
 
@@ -95,9 +93,8 @@ function l((v1,v2))
         v1(q)*v2(q)*dV(J)
     end +
     ∫(dΛref) do p
-        q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1,q)*jump(v2,q)*dS(J)
+        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
 
@@ -114,9 +111,8 @@ function a(u,v)
         u(q)*v(q)*dS(J)
     end +
     ∫(dΛref) do p
-        q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v,q)*jump(u,q)*dS(J)
+        jump(v,ϕ_Λref_Ωref,p)*jump(u,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
 
@@ -128,9 +124,8 @@ function a((u1,u2),(v1,v2))
         v1(q)*v2(q)*u1(q)*u2(q)*dV(J)
     end +
     ∫(dΛref) do p
-        q = ϕ_Λref_Ωref(p)
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1,q)*jump(v2,q)*jump(u1,q)*jump(u2,q)*dS(J)
+        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*jump(u1,ϕ_Λref_Ωref,p)*jump(u2,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
 
