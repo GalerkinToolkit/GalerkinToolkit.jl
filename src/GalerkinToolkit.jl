@@ -14,6 +14,7 @@ using SparseArrays
 using Metis
 
 include("geometry.jl")
+include("symbolics.jl")
 include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")

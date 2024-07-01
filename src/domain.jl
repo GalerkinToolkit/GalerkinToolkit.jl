@@ -444,17 +444,37 @@ function call(f,args...)
     f(args...)
 end
 
-function call(g,args::AbstractQuantity...)
+function call(g::AbstractQuantity,args::AbstractQuantity...)
     fs = map(gk.term,args)
     domain = args |> first |> gk.domain
     #msg = "All quantities need to be defined on the same domain"
     #@assert all(dom->dom==domain,map(gk.domain,args)) msg
     # TODO check everything except reference/physical domain?
     # Maybe check reference/physical domain only when evaluating functions?
-    prototype = gk.return_prototype(g,map(gk.prototype,args)...)
+    prototype = gk.return_prototype(gk.prototype(g),(map(gk.prototype,args)...))
+    g_term = gk.term(g)
     gk.quantity(prototype,domain) do index
-        g(map(f->f(index),fs)...)
+        f_exprs = map(f->f(index),fs)
+        g_expr = g_term(index)
+        @term g_expr(f_exprs...)
     end
+end
+
+function call(g,args::AbstractQuantity...)
+    domain = args |> first |> gk.domain
+    g_qty = gk.constant_quantity(g,domain)
+    call(g_qty,args...)
+    #fs = map(gk.term,args)
+    #domain = args |> first |> gk.domain
+    ##msg = "All quantities need to be defined on the same domain"
+    ##@assert all(dom->dom==domain,map(gk.domain,args)) msg
+    ## TODO check everything except reference/physical domain?
+    ## Maybe check reference/physical domain only when evaluating functions?
+    #prototype = gk.return_prototype(g,map(gk.prototype,args)...)
+    #gk.quantity(prototype,domain) do index
+    #    f_exprs = map(f->f(index),fs)
+    #    @term g(f_exprs...)
+    #end
 end
 
 function call(g,args::AbstractQuantity{<:PMesh}...)
@@ -473,7 +493,7 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     codomain = gk.domain(f)
     flag = physical_domain(domain) == physical_domain(codomain)
     if flag
-        call(call,f,x)
+        call(f,x)
     else
         align_and_call(f,x)
     end
@@ -488,12 +508,12 @@ end
 
 function align_and_call(f,x,glue::InteriorGlue)
     g = gk.align_field(f,gk.domain(glue))
-    call(call,g,x)
+    call(g,x)
 end
 
 function align_and_call(f,x,glue::BoundaryGlue)
     g = gk.align_field(f,gk.domain(glue))
-    call(call,g,x)
+    call(g,x)
 end
 
 function align_and_call(f,x,glue::CoboundaryGlue)
@@ -510,7 +530,8 @@ function face_constant_field(data,dom::AbstractDomain)
     prototype = x->zero(eltype(data))
     gk.quantity(prototype,dom) do index
         face = index.face
-        x->data[face]
+        face_constant_call(data,face) = x->data[face]
+        @term face_constant_call(data,face)
     end
 end
 
@@ -540,6 +561,34 @@ function domain_map(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
     gk.quantity(term,prototype,domain)
 end
 
+function linear_combination(funs,coefs)
+    q -> begin
+        sum(1:length(coefs)) do i
+            x = coefs[i]
+            fun = funs[i]
+            coeff = fun(q)
+            coeff*x
+        end
+    end
+end
+
+function linear_combination(funs,coefs,ids)
+    q -> begin
+        sum(1:length(ids)) do i
+            x = coefs[ids[i]]
+            fun = funs[i]
+            coeff = fun(q)
+            coeff*x
+        end
+    end
+end
+
+function reference_value(rid_to_value,face_to_rid,face)
+    rid = face_to_rid[face]
+    value = rid_to_value[rid]
+    value
+end
+
 function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     domain = glue.domain
     mesh = domain |> gk.mesh
@@ -555,18 +604,11 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     prototype = y->x
     gk.quantity(prototype,domain) do index
         sface = index.face
-        face = sface_to_face[sface]
-        refid = face_to_refid[face]
-        funs = refid_to_funs[refid]
-        nodes = face_to_nodes[face]
-        coords = node_to_coords[nodes]
-        q -> begin
-            sum(1:length(coords)) do i
-                x = coords[i]
-                fun = funs[i]
-                coeff = fun(q)
-                coeff*x
-            end
+        @term begin
+            face = sface_to_face[sface]
+            funs = reference_value(refid_to_funs,face_to_refid,face)
+            nodes = face_to_nodes[face]
+            linear_combination(funs,node_to_coords,nodes)
         end
     end
 end
@@ -621,27 +663,22 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        faces_around = sface_to_faces_around[sface]
-        n_faces_around = length(lfaces)
-        map(faces_around) do face_around
-            tface = tfaces[face_around]
-            lface = lfaces[face_around]
-            Dface = tface_to_Dface[tface]
-            dface = sface_to_dface[sface]
-            perm = Dface_to_lface_to_perm[Dface][lface]
-            Drefid = Dface_to_Drefid[Dface]
-            drefid = dface_to_drefid[dface]
-            coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-            funs = drefid_to_funs[drefid]
-            q -> begin
-                sum(1:length(coords)) do i
-                    x = coords[i]
-                    fun = funs[i]
-                    coeff = fun(q)
-                    coeff*x
-                end
+        @term begin
+            tfaces = sface_to_tfaces[sface]
+            lfaces = sface_to_lfaces[sface]
+            faces_around = sface_to_faces_around[sface]
+            n_faces_around = length(lfaces)
+            map(faces_around) do face_around
+                tface = tfaces[face_around]
+                lface = lfaces[face_around]
+                Dface = tface_to_Dface[tface]
+                dface = sface_to_dface[sface]
+                perm = Dface_to_lface_to_perm[Dface][lface]
+                Drefid = Dface_to_Drefid[Dface]
+                drefid = dface_to_drefid[dface]
+                coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+                funs = drefid_to_funs[drefid]
+                linear_combination(funs,coords)
             end
         end
     end
@@ -701,22 +738,17 @@ function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     drefid_to_funs = map(gk.shape_functions,drefid_to_refdface)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
-        Dface = tface_to_Dface[tface]
-        dface = sface_to_dface[sface]
-        perm = Dface_to_lface_to_perm[Dface][lface]
-        Drefid = Dface_to_Drefid[Dface]
-        drefid = dface_to_drefid[dface]
-        coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-        funs = drefid_to_funs[drefid]
-        q -> begin
-            sum(1:length(coords)) do i
-                x = coords[i]
-                fun = funs[i]
-                coeff = fun(q)
-                coeff*x
-            end
+        @term begin
+            tface = sface_to_tfaces[sface][1]
+            lface = sface_to_lfaces[sface][1]
+            Dface = tface_to_Dface[tface]
+            dface = sface_to_dface[sface]
+            perm = Dface_to_lface_to_perm[Dface][lface]
+            Drefid = Dface_to_Drefid[Dface]
+            drefid = dface_to_drefid[dface]
+            coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+            funs = drefid_to_funs[drefid]
+            linear_combination(funs,coords)
         end
     end
 end
@@ -748,7 +780,7 @@ function align_field(a::AbstractQuantity,glue::InteriorGlue)
     sface_to_tfaces, = gk.target_face(glue)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
+        @term tface = sface_to_tfaces[sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         ai
@@ -761,6 +793,7 @@ function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
     domain = glue |> gk.domain
     term_a = gk.term(a)
     sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
+    # TODO use @term somewhere
     gk.quantity(prototype,domain) do index
         sface = index.face
         tfaces = sface_to_tfaces[sface]
@@ -786,8 +819,8 @@ function align_field(a::AbstractQuantity,glue::BoundaryGlue)
     face_around = gk.face_around(glue.domain)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
+        @term tface = sface_to_tfaces[sface][1]
+        @term lface = sface_to_lfaces[sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
@@ -853,11 +886,11 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
     sface_to_tfaces, = gk.target_face(glue)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
+        @term tface = sface_to_tfaces[sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         phii = term_phi(index)
-        x-> ai(phii(x))
+        @term ai∘phii
     end
 
 end
@@ -871,6 +904,7 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
     term_a = gk.term(a)
     term_phi = gk.term(phi)
     sface_to_tfaces, sface_to_lfaces, = glue |> gk.target_face
+    # TODO use @term somewhere
     gk.quantity(prototype,domain) do index
         sface = index.face
         tfaces = sface_to_tfaces[sface]
@@ -901,13 +935,13 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::BoundaryGlue)
     face_around = gk.face_around(glue.domain)
     gk.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
+        @term tface = sface_to_tfaces[sface][1]
+        @term lface = sface_to_lfaces[sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
         phii = term_phi(index)
-        x -> ai(phii(x))
+        @term ai∘phii
     end
 end
 
@@ -956,11 +990,13 @@ function reference_coordinates(plt::Plot)
     face_to_refid = gk.face_reference_id(mesh,d)
     prototype = first(first(refid_to_snode_to_coords))
     gk.quantity(prototype,domain) do index
-        domface = index.face[1]
+        domface = index.face
         point = index.point
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        refid_to_snode_to_coords[refid][point]
+        @term begin
+            face = domface_to_face[domface]
+            refid = face_to_refid[face]
+            refid_to_snode_to_coords[refid][point]
+        end
     end
 end
 
@@ -1005,14 +1041,23 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     nnodes = gk.num_nodes(vmesh)
     data = zeros(T,nnodes)
     face_to_nodes = vglue.face_fine_nodes
-    for face in 1:length(face_to_nodes)
-        nodes = face_to_nodes[face]
-        for point in 1:length(nodes)
-            index = gk.index(;face,point)
-            v = term(index)
-            data[nodes[point]] = v
+    face = gensym("face")
+    point = gensym("point")
+    index = gk.index(;face,point)
+    v = term(index) |> gk.topological_sort
+    expr = quote
+        function filldata!(data,face_to_nodes)
+            for $face in 1:length(face_to_nodes)
+                nodes = face_to_nodes[$face]
+                for $point in 1:length(nodes)
+                    data[nodes[$point]] = $v
+                end
+            end
         end
     end
+    display(expr)
+    filldata! = eval(expr)
+    invokelatest(filldata!,data,face_to_nodes)
     plt.node_data[label] = data
     plt
 end

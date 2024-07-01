@@ -27,8 +27,10 @@ u2 = uref∘ϕinv
 
 gk.vtk_plot(joinpath(outdir,"omega"),Ω;refinement=4) do plt
     gk.plot!(plt,u;label="u")
-    gk.plot!(plt,u2;label="u2")
+    #gk.plot!(plt,u2;label="u2")
 end
+
+xxxx
 
 
 gk.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=4) do plt
