@@ -18,8 +18,10 @@ gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
 @test Ω == Ω
 @test Ω != Ωref
 
-u = gk.analytical_field(x->sum(x),Ω)
+u = gk.analytical_field(sum,Ω)
+
 ϕ = gk.domain_map(Ωref,Ω)
+
 ϕinv = gk.inverse_map(ϕ)
 
 uref = u∘ϕ

@@ -322,7 +322,8 @@ end
 
 function constant_quantity(v,domain::AbstractDomain)
     gk.quantity(v,domain) do index
-        v
+        v_sym = get!(index.dict,v,gensym("constant_quantity_value"))
+        v_sym
     end
 end
 
@@ -341,7 +342,9 @@ function index(;
     point=nothing,
     field_per_dim =nothing,
     dof_per_dim=nothing,
-    face_around_per_dim=nothing
+    face_around_per_dim=nothing,
+    state=gensym("state"),
+    dict=IdDict{Any,Symbol}()
     )
     Index(
           face,
@@ -350,7 +353,9 @@ function index(;
           point,
           field_per_dim,
           dof_per_dim,
-          face_around_per_dim
+          face_around_per_dim,
+          state,
+          dict,
          )
 end
 
@@ -362,6 +367,12 @@ struct Index{A,B,D,E,F,G,H}
     field_per_dim::F
     dof_per_dim::G
     face_around_per_dim::H
+    state::Symbol
+    dict::IdDict{Any,Symbol}
+end
+
+function storage(index::Index)
+    (;( key=>val for (val,key) in index.dict )...)
 end
 
 function replace_face(index::Index,face)
@@ -372,7 +383,9 @@ function replace_face(index::Index,face)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -384,7 +397,9 @@ function replace_local_face(index::Index,local_face)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -396,7 +411,9 @@ function replace_face_around(index::Index,face_around)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -408,7 +425,9 @@ function replace_point(index::Index,point)
           point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -420,7 +439,9 @@ function replace_field_per_dim(index::Index,field_per_dim)
           index.point,
           field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -432,7 +453,9 @@ function replace_dof_per_dim(index::Index,dof_per_dim)
           index.point,
           index.field_per_dim,
           dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -456,7 +479,7 @@ function call(g::AbstractQuantity,args::AbstractQuantity...)
     gk.quantity(prototype,domain) do index
         f_exprs = map(f->f(index),fs)
         g_expr = g_term(index)
-        @term g_expr(f_exprs...)
+        :($g_expr($(f_exprs...)))
     end
 end
 
@@ -572,15 +595,37 @@ function linear_combination(funs,coefs)
     end
 end
 
-function linear_combination(funs,coefs,ids)
-    q -> begin
-        sum(1:length(ids)) do i
-            x = coefs[ids[i]]
-            fun = funs[i]
-            coeff = fun(q)
-            coeff*x
-        end
-    end
+#function linear_combination(funs,coefs,ids)
+#    q -> begin
+#        sum(1:length(ids)) do i
+#            x = coefs[ids[i]]
+#            fun = funs[i]
+#            coeff = fun(q)
+#            coeff*x
+#        end
+#    end
+#end
+
+function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
+    fs = reference_value(rid_to_fs,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    linear_combination(fs,values)
+end
+
+function reference_point(rid_to_x,face_to_rid,face,point)
+    reference_value(rid_to_x,face_to_rid,face)[point]
+end
+
+function reference_tabulators(rid_to_fs,rid_to_xs)
+    map((fs,xs)->map(x->map(f->f(x),fs),xs),rid_to_fs,rid_to_xs)
+end
+
+function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+    tab = reference_value(rid_to_tab,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    transpose(tab[point])*values
 end
 
 function reference_value(rid_to_value,face_to_rid,face)
@@ -604,11 +649,20 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     prototype = y->x
     gk.quantity(prototype,domain) do index
         sface = index.face
-        @term begin
-            face = sface_to_face[sface]
-            funs = reference_value(refid_to_funs,face_to_refid,face)
-            nodes = face_to_nodes[face]
-            linear_combination(funs,node_to_coords,nodes)
+        state = index.state
+        dict = index.dict
+        sface_to_face_sym = get!(dict,sface_to_face,gensym("sface_to_face"))
+        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+        face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
+        node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_refface_sym = get!(dict,refid_to_refface,gensym("face_to_refid"))
+        @term begin # TODO
+            face = sface_to_face_sym[sface]
+            :face_function(refid_to_funs_sym,face_to_refid_sym,face_to_nodes_sym,node_to_coords_sym,face)
+            #funs = :reference_value(refid_to_funs_sym,face_to_refid_sym,face)
+            #nodes = face_to_nodes_sym[face]
+            #:linear_combination(funs,node_to_coords_sym,nodes)
         end
     end
 end
@@ -992,10 +1046,14 @@ function reference_coordinates(plt::Plot)
     gk.quantity(prototype,domain) do index
         domface = index.face
         point = index.point
+        dict = index.dict
+        domface_to_face_sym = get!(dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_snode_to_coords_sym = get!(dict,refid_to_snode_to_coords,gensym("refid_to_snode_to_coords"))
         @term begin
-            face = domface_to_face[domface]
-            refid = face_to_refid[face]
-            refid_to_snode_to_coords[refid][point]
+            face = domface_to_face_sym[domface]
+            coords = :reference_value(refid_to_snode_to_coords_sym,face_to_refid_sym,face)
+            coords[point]
         end
     end
 end
@@ -1036,18 +1094,22 @@ function plot!(plt::Plot,field;label)
     plot_impl!(plt,term,label,T)
 end
 
+
 function plot_impl!(plt,term,label,::Type{T}) where T
     vmesh,vglue = plt.visualization_mesh
     nnodes = gk.num_nodes(vmesh)
     data = zeros(T,nnodes)
     face_to_nodes = vglue.face_fine_nodes
-    face = gensym("face")
-    point = gensym("point")
+    face = :face
+    point = :point
     index = gk.index(;face,point)
+    index.dict[face_to_nodes] = :face_to_nodes
     deps = (face,point)
-    v = gk.topological_sort(term(index),deps)
+    expr1 = term(index) |> simplify
+    v = gk.topological_sort(expr1,deps)
     expr = quote
-        function filldata!(data,face_to_nodes)
+        function filldata!(data,state)
+            (;$(Base.values(index.dict)...)) = state
             $(v[1])
             for $face in 1:length(face_to_nodes)
                 nodes = face_to_nodes[$face]
@@ -1060,7 +1122,7 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     end
     display(expr)
     filldata! = eval(expr)
-    invokelatest(filldata!,data,face_to_nodes)
+    invokelatest(filldata!,data,gk.storage(index))
     plt.node_data[label] = data
     plt
 end

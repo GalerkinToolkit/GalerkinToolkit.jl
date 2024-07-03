@@ -12,6 +12,7 @@ using PartitionedArrays
 using Combinatorics
 using SparseArrays
 using Metis
+using Metatheory
 
 include("geometry.jl")
 include("symbolics.jl")

@@ -73,3 +73,21 @@ function topological_sort(expr,deps)
     visit(expr)
     expr_L
 end
+
+function simplify(expr)
+    expr
+end
+
+function simplify(expr::Expr)
+    r001 = @slots a b c d e f g @rule face_function(a,b,c,d,e)(reference_value(f,b,e)[g]) --> face_function_value(reference_tabulators(a,f),b,c,d,e,g)
+    expr2 = r001(expr)
+    if expr2 === nothing
+        args = map(simplify,expr.args)
+        Expr(expr.head,args...)
+    else
+        expr2
+    end
+end
+
+
+
