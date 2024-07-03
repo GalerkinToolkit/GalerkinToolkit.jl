@@ -30,15 +30,24 @@ macro term(expr)
     transform(expr) |> esc
 end
 
-function topological_sort(expr)
+function topological_sort(expr,deps)
     temporary = gensym()
-    expr_L = Expr(:block)
+    expr_L = [Expr(:block) for _ in 0:length(deps)]
     marks = Dict{UInt,Symbol}()
+    marks_deps = Dict{UInt,Int}()
+    function visit(expr_n::Symbol)
+        id_n = objectid(expr_n)
+        marks[id_n] = expr_n
+        i = findfirst(e->expr_n===e,deps)
+        j = i === nothing ? 0 : Int(i)
+        marks_deps[id_n] = j
+        expr_n , j
+    end
     function visit(expr_n)
         id_n = objectid(expr_n)
         if haskey(marks,id_n)
             if marks[id_n] !== temporary
-                return marks[id_n]
+                return marks[id_n], marks_deps[id_n]
             else
                 error("Graph has cycles! This is not possible.")
             end
@@ -47,15 +56,19 @@ function topological_sort(expr)
         var = gensym()
         if isa(expr_n,Expr)
             args = expr_n.args
-            args_var = map(visit,args)
+            r = map(visit,args)
+            args_var = map(first,r)
+            j = maximum(map(last,r))
             expr_n_new = Expr(expr_n.head,args_var...)
             assignment = :($var = $expr_n_new)
         else
+            j = 0
             assignment = :($var = $expr_n)
         end
         marks[id_n] = var
-        push!(expr_L.args,assignment)
-        var
+        marks_deps[id_n] = j
+        push!(expr_L[j+1].args,assignment)
+        var, j
     end
     visit(expr)
     expr_L

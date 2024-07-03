@@ -1044,13 +1044,16 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     face = gensym("face")
     point = gensym("point")
     index = gk.index(;face,point)
-    v = term(index) |> gk.topological_sort
+    deps = (face,point)
+    v = gk.topological_sort(term(index),deps)
     expr = quote
         function filldata!(data,face_to_nodes)
+            $(v[1])
             for $face in 1:length(face_to_nodes)
                 nodes = face_to_nodes[$face]
+                $(v[2])
                 for $point in 1:length(nodes)
-                    data[nodes[$point]] = $v
+                    data[nodes[$point]] = $(v[3])
                 end
             end
         end
