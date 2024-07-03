@@ -1133,13 +1133,14 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     face = :face
     point = :point
     index = gk.index(;face,point)
-    index.dict[face_to_nodes] = :face_to_nodes
+    dict = index.dict
+    dict[face_to_nodes] = :face_to_nodes
     deps = (face,point)
     expr1 = term(index) |> simplify
     v = gk.topological_sort(expr1,deps)
     expr = quote
         function filldata!(data,state)
-            (;$(Base.values(index.dict)...)) = state
+            $(unpack_state(dict,:state))
             $(v[1])
             for $face in 1:length(face_to_nodes)
                 nodes = face_to_nodes[$face]

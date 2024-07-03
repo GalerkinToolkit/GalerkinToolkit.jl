@@ -89,5 +89,12 @@ function simplify(expr::Expr)
     end
 end
 
+function unpack_state(dict,state)
+    expr = Expr(:block)
+    for k in Base.values(dict) |> collect |> sort
+        push!(expr.args,:($k = $state.$k))
+    end
+    expr
+end
 
 
