@@ -41,6 +41,7 @@ function domain(mesh;
     physical_names=gk.physical_names(mesh,face_dim),
     is_reference_domain = Val(false),
     face_around=nothing,
+    cache=nothing,
     )
 
     if val_parameter(is_reference_domain)
@@ -50,6 +51,7 @@ function domain(mesh;
                         physical_names,
                         Val(val_parameter(face_dim)),
                         face_around,
+                        cache,
                        )
     else
         PhysicalDomain(
@@ -58,26 +60,41 @@ function domain(mesh;
                         physical_names,
                         Val(val_parameter(face_dim)),
                         face_around,
+                        cache,
                        )
-    end
-
+    end |> setup_domain
 end
 
-struct PhysicalDomain{A,B,C,D,E} <: AbstractDomain{A}
+function setup_domain(domain)
+    if domain.cache !== nothing
+        return domain
+    end
+    faces = gk.faces(domain)
+    cache = domain_cache(;faces)
+    replace_cache(domain,cache)
+end
+
+function domain_cache(;kwargs...)
+    (;kwargs...)
+end
+
+struct PhysicalDomain{A,B,C,D,E,F} <: AbstractDomain{A}
     mesh::A
     mesh_id::B
     physical_names::C
     face_dim::Val{D}
     face_around::E
+    cache::F
 end
 is_reference_domain(a::PhysicalDomain) = false
 
-struct ReferenceDomain{A,B,C,D,E} <: AbstractDomain{A}
+struct ReferenceDomain{A,B,C,D,E,F} <: AbstractDomain{A}
     mesh::A
     mesh_id::B
     physical_names::C
     face_dim::Val{D}
     face_around::E
+    cache::F
 end
 is_reference_domain(a::ReferenceDomain) = true
 
@@ -96,7 +113,18 @@ function replace_face_around(domain::AbstractDomain,face_around)
     mesh_id = gk.mesh_id(domain)
     physical_names = gk.physical_names(domain)
     is_reference_domain = gk.is_reference_domain(domain)
-    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
+end
+
+function replace_cache(domain::AbstractDomain,cache)
+    mesh = gk.mesh(domain)
+    face_dim = gk.face_dim(domain)
+    mesh_id = gk.mesh_id(domain)
+    physical_names = gk.physical_names(domain)
+    is_reference_domain = gk.is_reference_domain(domain)
+    face_around = gk.face_around(domain)
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function PartitionedArrays.partition(domain::AbstractDomain{<:PMesh})
@@ -123,7 +151,8 @@ function reference_domain(domain::PhysicalDomain)
     physical_names = gk.physical_names(domain)
     is_reference_domain = Val(true)
     face_around = gk.face_around(domain)
-    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function reference_domain(domain::ReferenceDomain)
@@ -137,7 +166,8 @@ function physical_domain(domain::ReferenceDomain)
     physical_names = gk.physical_names(domain)
     face_around = gk.face_around(domain)
     is_reference_domain = Val(false)
-    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    gk.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function physical_domain(domain::PhysicalDomain)
@@ -145,6 +175,9 @@ function physical_domain(domain::PhysicalDomain)
 end
 
 function faces(domain::AbstractDomain)
+    if domain.cache !== nothing
+        return domain.cache.faces
+    end
     mesh = domain |> gk.mesh
     D = gk.face_dim(domain)
     Dface_to_tag = zeros(Int,gk.num_faces(mesh,D))
@@ -660,9 +693,6 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
         @term begin # TODO
             face = sface_to_face_sym[sface]
             :face_function(refid_to_funs_sym,face_to_refid_sym,face_to_nodes_sym,node_to_coords_sym,face)
-            #funs = :reference_value(refid_to_funs_sym,face_to_refid_sym,face)
-            #nodes = face_to_nodes_sym[face]
-            #:linear_combination(funs,node_to_coords_sym,nodes)
         end
     end
 end
