@@ -646,19 +646,35 @@ function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
     linear_combination(fs,values)
 end
 
-function reference_point(rid_to_x,face_to_rid,face,point)
-    reference_value(rid_to_x,face_to_rid,face)[point]
-end
+#function reference_point(rid_to_x,face_to_rid,face,point)
+#    reference_value(rid_to_x,face_to_rid,face)[point]
+#end
 
-function reference_tabulators(rid_to_fs,rid_to_xs)
-    map((fs,xs)->map(x->map(f->f(x),fs),xs),rid_to_fs,rid_to_xs)
+#function reference_tabulators(rid_to_fs,rid_to_xs)
+#    map((fs,xs)->map(x->map(f->f(x),fs),xs),rid_to_fs,rid_to_xs)
+#end
+
+function reference_tabulator(fs,xs)
+    f = fs[1]
+    z = zero(eltype(xs))
+    T = typeof(f(z))
+    nx = length(xs)
+    nf = length(fs)
+    A = Matrix{T}(undef,nf,nx)
+    for j in 1:nx
+        for i in 1:nf
+            A[i,j] = fs[i](xs[j])
+        end
+    end
+    A
 end
 
 function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
     tab = reference_value(rid_to_tab,face_to_rid,face)
     dofs = face_to_dofs[face]
     values = view(dofs_to_value,dofs)
-    transpose(tab[point])*values
+    n = length(values)
+    sum(i->tab[i,point]*values[i],1:n)
 end
 
 function reference_value(rid_to_value,face_to_rid,face)
@@ -1140,7 +1156,7 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     v = gk.topological_sort(expr1,deps)
     expr = quote
         function filldata!(data,state)
-            $(unpack_state(dict,:state))
+            $(unpack_storage(dict,:state))
             $(v[1])
             for $face in 1:length(face_to_nodes)
                 nodes = face_to_nodes[$face]

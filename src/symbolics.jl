@@ -79,7 +79,7 @@ function simplify(expr)
 end
 
 function simplify(expr::Expr)
-    r001 = @slots a b c d e f g @rule face_function(a,b,c,d,e)(reference_value(f,b,e)[g]) --> face_function_value(reference_tabulators(a,f),b,c,d,e,g)
+    r001 = @slots a b c d e f g @rule face_function(a,b,c,d,e)(reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
     expr2 = r001(expr)
     if expr2 === nothing
         args = map(simplify,expr.args)
@@ -89,7 +89,7 @@ function simplify(expr::Expr)
     end
 end
 
-function unpack_state(dict,state)
+function unpack_storage(dict,state)
     expr = Expr(:block)
     for k in Base.values(dict) |> collect |> sort
         push!(expr.args,:($k = $state.$k))
