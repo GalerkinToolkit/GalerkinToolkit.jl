@@ -90,6 +90,8 @@ V = gk.lagrange_space(Ω,k)
 Q = gk.lagrange_space(Γd,k-1; conformity=:L2)
 VxQ = V × Q
 dΓd = gk.measure(Γd,2*k)
+gradient(u) = x->ForwardDiff.gradient(u,x)
+∇(u,x) = gk.call(gradient,u)(x)
 a((u,p),(v,q)) =
     gk.∫( x->∇(u,x)⋅∇(v,x), dΩ) +
     gk.∫(x->
