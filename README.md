@@ -21,22 +21,22 @@ Since July 2024, this package is being developed with support from the [Netherla
 
 ## Documentation
 
-- [**STABLE**](https://fverdugo.github.io/GalerkinToolkit.jl.jl/stable) &mdash; **Documentation for the most recently tagged version.**
-- [**LATEST**](https://fverdugo.github.io/GalerkinToolkit.jl.jl/dev) &mdash; *Documentation for the in-development version.*
+- [**STABLE**](https://fverdugo.github.io/GalerkinToolkit.jl/stable) &mdash; **Documentation for the most recently tagged version.**
+- [**LATEST**](https://fverdugo.github.io/GalerkinToolkit.jl/dev) &mdash; *Documentation for the in-development version.*
 
 ## Help and discussion
 
-- You can open a new discussion to ask questions [here](https://github.com/fverdugo/GalerkinToolkit.jl.jl/discussions).
-- If you have found a bug, open an issue [here](https://github.com/fverdugo/GalerkinToolkit.jl.jl/issues). Do not forget to include a (minimal) reproducer.
+- You can open a new discussion to ask questions [here](https://github.com/fverdugo/GalerkinToolkit.jl/discussions).
+- If you have found a bug, open an issue [here](https://github.com/fverdugo/GalerkinToolkit.jl/issues). Do not forget to include a (minimal) reproducer.
 
 ## Contributing
 
 This package is under active development and there are several ways to contribute:
 
 - by enhancing the documentation (e.g., fixing typos, enhancing doc strings, adding examples).
-- by addressing one of the [issues waiting for help](https://github.com/fverdugo/GalerkinToolkit.jl.jl/labels/help%20wanted).
+- by addressing one of the [issues waiting for help](https://github.com/fverdugo/GalerkinToolkit.jl/labels/help%20wanted).
 - by adding more tests to increase the code coverage.
-- by extending the current functionality. In this case, open a discussion [here](https://github.com/fverdugo/GalerkinToolkit.jl.jl/discussions) to coordinate with the package maintainers before proposing significant changes.
+- by extending the current functionality. In this case, open a discussion [here](https://github.com/fverdugo/GalerkinToolkit.jl/discussions) to coordinate with the package maintainers before proposing significant changes.
 
 Discuss with the package authors before working on any non-trivial contribution.
 
