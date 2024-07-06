@@ -1,5 +1,5 @@
 module GalerkinToolkit
-const gk = GalerkinToolkit
+const GT = GalerkinToolkit
 
 using WriteVTK
 using FastGaussQuadrature

@@ -6,7 +6,7 @@
 #
 
 abstract type AbstractType end
-function Base.show(io::IO,data::gk.AbstractType)
+function Base.show(io::IO,data::GT.AbstractType)
     print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
 end
 
@@ -134,8 +134,8 @@ reference_faces(a,d) = reference_faces(a)[val_parameter(d)+1]
 face_nodes(a,d) = face_nodes(a)[val_parameter(d)+1]
 face_incidence(a,d1,d2) = face_incidence(a)[val_parameter(d1)+1,val_parameter(d2)+1]
 function face_local_faces(topo,d,D)
-    dface_to_Dfaces = JaggedArray(gk.face_incidence(topo,d,D))
-    Dface_to_dfaces = gk.face_incidence(topo,D,d)
+    dface_to_Dfaces = JaggedArray(GT.face_incidence(topo,d,D))
+    Dface_to_dfaces = GT.face_incidence(topo,D,d)
     dface_to_lfaces_data = similar(dface_to_Dfaces.data) 
     fill!(dface_to_lfaces_data,0)
     dface_to_lfaces_ptrs = dface_to_Dfaces.ptrs
@@ -213,10 +213,10 @@ end
 
 # Supertype hierarchy
 
-    AbstractFaceGeometry <: gk.AbstractType
+    AbstractFaceGeometry <: GT.AbstractType
 
 """
-abstract type AbstractFaceGeometry <: gk.AbstractType end
+abstract type AbstractFaceGeometry <: GT.AbstractType end
 
 struct ExtrusionPolytope{D,Tv,Ti} <: AbstractFaceGeometry
     extrusion::NTuple{D,Bool}
@@ -301,7 +301,7 @@ end
 - [`lagrange_mesh_face`](@ref)
 
 """
-abstract type AbstractMeshFace <: gk.AbstractType end
+abstract type AbstractMeshFace <: GT.AbstractType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
@@ -458,7 +458,7 @@ function tabulator(fe)
 end
 
 """
-    abstract type AbstractFEMesh
+    abstract type AbstractMesh
 
 # Basic queries
 
@@ -473,16 +473,16 @@ end
 
 # Basic constructors
 
-- [`fe_mesh`](@ref)
+- [`mesh_from_arrays`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`mesh_from_chain`](@ref)
 
 """
-abstract type AbstractFEMesh <: gk.AbstractType end
+abstract type AbstractMesh <: GT.AbstractType end
 
 # TODO rename to Mesh
-struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
+struct GenericMesh{A,B,C,D,E,F,G} <: AbstractMesh
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -492,14 +492,13 @@ struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     outwards_normals::G
 end
 
-# TODO rename to mesh
-function fe_mesh(args...)
-    GenericFEMesh(args...)
+function mesh_from_arrays(args...)
+    GenericMesh(args...)
 end
 
 """
 """
-function fe_mesh(
+function mesh_from_arrays(
     node_coordinates,
     face_nodes,
     face_reference_id,
@@ -508,7 +507,7 @@ function fe_mesh(
     physical_faces = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
     outwards_normals = nothing
     )
-    fe_mesh(
+    GT.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -518,7 +517,7 @@ function fe_mesh(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEMesh) = length(reference_faces(mesh))-1
+num_dims(mesh::AbstractMesh) = length(reference_faces(mesh))-1
 
 const INVALID_ID = 0
 
@@ -727,7 +726,7 @@ function mesh_from_gmsh_module(;complexify=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-    mesh = fe_mesh(
+    mesh = GT.mesh_from_arrays(
             my_node_to_coords,
             my_face_nodes,
             my_face_reference_id,
@@ -967,7 +966,7 @@ function boundary(geom::ExtrusionPolytope{1})
     face_reference_id = [Ti[1,1]]
     reference_faces = ([fe],)
     outwards_normals = SVector{1,Tv}[(-1,),(1,)]
-    fe_mesh(
+    GT.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1005,7 +1004,7 @@ function boundary(geom::ExtrusionPolytope{2})
     fe0 = lagrange_mesh_face(g0,order)
     fe1 = lagrange_mesh_face(g1,order)
     reference_faces = ([fe0],[fe1])
-    fe_mesh(
+    GT.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1055,7 +1054,7 @@ function boundary(geom::ExtrusionPolytope{3})
     fe1 = lagrange_mesh_face(g1,order)
     fe2 = lagrange_mesh_face(g2,order)
     reference_faces = ([fe0,],[fe1],[fe2])
-    fe_mesh(
+    GT.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1117,7 +1116,7 @@ function boundary_from_mesh_face(refface)
         end
         face_nodes_inter[d+1] = face_nodes_inter_d
     end
-    fe_mesh(
+    GT.mesh_from_arrays(
         node_coordinates_inter,
         face_nodes_inter,
         face_ref_id_geom,
@@ -1127,23 +1126,23 @@ end
 function face_nodes(fe::AbstractMeshFace,d)
     D = num_dims(fe)
     if d == D
-        [collect(Int32,1:gk.num_nodes(fe))]
+        [collect(Int32,1:GT.num_nodes(fe))]
     else
-        boundary = gk.boundary(fe)
-        gk.face_nodes(boundary,d)
+        boundary = GT.boundary(fe)
+        GT.face_nodes(boundary,d)
     end
 end
 
 function face_interior_nodes(fe::AbstractMeshFace,d)
     D = num_dims(fe)
     if  d == D
-        [gk.interior_nodes(fe)]
+        [GT.interior_nodes(fe)]
     else
-        boundary = gk.boundary(fe)
-        dface_to_lnode_to_node = gk.face_nodes(boundary,d)
-        dface_to_ftype = gk.face_reference_id(boundary,d)
-        ftype_to_refdface = gk.reference_faces(boundary,d)
-        ftype_to_lnodes = map(gk.interior_nodes,ftype_to_refdface)
+        boundary = GT.boundary(fe)
+        dface_to_lnode_to_node = GT.face_nodes(boundary,d)
+        dface_to_ftype = GT.face_reference_id(boundary,d)
+        ftype_to_refdface = GT.reference_faces(boundary,d)
+        ftype_to_lnodes = map(GT.interior_nodes,ftype_to_refdface)
         map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
             lnodes = ftype_to_lnodes[ftype]
             lnode_to_node[lnodes]
@@ -1160,10 +1159,10 @@ function face_interior_node_permutations(fe::AbstractMeshFace,d)
     if  d == D
         [[ collect(1:num_interior_nodes(fe)) ]]
     else
-        boundary = gk.boundary(fe)
-        dface_to_ftype = gk.face_reference_id(boundary,d)
-        ftype_to_refdface = gk.reference_faces(boundary,d)
-        ftype_to_perms = map(gk.interior_node_permutations,ftype_to_refdface)
+        boundary = GT.boundary(fe)
+        dface_to_ftype = GT.face_reference_id(boundary,d)
+        ftype_to_refdface = GT.reference_faces(boundary,d)
+        ftype_to_perms = map(GT.interior_node_permutations,ftype_to_refdface)
         map(dface_to_ftype) do ftype
             perms = ftype_to_perms[ftype]
         end
@@ -1335,7 +1334,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractMeshTopology <: gk.AbstractType end
+abstract type AbstractMeshTopology <: GT.AbstractType end
 
 struct GenericMeshTopology{A,B,C,D} <: AbstractMeshTopology
     face_incidence::A
@@ -1350,7 +1349,7 @@ end
 
 """
 """
-function topology(mesh::AbstractFEMesh)
+function topology(mesh::AbstractMesh)
     topology_from_mesh(mesh)
 end
 
@@ -1683,7 +1682,7 @@ end
 - [`topology`](@ref)
 
 """
-abstract type AbstractFaceTopology <: gk.AbstractType end
+abstract type AbstractFaceTopology <: GT.AbstractType end
 
 struct GenericFaceTopology{A,B} <: AbstractFaceTopology
     boundary::A
@@ -1714,7 +1713,7 @@ end
 
 """
 """
-function complexify(mesh::AbstractFEMesh)
+function complexify(mesh::AbstractMesh)
     complexify_mesh(mesh)
 end
 
@@ -1811,7 +1810,7 @@ function complexify_mesh(mesh)
             new_physical_faces[d+1][group_name] = new_group_faces
         end
     end
-    new_mesh = fe_mesh(
+    new_mesh = GT.mesh_from_arrays(
             node_to_coords,
             newface_nodes,
             newface_refid,
@@ -2263,7 +2262,7 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
-function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+function label_interior_faces!(mesh::AbstractMesh;physical_name="interior")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2274,7 +2273,7 @@ function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
     mesh
 end
 
-function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+function label_boundary_faces!(mesh::AbstractMesh;physical_name="boundary")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2286,7 +2285,7 @@ function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
 end
 
 """
-abstract type AbstractFEChain
+abstract type AbstractChain
 
 # Basic queries
 
@@ -2301,12 +2300,12 @@ abstract type AbstractFEChain
 
 # Basic constructors
 
-- [`fe_chain`](@ref)
+- [`chain_from_arrays`](@ref)
 
 """
-abstract type AbstractFEChain <: gk.AbstractType end
+abstract type AbstractChain <: GT.AbstractType end
 
-struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
+struct GenericChain{A,B,C,D,E,F,G} <: AbstractChain
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -2316,13 +2315,13 @@ struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
     outwards_normals::G
 end
 
-function fe_chain(args...)
-    GenericFEChain(args...)
+function chain_from_arrays(args...)
+    GenericChain(args...)
 end
 
 """
 """
-function fe_chain(
+function chain_from_arrays(
     node_coordinates,
     face_nodes,
     face_reference_id,
@@ -2331,7 +2330,7 @@ function fe_chain(
     physical_faces = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
     outwards_normals = nothing
     )
-    fe_chain(
+    chain_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -2341,9 +2340,9 @@ function fe_chain(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEChain) = num_dims(first(reference_faces(mesh)))
+num_dims(mesh::AbstractChain) = num_dims(first(reference_faces(mesh)))
 
-function fe_mesh(chain::AbstractFEChain)
+function mesh(chain::AbstractChain)
     mesh_from_chain(chain)
 end
 
@@ -2371,7 +2370,7 @@ function mesh_from_chain(chain)
     groups[end] = cell_groups
     pnodes = periodic_nodes(chain)
     onormals = outwards_normals(chain)
-    fe_mesh(
+    GT.mesh_from_arrays(
       node_coords,
       face_to_nodes,
       face_to_refid,
@@ -2418,7 +2417,7 @@ function simplexify_unit_n_cube(geo)
     ncells = length(cell_nodes)
     cell_reference_id = fill(Int8(1),ncells)
     reference_cells = [ref_cell]
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -2516,7 +2515,7 @@ function simplexify_reference_face(ref_face)
         face_nodes_inter[face] = my_nodes
     end
     ref_inter = 
-    chain = Chain(;
+    chain = chain_from_arrays(;
         num_dims=Val(D),
         node_coordinates=node_coordinates_inter,
         face_nodes = face_nodes_inter,
@@ -2701,7 +2700,7 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
     mesh_groups = push(groups,physical_faces(interior_mesh,D))
-    fe_mesh(
+    GT.mesh_from_arrays(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -2752,7 +2751,7 @@ function cartesian_chain(domain,cells_per_dir)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -2817,7 +2816,7 @@ function structured_simplex_chain(domain,cells_per_dir)
     reference_cells = reference_faces(ref_simplex_mesh,D)
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -2950,7 +2949,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_faces(simplex_chain))
-    fe_mesh(
+    GT.mesh_from_arrays(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -2959,7 +2958,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     )
 end
 
-function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
+function visualization_mesh(mesh::AbstractMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
@@ -3063,7 +3062,7 @@ function visualization_mesh_from_mesh(mesh,dim,ids=num_faces(mesh,dim);order=not
             vnode_prev = vnode + 1
         end
         vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
-        vchain = fe_chain(
+        vchain = chain_from_arrays(
                         vnode_to_coords,
                         vcell_to_vnodes,
                         vcell_to_vrefid,
@@ -3158,7 +3157,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = Chain(;
+        chain = chain_from_arrays(;
                        num_dims=Val(2),
                        node_coordinates = X,
                        face_nodes = T,
@@ -3211,7 +3210,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = fe_chain(
+        chain = chain_from_arrays(
                        X,
                        T,
                        fill(1,length(T)),
@@ -3246,7 +3245,7 @@ function mesh_from_reference_face(ref_face)
     end
     groups[end-1]["boundary"] = 1:length(face_to_refid[D-1+1])
     groups[end]["interior"] = [1]
-    mesh = fe_mesh(
+    mesh = GT.mesh_from_arrays(
                 node_to_coords,
                 face_to_nodes,
                 face_to_refid,
@@ -3285,7 +3284,7 @@ function Base.getindex(a::TwoWayPartition,i::Int)
     end
 end
 
-function restrict(mesh::AbstractFEMesh,args...)
+function restrict(mesh::AbstractMesh,args...)
     restrict_mesh(mesh,args...)
 end
 
@@ -3321,7 +3320,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         lnormals = nothing
     end
 
-    lmesh = fe_mesh(
+    lmesh = GT.mesh_from_arrays(
         lnode_to_coords,
         lface_to_lnodes_mesh,
         lface_to_refid_mesh,
@@ -3334,7 +3333,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
     lmesh
 end
 
-struct PartitionStrategy{A,B} <: gk.AbstractType
+struct PartitionStrategy{A,B} <: GT.AbstractType
     graph_nodes::Symbol
     graph_edges::Symbol
     graph_nodes_dim::A
@@ -3369,7 +3368,7 @@ function partition_strategy(;
 
 end
 
-function mesh_graph(mesh::AbstractFEMesh;
+function mesh_graph(mesh::AbstractMesh;
     partition_strategy=GalerkinToolkit.partition_strategy())
     graph_nodes = partition_strategy.graph_nodes
     graph_edges = partition_strategy.graph_edges
@@ -3442,7 +3441,7 @@ function mesh_graph(mesh::AbstractFEMesh;
     end
 end
 
-struct PMesh{A,B,C,D} <: gk.AbstractType
+struct PMesh{A,B,C,D} <: GT.AbstractType
     mesh_partition::A
     node_partition::B
     face_partition::C
@@ -3478,7 +3477,7 @@ end
 
 function physical_names(pmesh::PMesh,d)
      map(pmesh.mesh_partition) do mesh
-        gk.physical_names(mesh,d)
+        GT.physical_names(mesh,d)
     end |> PartitionedArrays.getany
 end
 
@@ -3486,13 +3485,13 @@ function physical_faces(pmesh::PMesh,d)
     names = physical_names(pmesh,d)
     map(collect(names)) do name
         name => map(pmesh.mesh_partition) do mesh
-            gk.physical_faces(mesh,d)[name]
+            GT.physical_faces(mesh,d)[name]
         end
     end |> Dict
 end
 
 function node_coordinates(pmesh::PMesh)
-    data = map(gk.node_coordinates,pmesh.mesh_partition)
+    data = map(GT.node_coordinates,pmesh.mesh_partition)
     PVector(data,pmesh.node_partition)
 end
 
@@ -3502,7 +3501,7 @@ function face_nodes(mesh::PMesh)
 end
 
 function face_nodes(pmesh::PMesh,d)
-    data = map(mesh->gk.face_nodes(mesh,d),pmesh.mesh_partition)
+    data = map(mesh->GT.face_nodes(mesh,d),pmesh.mesh_partition)
     PVector(data,pmesh.face_partition[d+1])
 end
 
@@ -3512,7 +3511,7 @@ function face_reference_id(mesh::PMesh)
 end
 
 function face_reference_id(pmesh::PMesh,d)
-    data = map(mesh->gk.face_reference_id(mesh,d),pmesh.mesh_partition)
+    data = map(mesh->GT.face_reference_id(mesh,d),pmesh.mesh_partition)
     PVector(data,pmesh.face_partition[d+1])
 end
 
@@ -3522,15 +3521,15 @@ function reference_faces(mesh::PMesh)
 end
 
 function reference_faces(pmesh::PMesh,d)
-    map(mesh->gk.reference_faces(mesh,d),pmesh.mesh_partition)
+    map(mesh->GT.reference_faces(mesh,d),pmesh.mesh_partition)
 end
 
 function periodic_nodes(pmesh::PMesh)
-    map(gk.periodic_nodes,pmesh.mesh_partition)
+    map(GT.periodic_nodes,pmesh.mesh_partition)
 end
 
 function outwards_normals(pmesh::PMesh)
-    data = map(gk.outwards_normals,pmesh.mesh_partition)
+    data = map(GT.outwards_normals,pmesh.mesh_partition)
     if eltype(data) <: Nothing
         nothing
     else
@@ -3573,7 +3572,7 @@ function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
     mesh
 end
 
-struct PMeshLocalIds{A,B} <: gk.AbstractType
+struct PMeshLocalIds{A,B} <: GT.AbstractType
     node_indices::A
     face_indices::B
 end
@@ -4029,7 +4028,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     final_cell_to_refid = fill(1,n_final_cells)
     refid_to_fine_refcell = [fine_refcell]
 
-    chain = fe_chain(
+    chain = chain_from_arrays(
                 final_node_to_x,
                 JaggedArray(final_cell_local_node_to_final_node),
                 final_cell_to_refid,
