@@ -473,7 +473,7 @@ end
 
 # Basic constructors
 
-- [`fe_mesh`](@ref)
+- [`gk.mesh`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`mesh_from_chain`](@ref)
@@ -493,13 +493,13 @@ struct GenericMesh{A,B,C,D,E,F,G} <: AbstractMesh
 end
 
 # TODO rename to mesh
-function fe_mesh(args...)
+function mesh(args...)
     GenericMesh(args...)
 end
 
 """
 """
-function fe_mesh(
+function mesh(
     node_coordinates,
     face_nodes,
     face_reference_id,
@@ -508,7 +508,7 @@ function fe_mesh(
     physical_faces = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
     outwards_normals = nothing
     )
-    fe_mesh(
+    gk.mesh(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -727,7 +727,7 @@ function mesh_from_gmsh_module(;complexify=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-    mesh = fe_mesh(
+    mesh = gk.mesh(
             my_node_to_coords,
             my_face_nodes,
             my_face_reference_id,
@@ -967,7 +967,7 @@ function boundary(geom::ExtrusionPolytope{1})
     face_reference_id = [Ti[1,1]]
     reference_faces = ([fe],)
     outwards_normals = SVector{1,Tv}[(-1,),(1,)]
-    fe_mesh(
+    gk.mesh(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1005,7 +1005,7 @@ function boundary(geom::ExtrusionPolytope{2})
     fe0 = lagrange_mesh_face(g0,order)
     fe1 = lagrange_mesh_face(g1,order)
     reference_faces = ([fe0],[fe1])
-    fe_mesh(
+    gk.mesh(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1055,7 +1055,7 @@ function boundary(geom::ExtrusionPolytope{3})
     fe1 = lagrange_mesh_face(g1,order)
     fe2 = lagrange_mesh_face(g2,order)
     reference_faces = ([fe0,],[fe1],[fe2])
-    fe_mesh(
+    gk.mesh(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1117,7 +1117,7 @@ function boundary_from_mesh_face(refface)
         end
         face_nodes_inter[d+1] = face_nodes_inter_d
     end
-    fe_mesh(
+    gk.mesh(
         node_coordinates_inter,
         face_nodes_inter,
         face_ref_id_geom,
@@ -1811,7 +1811,7 @@ function complexify_mesh(mesh)
             new_physical_faces[d+1][group_name] = new_group_faces
         end
     end
-    new_mesh = fe_mesh(
+    new_mesh = gk.mesh(
             node_to_coords,
             newface_nodes,
             newface_refid,
@@ -2343,7 +2343,7 @@ end
 
 num_dims(mesh::AbstractChain) = num_dims(first(reference_faces(mesh)))
 
-function fe_mesh(chain::AbstractChain)
+function mesh(chain::AbstractChain)
     mesh_from_chain(chain)
 end
 
@@ -2371,7 +2371,7 @@ function mesh_from_chain(chain)
     groups[end] = cell_groups
     pnodes = periodic_nodes(chain)
     onormals = outwards_normals(chain)
-    fe_mesh(
+    gk.mesh(
       node_coords,
       face_to_nodes,
       face_to_refid,
@@ -2701,7 +2701,7 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
     mesh_groups = push(groups,physical_faces(interior_mesh,D))
-    fe_mesh(
+    gk.mesh(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -2950,7 +2950,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_faces(simplex_chain))
-    fe_mesh(
+    gk.mesh(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -3246,7 +3246,7 @@ function mesh_from_reference_face(ref_face)
     end
     groups[end-1]["boundary"] = 1:length(face_to_refid[D-1+1])
     groups[end]["interior"] = [1]
-    mesh = fe_mesh(
+    mesh = gk.mesh(
                 node_to_coords,
                 face_to_nodes,
                 face_to_refid,
@@ -3321,7 +3321,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         lnormals = nothing
     end
 
-    lmesh = fe_mesh(
+    lmesh = gk.mesh(
         lnode_to_coords,
         lface_to_lnodes_mesh,
         lface_to_refid_mesh,
