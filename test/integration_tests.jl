@@ -53,7 +53,7 @@ int = ∫(dΩref) do q
     dV = abs(det(J))
     u(x)*dV
 end
-
+sum(int)
 @test sum(int) ≈ 8
 
 int = ∫(dΩref) do q
@@ -74,7 +74,6 @@ end
 u = GT.analytical_field(x->1,Ω)
 int = ∫(u,dΩ)
 @test sum(int) ≈ 4
-
 
 D = GT.num_dims(mesh)
 Γref = GT.boundary(mesh;
@@ -118,6 +117,8 @@ end +
 end
 
 @test sum(int) ≈ 8
+
+xxxx
 
 @test sum(GT.face_diameter(Γ)) ≈ 4
 
