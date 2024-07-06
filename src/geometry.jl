@@ -2286,7 +2286,7 @@ function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
 end
 
 """
-abstract type AbstractFEChain
+abstract type AbstractChain
 
 # Basic queries
 
@@ -2304,9 +2304,9 @@ abstract type AbstractFEChain
 - [`fe_chain`](@ref)
 
 """
-abstract type AbstractFEChain <: gk.AbstractType end
+abstract type AbstractChain <: gk.AbstractType end
 
-struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
+struct GenericChain{A,B,C,D,E,F,G} <: AbstractChain
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -2317,7 +2317,7 @@ struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
 end
 
 function fe_chain(args...)
-    GenericFEChain(args...)
+    GenericChain(args...)
 end
 
 """
@@ -2341,9 +2341,9 @@ function fe_chain(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEChain) = num_dims(first(reference_faces(mesh)))
+num_dims(mesh::AbstractChain) = num_dims(first(reference_faces(mesh)))
 
-function fe_mesh(chain::AbstractFEChain)
+function fe_mesh(chain::AbstractChain)
     mesh_from_chain(chain)
 end
 
