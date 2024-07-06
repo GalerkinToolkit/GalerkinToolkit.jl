@@ -2300,7 +2300,7 @@ abstract type AbstractChain
 
 # Basic constructors
 
-- [`fe_chain`](@ref)
+- [`chain_from_arrays`](@ref)
 
 """
 abstract type AbstractChain <: gk.AbstractType end
@@ -2315,13 +2315,13 @@ struct GenericChain{A,B,C,D,E,F,G} <: AbstractChain
     outwards_normals::G
 end
 
-function fe_chain(args...)
+function chain_from_arrays(args...)
     GenericChain(args...)
 end
 
 """
 """
-function fe_chain(
+function chain_from_arrays(
     node_coordinates,
     face_nodes,
     face_reference_id,
@@ -2330,7 +2330,7 @@ function fe_chain(
     physical_faces = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
     outwards_normals = nothing
     )
-    fe_chain(
+    chain_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -2417,7 +2417,7 @@ function simplexify_unit_n_cube(geo)
     ncells = length(cell_nodes)
     cell_reference_id = fill(Int8(1),ncells)
     reference_cells = [ref_cell]
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -2515,7 +2515,7 @@ function simplexify_reference_face(ref_face)
         face_nodes_inter[face] = my_nodes
     end
     ref_inter = 
-    chain = Chain(;
+    chain = chain_from_arrays(;
         num_dims=Val(D),
         node_coordinates=node_coordinates_inter,
         face_nodes = face_nodes_inter,
@@ -2751,7 +2751,7 @@ function cartesian_chain(domain,cells_per_dir)
     reference_cells = [ref_cell]
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -2816,7 +2816,7 @@ function structured_simplex_chain(domain,cells_per_dir)
     reference_cells = reference_faces(ref_simplex_mesh,D)
     interior_cells = collect(Int32,1:length(cell_nodes))
     groups = Dict(["interior"=>interior_cells,"$D-face-1"=>interior_cells])
-    chain = fe_chain(
+    chain = chain_from_arrays(
         node_coords,
         cell_nodes,
         cell_reference_id,
@@ -3062,7 +3062,7 @@ function visualization_mesh_from_mesh(mesh,dim,ids=num_faces(mesh,dim);order=not
             vnode_prev = vnode + 1
         end
         vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
-        vchain = fe_chain(
+        vchain = chain_from_arrays(
                         vnode_to_coords,
                         vcell_to_vnodes,
                         vcell_to_vrefid,
@@ -3157,7 +3157,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = Chain(;
+        chain = chain_from_arrays(;
                        num_dims=Val(2),
                        node_coordinates = X,
                        face_nodes = T,
@@ -3210,7 +3210,7 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = fe_chain(
+        chain = chain_from_arrays(
                        X,
                        T,
                        fill(1,length(T)),
@@ -4028,7 +4028,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     final_cell_to_refid = fill(1,n_final_cells)
     refid_to_fine_refcell = [fine_refcell]
 
-    chain = fe_chain(
+    chain = chain_from_arrays(
                 final_node_to_x,
                 JaggedArray(final_cell_local_node_to_final_node),
                 final_cell_to_refid,
