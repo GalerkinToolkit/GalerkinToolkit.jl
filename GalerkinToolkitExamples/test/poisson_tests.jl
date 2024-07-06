@@ -1,6 +1,6 @@
 module PoissonTests
 
-import GalerkinToolkit as gk
+import GalerkinToolkit as GT
 using GalerkinToolkitExamples: Poisson
 using Test
 
@@ -9,7 +9,7 @@ tol = 1.0e-10
 # TODO do not use a large value of n here.
 # The code now is VERY slow.
 n = 2
-mesh = gk.cartesian_mesh((0,2,0,2),(n,n))
+mesh = GT.cartesian_mesh((0,2,0,2),(n,n))
 for discretization_method in (:interior_penalty,:continuous_galerkin)
     for dirichlet_method in (:multipliers,:nitsche,:strong)
         params = Dict{Symbol,Any}()

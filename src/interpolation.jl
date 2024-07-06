@@ -130,21 +130,21 @@ function num_dofs(a::AbstractLagrangeFE)
     num_nodes(a)
 end
 
-abstract type AbstractSpace <: gk.AbstractType end
+abstract type AbstractSpace <: GT.AbstractType end
 
 Base.iterate(m::AbstractSpace) = iterate(components(m))
 Base.iterate(m::AbstractSpace,state) = iterate(components(m),state)
 Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
 Base.length(m::AbstractSpace) = num_fields(m)
 
-mesh(a::AbstractSpace) = gk.mesh(gk.domain(a))
+mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 
 function free_dofs(a::AbstractSpace)
-    gk.dofs(free_values_strategy(a))
+    GT.dofs(free_values_strategy(a))
 end
 
 function dirichlet_dofs(a::AbstractSpace)
-    gk.dofs(dirichlet_values_strategy(a))
+    GT.dofs(dirichlet_values_strategy(a))
 end
 
 # Single field by default
@@ -164,7 +164,7 @@ end
 
 function domain(space::AbstractSpace,field)
     @assert field == 1
-    space |> gk.domain
+    space |> GT.domain
 end
 
 @enum FreeOrDirichlet FREE=1 DIRICHLET=2
@@ -187,27 +187,27 @@ end
 
 function generate_dof_ids(space::AbstractSpace)
     state = generate_dof_ids_step_1(space)
-    generate_dof_ids_step_2(state,space |> gk.dirichlet_boundary)
+    generate_dof_ids_step_2(state,space |> GT.dirichlet_boundary)
 end
 
 function generate_dof_ids_step_1(space)
-    domain = space |> gk.domain
-    D = gk.num_dims(domain)
-    cell_to_Dface = domain |> gk.faces
-    mesh = domain |> gk.mesh
-    topology = mesh |> gk.topology
-    d_to_ndfaces = map(d->gk.num_faces(topology,d),0:D)
-    ctype_to_reference_fe = space |> gk.reference_fes
-    cell_to_ctype = space |> gk.face_reference_id
-    d_to_dface_to_dof_offset = map(d->zeros(Int32,gk.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->gk.reference_face_own_dofs(space,d),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->gk.reference_face_own_dof_permutations(space,d),0:D)
+    domain = space |> GT.domain
+    D = GT.num_dims(domain)
+    cell_to_Dface = domain |> GT.faces
+    mesh = domain |> GT.mesh
+    topology = mesh |> GT.topology
+    d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
+    ctype_to_reference_fe = space |> GT.reference_fes
+    cell_to_ctype = space |> GT.face_reference_id
+    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
+    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
     d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
-    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->gk.face_dofs(fe,d),ctype_to_reference_fe),0:D)
-    #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
+    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     dof_offset = 0
     for d in 0:D
@@ -286,7 +286,7 @@ end
 function generate_dof_ids_step_2(state,dirichlet_boundary::Nothing)
     (;ndofs,cell_to_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
-    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_tag)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
     dirichlet_dof_location = zeros(Int32,0)
     (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
 end
@@ -296,10 +296,10 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
      d_to_ctype_to_ldface_to_dofs,
      d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
     dof_to_tag = zeros(Int32,ndofs)
-    N = gk.num_dims(dirichlet_boundary)
-    physical_names = dirichlet_boundary |> gk.physical_names
+    N = GT.num_dims(dirichlet_boundary)
+    physical_names = dirichlet_boundary |> GT.physical_names
     Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-    mesh = dirichlet_boundary |> gk.mesh
+    mesh = dirichlet_boundary |> GT.mesh
     classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
     ncells = length(cell_to_dofs)
     let d = N
@@ -325,8 +325,8 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
             end
         end
     end
-    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_tag)
-    dof_permutation = gk.permutation(free_and_dirichlet_dofs)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
     n_free_dofs = length(first(free_and_dirichlet_dofs))
     f = dof -> begin
         dof2 = dof_permutation[dof]
@@ -351,13 +351,13 @@ function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
     D = length(d_to_ndfaces)-1
     for d in D:-1:0
         for (location,dirichlet_boundary) in dirichlet_boundary_all.domains |> enumerate
-            N = gk.num_dims(dirichlet_boundary)
+            N = GT.num_dims(dirichlet_boundary)
             if d != N
                 continue
             end
-            physical_names = dirichlet_boundary |> gk.physical_names
+            physical_names = dirichlet_boundary |> GT.physical_names
             Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-            mesh = dirichlet_boundary |> gk.mesh
+            mesh = dirichlet_boundary |> GT.mesh
             classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
             ncells = length(cell_to_dofs)
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
@@ -383,8 +383,8 @@ function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
             end
         end
     end
-    free_and_dirichlet_dofs = gk.partition_from_mask(i->i==0,dof_to_location)
-    dof_permutation = gk.permutation(free_and_dirichlet_dofs)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_location)
+    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
     n_free_dofs = length(first(free_and_dirichlet_dofs))
     f = dof -> begin
         dof2 = dof_permutation[dof]
@@ -402,13 +402,13 @@ end
 
 function reference_face_own_dofs(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_own_ldofs = map(fe->gk.face_own_dofs(fe,d),ctype_to_reference_fe)
-    if gk.conformity(space) === :default
+    ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
+    if GT.conformity(space) === :default
         ctype_to_ldface_to_own_ldofs
-    elseif gk.conformity(space) === :L2
-        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
-        domain = space |> gk.domain
-        D = gk.num_dims(domain)
+    elseif GT.conformity(space) === :L2
+        ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+        domain = space |> GT.domain
+        D = GT.num_dims(domain)
         map(ctype_to_num_dofs,ctype_to_ldface_to_own_ldofs) do ndofs,ldface_to_own_ldofs
             map(ldface_to_own_ldofs) do own_ldofs
                 dofs = if d == D
@@ -426,13 +426,13 @@ end
 
 function reference_face_own_dof_permutations(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_pindex_to_perm = map(fe->gk.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    if gk.conformity(space) === :default
+    ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
+    if GT.conformity(space) === :default
         ctype_to_ldface_to_pindex_to_perm
-    elseif gk.conformity(space) === :L2
-        ctype_to_num_dofs = map(gk.num_dofs,ctype_to_reference_fe)
-        domain = space |> gk.domain
-        D = gk.num_dims(domain)
+    elseif GT.conformity(space) === :L2
+        ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+        domain = space |> GT.domain
+        D = GT.num_dims(domain)
         map(ctype_to_num_dofs,ctype_to_ldface_to_pindex_to_perm) do ndofs,ldface_to_pindex_to_perm
             map(ldface_to_pindex_to_perm) do pindex_to_perm
                 map(pindex_to_perm) do perm
@@ -527,17 +527,17 @@ end
 
 function shape_functions(a::AbstractSpace,dim)
     field=1
-    gk.shape_functions(a,dim,field)
+    GT.shape_functions(a,dim,field)
 end
 
 function shape_functions(a::AbstractSpace,dim,field)
     @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
-    refid_to_funs = map(gk.shape_functions,refid_to_reffes)
-    domain = gk.domain(a)
+    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+    domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
-    qty = gk.quantity(prototype,domain) do index
+    qty = GT.quantity(prototype,domain) do index
         face = index.face
         if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
             return x -> zero(prototype(x))
@@ -548,13 +548,13 @@ function shape_functions(a::AbstractSpace,dim,field)
         g = shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
         shape_function_mask(g,index.field_per_dim,field,dim)
     end
-    if is_reference_domain(gk.domain(a))
+    if is_reference_domain(GT.domain(a))
         return qty
     end
-    Ω = gk.domain(a)
-    Ωref = gk.reference_domain(Ω)
-    ϕ = gk.domain_map(Ωref,Ω)
-    ϕinv = gk.inverse_map(ϕ)
+    Ω = GT.domain(a)
+    Ωref = GT.reference_domain(Ω)
+    ϕ = GT.domain_map(Ωref,Ω)
+    ϕinv = GT.inverse_map(ϕ)
     compose(qty,ϕinv)
 end
 
@@ -562,21 +562,21 @@ function dual_basis(a::AbstractSpace,dim)
     @assert dual_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
-    refid_to_funs = map(gk.dual_basis,refid_to_reffes)
-    domain = gk.domain(a)
+    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
+    domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
-    qty = gk.quantity(prototype,domain) do index
+    qty = GT.quantity(prototype,domain) do index
         face = index.face
         refid = face_to_refid[face]
         dof = index.dof_per_dim[dim]
         refid_to_funs[refid][dof]
     end
-    if is_reference_domain(gk.domain(a))
+    if is_reference_domain(GT.domain(a))
         return qty
     end
-    Ω = gk.domain(a)
-    Ωref = gk.reference_domain(Ω)
-    ϕ = gk.domain_map(Ωref,Ω)
+    Ω = GT.domain(a)
+    Ωref = GT.reference_domain(Ω)
+    ϕ = GT.domain_map(Ωref,Ω)
     u -> qty(compose(u,ϕ))
 end
 
@@ -608,23 +608,23 @@ function monolithic_field_major_strategy(field_to_dofs)
 end
 
 function cartesian_product(spaces::AbstractSpace...;
-        free_values_strategy = gk.monolithic_field_major_strategy,
-        dirichlet_values_strategy = gk.monolithic_field_major_strategy,
+        free_values_strategy = GT.monolithic_field_major_strategy,
+        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
     )
     CartesianProductSpace(
         spaces,
-        free_values_strategy(map(gk.free_dofs,spaces)),
-        dirichlet_values_strategy(map(gk.dirichlet_dofs,spaces)),)
+        free_values_strategy(map(GT.free_dofs,spaces)),
+        dirichlet_values_strategy(map(GT.dirichlet_dofs,spaces)),)
 end
 
-struct CartesianProductSpace{A,B,C} <: gk.AbstractSpace
+struct CartesianProductSpace{A,B,C} <: GT.AbstractSpace
     spaces::A
     free_values_strategy::B
     dirichlet_values_strategy::C
 end
 
 function mesh(space::CartesianProductSpace)
-    gk.mesh(first(space.spaces))
+    GT.mesh(first(space.spaces))
 end
 
 function LinearAlgebra.:×(a::AbstractSpace,b::AbstractSpace)
@@ -660,7 +660,7 @@ function num_fields(a::CartesianProductSpace)
 end
 
 function domain(a::CartesianProductSpace)
-    domains = map(gk.domain,a.spaces)
+    domains = map(GT.domain,a.spaces)
     domain = first(domains)
     if all(dom -> dom == domain,domains)
         domain
@@ -674,7 +674,7 @@ function domain(a::CartesianProductSpace)
 end
 
 function domain(a::CartesianProductSpace,field)
-    gk.domain(gk.component(a,field))
+    GT.domain(GT.component(a,field))
 end
 
 function num_face_dofs(a::CartesianProductSpace,dim)
@@ -684,7 +684,7 @@ end
 function num_face_dofs(a::CartesianProductSpace,dim,field)
     f = component(a,field)
     num_face_dofs(f,dim,field)
-    #terms = map(s->gk.num_face_dofs(s,dim),a.spaces)
+    #terms = map(s->GT.num_face_dofs(s,dim),a.spaces)
     #index -> begin
     #    field = index.field_per_dim[dim]
     #    @assert field !== nothing
@@ -698,14 +698,14 @@ function dof_map(a::CartesianProductSpace,dim)
 end
 
 function dof_map(a::CartesianProductSpace,dim,field)
-    strategy = gk.free_values_strategy(a)
+    strategy = GT.free_values_strategy(a)
     f = component(a,field)
     term = dof_map(f,dim,field)
     index -> begin
         dof = term(index)
         prolongate_dof(strategy,dof,field)
     end
-    #terms = map(s->gk.dof_map(s,dim),a.spaces)
+    #terms = map(s->GT.dof_map(s,dim),a.spaces)
     #index -> begin
     #    field = index.field_per_dim[dim]
     #    @assert field !== nothing
@@ -715,9 +715,9 @@ function dof_map(a::CartesianProductSpace,dim,field)
 end
 
 function shape_functions(a::CartesianProductSpace,dim)
-    fields = ntuple(identity,gk.num_fields(a))
+    fields = ntuple(identity,GT.num_fields(a))
     map(fields) do field
-        gk.shape_functions(a,dim,field)
+        GT.shape_functions(a,dim,field)
     end
 end
 
@@ -731,11 +731,11 @@ function dual_basis(a::CartesianProductSpace)
 end
 
 function discrete_field(space,free_values,dirichlet_values)
-    mesh = space |> gk.mesh
+    mesh = space |> GT.mesh
     DiscreteField(mesh,space,free_values,dirichlet_values)
 end
 
-struct DiscreteField{A,B,C,D} <: gk.AbstractQuantity{A}
+struct DiscreteField{A,B,C,D} <: GT.AbstractQuantity{A}
     mesh::A
     space::B
     free_values::C
@@ -771,17 +771,17 @@ end
 # TODO rand_field
 
 function num_fields(u::DiscreteField)
-    num_fields(gk.space(u))
+    num_fields(GT.space(u))
 end
 
 function components(u)
-    ntuple(gk.num_fields(u)) do field
+    ntuple(GT.num_fields(u)) do field
         component(u,field)
     end
 end
 
 function component(u::DiscreteField,field::Integer)
-    space = gk.space(u)
+    space = GT.space(u)
     space_field = component(space,field)
     free_values_field = restrict_values(free_values_strategy(space),free_values(u),field)
     dirichlet_values_field = restrict_values(dirichlet_values_strategy(space),dirichlet_values(u),field)
@@ -801,32 +801,32 @@ function dirichlet_values(x::DiscreteField)
 end
 
 function domain(u::DiscreteField)
-    gk.domain(gk.space(u))
+    GT.domain(GT.space(u))
 end
 
 function prototype(u::DiscreteField)
-    space = gk.space(u)
+    space = GT.space(u)
     dim = 2
-    basis = gk.shape_functions(space,dim)
-    f = gk.prototype(basis)
-    T = eltype(gk.free_values(u))
+    basis = GT.shape_functions(space,dim)
+    f = GT.prototype(basis)
+    T = eltype(GT.free_values(u))
     z = zero(T)
     # TODO use also dirichlet values type?
     x -> f(x)*z + f(x)*z
 end
 
 function term(u::DiscreteField)
-    space = gk.space(u)
-    free_vals = gk.free_values(u)
-    diri_vals = gk.dirichlet_values(u)
+    space = GT.space(u)
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
     dim = 2
-    dof_map = gk.dof_map(space,dim)
-    num_face_dofs = gk.num_face_dofs(space,dim)
-    basis = gk.shape_functions(space,dim)
-    basis_term = gk.term(basis)
+    dof_map = GT.dof_map(space,dim)
+    num_face_dofs = GT.num_face_dofs(space,dim)
+    basis = GT.shape_functions(space,dim)
+    basis_term = GT.term(basis)
     index -> begin
         x -> begin
-            index2 = gk.index(
+            index2 = GT.index(
                               face=index.face,
                               local_face=index.local_face,
                               face_around=index.face_around)
@@ -848,10 +848,10 @@ end
 # in another domain
 # what about coBoundary?
 # Or should we detect the domain of f?
-#gk.interpolate!(uref,v;domain=gk.domain(uref))
-#gk.interpolate!(uref,v;domain_map=)
-#gk.interpolate!(uref,v;domain_glue=)
-#gk.interpolate!(u,v;domain=Ω)
+#GT.interpolate!(uref,v;domain=GT.domain(uref))
+#GT.interpolate!(uref,v;domain_map=)
+#GT.interpolate!(uref,v;domain_glue=)
+#GT.interpolate!(u,v;domain=Ω)
 # We could automatic discover the domain of f
 # but we can ask for an addition kwarg domain
 # to confirm that we want the domain of f
@@ -877,19 +877,19 @@ function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDiric
 end
 
 function interpolate_impl!(f,u,free_or_diri;location=1)
-    free_vals = gk.free_values(u)
-    diri_vals = gk.dirichlet_values(u)
-    space = gk.space(u)
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
+    space = GT.space(u)
     dim = 1
-    sigma = gk.dual_basis(space,dim)
-    dof_map = gk.dof_map(space,dim)
+    sigma = GT.dual_basis(space,dim)
+    dof_map = GT.dof_map(space,dim)
     vals = sigma(f)
-    vals_term = gk.term(vals)
-    domain = gk.domain(space)
-    num_face_dofs = gk.num_face_dofs(space,dim)
-    dirichlet_dof_location = gk.dirichlet_dof_location(space)
-    for face in 1:gk.num_faces(domain)
-        index = gk.index(;face)
+    vals_term = GT.term(vals)
+    domain = GT.domain(space)
+    num_face_dofs = GT.num_face_dofs(space,dim)
+    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+    for face in 1:GT.num_faces(domain)
+        index = GT.index(;face)
         for dof in 1:num_face_dofs(index)
             index2 = replace_dof_per_dim(index,(dof,))
             v = vals_term(index2)
@@ -919,8 +919,8 @@ end
 # TODO think about free_values_strategy and dirichlet_values_strategy
 function iso_parametric_space(dom::ReferenceDomain;
         dirichlet_boundary=nothing,
-        free_values_strategy = gk.monolithic_field_major_strategy,
-        dirichlet_values_strategy = gk.monolithic_field_major_strategy,
+        free_values_strategy = GT.monolithic_field_major_strategy,
+        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
     )
     IsoParametricSpace(dom,dirichlet_boundary,free_values_strategy,dirichlet_values_strategy)
 end
@@ -937,17 +937,17 @@ function free_and_dirichlet_nodes(V::IsoParametricSpace)
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace,dirichlet_boundary::Nothing)
-    n = V |> gk.domain |> gk.mesh |> gk.num_nodes
-    gk.partition_from_mask(fill(true,n))
+    n = V |> GT.domain |> GT.mesh |> GT.num_nodes
+    GT.partition_from_mask(fill(true,n))
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
-    mesh = V |> gk.domain |> gk.mesh
-    n = mesh |> gk.num_nodes
+    mesh = V |> GT.domain |> GT.mesh
+    n = mesh |> GT.num_nodes
     node_to_tag = fill(Int32(0),n)
-    tag_to_name = dirichlet_boundary |> gk.physical_names
-    gk.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-    gk.partition_from_mask(i->i==0,node_to_tag)
+    tag_to_name = dirichlet_boundary |> GT.physical_names
+    GT.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
+    GT.partition_from_mask(i->i==0,node_to_tag)
 end
 
 function free_and_dirichlet_dofs(V::IsoParametricSpace)
@@ -964,18 +964,18 @@ function face_dofs(V::IsoParametricSpace)
 end
 
 function face_dofs(V::IsoParametricSpace,dirichlet_boundary::Nothing)
-    domain = gk.domain(V)
-    d = gk.face_dim(domain)
-    faces = gk.faces(domain)
-    face_nodes(gk.mesh(domain),d)
-    face_to_nodes = view(face_nodes(gk.mesh(domain),d),faces)
+    domain = GT.domain(V)
+    d = GT.face_dim(domain)
+    faces = GT.faces(domain)
+    face_nodes(GT.mesh(domain),d)
+    face_to_nodes = view(face_nodes(GT.mesh(domain),d),faces)
     face_to_nodes
 end
 
 function face_dofs(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
-    face_to_nodes = JaggedArray(gk.face_dofs(V,nothing))
-    free_and_dirichlet_nodes = gk.free_and_dirichlet_nodes(V)
-    node_to_free_node = gk.permutation(free_and_dirichlet_nodes)
+    face_to_nodes = JaggedArray(GT.face_dofs(V,nothing))
+    free_and_dirichlet_nodes = GT.free_and_dirichlet_nodes(V)
+    node_to_free_node = GT.permutation(free_and_dirichlet_nodes)
     n_free = length(first(free_and_dirichlet_nodes))
     function node_to_dof(node)
         free_node = node_to_free_node[node]
@@ -990,17 +990,17 @@ function face_dofs(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
 end
 
 function reference_fes(V::IsoParametricSpace)
-    domain = gk.domain(V)
-    d = gk.face_dim(domain)
+    domain = GT.domain(V)
+    d = GT.face_dim(domain)
     # TODO LagrangianMesh face needs to be a AbstractElement
-    reference_faces(gk.mesh(domain),d)
+    reference_faces(GT.mesh(domain),d)
 end
 
 function face_reference_id(V::IsoParametricSpace)
-    domain = gk.domain(V)
-    faces = gk.faces(domain)
-    d = gk.face_dim(domain)
-    face_refid = face_reference_id(gk.mesh(domain),d)
+    domain = GT.domain(V)
+    faces = GT.faces(domain)
+    d = GT.face_dim(domain)
+    face_refid = face_reference_id(GT.mesh(domain),d)
     view(face_refid,faces)
 end
 
@@ -1022,8 +1022,8 @@ end
 function lagrange_space(domain,order;
     conformity = :default,
     dirichlet_boundary=nothing,
-    free_values_strategy = gk.monolithic_field_major_strategy,
-    dirichlet_values_strategy = gk.monolithic_field_major_strategy,
+    free_values_strategy = GT.monolithic_field_major_strategy,
+    dirichlet_values_strategy = GT.monolithic_field_major_strategy,
     space=nothing,
     major=:component,
     shape=SCALAR_SHAPE)
@@ -1066,25 +1066,25 @@ function dirichlet_boundary(space::LagrangeSpace)
 end
 
 function face_reference_id(space::LagrangeSpace)
-    domain = space |> gk.domain
-    mesh = domain |> gk.mesh
-    cell_to_Dface = domain |> gk.faces
-    D = domain |> gk.num_dims
-    Dface_to_ctype = gk.face_reference_id(mesh,D)
+    domain = space |> GT.domain
+    mesh = domain |> GT.mesh
+    cell_to_Dface = domain |> GT.faces
+    D = domain |> GT.num_dims
+    Dface_to_ctype = GT.face_reference_id(mesh,D)
     cell_to_ctype = Dface_to_ctype[cell_to_Dface]
     cell_to_ctype
 end
 
 function reference_fes(space::LagrangeSpace)
-    domain = space |> gk.domain
-    mesh = domain |> gk.mesh
-    D = domain |> gk.num_dims
+    domain = space |> GT.domain
+    mesh = domain |> GT.mesh
+    D = domain |> GT.num_dims
     order = space.order
     major = space.major
     shape = space.shape
     space3 = space.space # TODO Ugly
-    ctype_to_refface = gk.reference_faces(mesh,D)
-    ctype_to_geometry = map(gk.geometry,ctype_to_refface)
+    ctype_to_refface = GT.reference_faces(mesh,D)
+    ctype_to_geometry = map(GT.geometry,ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
         space2 = space3 === nothing ? default_space(geometry) : space3
         lagrangian_fe(geometry,order;space=space2,major,shape)

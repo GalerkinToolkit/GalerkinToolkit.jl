@@ -3,7 +3,7 @@ This implements a Poisson solver with several methods
 """
 module Poisson
 
-import GalerkinToolkit as gk
+import GalerkinToolkit as GT
 using GalerkinToolkit: ∫
 import PartitionedSolvers as ps
 import ForwardDiff
@@ -29,8 +29,8 @@ gradient(u) = x->ForwardDiff.gradient(u,x)
 jacobian(u) = x->ForwardDiff.jacobian(u,x)
 laplacian(u) = x-> tr(ForwardDiff.jacobian(y->ForwardDiff.gradient(u,y),x))
 
-Δ(u) = gk.call(laplacian,u)
-∇(u) = gk.call(gradient,u)
+Δ(u) = GT.call(laplacian,u)
+∇(u) = GT.call(gradient,u)
 Δ(u,x) = Δ(u)(x)
 ∇(u,x) = ∇(u)(x)
 
@@ -42,17 +42,17 @@ function main_automatic(params)
     results = Dict{Symbol,Any}()
 
     mesh = params[:mesh]
-    D = gk.num_dims(mesh)
-    Ω = gk.interior(mesh,physical_names=params[:domain_tags])
-    Γd = gk.boundary(mesh;physical_names=params[:dirichlet_tags])
-    Γn = gk.boundary(mesh;physical_names=params[:neumann_tags])
+    D = GT.num_dims(mesh)
+    Ω = GT.interior(mesh,physical_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;physical_names=params[:dirichlet_tags])
+    Γn = GT.boundary(mesh;physical_names=params[:neumann_tags])
     integration_degree = params[:integration_degree]
-    dΩ = gk.measure(Ω,integration_degree)
-    dΓn = gk.measure(Γn,integration_degree)
+    dΩ = GT.measure(Ω,integration_degree)
+    dΓn = GT.measure(Γn,integration_degree)
 
-    u = gk.analytical_field(params[:u],Ω)
+    u = GT.analytical_field(params[:u],Ω)
     f(x) = -Δ(u,x)
-    n_Γn = gk.unit_normal(Γn,Ω)
+    n_Γn = GT.unit_normal(Γn,Ω)
     g(x) = n_Γn(x)⋅∇(u,x)
 
     interpolation_degree = params[:interpolation_degree]
@@ -63,31 +63,31 @@ function main_automatic(params)
 
     if params[:discretization_method] !== :continuous_galerkin
         conformity = :L2
-        gk.label_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
-        Λ = gk.skeleton(mesh;physical_names=["__INTERIOR_FACES__"])
-        dΛ = gk.measure(Λ,integration_degree)
-        n_Λ = gk.unit_normal(Λ,Ω)
-        h_Λ = gk.face_diameter_field(Λ)
+        GT.label_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
+        Λ = GT.skeleton(mesh;physical_names=["__INTERIOR_FACES__"])
+        dΛ = GT.measure(Λ,integration_degree)
+        n_Λ = GT.unit_normal(Λ,Ω)
+        h_Λ = GT.face_diameter_field(Λ)
     else
         conformity = :default
     end
 
     if params[:dirichlet_method] === :strong
-        V = gk.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
-        uh = gk.zero_field(Float64,V)
-        gk.interpolate_dirichlet!(u,uh)
+        V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
+        uh = GT.zero_field(Float64,V)
+        GT.interpolate_dirichlet!(u,uh)
     else
-        n_Γd = gk.unit_normal(Γd,Ω)
-        h_Γd = gk.face_diameter_field(Γd)
-        dΓd = gk.measure(Γd,integration_degree)
-        V = gk.lagrange_space(Ω,interpolation_degree;conformity)
-        uh = gk.zero_field(Float64,V)
+        n_Γd = GT.unit_normal(Γd,Ω)
+        h_Γd = GT.face_diameter_field(Γd)
+        dΓd = GT.measure(Γd,integration_degree)
+        V = GT.lagrange_space(Ω,interpolation_degree;conformity)
+        uh = GT.zero_field(Float64,V)
     end
 
     if params[:dirichlet_method] === :multipliers
-        Q = gk.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
         VxQ = V × Q
-        uh_qh = gk.zero_field(Float64,VxQ)
+        uh_qh = GT.zero_field(Float64,VxQ)
         uh, qh = uh_qh
     end
 
@@ -132,7 +132,7 @@ function main_automatic(params)
 
     @timeit timer "assembly" begin
         # TODO give a hint when dirichlet BCS are homogeneous or not present
-        x,A,b = gk.linear_problem(Uh,A,L)
+        x,A,b = GT.linear_problem(Uh,A,L)
     end
 
     @timeit timer "solver" begin
@@ -150,14 +150,14 @@ function main_automatic(params)
     end
 
     @timeit timer "vtk" if params[:export_vtu]
-        gk.vtk_plot(params[:example_path]*"_Ω",Ω;refinement=4) do plt
-            gk.plot!(plt,u;label="u")
-            gk.plot!(plt,f;label="f")
-            gk.plot!(plt,uh;label="uh")
+        GT.vtk_plot(params[:example_path]*"_Ω",Ω;refinement=4) do plt
+            GT.plot!(plt,u;label="u")
+            GT.plot!(plt,f;label="f")
+            GT.plot!(plt,uh;label="uh")
         end
-        gk.vtk_plot(params[:example_path]*"_Γn",Γn;refinement=4) do plt
-            gk.plot!(plt,n_Γn;label="n")
-            gk.plot!(plt,g;label="g")
+        GT.vtk_plot(params[:example_path]*"_Γn",Γn;refinement=4) do plt
+            GT.plot!(plt,n_Γn;label="n")
+            GT.plot!(plt,g;label="g")
         end
     end
 
@@ -193,7 +193,7 @@ function default_params()
     params[:discretization_method] = :continuous_galerkin
     params[:verbose] = true
     params[:timer] = TimerOutput()
-    params[:mesh] = gk.cartesian_mesh((0,1,0,1),(10,10))
+    params[:mesh] = GT.cartesian_mesh((0,1,0,1),(10,10))
     params[:u] = (x) -> sum(x)
     params[:domain_tags] = ["interior"]
     params[:dirichlet_tags] = ["boundary"]

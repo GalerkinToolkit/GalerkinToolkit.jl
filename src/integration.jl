@@ -14,15 +14,15 @@
 
 # Supertype hierarchy
 
-    AbstractQuadrature <: gk.AbstractType
+    AbstractQuadrature <: GT.AbstractType
 """
-abstract type AbstractQuadrature <: gk.AbstractType end
+abstract type AbstractQuadrature <: GT.AbstractType end
 
 struct GenericCuadrature{A,B} <: AbstractQuadrature
     coordinates::A
     weights::B
 end
-struct Cuadrature{D,T} <: gk.AbstractType
+struct Cuadrature{D,T} <: GT.AbstractType
     coordinates::Vector{SVector{D,T}}
     weights::Vector{T}
 end
@@ -147,7 +147,7 @@ function measure(dom::AbstractDomain,degree)
 end
 
 function measure(f,dom::AbstractDomain,degree)
-    mesh = gk.mesh(dom)
+    mesh = GT.mesh(dom)
     Measure(mesh,f,dom,degree)
 end
 
@@ -161,44 +161,44 @@ end
 domain(a::Measure) = a.domain
 function PartitionedArrays.partition(a::Measure{<:PMesh})
     map(partition(a.domain)) do domain
-        gk.measure(a.quadrature_rule,domain,a.degree)
+        GT.measure(a.quadrature_rule,domain,a.degree)
     end
 end
 
 function reference_quadratures(measure::Measure)
-    domain = gk.domain(measure)
-    mesh = gk.mesh(domain)
-    d = gk.face_dim(domain)
-    drefid_refdface = gk.reference_faces(mesh,d)
+    domain = GT.domain(measure)
+    mesh = GT.mesh(domain)
+    d = GT.face_dim(domain)
+    drefid_refdface = GT.reference_faces(mesh,d)
     refid_to_quad = map(drefid_refdface) do refdface
-        geo = gk.geometry(refdface)
+        geo = GT.geometry(refdface)
         measure.quadrature_rule(geo,measure.degree)
     end
     refid_to_quad
 end
 
 function coordinates(measure::Measure)
-    domain = gk.domain(measure)
+    domain = GT.domain(measure)
     coordinates(measure,domain)
 end
 
 function coordinates(measure::Measure{<:PMesh})
-    q = map(gk.coordinates,partition(measure))
-    term = map(gk.term,q)
-    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    q = map(GT.coordinates,partition(measure))
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
     domain = measure.domain
-    gk.quantity(term,prototype,domain)
+    GT.quantity(term,prototype,domain)
 end
 
 function coordinates(measure::Measure,domain::ReferenceDomain)
-    mesh = gk.mesh(domain)
-    d = gk.face_dim(domain)
-    face_to_refid = gk.face_reference_id(mesh,d)
-    domface_to_face = gk.faces(domain)
+    mesh = GT.mesh(domain)
+    d = GT.face_dim(domain)
+    face_to_refid = GT.face_reference_id(mesh,d)
+    domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_coords = map(gk.coordinates,refid_to_quad)
-    prototype = first(gk.coordinates(first(refid_to_quad)))
-    gk.quantity(prototype,domain) do index
+    refid_to_coords = map(GT.coordinates,refid_to_quad)
+    prototype = first(GT.coordinates(first(refid_to_quad)))
+    GT.quantity(prototype,domain) do index
         domface = index.face
         face = domface_to_face[domface]
         refid = face_to_refid[face]
@@ -210,34 +210,34 @@ end
 
 function coordinates(measure::Measure,domain::PhysicalDomain)
     Ω = domain
-    Ωref = gk.reference_domain(Ω)
-    ϕ = gk.domain_map(Ωref,Ω)
-    x = gk.coordinates(measure,Ωref)
+    Ωref = GT.reference_domain(Ω)
+    ϕ = GT.domain_map(Ωref,Ω)
+    x = GT.coordinates(measure,Ωref)
     ϕ(x)
 end
 
 function weights(measure::Measure)
-    domain = gk.domain(measure)
+    domain = GT.domain(measure)
     weights(measure,domain)
 end
 
 function weights(measure::Measure{<:PMesh})
-    q = map(gk.weights,partition(measure))
-    term = map(gk.term,q)
-    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
+    q = map(GT.weights,partition(measure))
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
     domain = measure.domain
-    gk.quantity(term,prototype,domain)
+    GT.quantity(term,prototype,domain)
 end
 
 function weights(measure::Measure,domain::ReferenceDomain)
-    mesh = gk.mesh(domain)
-    d = gk.face_dim(domain)
-    face_to_refid = gk.face_reference_id(mesh,d)
-    domface_to_face = gk.faces(domain)
+    mesh = GT.mesh(domain)
+    d = GT.face_dim(domain)
+    face_to_refid = GT.face_reference_id(mesh,d)
+    domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_w = map(gk.weights,refid_to_quad)
-    prototype = first(gk.weights(first(refid_to_quad)))
-    gk.quantity(prototype,domain) do index
+    refid_to_w = map(GT.weights,refid_to_quad)
+    prototype = first(GT.weights(first(refid_to_quad)))
+    GT.quantity(prototype,domain) do index
         domface = index.face
         face = domface_to_face[domface]
         refid = face_to_refid[face]
@@ -249,24 +249,24 @@ end
 
 function weights(measure::Measure,domain::PhysicalDomain)
     Ω = domain
-    Ωref = gk.reference_domain(Ω)
-    ϕ = gk.domain_map(Ωref,Ω)
-    w = gk.weights(measure,Ωref)
-    x = gk.coordinates(measure,Ωref)
+    Ωref = GT.reference_domain(Ω)
+    ϕ = GT.domain_map(Ωref,Ω)
+    w = GT.weights(measure,Ωref)
+    x = GT.coordinates(measure,Ωref)
     f(J) = sqrt(det(transpose(J)*J))
-    J = gk.call(ForwardDiff.jacobian,ϕ,x)
-    dV = gk.call(f,J)
-    gk.call(*,w,dV)
+    J = GT.call(ForwardDiff.jacobian,ϕ,x)
+    dV = GT.call(f,J)
+    GT.call(*,w,dV)
 end
 
 function num_points(measure::Measure)
-    domain = gk.domain(measure)
-    mesh = gk.mesh(domain)
-    d = gk.face_dim(domain)
-    face_to_refid = gk.face_reference_id(mesh,d)
-    domface_to_face = gk.faces(domain)
+    domain = GT.domain(measure)
+    mesh = GT.mesh(domain)
+    d = GT.face_dim(domain)
+    face_to_refid = GT.face_reference_id(mesh,d)
+    domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_w = map(gk.weights,refid_to_quad)
+    refid_to_w = map(GT.weights,refid_to_quad)
     index -> begin
         domface = index.face
         face = domface_to_face[domface]
@@ -277,8 +277,8 @@ function num_points(measure::Measure)
 end
 
 function integrate(f,measure::Measure)
-    domain = gk.domain(measure)
-    x = gk.coordinates(measure)
+    domain = GT.domain(measure)
+    x = GT.coordinates(measure)
     fx = f(x)
     contrib = integrate_impl(fx,measure)
     integral((domain=>contrib,))
@@ -286,14 +286,14 @@ end
 const ∫ = integrate
 
 function integrate_impl(fx,measure)
-    w = gk.weights(measure)
-    p_fx = gk.prototype(fx)
-    p_w = gk.prototype(w)
-    t_fx = gk.term(fx)
-    t_w = gk.term(w)
+    w = GT.weights(measure)
+    p_fx = GT.prototype(fx)
+    p_w = GT.prototype(w)
+    t_fx = GT.term(fx)
+    t_w = GT.term(w)
     prototype = p_fx*p_w + p_fx*p_w
-    num_points = gk.num_points(measure)
-    contrib = gk.quantity(prototype,gk.domain(measure)) do index
+    num_points = GT.num_points(measure)
+    contrib = GT.quantity(prototype,GT.domain(measure)) do index
         np = num_points(index)
         sum(1:np) do point
             index2 = replace_point(index,point)
@@ -303,13 +303,13 @@ function integrate_impl(fx,measure)
 end
 
 function integrate(f,measure::Measure{<:PMesh})
-    x = gk.coordinates(measure)
+    x = GT.coordinates(measure)
     fx = f(x)
-    q = map(gk.integrate_impl,partition(fx),partition(measure))
-    term = map(gk.term,q)
-    prototype = map(gk.prototype,q) |> PartitionedArrays.getany
-    domain = measure |> gk.domain
-    contrib = gk.quantity(term,prototype,domain)
+    q = map(GT.integrate_impl,partition(fx),partition(measure))
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+    domain = measure |> GT.domain
+    contrib = GT.quantity(term,prototype,domain)
     integral((domain=>contrib,))
 end
 
@@ -333,31 +333,31 @@ function sum_contribution(contrib)
 end
 
 function sum_contribution(domain,qty)
-    nfaces = gk.num_faces(domain)
+    nfaces = GT.num_faces(domain)
     facemask = fill(true,nfaces)
     sum_contribution_impl(qty,facemask)
 end
 
 function sum_contribution(domain::AbstractDomain{<:PMesh},qty::AbstractQuantity{<:PMesh})
-    mesh = domain |> gk.mesh
-    d = gk.num_dims(domain)
+    mesh = domain |> GT.mesh
+    d = GT.num_dims(domain)
     # TODO allow the user to skip or not to skip ghosts
-    map(partition(domain),partition(qty),gk.face_partition(mesh,d)) do mydom,myqty,myfaces
-        facemask = (part_id(myfaces) .== local_to_owner(myfaces))[gk.faces(mydom)]
+    map(partition(domain),partition(qty),GT.face_partition(mesh,d)) do mydom,myqty,myfaces
+        facemask = (part_id(myfaces) .== local_to_owner(myfaces))[GT.faces(mydom)]
         sum_contribution_impl(myqty,facemask)
     end |> sum
 end
 
 function sum_contribution_impl(qty,facemask)
     # TODO some code duplication with face_contribution_impl
-    z = zero(gk.prototype(qty))
+    z = zero(GT.prototype(qty))
     nfaces = length(facemask)
-    term = gk.term(qty)
+    term = GT.term(qty)
     for face in 1:nfaces
         if ! facemask[face]
             continue
         end
-        index = gk.index(;face)
+        index = GT.index(;face)
         z += term(index)
     end
     z
@@ -373,30 +373,30 @@ function face_contribution(int::Integral,domain)
 end
 
 function face_contribution(domain,qty)
-    nfaces = gk.num_faces(domain)
+    nfaces = GT.num_faces(domain)
     facemask = fill(true,nfaces)
     face_contribution_impl(qty,facemask)
 end
 
 function face_contribution_impl(qty,facemask)
-    z = zero(gk.prototype(qty))
+    z = zero(GT.prototype(qty))
     nfaces = length(facemask)
     r = fill(z,nfaces)
-    term = gk.term(qty)
+    term = GT.term(qty)
     for face in 1:nfaces
         if ! facemask[face]
             continue
         end
-        index = gk.index(;face)
+        index = GT.index(;face)
         r[face] = term(index)
     end
     r
 end
 
 function face_diameter(Ω)
-    dΩ = gk.measure(Ω,1)
-    d = gk.num_dims(Ω)
-    u = gk.analytical_field(x->1,Ω)
+    dΩ = GT.measure(Ω,1)
+    d = GT.num_dims(Ω)
+    u = GT.analytical_field(x->1,Ω)
     int = ∫(u,dΩ)
     r = face_contribution(int,Ω)
     r .= r .^ (1/d)
@@ -404,14 +404,14 @@ function face_diameter(Ω)
 end
 
 function face_diameter_field(Ω)
-    dims = gk.face_diameter(Ω)
+    dims = GT.face_diameter(Ω)
     face_constant_field(dims,Ω)
 end
 
 function Base.:+(int1::Integral,int2::Integral)
     # TODO merge contributions on the same domain?
-    contribs = (gk.contributions(int1)...,gk.contributions(int2)...)
-    gk.integral(contribs)
+    contribs = (GT.contributions(int1)...,GT.contributions(int2)...)
+    GT.integral(contribs)
 end
 
 function Base.:-(int1::Integral,int2::Integral)
@@ -419,7 +419,7 @@ function Base.:-(int1::Integral,int2::Integral)
 end
 
 function Base.:*(v::Number,int::Integral)
-    contribs = map(gk.contributions(int)) do domain_and_contribution
+    contribs = map(GT.contributions(int)) do domain_and_contribution
         domain, contribution = domain_and_contribution
         domain => v*contribution
     end

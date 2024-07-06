@@ -1,6 +1,6 @@
 module AssemblyTests
 
-import GalerkinToolkit as gk
+import GalerkinToolkit as GT
 using GalerkinToolkit: ∫, ×
 using Test
 import ForwardDiff
@@ -10,41 +10,41 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
 domain = (0,1,0,1)
 cells = (4,4)
-mesh = gk.cartesian_mesh(domain,cells)
-gk.label_interior_faces!(mesh;physical_name="interior_faces")
-gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+mesh = GT.cartesian_mesh(domain,cells)
+GT.label_interior_faces!(mesh;physical_name="interior_faces")
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.interior(mesh)
-Ωref = gk.interior(mesh;is_reference_domain=true)
-ϕ = gk.domain_map(Ωref,Ω)
+Ω = GT.interior(mesh)
+Ωref = GT.interior(mesh;is_reference_domain=true)
+ϕ = GT.domain_map(Ωref,Ω)
 
-D = gk.num_dims(mesh)
-Γdiri = gk.boundary(mesh;physical_names=["1-face-1","1-face-3"])
+D = GT.num_dims(mesh)
+Γdiri = GT.boundary(mesh;physical_names=["1-face-1","1-face-3"])
 
-Γref = gk.boundary(mesh;
+Γref = GT.boundary(mesh;
                  is_reference_domain=true,
                  physical_names=["1-face-2","1-face-4"])
 
-Γ = gk.physical_domain(Γref)
+Γ = GT.physical_domain(Γref)
 
-V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
 degree = 2
-dΩref = gk.measure(Ωref,degree)
-ϕ = gk.domain_map(Ωref,Ω)
+dΩref = GT.measure(Ωref,degree)
+ϕ = GT.domain_map(Ωref,Ω)
 
-dΓref = gk.measure(Γref,degree)
-α = gk.domain_map(Γref,Γ)
-β = gk.domain_map(Γref,Ωref)
+dΓref = GT.measure(Γref,degree)
+α = GT.domain_map(Γref,Γ)
+β = GT.domain_map(Γref,Ωref)
 
-Λref = gk.skeleton(mesh;
+Λref = GT.skeleton(mesh;
                  is_reference_domain=true,
                  physical_names=["interior_faces"])
 
-Λ = gk.physical_domain(Λref)
-dΛref = gk.measure(Λref,degree)
-ϕ_Λref_Λ = gk.domain_map(Λref,Λ)
-ϕ_Λref_Ωref = gk.domain_map(Λref,Ωref)
+Λ = GT.physical_domain(Λref)
+dΛref = GT.measure(Λref,degree)
+ϕ_Λref_Λ = GT.domain_map(Λref,Λ)
+ϕ_Λref_Ωref = GT.domain_map(Λref,Ωref)
 
 function dV(J)
     abs(det(J))
@@ -73,7 +73,7 @@ function l(v)
     end
 end
 
-b = gk.assemble_vector(l,V)
+b = GT.assemble_vector(l,V)
 
 function l(v)
     ∫(dΛref) do p
@@ -82,7 +82,7 @@ function l(v)
     end
 end
 
-b = gk.assemble_vector(l,V)
+b = GT.assemble_vector(l,V)
 @test sum(b)+1 ≈ 1
 
 V² = V × V
@@ -98,7 +98,7 @@ function l((v1,v2))
     end
 end
 
-b = gk.assemble_vector(l,V²)
+b = GT.assemble_vector(l,V²)
 
 function a(u,v)
     ∫(dΩref) do q
@@ -116,7 +116,7 @@ function a(u,v)
     end
 end
 
-A = gk.assemble_matrix(a,V,V)
+A = GT.assemble_matrix(a,V,V)
 
 function a((u1,u2),(v1,v2))
     ∫(dΩref) do q
@@ -129,7 +129,7 @@ function a((u1,u2),(v1,v2))
     end
 end
 
-A = gk.assemble_matrix(a,V²,V²)
+A = GT.assemble_matrix(a,V²,V²)
 
 function dV(ϕ,q)
     J = ForwardDiff.jacobian(ϕ,q)
@@ -138,14 +138,14 @@ end
 
 a(u,v) = ∫( q->u(q)*v(q)*dV(ϕ,q), dΩref)
 
-f = gk.analytical_field(sum,Ω)
+f = GT.analytical_field(sum,Ω)
 
 l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
-V = gk.iso_parametric_space(Ωref)
-uh = gk.zero_field(Float64,V)
+V = GT.iso_parametric_space(Ωref)
+uh = GT.zero_field(Float64,V)
 
-x,A,b = gk.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uh,a,l)
 x .= A\b
 
 function ∇(u,phi,q)
@@ -157,33 +157,33 @@ end
 a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
 l(v) = 0
 
-x,A,b = gk.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uh,a,l)
 x .= A\b
 
 # Poisson solve (reference domain)
 
 domain = (0,1,0,1)
 cells = (4,4)
-mesh = gk.cartesian_mesh(domain,cells)
-gk.label_boundary_faces!(mesh;physical_name="boundary_faces")
+mesh = GT.cartesian_mesh(domain,cells)
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
-Ω = gk.interior(mesh)
-Ωref = gk.reference_domain(Ω)
-ϕ = gk.domain_map(Ωref,Ω)
+Ω = GT.interior(mesh)
+Ωref = GT.reference_domain(Ω)
+ϕ = GT.domain_map(Ωref,Ω)
 
-D = gk.num_dims(mesh)
-Γdiri = gk.boundary(mesh;physical_names=["boundary_faces"])
+D = GT.num_dims(mesh)
+Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
 
-#V = gk.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+#V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
 order = 3
-V = gk.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
-u = gk.analytical_field(sum,Ω)
-uh = gk.zero_field(Float64,V)
+u = GT.analytical_field(sum,Ω)
+uh = GT.zero_field(Float64,V)
 # TODO
-#gk.interpolate_dirichlet!(q->u(ϕ(q)),uh)
-gk.interpolate_dirichlet!(u∘ϕ,uh)
+#GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
+GT.interpolate_dirichlet!(u∘ϕ,uh)
 
 function ∇(u,q)
    J = ForwardDiff.jacobian(ϕ,q)
@@ -197,12 +197,12 @@ function dV(q)
 end
 
 degree = 2*order
-dΩref = gk.measure(Ωref,degree)
+dΩref = GT.measure(Ωref,degree)
 
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
 l(v) = 0
 
-x,A,b = gk.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uh,a,l)
 x .= A\b
 
 # TODO
@@ -220,19 +220,19 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
 
 # Poisson solve (API in physical domain)
 
-V = gk.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
-uh = gk.zero_field(Float64,V)
-gk.interpolate_dirichlet!(u,uh)
+uh = GT.zero_field(Float64,V)
+GT.interpolate_dirichlet!(u,uh)
 
-dΩ = gk.measure(Ω,degree)
+dΩ = GT.measure(Ω,degree)
 
 ∇(u,q) = ForwardDiff.gradient(u,q)
 
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
 l(v) = 0
 
-x,A,b = gk.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uh,a,l)
 x .= A\b
 
 eh(q) = u(q) - uh(q)
