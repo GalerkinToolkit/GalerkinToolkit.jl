@@ -458,7 +458,7 @@ function tabulator(fe)
 end
 
 """
-    abstract type AbstractFEMesh
+    abstract type AbstractMesh
 
 # Basic queries
 
@@ -473,16 +473,16 @@ end
 
 # Basic constructors
 
-- [`fe_mesh`](@ref)
+- [`mesh_from_arrays`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`mesh_from_chain`](@ref)
 
 """
-abstract type AbstractFEMesh <: gk.AbstractType end
+abstract type AbstractMesh <: gk.AbstractType end
 
 # TODO rename to Mesh
-struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
+struct GenericMesh{A,B,C,D,E,F,G} <: AbstractMesh
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -492,14 +492,13 @@ struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
     outwards_normals::G
 end
 
-# TODO rename to mesh
-function fe_mesh(args...)
-    GenericFEMesh(args...)
+function mesh_from_arrays(args...)
+    GenericMesh(args...)
 end
 
 """
 """
-function fe_mesh(
+function mesh_from_arrays(
     node_coordinates,
     face_nodes,
     face_reference_id,
@@ -508,7 +507,7 @@ function fe_mesh(
     physical_faces = map(i->Dict{String,Vector{eltype(eltype(face_reference_id))}}(),face_reference_id),
     outwards_normals = nothing
     )
-    fe_mesh(
+    gk.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -518,7 +517,7 @@ function fe_mesh(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEMesh) = length(reference_faces(mesh))-1
+num_dims(mesh::AbstractMesh) = length(reference_faces(mesh))-1
 
 const INVALID_ID = 0
 
@@ -727,7 +726,7 @@ function mesh_from_gmsh_module(;complexify=true)
             my_groups[d+1][groupname] = dfaces_in_physical_group
         end
     end
-    mesh = fe_mesh(
+    mesh = gk.mesh_from_arrays(
             my_node_to_coords,
             my_face_nodes,
             my_face_reference_id,
@@ -967,7 +966,7 @@ function boundary(geom::ExtrusionPolytope{1})
     face_reference_id = [Ti[1,1]]
     reference_faces = ([fe],)
     outwards_normals = SVector{1,Tv}[(-1,),(1,)]
-    fe_mesh(
+    gk.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1005,7 +1004,7 @@ function boundary(geom::ExtrusionPolytope{2})
     fe0 = lagrange_mesh_face(g0,order)
     fe1 = lagrange_mesh_face(g1,order)
     reference_faces = ([fe0],[fe1])
-    fe_mesh(
+    gk.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1055,7 +1054,7 @@ function boundary(geom::ExtrusionPolytope{3})
     fe1 = lagrange_mesh_face(g1,order)
     fe2 = lagrange_mesh_face(g2,order)
     reference_faces = ([fe0,],[fe1],[fe2])
-    fe_mesh(
+    gk.mesh_from_arrays(
             node_coordinates,
             face_nodes,
             face_reference_id,
@@ -1117,7 +1116,7 @@ function boundary_from_mesh_face(refface)
         end
         face_nodes_inter[d+1] = face_nodes_inter_d
     end
-    fe_mesh(
+    gk.mesh_from_arrays(
         node_coordinates_inter,
         face_nodes_inter,
         face_ref_id_geom,
@@ -1350,7 +1349,7 @@ end
 
 """
 """
-function topology(mesh::AbstractFEMesh)
+function topology(mesh::AbstractMesh)
     topology_from_mesh(mesh)
 end
 
@@ -1714,7 +1713,7 @@ end
 
 """
 """
-function complexify(mesh::AbstractFEMesh)
+function complexify(mesh::AbstractMesh)
     complexify_mesh(mesh)
 end
 
@@ -1811,7 +1810,7 @@ function complexify_mesh(mesh)
             new_physical_faces[d+1][group_name] = new_group_faces
         end
     end
-    new_mesh = fe_mesh(
+    new_mesh = gk.mesh_from_arrays(
             node_to_coords,
             newface_nodes,
             newface_refid,
@@ -2263,7 +2262,7 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
-function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+function label_interior_faces!(mesh::AbstractMesh;physical_name="interior")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2274,7 +2273,7 @@ function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
     mesh
 end
 
-function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+function label_boundary_faces!(mesh::AbstractMesh;physical_name="boundary")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2286,7 +2285,7 @@ function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
 end
 
 """
-abstract type AbstractFEChain
+abstract type AbstractChain
 
 # Basic queries
 
@@ -2304,9 +2303,9 @@ abstract type AbstractFEChain
 - [`fe_chain`](@ref)
 
 """
-abstract type AbstractFEChain <: gk.AbstractType end
+abstract type AbstractChain <: gk.AbstractType end
 
-struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
+struct GenericChain{A,B,C,D,E,F,G} <: AbstractChain
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -2317,7 +2316,7 @@ struct GenericFEChain{A,B,C,D,E,F,G} <: AbstractFEChain
 end
 
 function fe_chain(args...)
-    GenericFEChain(args...)
+    GenericChain(args...)
 end
 
 """
@@ -2341,9 +2340,9 @@ function fe_chain(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEChain) = num_dims(first(reference_faces(mesh)))
+num_dims(mesh::AbstractChain) = num_dims(first(reference_faces(mesh)))
 
-function fe_mesh(chain::AbstractFEChain)
+function mesh(chain::AbstractChain)
     mesh_from_chain(chain)
 end
 
@@ -2371,7 +2370,7 @@ function mesh_from_chain(chain)
     groups[end] = cell_groups
     pnodes = periodic_nodes(chain)
     onormals = outwards_normals(chain)
-    fe_mesh(
+    gk.mesh_from_arrays(
       node_coords,
       face_to_nodes,
       face_to_refid,
@@ -2701,7 +2700,7 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_faces = push(refid_to_refface,reference_faces(interior_mesh,D))
     mesh_groups = push(groups,physical_faces(interior_mesh,D))
-    fe_mesh(
+    gk.mesh_from_arrays(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -2950,7 +2949,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain))
     mesh_reference_faces = reference_faces(ref_simplex_mesh)
     mesh_groups = push(groups,physical_faces(simplex_chain))
-    fe_mesh(
+    gk.mesh_from_arrays(
      node_coords,
      mesh_face_nodes,
      mesh_face_reference_id,
@@ -2959,7 +2958,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     )
 end
 
-function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
+function visualization_mesh(mesh::AbstractMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
@@ -3246,7 +3245,7 @@ function mesh_from_reference_face(ref_face)
     end
     groups[end-1]["boundary"] = 1:length(face_to_refid[D-1+1])
     groups[end]["interior"] = [1]
-    mesh = fe_mesh(
+    mesh = gk.mesh_from_arrays(
                 node_to_coords,
                 face_to_nodes,
                 face_to_refid,
@@ -3285,7 +3284,7 @@ function Base.getindex(a::TwoWayPartition,i::Int)
     end
 end
 
-function restrict(mesh::AbstractFEMesh,args...)
+function restrict(mesh::AbstractMesh,args...)
     restrict_mesh(mesh,args...)
 end
 
@@ -3321,7 +3320,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         lnormals = nothing
     end
 
-    lmesh = fe_mesh(
+    lmesh = gk.mesh_from_arrays(
         lnode_to_coords,
         lface_to_lnodes_mesh,
         lface_to_refid_mesh,
@@ -3369,7 +3368,7 @@ function partition_strategy(;
 
 end
 
-function mesh_graph(mesh::AbstractFEMesh;
+function mesh_graph(mesh::AbstractMesh;
     partition_strategy=GalerkinToolkit.partition_strategy())
     graph_nodes = partition_strategy.graph_nodes
     graph_edges = partition_strategy.graph_edges

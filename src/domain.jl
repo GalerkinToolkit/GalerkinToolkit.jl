@@ -26,7 +26,7 @@ function skeleton(mesh;
     domain(mesh;face_dim=D-1,face_around=nothing,mesh_id,physical_names,is_reference_domain)
 end
 
-function boundary(mesh::Union{AbstractFEMesh,PMesh};
+function boundary(mesh::Union{AbstractMesh,PMesh};
     face_around=1,
     mesh_id = objectid(mesh),
     physical_names=gk.physical_names(mesh,num_dims(mesh)-1),
