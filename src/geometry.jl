@@ -458,7 +458,7 @@ function tabulator(fe)
 end
 
 """
-    abstract type AbstractFEMesh
+    abstract type AbstractMesh
 
 # Basic queries
 
@@ -479,10 +479,10 @@ end
 - [`mesh_from_chain`](@ref)
 
 """
-abstract type AbstractFEMesh <: gk.AbstractType end
+abstract type AbstractMesh <: gk.AbstractType end
 
 # TODO rename to Mesh
-struct GenericFEMesh{A,B,C,D,E,F,G} <: AbstractFEMesh
+struct GenericMesh{A,B,C,D,E,F,G} <: AbstractMesh
     node_coordinates::A
     face_nodes::B
     face_reference_id::C
@@ -494,7 +494,7 @@ end
 
 # TODO rename to mesh
 function fe_mesh(args...)
-    GenericFEMesh(args...)
+    GenericMesh(args...)
 end
 
 """
@@ -518,7 +518,7 @@ function fe_mesh(
             outwards_normals)
 end
 
-num_dims(mesh::AbstractFEMesh) = length(reference_faces(mesh))-1
+num_dims(mesh::AbstractMesh) = length(reference_faces(mesh))-1
 
 const INVALID_ID = 0
 
@@ -1350,7 +1350,7 @@ end
 
 """
 """
-function topology(mesh::AbstractFEMesh)
+function topology(mesh::AbstractMesh)
     topology_from_mesh(mesh)
 end
 
@@ -1714,7 +1714,7 @@ end
 
 """
 """
-function complexify(mesh::AbstractFEMesh)
+function complexify(mesh::AbstractMesh)
     complexify_mesh(mesh)
 end
 
@@ -2263,7 +2263,7 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
-function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
+function label_interior_faces!(mesh::AbstractMesh;physical_name="interior")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2274,7 +2274,7 @@ function label_interior_faces!(mesh::AbstractFEMesh;physical_name="interior")
     mesh
 end
 
-function label_boundary_faces!(mesh::AbstractFEMesh;physical_name="boundary")
+function label_boundary_faces!(mesh::AbstractMesh;physical_name="boundary")
     D = num_dims(mesh)
     d = D-1
     topo = topology(mesh)
@@ -2959,7 +2959,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     )
 end
 
-function visualization_mesh(mesh::AbstractFEMesh,args...;kwargs...)
+function visualization_mesh(mesh::AbstractMesh,args...;kwargs...)
     visualization_mesh_from_mesh(mesh,args...;kwargs...)
 end
 
@@ -3285,7 +3285,7 @@ function Base.getindex(a::TwoWayPartition,i::Int)
     end
 end
 
-function restrict(mesh::AbstractFEMesh,args...)
+function restrict(mesh::AbstractMesh,args...)
     restrict_mesh(mesh,args...)
 end
 
@@ -3369,7 +3369,7 @@ function partition_strategy(;
 
 end
 
-function mesh_graph(mesh::AbstractFEMesh;
+function mesh_graph(mesh::AbstractMesh;
     partition_strategy=GalerkinToolkit.partition_strategy())
     graph_nodes = partition_strategy.graph_nodes
     graph_edges = partition_strategy.graph_edges
