@@ -1,13 +1,76 @@
 
+#macro term(expr)
+#    transform(a) = a # :($(Expr(:quote,a)))
+#    function transform(expr::Expr)
+#        if  expr.head === :call
+#            transform_call(expr)
+#        elseif  expr.head === :ref
+#            transform_ref(expr)
+#        else
+#            transform_default(expr)
+#        end
+#    end
+#    function transform_call(expr::Expr)
+#        args = map(transform,expr.args)
+#        quote
+#            Expr(:call,$(args...))
+#        end
+#    end
+#    function transform_ref(expr::Expr)
+#        args = map(transform,expr.args)
+#        quote
+#            Expr(:ref,$(args...))
+#        end
+#    end
+#    function transform_default(expr::Expr)
+#        head = expr.head
+#        args = map(transform,expr.args)
+#        Expr(head,args...)
+#    end
+#    transform(expr) |> esc
+#end
+
 macro term(expr)
-    transform(a) = a # :($(Expr(:quote,a)))
+    vars = Set{Symbol}()
+    function findvars!(a)
+        nothing
+    end
+    function findvars!(expr::Expr)
+        if  expr.head === :(=)
+            var = expr.args[1]
+            push!(vars,var)
+        else
+            map(findvars!,expr.args)
+        end
+        nothing
+    end
+    transform(a) = a
+    function transform(a::Symbol)
+        if a in vars
+            a
+        else
+            :($(Expr(:quote,a)))
+        end
+    end
     function transform(expr::Expr)
         if  expr.head === :call
             transform_call(expr)
         elseif  expr.head === :ref
             transform_ref(expr)
-        else
+        elseif  expr.head === :$
+            transform_interpolation(expr)
+        elseif  expr.head === :(=)
             transform_default(expr)
+        elseif  expr.head === :(->)
+            transform_lambda(expr)
+        elseif  expr.head === :do
+            transform_do(expr)
+        elseif  expr.head === :block
+            transform_default(expr)
+        elseif  expr.head === :tuple
+            transform_tuple(expr)
+        else
+            error("Expr with head=$(expr.head) not supported in macro @term")
         end
     end
     function transform_call(expr::Expr)
@@ -22,11 +85,31 @@ macro term(expr)
             Expr(:ref,$(args...))
         end
     end
+    function transform_lambda(expr::Expr)
+        args = map(transform,expr.args)
+        quote
+            Expr(:(->),$(args...))
+        end
+    end
+    function transform_do(expr::Expr)
+        expr2 = Expr(:call,expr.args[1].args[1],expr.args[2],expr.args[1].args[2])
+        transform(expr2)
+    end
+    function transform_interpolation(expr::Expr)
+        expr.args[1]
+    end
+    function transform_tuple(expr::Expr)
+        args = map(transform,expr.args)
+        quote
+            Expr(:tuple,$(args...))
+        end
+    end
     function transform_default(expr::Expr)
         head = expr.head
         args = map(transform,expr.args)
         Expr(head,args...)
     end
+    findvars!(expr)
     transform(expr) |> esc
 end
 
