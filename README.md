@@ -47,28 +47,28 @@ Discuss with the package authors before working on any non-trivial contribution.
 The following code solves a Laplace PDE with Dirichlet boundary conditions.
 
 ```julia
-import GalerkinToolkit as gk
+import GalerkinToolkit as GT
 import ForwardDiff
 using LinearAlgebra
-mesh = gk.mesh_from_gmsh("assets/demo.msh")
-gk.label_boundary_faces!(mesh;physical_name="boundary")
-Ω = gk.interior(mesh)
-Γd = gk.boundary(mesh;physical_names=["boundary"])
+mesh = GT.mesh_from_gmsh("assets/demo.msh")
+GT.label_boundary_faces!(mesh;physical_name="boundary")
+Ω = GT.interior(mesh)
+Γd = GT.boundary(mesh;physical_names=["boundary"])
 k = 2
-V = gk.lagrange_space(Ω,k;dirichlet_boundary=Γd)
-uh = gk.zero_field(Float64,V)
-u = gk.analytical_field(sum,Ω)
-gk.interpolate_dirichlet!(u,uh)
-dΩ = gk.measure(Ω,2*k)
+V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
+uh = GT.zero_field(Float64,V)
+u = GT.analytical_field(sum,Ω)
+GT.interpolate_dirichlet!(u,uh)
+dΩ = GT.measure(Ω,2*k)
 gradient(u) = x->ForwardDiff.gradient(u,x)
-∇(u,x) = gk.call(gradient,u)(x)
-a(u,v) = gk.∫( x->∇(u,x)⋅∇(v,x), dΩ)
+∇(u,x) = GT.call(gradient,u)(x)
+a(u,v) = GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
 l(v) = 0
-x,A,b = gk.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uh,a,l)
 x .= A\b
-gk.vtk_plot("results",Ω) do plt
-    gk.plot!(plt,u;label="u")
-    gk.plot!(plt,uh;label="uh")
+GT.vtk_plot("results",Ω) do plt
+    GT.plot!(plt,u;label="u")
+    GT.plot!(plt,uh;label="uh")
 end
 ```
 
@@ -78,33 +78,33 @@ This code solves the same boundary value problem, but using an auxiliary field o
 multipliers to impose Dirichlet boundary conditions.
 
 ```julia
-import GalerkinToolkit as gk
+import GalerkinToolkit as GT
 import ForwardDiff
 using LinearAlgebra
-mesh = gk.mesh_from_gmsh("assets/demo.msh")
-gk.label_boundary_faces!(mesh;physical_name="boundary")
-Ω = gk.interior(mesh)
-Γd = gk.boundary(mesh;physical_names=["boundary"])
+mesh = GT.mesh_from_gmsh("assets/demo.msh")
+GT.label_boundary_faces!(mesh;physical_name="boundary")
+Ω = GT.interior(mesh)
+Γd = GT.boundary(mesh;physical_names=["boundary"])
 k = 2
-V = gk.lagrange_space(Ω,k)
-Q = gk.lagrange_space(Γd,k-1; conformity=:L2)
+V = GT.lagrange_space(Ω,k)
+Q = GT.lagrange_space(Γd,k-1; conformity=:L2)
 VxQ = V × Q
-dΓd = gk.measure(Γd,2*k)
+dΓd = GT.measure(Γd,2*k)
 gradient(u) = x->ForwardDiff.gradient(u,x)
-∇(u,x) = gk.call(gradient,u)(x)
+∇(u,x) = GT.call(gradient,u)(x)
 a((u,p),(v,q)) =
-    gk.∫( x->∇(u,x)⋅∇(v,x), dΩ) +
-    gk.∫(x->
+    GT.∫( x->∇(u,x)⋅∇(v,x), dΩ) +
+    GT.∫(x->
         (u(x)+p(x))*(v(x)+q(x))
         -u(x)*v(x)-p(x)*q(x), dΓd)
-l((v,q)) = gk.∫(x->u(x)*q(x), dΓd)
-uh_qh = gk.zero_field(Float64,VxQ)
-x,A,b = gk.linear_problem(uh_qh,a,l)
+l((v,q)) = GT.∫(x->u(x)*q(x), dΓd)
+uh_qh = GT.zero_field(Float64,VxQ)
+x,A,b = GT.linear_problem(uh_qh,a,l)
 x .= A\b
 uh,qh = uh_qh
-gk.vtk_plot("results",Ω) do plt
-    gk.plot!(plt,u;label="u")
-    gk.plot!(plt,uh;label="uh")
+GT.vtk_plot("results",Ω) do plt
+    GT.plot!(plt,u;label="u")
+    GT.plot!(plt,uh;label="uh")
 end
 ```
 
