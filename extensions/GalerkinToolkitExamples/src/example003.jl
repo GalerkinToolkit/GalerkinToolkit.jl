@@ -37,7 +37,7 @@ function main(params_in)
     integrate_error_norms(results,uh,state)
     export_results(uh,params,state)
 
-    results, x
+    results
 end
 
 function add_default_params(params_in,params_default)
@@ -69,6 +69,7 @@ function default_params()
     params[:autodiff] = :hand
     params[:jacobian_implementation] = :original
     params[:float_type] = Dict(:Float => Float64, :Int => Int32)
+    params[:threads_in_block] = 32
     timer = Dict("Initial_setup" => [],
                  "Jacobian" => [],
                  "Jacobian_transfer" => []
