@@ -46,15 +46,24 @@ version = "1.1.1"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra", "SparseArrays", "SuiteSparse"]
+<<<<<<< HEAD
 git-tree-sha1 = "133a240faec6e074e07c31ee75619c90544179cf"
 uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
 version = "7.10.0"
+=======
+git-tree-sha1 = "44691067188f6bd1b2289552a23e4b7572f4528d"
+uuid = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
+version = "7.9.0"
+>>>>>>> 5d6d37720381283404c91f5065a6736a17765a24
 
     [deps.ArrayInterface.extensions]
     ArrayInterfaceBandedMatricesExt = "BandedMatrices"
     ArrayInterfaceBlockBandedMatricesExt = "BlockBandedMatrices"
     ArrayInterfaceCUDAExt = "CUDA"
+<<<<<<< HEAD
     ArrayInterfaceCUDSSExt = "CUDSS"
+=======
+>>>>>>> 5d6d37720381283404c91f5065a6736a17765a24
     ArrayInterfaceChainRulesExt = "ChainRules"
     ArrayInterfaceGPUArraysCoreExt = "GPUArraysCore"
     ArrayInterfaceReverseDiffExt = "ReverseDiff"
@@ -65,7 +74,10 @@ version = "7.10.0"
     BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
     BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
     CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+<<<<<<< HEAD
     CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
+=======
+>>>>>>> 5d6d37720381283404c91f5065a6736a17765a24
     ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
     GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
     ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
@@ -97,9 +109,15 @@ version = "0.5.0"
 
 [[deps.CUDA]]
 deps = ["AbstractFFTs", "Adapt", "BFloat16s", "CEnum", "CUDA_Driver_jll", "CUDA_Runtime_Discovery", "CUDA_Runtime_jll", "Crayons", "DataFrames", "ExprTools", "GPUArrays", "GPUCompiler", "KernelAbstractions", "LLVM", "LLVMLoopInfo", "LazyArtifacts", "Libdl", "LinearAlgebra", "Logging", "NVTX", "Preferences", "PrettyTables", "Printf", "Random", "Random123", "RandomNumbers", "Reexport", "Requires", "SparseArrays", "StaticArrays", "Statistics"]
+<<<<<<< HEAD
 git-tree-sha1 = "dd1c682b372b6791b69f6823afe364fc92a0146c"
 uuid = "052768ef-5323-5732-b1bb-66c8b64840ba"
 version = "5.3.1"
+=======
+git-tree-sha1 = "3dcab8a2c18ca319ea15a41d90e9528b8e93894a"
+uuid = "052768ef-5323-5732-b1bb-66c8b64840ba"
+version = "5.3.0"
+>>>>>>> 5d6d37720381283404c91f5065a6736a17765a24
 
     [deps.CUDA.extensions]
     ChainRulesCoreExt = "ChainRulesCore"
@@ -290,9 +308,23 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
 [[deps.FillArrays]]
 deps = ["LinearAlgebra"]
+<<<<<<< HEAD
 git-tree-sha1 = "881275fc6b8c6f0dfb9cfa4a878979a33cb26be3"
+=======
+git-tree-sha1 = "bfe82a708416cf00b73a3198db0859c82f741558"
+>>>>>>> 5d6d37720381283404c91f5065a6736a17765a24
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
 version = "1.10.1"
+
+    [deps.FillArrays.extensions]
+    FillArraysPDMatsExt = "PDMats"
+    FillArraysSparseArraysExt = "SparseArrays"
+    FillArraysStatisticsExt = "Statistics"
+
+    [deps.FillArrays.weakdeps]
+    PDMats = "90014a1f-27ba-587c-ab20-58faa44d9150"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
     [deps.FillArrays.extensions]
     FillArraysPDMatsExt = "PDMats"
@@ -360,7 +392,7 @@ version = "0.26.4"
 
 [[deps.GalerkinToolkit]]
 deps = ["Combinatorics", "FastGaussQuadrature", "ForwardDiff", "IterativeSolvers", "LinearAlgebra", "MPI", "Metis", "PartitionedArrays", "SparseArrays", "StaticArrays", "WriteVTK"]
-path = "/Users/andu/Downloads/Thesis_Material/GalerkinToolkit.jl"
+path = "/home/aanderse/GalerkinToolkit.jl"
 uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
 version = "0.1.0"
 

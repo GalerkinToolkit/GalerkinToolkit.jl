@@ -471,7 +471,7 @@ function nonlinear_problem(state)
     (;initial,linearize,residual!,jacobian!)
 end
 
-function gpu_kernel_register_usage(params_in)
+function gpu_kernel_register_usage(params_in, register_list)
     params_default = default_params()
     params = add_default_params(params_in,params_default)
     results = Dict{Symbol,Any}()
@@ -481,16 +481,19 @@ function gpu_kernel_register_usage(params_in)
     x = problem.initial()
     r,J,V,K = assemble_sybmolic(state, params)
     V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,nl_d,nq_d,p_d = state.gpu_pointers
+    dflux = state.dflux
+    max_reg = attribute(CuDevice(0),CUDA.DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK) # max registers per block
 
     # Then check for each kernel the register usage.
     kernel_v1=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
     kernel_v2=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
     kernel_v3=@cuda launch=false assemble_v3(V_coo_d,nq_d,nl_d,Jt_d,xe_d,∇ste_d,w_d,∇u_d,ue_d,dflux,p_d,ncells_d)
     
-    registers = Dict("gpu_v1"=>CUDA.registers(kernel_v1), 
-                     "gpu_v2"=>CUDA.registers(kernel_v2),
-                     "gpu_v3"=>CUDA.registers(kernel_v3))
-    registers
+    register_list_new = [Dict("max_threads" => max_reg/CUDA.registers(kernel_v1),"Autodiff" => params[:autodiff],"Jacobian" => :gpu_v1,"float_type" => params[:float_type]),
+                         Dict("max_threads" => max_reg/CUDA.registers(kernel_v2),"Autodiff" => params[:autodiff],"Jacobian" => :gpu_v2,"float_type" => params[:float_type]),
+                         Dict("max_threads" => max_reg/CUDA.registers(kernel_v3),"Autodiff" => params[:autodiff],"Jacobian" => :gpu_v3,"float_type" => params[:float_type])]
+
+    append!(register_list, register_list_new)
 end
 
 function assemble_sybmolic(state,params)
