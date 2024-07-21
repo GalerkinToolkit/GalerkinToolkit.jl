@@ -748,8 +748,6 @@ end
 
 @inline function kernel_∇ue_tiled!(V_coo, idx, cell, i, j, nq, nl, Jt, ∇ste, we, ∇u, ue, dflux, p)
     # In this kernel you have ncells * nl^2 threads
-    # Use here the double modulus counter to get a loop over Jt and we for each cell and iq. Can you assume that nl^2 > nq?
-    # First define the data structures in local and shared memory
     #TJt = CuStaticSharedArray(typeof(Jt[1,1]), 1024)
     Twe = CuStaticSharedArray(Float32, 1024)
     Tue = CuStaticSharedArray(Float32, 1024)
@@ -758,7 +756,7 @@ end
     node_index = (cell - 1) * nl + i
     # Then collectively load it into shared memory
     #TJt[tid] = Jt[cell, i] # load the i-th (or iq-th) value.
-    Twe[tid] = we[(tid-1)%nq+1] # change this to the double modulus counter. Then you don't need to assume nq == nl
+    Twe[tid] = we[(tid-1)%nq+1]
     Tue[tid] = ue[node_index]
     sync_threads()
 
@@ -786,16 +784,10 @@ end
     V_coo[i_coo] = V_coo_local
 end
 
-# Maybe the logic should be to get xe + ue, then loop through the iq in parallel. Then the last loop is nl*nq.
-# In this case you have ncells * nl threads that are launched. In this version the ∇ste will never be a 
-# problem because threads in a block is approx. 1024 while ∇ste << 1024. 
-# So there are two parts to this -> loading values which is according to nl and computing
-# which is done according to nq.
+
 @inline function kernel_tiled!(V_coo, tid, nq, nl, Jt, xe, ∇ste, we, ∇u, ue, dflux, p, ncells)
     # variables to load into shared memory: Jt, ∇u, ∇ste, xe, we, ue.
-    # Think about this as how many values does each thread store (max 12 for 1024 threads per block).
     # Specify the shared memory per threadblock.
-    # Assume (for now) nq == nl and that d = 2.
     # So the gain comes from not having to recompute invJt etc. for all iq points.
     # Note here that each shmem array should be 32 or a multiple of it (related to warp execution).
     max_threads = 1024 # This one is then defined outside the kernel as a constant. 
@@ -805,7 +797,6 @@ end
     T∇u = CuStaticSharedArray(Float32, (2,max_threads))
     T∇dux = CuStaticSharedArray(Float32, (2,max_threads))
     TdV = CuStaticSharedArray(Float32, max_threads)
-    # Maybe use static arrays here. 
     # identify your position in nl block, nq and cell. tid is the grid value.
     cell = Int((ceil(tid/nl^2)-1) % ncells)+1 
     j = Int(((ceil(tid/nl)-1) % nl)+1) # Column 
@@ -814,10 +805,7 @@ end
     node_index = (cell - 1) * nl + i # Here you get node to use in ue/xe
     xe_col = tid % 2 + 1 # Can be used for th xe to alternatve columns of which value to store.     
 
-    # here until row 638 is done for each iq in nq (NOTE THIS!)
-    # Load the variables into shared memory from global memory
     TV_coo = 0 # auxiliary for each thread
-    # If you want the vector inside xe next to each other then use div(tid + 1, 2)
     Txe[:,tid] = xe[node_index][:] # use global id to load into local id - so which i,j to operate from.
     Tue[tid] = ue[node_index]
     T∇ste[tid,:] = ∇ste[j,iq][:] # This works but very complicated.
@@ -845,8 +833,7 @@ end
 
     T∇u[:,tid] = ∇u # per iq and per cell. Maybe a cyclic one here as well. 
     TdV[tid] = abs(detJt)*we[iq] # This one is per iq. So pick first value in cell and loop nq times.
-    # If you precompute this then you need to store nq x nl values.
-    ∇dux = invJt * T∇ste[(k-1) * nl + iq,:] # To keep the order stable. 1 1 1 2 2 2 for nl and 1 2 3 1 2 3 for iq.
+    ∇dux = invJt * T∇ste[(k-1) * nl + iq,:] 
     T∇dux[:,tid] = ∇dux # Precompute these into shared instead of storing invJt matrices.
     sync_threads() # sync so that all data is computed before adding to global memory.
 
@@ -1071,7 +1058,7 @@ function jacobian_cells_gpu!(V_coo,u_dofs,state)
         CUDA.@sync @cuda threads=threads blocks=blocks assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,
                                         ncells_d,p_d,dflux,nl_d,nq_d)
     elseif jacobian == :gpu_v2 # coalesced
-        # ckernel=@cuda launch=false assemble_cell_gpu_coalesced(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
+        # ckernel=@cuda launch=false assemble_cell_gpu(V_coo_d,∇ste_d,w_d,xe_d,ue_d,Jt_d,∇u_d,ncells_d,p_d,dflux,nl_d,nq_d)
         # config = launch_configuration(ckernel.fun)
         # threads = min(ncells, config.threads)
         blocks =  cld(ncells, threads)
