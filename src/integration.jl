@@ -350,7 +350,7 @@ function sum_contribution(measure,qty)
     sum_contribution_impl(qty,measure,facemask)
 end
 
-function sum_contribution(measure::AbstractDomain{<:PMesh},qty::AbstractQuantity{<:PMesh})
+function sum_contribution(measure::Measure{<:PMesh},qty::AbstractQuantity{<:PMesh})
     domain = GT.domain(measure)
     mesh = domain |> GT.mesh
     d = GT.num_dims(domain)
@@ -403,33 +403,62 @@ function sum_contribution_impl(qty,measure,facemask)
 end
 
 function face_contribution(int::Integral,domain)
-    for (domain2,qty) in int.contributions
+    for (measure,qty) in int.contributions
+        domain2 = GT.domain(measure)
         if domain2 == domain
-            return face_contribution(domain2,qty)
+            return face_contribution(measure,qty)
         end
     end
     error("Domain not in integral")
 end
 
-function face_contribution(domain,qty)
+function face_contribution(measure,qty)
+    domain = GT.domain(measure)
     nfaces = GT.num_faces(domain)
     facemask = fill(true,nfaces)
-    face_contribution_impl(qty,facemask)
+    face_contribution_impl(qty,measure,facemask)
 end
 
-function face_contribution_impl(qty,facemask)
+function face_contribution_impl(qty,measure,facemask)
+    term_qty = GT.term(qty)
+    term_npoints = GT.num_points(measure)
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    expr_qty = term_qty(index) |> simplify
+    expr_npoints = term_npoints(index) |> simplify
+    # TODO merge statements
+    s_qty = GT.topological_sort(expr_qty,(face,point))
+    s_npoints = GT.topological_sort(expr_npoints,(face,))
+    expr = quote
+        function loop!(facevals,facemask,storage)
+            $(unpack_storage(index.dict,:storage))
+            $(s_qty[1])
+            $(s_npoints[1])
+            nfaces = length(facemask)
+            z = zero(eltype(facevals))
+            for $face in 1:nfaces
+                if ! facemask[$face]
+                    continue
+                end
+                $(s_qty[2])
+                npoints = $(s_npoints[2])
+                s = z
+                for $point in 1:npoints
+                    s += $(s_qty[3])
+                end
+                facevals[$face] = s
+            end
+            facevals
+        end
+    end
+    loop! = eval(expr)
+    storage = GT.storage(index)
     z = zero(GT.prototype(qty))
     nfaces = length(facemask)
-    r = fill(z,nfaces)
-    term = GT.term(qty)
-    for face in 1:nfaces
-        if ! facemask[face]
-            continue
-        end
-        index = GT.index(;face)
-        r[face] = term(index)
-    end
-    r
+    facevals = fill(z,nfaces)
+    invokelatest(loop!,facevals,facemask,storage)
+    facevals
 end
 
 function face_diameter(Ω)
