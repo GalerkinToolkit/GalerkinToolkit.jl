@@ -650,6 +650,7 @@ end
 #    end
 #end
 
+# TODO a better name
 function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
     fs = reference_value(rid_to_fs,face_to_rid,face)
     dofs = face_to_dofs[face]
