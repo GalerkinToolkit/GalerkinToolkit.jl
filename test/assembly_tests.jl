@@ -100,8 +100,6 @@ end
 
 b = GT.assemble_vector(l,V²,Float64)
 
-xxxx
-
 function a(u,v)
     ∫(dΩref) do q
         J = ForwardDiff.jacobian(ϕ,q)
@@ -118,7 +116,7 @@ function a(u,v)
     end
 end
 
-A = GT.assemble_matrix(a,V,V)
+A = GT.assemble_matrix(a,V,V,Float64)
 
 function a((u1,u2),(v1,v2))
     ∫(dΩref) do q
@@ -131,7 +129,7 @@ function a((u1,u2),(v1,v2))
     end
 end
 
-A = GT.assemble_matrix(a,V²,V²)
+A = GT.assemble_matrix(a,V²,V²,Float64)
 
 function dV(ϕ,q)
     J = ForwardDiff.jacobian(ϕ,q)
@@ -160,6 +158,7 @@ a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
 l(v) = 0
 
 x,A,b = GT.linear_problem(uh,a,l)
+display(A)
 x .= A\b
 
 # Poisson solve (reference domain)

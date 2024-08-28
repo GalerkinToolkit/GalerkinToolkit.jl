@@ -49,6 +49,64 @@ function monolithic_vector_assembly_strategy()
     (;init,scalar_type,counter,count,allocate,set!,compress,compress!)
 end
 
+function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
+    function init(dofs_test,dofs_trial,::Type{T}) where T
+        n_total_rows = length(dofs_test)
+        n_total_cols = length(dofs_trial)
+        offsets_rows = [0]
+        offsets_cols = [0]
+        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T)
+    end
+    function init(dofs_test::BRange,dofs_trial,::Type{T}) where T
+        n_total_rows = length(dofs_test)
+        n_total_cols = length(dofs_trial)
+        offsets_rows = blocklasts(dofs_test) .- map(length,blocks(dofs_test))
+        offsets_cols = blocklasts(dofs_trial) .- map(length,blocks(dofs_trial))
+        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T)
+    end
+    function scalar_type(setup)
+        setup.T
+    end
+    function counter(setup)
+        0
+    end
+    function count(n,setup,i,j,field_i,field_j)
+        n+1
+    end
+    function allocate(n,setup)
+        Ti = Int32
+        T = setup.T
+        I = zeros(Ti,n)
+        J = zeros(Ti,n)
+        V = zeros(T,n)
+        (;I,J,V)
+    end
+    function set!(alloc,n,setup,v,i,j,field_i,field_j)
+        n += 1
+        alloc.I[n] = i+setup.offsets_rows[field_i]
+        alloc.J[n] = j+setup.offsets_cols[field_j]
+        alloc.V[n] = v
+        n
+    end
+    function compress(alloc,setup)
+        I = alloc.I
+        J = alloc.J
+        V = alloc.V
+        n_total_rows = setup.n_total_rows
+        n_total_cols = setup.n_total_cols
+        T = setup.T
+        M = matrix_type === nothing ? SparseMatrixCSC{T,Int} : matrix_type
+        A,cache = sparse_matrix(M,I,J,V,n_total_rows,n_total_cols;reuse=Val(true))
+        (A, cache)
+    end
+    function compress!(A,cache,alloc,setup)
+        V = alloc.V
+        sparse_matrix!(A,V,cache)
+        A
+    end
+    (;init,scalar_type,counter,count,allocate,set!,compress,compress!)
+end
+
 function assemble_vector(f,space,::Type{T};kwargs...) where T
     dim = 1
     dv = GT.shape_functions(space,dim)
@@ -65,7 +123,7 @@ function assemble_vector(integral::Number,space,::Type{T};
     setup = vector_strategy.init(free_dofs,T)
     counter = vector_strategy.counter(setup)
     alloc = vector_strategy.allocate(counter,setup)
-    vec,cache = vector_strategy.compress(alloc,counter,setup)
+    vec,cache = vector_strategy.compress(alloc,setup)
     if val_parameter(reuse) == false
         vec
     else
@@ -162,7 +220,7 @@ function assemble_vector_fill(state)
         s_npoints = GT.topological_sort(expr_npoints,(sface,))
         expr = quote
             function loop!(counter,args,storage)
-                (;sface_to_faces,sface_to_faces_around,face_to_dofs,vector_strategy,alloc,setup) = args
+                (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup) = args
                 $(unpack_storage(index.dict,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
@@ -184,7 +242,7 @@ function assemble_vector_fill(state)
                                 v += $(s_qty[5])
                             end
                             dof = dofs[$idof]
-                            counter = vector_strategy.set!(alloc,counter,setup,v,dof,$field)
+                            counter = vector_strategy.set!(alloc,counter,setup,v,dof,field)
                         end
                     end
                 end
@@ -192,7 +250,7 @@ function assemble_vector_fill(state)
             end
         end
         loop! = eval(expr)
-        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,vector_strategy,alloc,setup)
+        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup)
         storage = GT.storage(index)
         counter = invokelatest(loop!,counter,args,storage)
         nothing
@@ -212,17 +270,21 @@ function assemble_vector_compress(state)
     vec, (cache,alloc,setup,vector_strategy)
 end
 
-function assemble_matrix(f,trial_space,test_space;kwargs...)
+function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
     test_dim = 1
     trial_dim = 2
     dv = GT.shape_functions(test_space,test_dim)
     du = GT.shape_functions(trial_space,trial_dim)
     integral = f(du,dv)
-    assemble_matrix(integral,trial_space,test_space;kwargs...)
+    assemble_matrix(integral,trial_space,test_space,T;kwargs...)
 end
 
-function assemble_matrix(integral::Integral,trial_space,test_space;reuse=false,Ti=Int32,T=Float64)
-    state0 = (;integral,test_space,trial_space,Ti,T)
+function assemble_matrix(integral::Integral,trial_space,test_space,::Type{T};
+        reuse=false,
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+    ) where T
+    setup = matrix_strategy.init(free_dofs(test_space),free_dofs(trial_space),T)
+    state0 = (;integral,test_space,trial_space,matrix_strategy,setup)
     state1 = assemble_matrix_count(state0)
     state2 = assemble_matrix_allocate(state1)
     state3 = assemble_matrix_fill(state2)
@@ -235,7 +297,7 @@ function assemble_matrix(integral::Integral,trial_space,test_space;reuse=false,T
 end
 
 function assemble_matrix_count(state)
-    (;integral,test_space,trial_space) = state
+    (;integral,test_space,trial_space,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields_test = GT.num_fields(test_space)
     num_fields_trial = GT.num_fields(trial_space)
@@ -255,13 +317,14 @@ function assemble_matrix_count(state)
             GT.domain_glue(domain,GT.domain(trial_space,field),strict=false)
         end
     end
-    n = 0
+    counter = matrix_strategy.counter(setup)
     function loop(glue_test,glue_trial,field_per_dim)
         sface_to_faces_test, = target_face(glue_test)
         sface_to_faces_trial, = target_face(glue_trial)
         face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
         face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
         nsfaces = length(sface_to_faces_test)
+        field_test,field_trial = field_per_dim
         for sface in 1:nsfaces
             faces_test = sface_to_faces_test[sface]
             faces_trial = sface_to_faces_trial[sface]
@@ -271,7 +334,13 @@ function assemble_matrix_count(state)
                 for face_trial in faces_trial
                     dofs_trial = face_to_dofs_trial[face_trial]
                     ndofs_trial = length(dofs_trial)
-                    n += ndofs_test*ndofs_trial
+                    for idof_test in 1:ndofs_test
+                        dof_test = dofs_test[idof_test]
+                        for idof_trial in 1:ndofs_trial
+                            dof_trial = dofs_trial[idof_trial]
+                            counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+                        end
+                    end
                 end
             end
         end
@@ -290,28 +359,27 @@ function assemble_matrix_count(state)
             end
         end
     end
-    (;n,glues_test,glues_trial,fields_test,fields_trial,state...)
+    (;counter,glues_test,glues_trial,fields_test,fields_trial,state...)
 end
 
 function assemble_matrix_allocate(state)
-    (;n,Ti,T) = state
-    I = zeros(Ti,n)
-    J = zeros(Ti,n)
-    V = zeros(T,n)
-    (;I,J,V,state...)
+    (;matrix_strategy,counter,setup) = state
+    alloc = matrix_strategy.allocate(counter,setup)
+    (;alloc,state...)
 end
 
 function assemble_matrix_fill(state)
-    (;integral,test_space,trial_space,fields_test,fields_trial,I,J,V,glues_test,glues_trial) = state
+    (;integral,test_space,trial_space,fields_test,fields_trial,alloc,glues_test,glues_trial,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields_test = GT.num_fields(test_space)
     num_fields_trial = GT.num_fields(trial_space)
-    n = 0
+    counter = matrix_strategy.counter(setup)
     function loop(glue_test,glue_trial,field_per_dim,measure,contribution)
         sface_to_faces_test, _,sface_to_faces_around_test = target_face(glue_test)
         sface_to_faces_trial, _,sface_to_faces_around_trial = target_face(glue_trial)
         face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
         face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
+        field_test,field_trial = field_per_dim
         term_qty = GT.term(contribution)
         term_npoints = GT.num_points(measure)
         sface = :sface
@@ -329,15 +397,16 @@ function assemble_matrix_fill(state)
         s_qty = GT.topological_sort(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
         s_npoints = GT.topological_sort(expr_npoints,(sface,))
         expr = quote
-            function loop!(n,args,storage)
+            function loop!(counter,args,storage)
                 (;sface_to_faces_test,sface_to_faces_around_test,
                  sface_to_faces_trial,sface_to_faces_around_trial,
-                 face_to_dofs_test,face_to_dofs_trial,I,J,V) = args
+                 face_to_dofs_test,face_to_dofs_trial,field_test,field_trial,
+                 alloc,matrix_strategy,setup) = args
                 $(unpack_storage(index.dict,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
                 nsfaces = length(sface_to_faces_test)
-                z = zero(eltype(V))
+                z = zero(matrix_strategy.scalar_type(setup))
                 for $sface in 1:nsfaces
                     $(s_qty[2])
                     npoints = $(s_npoints[2])
@@ -363,24 +432,22 @@ function assemble_matrix_fill(state)
                                     for $point in 1:npoints
                                         v += $(s_qty[7])
                                     end
-                                    n += 1
-                                    I[n] = dof_test
-                                    J[n] = dof_trial
-                                    V[n] = v
+                                    counter = matrix_strategy.set!(alloc,counter,setup,v,dof_test,dof_trial,field_test,field_trial)
                                 end
                             end
                         end
                     end
                 end
-                n
+                counter
             end
         end
         loop! = eval(expr)
         storage = GT.storage(index)
         args = (;sface_to_faces_test,sface_to_faces_around_test,
                  sface_to_faces_trial,sface_to_faces_around_trial,
-                 face_to_dofs_test,face_to_dofs_trial,I,J,V)
-        n = invokelatest(loop!,n,args,storage)
+                 face_to_dofs_test,face_to_dofs_trial,field_test,field_trial,
+                 alloc,matrix_strategy,setup)
+        counter = invokelatest(loop!,counter,args,storage)
         nothing
     end
     for (measure_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
@@ -401,25 +468,19 @@ function assemble_matrix_fill(state)
 end
 
 function assemble_matrix_compress(state)
-    (;I,J,V,test_space,trial_space) = state
-    free_dofs_test = GT.free_dofs(test_space)
-    free_dofs_trial = GT.free_dofs(trial_space)
-    m = length(free_dofs_test)
-    n = length(free_dofs_trial)
-    vec = PartitionedArrays.sparse_matrix(I,J,V,m,n)
-    cache = (;I,J,V)
-    vec, cache
+    (;alloc,matrix_strategy,setup) = state
+    A, cache = matrix_strategy.compress(alloc,setup)
+    A, (cache,alloc,setup,matrix_strategy)
 end
-
 
 function linear_problem(uh,a,l,V=GT.space(uh))
     U = GT.space(uh)
     x = free_values(uh)
     fill!(x,0)
     T = eltype(x)
-    A = assemble_matrix(a,U,V;T)
-    b = assemble_vector(l,V;T)
-    d = assemble_vector(v->a(uh,v),V)
+    A = assemble_matrix(a,U,V,T)
+    b = assemble_vector(l,V,T)
+    d = assemble_vector(v->a(uh,v),V,T)
     b .= b .- d
     x,A,b
 end
