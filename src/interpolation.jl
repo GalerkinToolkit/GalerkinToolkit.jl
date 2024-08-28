@@ -900,6 +900,7 @@ end
 function zero_dirichlet_field(::Type{T},space::AbstractSpace) where T
     uh = undef_dirichlet_field(T,space)
     fill!(dirichlet_values(uh),zero(T))
+    uh
 end
 
 function dirichlet_field(::Type{T},space::AbstractSpace) where T

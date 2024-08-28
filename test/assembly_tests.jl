@@ -143,10 +143,10 @@ f = GT.analytical_field(sum,Ω)
 l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
 V = GT.iso_parametric_space(Ωref)
-uh = GT.zero_field(Float64,V)
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(Float64,V,a,l)
 x .= A\b
+uh = GT.solution_field(V,x)
 
 function ∇(u,phi,q)
    J = ForwardDiff.jacobian(phi,q)
@@ -181,10 +181,10 @@ order = 3
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
 u = GT.analytical_field(sum,Ω)
-uh = GT.zero_field(Float64,V)
+uhd = GT.dirichlet_field(Float64,V)
 # TODO
 #GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
-GT.interpolate_dirichlet!(u∘ϕ,uh)
+GT.interpolate_dirichlet!(u∘ϕ,uhd)
 
 function ∇(u,q)
    J = ForwardDiff.jacobian(ϕ,q)
@@ -203,8 +203,9 @@ dΩref = GT.measure(Ωref,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uhd,a,l)
 x .= A\b
+uh = GT.solution_field(uhd,x)
 
 # TODO
 # Functions like this ones should
@@ -223,8 +224,8 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
-uh = GT.zero_field(Float64,V)
-GT.interpolate_dirichlet!(u,uh)
+uhd = GT.dirichlet_field(Float64,V)
+GT.interpolate_dirichlet!(u,uhd)
 
 dΩ = GT.measure(Ω,degree)
 
@@ -233,8 +234,9 @@ dΩ = GT.measure(Ω,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uhd,a,l)
 x .= A\b
+uh = GT.solution_field(uhd,x)
 
 eh(q) = u(q) - uh(q)
 ∇eh(q) = ∇(u,q) - ∇(uh,q)

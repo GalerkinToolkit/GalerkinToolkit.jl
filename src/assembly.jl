@@ -473,15 +473,32 @@ function assemble_matrix_compress(state)
     A, (cache,alloc,setup,matrix_strategy)
 end
 
-function linear_problem(uh,a,l,V=GT.space(uh))
-    U = GT.space(uh)
-    x = free_values(uh)
-    fill!(x,0)
-    T = eltype(x)
+function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd))
+    U = GT.space(uhd)
+    T = eltype(dirichlet_values(uhd))
     A = assemble_matrix(a,U,V,T)
     b = assemble_vector(l,V,T)
-    d = assemble_vector(v->a(uh,v),V,T)
+    d = assemble_vector(v->a(uhd,v),V,T)
     b .= b .- d
+    x = similar(b,axes(A,2))
     x,A,b
 end
 
+function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U) where T
+    A = assemble_matrix(a,U,V,T)
+    b = assemble_vector(l,V,T)
+    x = similar(b,axes(A,2))
+    x,A,b
+end
+
+function solution_field(uhd::DiscreteField,x)
+    diri_values = dirichlet_values(uhd)
+    U = GT.space(uhd)
+    discrete_field(U,x,diri_values)
+end
+
+function solution_field(U::AbstractSpace,x)
+    T = eltype(x)
+    uhd = zero_dirichlet_field(T,U)
+    solution_field(uhd,x)
+end
