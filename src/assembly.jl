@@ -491,14 +491,34 @@ function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U) where T
     x,A,b
 end
 
-function solution_field(uhd::DiscreteField,x)
-    diri_values = dirichlet_values(uhd)
-    U = GT.space(uhd)
-    discrete_field(U,x,diri_values)
-end
-
 function solution_field(U::AbstractSpace,x)
     T = eltype(x)
     uhd = zero_dirichlet_field(T,U)
     solution_field(uhd,x)
 end
+
+function solution_field(uhd::DiscreteField,x)
+    diri_vals = dirichlet_values(uhd)
+    U = GT.space(uhd)
+    free_vals = free_values_from_solution(x,free_dofs(U))
+    discrete_field(U,free_vals,diri_vals)
+end
+
+function free_values_from_solution(x,dofs)
+    x
+end
+
+function free_values_from_solution(x,dofs::BRange)
+    nfields = blocklength(dofs)
+    map(1:nfields) do field
+        pend = blocklasts(dofs)[field]
+        pini = 1 + pend - length(blocks(dofs)[field])
+        view(x,pini:pend)
+    end |> BVector
+end
+
+function free_values_from_solution(x::BVector,dofs::BRange)
+    x
+end
+
+

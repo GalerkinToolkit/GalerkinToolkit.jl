@@ -131,6 +131,13 @@ end
 
 A = GT.assemble_matrix(a,V²,V²,Float64)
 
+x = similar(b,axes(A,2))
+fill!(x,0)
+uh = GT.solution_field(V²,x)
+uh1,uh2 = uh
+fill!(GT.free_values(uh2),1)
+@test x[end] == 1
+
 function dV(ϕ,q)
     J = ForwardDiff.jacobian(ϕ,q)
     abs(det(J))
