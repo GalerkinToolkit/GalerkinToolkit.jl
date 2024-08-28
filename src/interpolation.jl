@@ -585,11 +585,9 @@ function shape_functions(a::AbstractSpace,dim)
         @assert face !== nothing
         @assert dof_per_dim !== nothing
         dof = dof_per_dim[dim]
-        if face_around_per_dim !== nothing
-            @assert face_around === nothing
+        if face_around_per_dim === nothing || face_around == nothing
             @term face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
         else
-            @assert face_around !== nothing
             @term begin
                 fs = face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
                 bool = $face_around == $(face_around_per_dim[dim])
@@ -850,15 +848,15 @@ end
 
 function shape_functions(a::CartesianProductSpace,dim,field)
     f = component(a,field)
-    qty = shape_functions(f,dim,field)
+    qty = shape_functions(f,dim)
     t = GT.term(qty)
     GT.quantity(GT.prototype(qty),GT.domain(qty)) do index
+        # TODO field_per_dim[dim] has possibly already a numeric value
         field_per_dim = index.field_per_dim
         @assert field_per_dim !== nothing
         @term begin
-            bool = $field == $(field_per_dim[field])
-            f = $(t(index))
-            mask_function(f,bool)
+            bool = $field == $(field_per_dim[dim])
+            mask_function($(t(index)),bool)
         end
     end
 end

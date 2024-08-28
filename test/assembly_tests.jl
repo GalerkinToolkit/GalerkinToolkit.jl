@@ -55,7 +55,7 @@ function dS(J)
     sqrt(det(Jt*J))
 end
 
-jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
+jump(u,ϕ,q) = u(ϕ[+](q))[+]-u(ϕ[-](q))[-]
 
 function l(v)
     ∫(dΩref) do q

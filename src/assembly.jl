@@ -34,8 +34,9 @@ function assemble_vector_count(state)
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     fields = ntuple(identity,num_fields)
-    glues = map(contributions) do domain_and_contribution
-        domain, = domain_and_contribution
+    glues = map(contributions) do measure_and_contribution
+        measure, = measure_and_contribution
+        domain = GT.domain(measure)
         map(fields) do field
             GT.domain_glue(domain,GT.domain(space,field);strict=false)
         end
@@ -45,14 +46,12 @@ function assemble_vector_count(state)
     end
     function loop(glue,field)
         sface_to_faces, = target_face(glue)
-        dim = 1
-        num_face_dofs = GT.num_face_dofs(space,dim,field)
-        field_per_dim = (field,)
-        for sface in 1:GT.num_faces(GT.domain(glue))
+        face_to_dofs = face_dofs(space,field)
+        nsfaces = length(sface_to_faces)
+        for sface in 1:nsfaces
             faces = sface_to_faces[sface]
             for face in faces
-                index = GT.index(;face,field_per_dim)
-                ndofs = num_face_dofs(index)
+                ndofs = length(face_to_dofs[face])
                 n += ndofs
             end
         end
@@ -76,37 +75,69 @@ function assemble_vector_fill(state)
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     n = 0
-    function loop(glue::Nothing,field,contribution)
+    function loop(glue::Nothing,field,measure,contribution)
     end
-    function loop(glue,field,contribution)
+    function loop(glue,field,measure,contribution)
         sface_to_faces,_,sface_to_faces_around = target_face(glue)
-        dim =1
-        dof_map = GT.dof_map(space,dim,field)
-        num_face_dofs = GT.num_face_dofs(space,dim,field)
+        face_to_dofs = face_dofs(space,field)
+        term_qty = GT.term(contribution)
+        term_npoints = GT.num_points(measure)
+        sface = :sface
+        point = :point
+        idof = :idof
+        face_around = :face_around
         field_per_dim = (field,)
-        for sface in 1:GT.num_faces(GT.domain(glue))
-            faces = sface_to_faces[sface]
-            faces_around = sface_to_faces_around[sface]
-            for (face_around,face) in zip(faces_around,faces)
-                face_around_per_dim = (face_around,)
-                index = GT.index(;face,field_per_dim)
-                ndofs = num_face_dofs(index)
-                for dof in 1:ndofs
-                    n += 1
-                    dof_per_dim = (dof,)
-                    index2 = GT.index(;face,dof_per_dim,field_per_dim,face_around_per_dim)
-                    I[n] = dof_map(index2)
-                    index3 = GT.replace_face(index2,sface)
-                    vn = GT.term(contribution)(index3)
-                    V[n] = vn
+        dof_per_dim = (idof,)
+        face_around_per_dim = (face_around,)
+        index = GT.index(;face=sface,point,field_per_dim,dof_per_dim,face_around_per_dim)
+        expr_qty = term_qty(index) |> simplify
+        expr_npoints = term_npoints(index) |> simplify
+        # TODO merge statements
+        s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
+        s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        expr = quote
+            function loop!(n,args,storage)
+                (;sface_to_faces,sface_to_faces_around,face_to_dofs,I,V) = args
+                $(unpack_storage(index.dict,:storage))
+                $(s_qty[1])
+                $(s_npoints[1])
+                nsfaces = length(sface_to_faces)
+                z = zero(eltype(V))
+                for $sface in 1:nsfaces
+                    $(s_qty[2])
+                    npoints = $(s_npoints[2])
+                    faces = sface_to_faces[sface]
+                    faces_around = sface_to_faces_around[sface]
+                    for ($face_around,face) in zip(faces_around,faces)
+                        $(s_qty[3])
+                        dofs = face_to_dofs[face]
+                        ndofs = length(dofs)
+                        for $idof in 1:ndofs
+                            $(s_qty[4])
+                            v = z
+                            for $point in 1:npoints
+                                v += $(s_qty[5])
+                            end
+                            n += 1
+                            dof = dofs[$idof]
+                            I[n] = dof
+                            V[n] = v
+                        end
+                    end
                 end
+                n
             end
         end
+        loop! = eval(expr)
+        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,I,V)
+        storage = GT.storage(index)
+        n = invokelatest(loop!,n,args,storage)
+        nothing
     end
-    for (domain_and_contribution,field_to_glue) in zip(contributions,glues)
-        domain, contribution = domain_and_contribution
+    for (measure_and_contribution,field_to_glue) in zip(contributions,glues)
+        measure, contribution = measure_and_contribution
         map(fields,field_to_glue) do field,glue
-            loop(glue,field,contribution)
+            loop(glue,field,measure,contribution)
         end
     end
     state
@@ -150,37 +181,36 @@ function assemble_matrix_count(state)
     num_fields_trial = GT.num_fields(trial_space)
     fields_test = ntuple(identity,num_fields_test)
     fields_trial = ntuple(identity,num_fields_trial)
-    glues_test = map(contributions) do domain_and_contribution
-        domain, = domain_and_contribution
+    glues_test = map(contributions) do measure_and_contribution
+        measure, = measure_and_contribution
+        domain = GT.domain(measure)
         map(fields_test) do field
             GT.domain_glue(domain,GT.domain(test_space,field),strict=false)
         end
     end
-    glues_trial = map(contributions) do domain_and_contribution
-        domain, = domain_and_contribution
+    glues_trial = map(contributions) do measure_and_contribution
+        measure, = measure_and_contribution
+        domain = GT.domain(measure)
         map(fields_trial) do field
             GT.domain_glue(domain,GT.domain(trial_space,field),strict=false)
         end
     end
     n = 0
-    # TODO some cross terms missing
-    # TODO a lot of code duplication
     function loop(glue_test,glue_trial,field_per_dim)
         sface_to_faces_test, = target_face(glue_test)
         sface_to_faces_trial, = target_face(glue_trial)
-        test_dim = 1
-        trial_dim = 2
-        num_face_dofs_test = GT.num_face_dofs(test_space,test_dim,field_per_dim[1])
-        num_face_dofs_trial = GT.num_face_dofs(trial_space,trial_dim,field_per_dim[2])
-        for sface in 1:GT.num_faces(GT.domain(glue_test))
+        face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
+        face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
+        nsfaces = length(sface_to_faces_test)
+        for sface in 1:nsfaces
             faces_test = sface_to_faces_test[sface]
             faces_trial = sface_to_faces_trial[sface]
             for face_test in faces_test
-                index_test = GT.index(;face=face_test,field_per_dim)
-                ndofs_test = num_face_dofs_test(index_test)
+                dofs_test = face_to_dofs_test[face_test]
+                ndofs_test = length(dofs_test)
                 for face_trial in faces_trial
-                    index_trial = GT.index(;face=face_trial,field_per_dim)
-                    ndofs_trial = num_face_dofs_trial(index_trial)
+                    dofs_trial = face_to_dofs_trial[face_trial]
+                    ndofs_trial = length(dofs_trial)
                     n += ndofs_test*ndofs_trial
                 end
             end
@@ -217,45 +247,84 @@ function assemble_matrix_fill(state)
     num_fields_test = GT.num_fields(test_space)
     num_fields_trial = GT.num_fields(trial_space)
     n = 0
-    function loop(glue_test,glue_trial,field_per_dim,contribution)
+    function loop(glue_test,glue_trial,field_per_dim,measure,contribution)
         sface_to_faces_test, _,sface_to_faces_around_test = target_face(glue_test)
         sface_to_faces_trial, _,sface_to_faces_around_trial = target_face(glue_trial)
-        test_dim = 1
-        trial_dim = 2
-        num_face_dofs_test = GT.num_face_dofs(test_space,test_dim,field_per_dim[1])
-        num_face_dofs_trial = GT.num_face_dofs(trial_space,trial_dim,field_per_dim[2])
-        dof_map_test = GT.dof_map(test_space,test_dim,field_per_dim[1])
-        dof_map_trial = GT.dof_map(trial_space,trial_dim,field_per_dim[2])
-        for sface in 1:GT.num_faces(GT.domain(glue_test))
-            faces_test = sface_to_faces_test[sface]
-            faces_trial = sface_to_faces_trial[sface]
-            faces_around_test = sface_to_faces_around_test[sface]
-            faces_around_trial = sface_to_faces_around_trial[sface]
-            for (face_around_test,face_test) in zip(faces_around_test,faces_test)
-                index_test = GT.index(;face=face_test,field_per_dim)
-                ndofs_test = num_face_dofs_test(index_test)
-                for (face_around_trial,face_trial) in zip(faces_around_trial,faces_trial)
-                    face_around_per_dim = (face_around_test,face_around_trial)
-                    index_trial = GT.index(;face=face_trial,field_per_dim)
-                    ndofs_trial = num_face_dofs_trial(index_trial)
-                    for dof_test in 1:ndofs_test
-                        for dof_trial in 1:ndofs_trial
-                            n += 1
-                            dof_per_dim = (dof_test,dof_trial)
-                            index2_test = GT.index(;face=face_test,dof_per_dim,field_per_dim,face_around_per_dim)
-                            index2_trial = GT.index(;face=face_trial,dof_per_dim,field_per_dim,face_around_per_dim)
-                            I[n] = dof_map_test(index2_test)
-                            J[n] = dof_map_trial(index2_trial)
-                            index3 = GT.replace_face(index2_test,sface)
-                            V[n] = GT.term(contribution)(index3)
+        face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
+        face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
+        term_qty = GT.term(contribution)
+        term_npoints = GT.num_points(measure)
+        sface = :sface
+        point = :point
+        idof_test = :idof_test
+        idof_trial = :idof_trial
+        face_around_test = :face_around_test
+        face_around_trial = :face_around_trial
+        dof_per_dim = (idof_test,idof_trial)
+        face_around_per_dim = (face_around_test,face_around_trial)
+        index = GT.index(;face=sface,point,field_per_dim,dof_per_dim,face_around_per_dim)
+        expr_qty = term_qty(index) |> simplify
+        expr_npoints = term_npoints(index) |> simplify
+        # TODO merge statements
+        s_qty = GT.topological_sort(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
+        s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        expr = quote
+            function loop!(n,args,storage)
+                (;sface_to_faces_test,sface_to_faces_around_test,
+                 sface_to_faces_trial,sface_to_faces_around_trial,
+                 face_to_dofs_test,face_to_dofs_trial,I,J,V) = args
+                $(unpack_storage(index.dict,:storage))
+                $(s_qty[1])
+                $(s_npoints[1])
+                nsfaces = length(sface_to_faces_test)
+                z = zero(eltype(V))
+                for $sface in 1:nsfaces
+                    $(s_qty[2])
+                    npoints = $(s_npoints[2])
+                    faces_test = sface_to_faces_test[sface]
+                    faces_trial = sface_to_faces_trial[sface]
+                    faces_around_test = sface_to_faces_around_test[sface]
+                    faces_around_trial = sface_to_faces_around_trial[sface]
+                    for ($face_around_test,face_test) in zip(faces_around_test,faces_test)
+                        $(s_qty[3])
+                        dofs_test = face_to_dofs_test[face_test]
+                        ndofs_test = length(dofs_test)
+                        for ($face_around_trial,face_trial) in zip(faces_around_trial,faces_trial)
+                            $(s_qty[4])
+                            dofs_trial = face_to_dofs_trial[face_trial]
+                            ndofs_trial = length(dofs_trial)
+                            for $idof_test in 1:ndofs_test
+                                $(s_qty[5])
+                                dof_test = dofs_test[$idof_test]
+                                for $idof_trial in 1:ndofs_trial
+                                    $(s_qty[6])
+                                    dof_trial = dofs_trial[$idof_trial]
+                                    v = z
+                                    for $point in 1:npoints
+                                        v += $(s_qty[7])
+                                    end
+                                    n += 1
+                                    I[n] = dof_test
+                                    J[n] = dof_trial
+                                    V[n] = v
+                                end
+                            end
                         end
                     end
                 end
+                n
             end
         end
+        loop! = eval(expr)
+        storage = GT.storage(index)
+        args = (;sface_to_faces_test,sface_to_faces_around_test,
+                 sface_to_faces_trial,sface_to_faces_around_trial,
+                 face_to_dofs_test,face_to_dofs_trial,I,J,V)
+        n = invokelatest(loop!,n,args,storage)
+        nothing
     end
-    for (domain_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
-        domain, contribution = domain_and_contribution
+    for (measure_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
+        measure, contribution = measure_and_contribution
         for field_test in fields_test
             glue_test = field_to_glue_test[field_test]
             for field_trial in fields_trial
@@ -264,7 +333,7 @@ function assemble_matrix_fill(state)
                     continue
                 end
                 field_per_dim = (field_test,field_trial)
-                loop(glue_test,glue_trial,field_per_dim,contribution)
+                loop(glue_test,glue_trial,field_per_dim,measure,contribution)
             end
         end
     end
