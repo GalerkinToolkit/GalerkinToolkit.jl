@@ -1,28 +1,90 @@
 
-# TODO monothinic matrix and vector for the moment
-# add a strategy to build the matrix and vector
+function monolithic_vector_assembly_strategy()
+    function init(dofs,::Type{T}) where T
+        n_total_dofs = length(dofs)
+        offsets = [0]
+        (;offsets,n_total_dofs,T)
+    end
+    function init(block_dofs::BRange,::Type{T}) where T
+        n_total_dofs = length(block_dofs)
+        offsets = blocklasts(block_dofs) .- map(length,blocks(block_dofs))
+        (;offsets,n_total_dofs,T)
+    end
+    function scalar_type(setup)
+        setup.T
+    end
+    function counter(setup)
+        0
+    end
+    function count(n,setup,i,field_i)
+        n+1
+    end
+    function allocate(n,setup)
+        Ti = Int32
+        T = setup.T
+        I = zeros(Ti,n)
+        V = zeros(T,n)
+        (;I,V)
+    end
+    function set!(alloc,n,setup,v,i,field)
+        n += 1
+        alloc.I[n] = i+setup.offsets[field]
+        alloc.V[n] = v
+        n
+    end
+    function compress(alloc,setup)
+        I = alloc.I
+        V = alloc.V
+        n_total_dofs = setup.n_total_dofs
+        vec = PartitionedArrays.dense_vector(I,V,n_total_dofs)
+        cache = nothing
+        (vec, cache)
+    end
+    function compress!(vec,cache,alloc,setup)
+        I = alloc.I
+        V = alloc.V
+        PartitionedArrays.dense_vector!(vec,I,V)
+        vec
+    end
+    (;init,scalar_type,counter,count,allocate,set!,compress,compress!)
+end
 
-function assemble_vector(f,space;kwargs...)
+function assemble_vector(f,space,::Type{T};kwargs...) where T
     dim = 1
     dv = GT.shape_functions(space,dim)
     integral = f(dv)
-    assemble_vector(integral,space;kwargs...)
+    assemble_vector(integral,space,T;kwargs...)
 end
 
-function assemble_vector(integral::Number,space;reuse=false,Ti=Int32,T=Float64)
+function assemble_vector(integral::Number,space,::Type{T};
+    reuse = Val(false),
+    vector_strategy = monolithic_vector_assembly_strategy(),
+    ) where T
     @assert integral == 0
     free_dofs = GT.free_dofs(space)
-    n = length(free_dofs)
-    zeros(T,n)
+    setup = vector_strategy.init(free_dofs,T)
+    counter = vector_strategy.counter(setup)
+    alloc = vector_strategy.allocate(counter,setup)
+    vec,cache = vector_strategy.compress(alloc,counter,setup)
+    if val_parameter(reuse) == false
+        vec
+    else
+        vec, (cache,alloc,setup,vector_strategy)
+    end
 end
 
-function assemble_vector(integral::Integral,space;reuse=false,Ti=Int32,T=Float64)
-    state0 = (;integral,space,Ti,T)
+function assemble_vector(integral::Integral,space,::Type{T};
+    reuse = Val(false),
+    vector_strategy = monolithic_vector_assembly_strategy(),
+    ) where T
+
+    setup = vector_strategy.init(GT.free_dofs(space),T)
+    state0 = (;integral,space,vector_strategy,setup)
     state1 = assemble_vector_count(state0)
     state2 = assemble_vector_allocate(state1)
     state3 = assemble_vector_fill(state2)
     result, cache = assemble_vector_compress(state3)
-    if reuse == false
+    if val_parameter(reuse) == false
         result
     else
         result, cache
@@ -30,7 +92,7 @@ function assemble_vector(integral::Integral,space;reuse=false,Ti=Int32,T=Float64
 end
 
 function assemble_vector_count(state)
-    (;integral,space) = state
+    (;integral,space,vector_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     fields = ntuple(identity,num_fields)
@@ -41,7 +103,7 @@ function assemble_vector_count(state)
             GT.domain_glue(domain,GT.domain(space,field);strict=false)
         end
     end
-    n = 0
+    counter = vector_strategy.counter(setup)
     function loop(glue::Nothing,field)
     end
     function loop(glue,field)
@@ -51,8 +113,12 @@ function assemble_vector_count(state)
         for sface in 1:nsfaces
             faces = sface_to_faces[sface]
             for face in faces
-                ndofs = length(face_to_dofs[face])
-                n += ndofs
+                dofs = face_to_dofs[face]
+                ndofs = length(dofs)
+                for idof in 1:ndofs
+                    dof = dofs[idof]
+                    counter = vector_strategy.count(counter,setup,dof,field)
+                end
             end
         end
     end
@@ -60,21 +126,20 @@ function assemble_vector_count(state)
         domain, _ = domain_and_contribution
         map(loop,field_to_glue,fields)
     end
-    (;n,glues,fields,state...)
+    (;counter,glues,fields,state...)
 end
 
 function assemble_vector_allocate(state)
-    (;n,Ti,T) = state
-    I = zeros(Ti,n)
-    V = zeros(T,n)
-    (;I,V,state...)
+    (;counter,vector_strategy,setup) = state
+    alloc = vector_strategy.allocate(counter,setup)
+    (;alloc,state...)
 end
 
 function assemble_vector_fill(state)
-    (;integral,space,glues,I,V,fields) = state
+    (;integral,space,glues,fields,vector_strategy,alloc,setup) = state
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
-    n = 0
+    counter = vector_strategy.counter(setup)
     function loop(glue::Nothing,field,measure,contribution)
     end
     function loop(glue,field,measure,contribution)
@@ -96,13 +161,13 @@ function assemble_vector_fill(state)
         s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
         s_npoints = GT.topological_sort(expr_npoints,(sface,))
         expr = quote
-            function loop!(n,args,storage)
-                (;sface_to_faces,sface_to_faces_around,face_to_dofs,I,V) = args
+            function loop!(counter,args,storage)
+                (;sface_to_faces,sface_to_faces_around,face_to_dofs,vector_strategy,alloc,setup) = args
                 $(unpack_storage(index.dict,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
                 nsfaces = length(sface_to_faces)
-                z = zero(eltype(V))
+                z = zero(vector_strategy.scalar_type(setup))
                 for $sface in 1:nsfaces
                     $(s_qty[2])
                     npoints = $(s_npoints[2])
@@ -118,20 +183,18 @@ function assemble_vector_fill(state)
                             for $point in 1:npoints
                                 v += $(s_qty[5])
                             end
-                            n += 1
                             dof = dofs[$idof]
-                            I[n] = dof
-                            V[n] = v
+                            counter = vector_strategy.set!(alloc,counter,setup,v,dof,$field)
                         end
                     end
                 end
-                n
+                counter
             end
         end
         loop! = eval(expr)
-        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,I,V)
+        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,vector_strategy,alloc,setup)
         storage = GT.storage(index)
-        n = invokelatest(loop!,n,args,storage)
+        counter = invokelatest(loop!,counter,args,storage)
         nothing
     end
     for (measure_and_contribution,field_to_glue) in zip(contributions,glues)
@@ -144,12 +207,9 @@ function assemble_vector_fill(state)
 end
 
 function assemble_vector_compress(state)
-    (;I,V,space) = state
-    free_dofs = GT.free_dofs(space)
-    n = length(free_dofs)
-    vec = PartitionedArrays.dense_vector(I,V,n)
-    cache = (;I,V)
-    vec, cache
+    (;alloc,setup,vector_strategy) = state
+    vec, cache = vector_strategy.compress(alloc,setup)
+    vec, (cache,alloc,setup,vector_strategy)
 end
 
 function assemble_matrix(f,trial_space,test_space;kwargs...)

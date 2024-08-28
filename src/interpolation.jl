@@ -139,12 +139,24 @@ Base.length(m::AbstractSpace) = num_fields(m)
 
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 
+function free_dofs(a::AbstractSpace,field)
+    @assert field == 1
+    free_dofs(a)
+end
+
 function free_dofs(a::AbstractSpace)
-    GT.dofs(free_values_strategy(a))
+    nfree = length(first(free_and_dirichlet_dofs(a)))
+    Base.OneTo(nfree)
+end
+
+function dirichlet_dofs(a::AbstractSpace,field)
+    @assert field == 1
+    dirichlet_dofs(a)
 end
 
 function dirichlet_dofs(a::AbstractSpace)
-    GT.dofs(dirichlet_values_strategy(a))
+    ndiri = length(last(free_and_dirichlet_dofs(a)))
+    Base.OneTo(ndiri)
 end
 
 # Single field by default
@@ -695,47 +707,12 @@ function dual_basis(a::AbstractSpace,dim)
     u -> qty(compose(u,ϕ))
 end
 
-struct VectorStrategy{A,B,C,D}
-    dofs::A
-    allocate_values::B
-    restrict_values::C
-    prolongate_dof::D
+function cartesian_product(spaces::AbstractSpace...)
+    CartesianProductSpace(spaces)
 end
 
-dofs(a::VectorStrategy) = a.dofs
-allocate_values(a::VectorStrategy,args...) = a.allocate_values(args...)
-restrict_values(a::VectorStrategy,args...) = a.restrict_values(args...)
-prolongate_dof(a::VectorStrategy,args...) = a.prolongate_dof(args...)
-
-function monolithic_field_major_strategy(field_to_dofs)
-    offset = 0
-    field_to_offset = map(field_to_dofs) do dofs
-        myoffset = offset
-        offset += length(dofs)
-        return myoffset
-    end
-    ndofs = offset
-    dofs = Base.OneTo(ndofs)
-    allocate_values(::Type{T}) where T = Vector{T}(undef,ndofs)
-    restrict_values(v,field) = view(v,field_to_dofs[field])
-    prolongate_dof(dof,field) = dof + field_to_offset[field]
-    VectorStrategy(dofs,allocate_values,restrict_values,prolongate_dof)
-end
-
-function cartesian_product(spaces::AbstractSpace...;
-        free_values_strategy = GT.monolithic_field_major_strategy,
-        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
-    )
-    CartesianProductSpace(
-        spaces,
-        free_values_strategy(map(GT.free_dofs,spaces)),
-        dirichlet_values_strategy(map(GT.dirichlet_dofs,spaces)),)
-end
-
-struct CartesianProductSpace{A,B,C} <: GT.AbstractSpace
+struct CartesianProductSpace{A} <: GT.AbstractSpace
     spaces::A
-    free_values_strategy::B
-    dirichlet_values_strategy::C
 end
 
 function mesh(space::CartesianProductSpace)
@@ -752,14 +729,6 @@ end
 
 function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
     cartesian_product(a,b.spaces...)
-end
-
-function free_values_strategy(a::CartesianProductSpace)
-    a.free_values_strategy
-end
-
-function dirichlet_values_strategy(a::CartesianProductSpace)
-    a.dirichlet_values_strategy
 end
 
 function components(a::CartesianProductSpace)
@@ -792,51 +761,36 @@ function domain(a::CartesianProductSpace,field)
     GT.domain(GT.component(a,field))
 end
 
-#function num_face_dofs(a::CartesianProductSpace,dim)
-#    error("Casenot implemented (perhaps not needed in practice)")
-#end
-#
-#function num_face_dofs(a::CartesianProductSpace,dim,field)
-#    f = component(a,field)
-#    num_face_dofs(f,dim,field)
-#    #terms = map(s->GT.num_face_dofs(s,dim),a.spaces)
-#    #index -> begin
-#    #    field = index.field_per_dim[dim]
-#    #    @assert field !== nothing
-#    #    index2 = replace_field_per_dim(index,nothing)
-#    #    terms[field](index2)
-#    #end
-#end
-
-## TODO face_dofs vs dof_map very confusing. Remove dof_map?
-#function dof_map(a::CartesianProductSpace,dim)
-#    error("Casenot implemented (perhaps not needed in practice)")
-#end
-#
-#function dof_map(a::CartesianProductSpace,dim,field)
-#    strategy = GT.free_values_strategy(a)
-#    f = component(a,field)
-#    term = dof_map(f,dim,field)
-#    index -> begin
-#        dof_term = term(index)
-#        dict = index.dict
-#        field_sym = get!(dict,field,gensym("field"))
-#        strategy_sym = get!(dict,strategy,gensym("strategy"))
-#        @term begin
-#            dof = $dof_term
-#            prolongate_dof($strategy_sym,dof,$field_sym)
-#        end
-#
-#    end
-#end
-#
-
 function face_dofs(a::CartesianProductSpace)
     error("Not implemented, not needed in practice")
 end
 
 function face_dofs(a::CartesianProductSpace,field)
     face_dofs(a.spaces[field])
+end
+
+function free_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        free_dofs(a,field)
+    end |> BRange
+end
+
+function free_dofs(a::CartesianProductSpace,field)
+    f = component(a,field)
+    free_dofs(f)
+end
+
+function dirichlet_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        dirichlet_dofs(a,field)
+    end |> BRange
+end
+
+function dirichlet_dofs(a::CartesianProductSpace,field)
+    f = component(a,field)
+    dirichlet_dofs(f)
 end
 
 function shape_functions(a::CartesianProductSpace,dim)
@@ -892,9 +846,31 @@ Base.iterate(m::DiscreteField,state) = iterate(components(m),state)
 Base.getindex(m::DiscreteField,field::Integer) = component(m,field)
 Base.length(m::DiscreteField) = num_fields(m)
 
+function allocate_values(::Type{T},dofs) where T
+    n = length(dofs)
+    Vector{T}(undef,n)
+end
+
+function allocate_values(::Type{T},dofs::BRange) where T
+    map(dofs.blocks) do dofs_i
+        allocate_values(T,dofs_i)
+    end |> BVector
+end
+
+function constant_values(f,dofs)
+    n = length(dofs)
+    Fill(f,n)
+end
+
+function constant_values(f,dofs::BRange)
+    map(dofs.blocks) do dofs_i
+        constant_values(f,dofs_i)
+    end |> BVector
+end
+
 function undef_field(::Type{T},space::AbstractSpace) where T
-    free_values = allocate_values(free_values_strategy(space),T)
-    dirichlet_values = allocate_values(dirichlet_values_strategy(space),T)
+    free_values = allocate_values(T,GT.free_dofs(space))
+    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
     discrete_field(space,free_values,dirichlet_values)
 end
 
@@ -915,6 +891,21 @@ end
 
 # TODO rand_field
 
+function undef_dirichlet_field(::Type{T},space::AbstractSpace) where T
+    free_values = constant_values(zero(T),GT.free_dofs(space))
+    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
+end
+
+function zero_dirichlet_field(::Type{T},space::AbstractSpace) where T
+    uh = undef_dirichlet_field(T,space)
+    fill!(dirichlet_values(uh),zero(T))
+end
+
+function dirichlet_field(::Type{T},space::AbstractSpace) where T
+    zero_dirichlet_field(T,space)
+end
+
 function num_fields(u::DiscreteField)
     num_fields(GT.space(u))
 end
@@ -928,8 +919,8 @@ end
 function component(u::DiscreteField,field::Integer)
     space = GT.space(u)
     space_field = component(space,field)
-    free_values_field = restrict_values(free_values_strategy(space),free_values(u),field)
-    dirichlet_values_field = restrict_values(dirichlet_values_strategy(space),dirichlet_values(u),field)
+    free_values_field = view(free_values(u),Block(field))
+    dirichlet_values_field = view(dirichlet_values(u),Block(field))
     discrete_field(space_field,free_values_field,dirichlet_values_field)
 end
 
@@ -1013,8 +1004,16 @@ function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
 end
 
+function interpolate!(f,u::DiscreteField,field)
+    interpolate!(f,u,nothing,field)
+end
+
 function interpolate_free!(f,u::DiscreteField)
     interpolate!(f,u,FREE)
+end
+
+function interpolate_free!(f,u::DiscreteField,field)
+    interpolate!(f,u,FREE,field)
 end
 
 function interpolate_dirichlet!(f,u::DiscreteField)
@@ -1022,8 +1021,19 @@ function interpolate_dirichlet!(f,u::DiscreteField)
     interpolate!(f,u,DIRICHLET)
 end
 
+function interpolate_dirichlet!(f,u::DiscreteField,field)
+    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
+    interpolate!(f,u,DIRICHLET,field)
+end
+
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
     interpolate_impl!(f,u,free_or_diri)
+end
+
+function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
+    ui = component(u,field)
+    interpolate_impl!(f,ui,free_or_diri)
+    u
 end
 
 function interpolate_impl!(f,u,free_or_diri;location=1)
@@ -1084,20 +1094,14 @@ end
 
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
-# TODO think about free_values_strategy and dirichlet_values_strategy
 function iso_parametric_space(dom::ReferenceDomain;
-        dirichlet_boundary=nothing,
-        free_values_strategy = GT.monolithic_field_major_strategy,
-        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
-    )
-    IsoParametricSpace(dom,dirichlet_boundary,free_values_strategy,dirichlet_values_strategy)
+        dirichlet_boundary=nothing)
+    IsoParametricSpace(dom,dirichlet_boundary)
 end
 
-struct IsoParametricSpace{A,B,C,D} <: AbstractSpace
+struct IsoParametricSpace{A,B} <: AbstractSpace
     domain::A
     dirichlet_boundary::B
-    free_values_strategy::C
-    dirichlet_values_strategy::D
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace)
@@ -1172,16 +1176,6 @@ function face_reference_id(V::IsoParametricSpace)
     view(face_refid,faces)
 end
 
-function free_values_strategy(a::IsoParametricSpace)
-    n = length(first(free_and_dirichlet_nodes(a)))
-    a.free_values_strategy( (Base.OneTo(n),) )
-end
-
-function dirichlet_values_strategy(a::IsoParametricSpace)
-    n = length(last(free_and_dirichlet_nodes(a)))
-    a.dirichlet_values_strategy( (Base.OneTo(n),) )
-end
-
 function domain(a::IsoParametricSpace)
     a.domain
 end
@@ -1190,8 +1184,6 @@ end
 function lagrange_space(domain,order;
     conformity = :default,
     dirichlet_boundary=nothing,
-    free_values_strategy = GT.monolithic_field_major_strategy,
-    dirichlet_values_strategy = GT.monolithic_field_major_strategy,
     space=nothing,
     major=:component,
     shape=SCALAR_SHAPE)
@@ -1203,21 +1195,17 @@ function lagrange_space(domain,order;
                   order,
                   conformity,
                   dirichlet_boundary,
-                  free_values_strategy,
-                  dirichlet_values_strategy,
                   space,
                   major,
                   shape)
 
 end
 
-struct LagrangeSpace{A,B,C,D,E,F,G,H} <: AbstractSpace
+struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     domain::A
     order::B
     conformity::Symbol
     dirichlet_boundary::C
-    free_values_strategy::D
-    dirichlet_values_strategy::E
     space::F # TODO rename this one?
     major::G
     shape::H
@@ -1258,15 +1246,5 @@ function reference_fes(space::LagrangeSpace)
         lagrangian_fe(geometry,order;space=space2,major,shape)
     end
     ctype_to_reffe
-end
-
-function free_values_strategy(a::LagrangeSpace)
-    n = length(first(free_and_dirichlet_dofs(a)))
-    a.free_values_strategy( (Base.OneTo(n),) )
-end
-
-function dirichlet_values_strategy(a::LagrangeSpace)
-    n = length(last(free_and_dirichlet_dofs(a)))
-    a.dirichlet_values_strategy( (Base.OneTo(n),) )
 end
 

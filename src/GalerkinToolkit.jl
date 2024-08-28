@@ -9,6 +9,8 @@ import LinearAlgebra
 import ForwardDiff
 using Gmsh
 using PartitionedArrays
+using BlockArrays
+using FillArrays
 using Combinatorics
 using SparseArrays
 using Metis

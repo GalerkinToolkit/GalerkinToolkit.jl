@@ -73,7 +73,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V)
+b = GT.assemble_vector(l,V,Float64)
 
 function l(v)
     ∫(dΛref) do p
@@ -82,7 +82,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V)
+b = GT.assemble_vector(l,V,Float64)
 @test sum(b)+1 ≈ 1
 
 V² = V × V
@@ -98,7 +98,9 @@ function l((v1,v2))
     end
 end
 
-b = GT.assemble_vector(l,V²)
+b = GT.assemble_vector(l,V²,Float64)
+
+xxxx
 
 function a(u,v)
     ∫(dΩref) do q

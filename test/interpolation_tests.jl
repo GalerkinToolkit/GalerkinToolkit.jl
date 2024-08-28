@@ -5,6 +5,7 @@ using GalerkinToolkit: ∫, ×
 using Test
 import ForwardDiff
 using LinearAlgebra
+using BlockArrays
 
 D = 2
 order = 3
@@ -65,7 +66,21 @@ GT.interpolate_dirichlet!(uref,v2)
 
 Y = V×V
 y = GT.zero_field(Float64,Y)
+display(GT.free_values(y))
+display(GT.free_dofs(Y))
 y1, y2 = y
+
+@test GT.free_values(y1) === blocks(GT.free_values(y))[1]
+@test GT.free_values(y2) === blocks(GT.free_values(y))[2]
+
+GT.interpolate!(uref,y1)
+GT.interpolate!(uref,y,1)
+
+GT.interpolate_free!(uref,y1)
+GT.interpolate_free!(uref,y,1)
+
+GT.interpolate_dirichlet!(uref,y1)
+GT.interpolate_dirichlet!(uref,y,1)
 
 order = 3
 V = GT.lagrange_space(Ωref,order)
@@ -97,6 +112,9 @@ function dV(q)
 end
 el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 @test el2 < tol
+
+uhd = GT.dirichlet_field(Float64,V)
+GT.interpolate_dirichlet!(uref,uh)
 
 # TODO
 #udiri = GT.analytical_field(sum,Γdiri)
