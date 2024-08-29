@@ -171,6 +171,9 @@ function assemble_vector_count(state)
         for sface in 1:nsfaces
             faces = sface_to_faces[sface]
             for face in faces
+                if face == 0
+                    continue
+                end
                 dofs = face_to_dofs[face]
                 ndofs = length(dofs)
                 for idof in 1:ndofs
@@ -232,6 +235,9 @@ function assemble_vector_fill(state)
                     faces = sface_to_faces[sface]
                     faces_around = sface_to_faces_around[sface]
                     for ($face_around,face) in zip(faces_around,faces)
+                        if face == 0
+                            continue
+                        end
                         $(s_qty[3])
                         dofs = face_to_dofs[face]
                         ndofs = length(dofs)
@@ -329,9 +335,15 @@ function assemble_matrix_count(state)
             faces_test = sface_to_faces_test[sface]
             faces_trial = sface_to_faces_trial[sface]
             for face_test in faces_test
+                if face_test == 0
+                    continue
+                end
                 dofs_test = face_to_dofs_test[face_test]
                 ndofs_test = length(dofs_test)
                 for face_trial in faces_trial
+                    if face_trial == 0
+                        continue
+                    end
                     dofs_trial = face_to_dofs_trial[face_trial]
                     ndofs_trial = length(dofs_trial)
                     for idof_test in 1:ndofs_test
@@ -375,11 +387,11 @@ function assemble_matrix_fill(state)
     num_fields_trial = GT.num_fields(trial_space)
     counter = matrix_strategy.counter(setup)
     function loop(glue_test,glue_trial,field_per_dim,measure,contribution)
+        field_test,field_trial = field_per_dim
         sface_to_faces_test, _,sface_to_faces_around_test = target_face(glue_test)
         sface_to_faces_trial, _,sface_to_faces_around_trial = target_face(glue_trial)
-        face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
-        face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
-        field_test,field_trial = field_per_dim
+        face_to_dofs_test = face_dofs(test_space,field_test)
+        face_to_dofs_trial = face_dofs(trial_space,field_trial)
         term_qty = GT.term(contribution)
         term_npoints = GT.num_points(measure)
         sface = :sface
@@ -415,10 +427,16 @@ function assemble_matrix_fill(state)
                     faces_around_test = sface_to_faces_around_test[sface]
                     faces_around_trial = sface_to_faces_around_trial[sface]
                     for ($face_around_test,face_test) in zip(faces_around_test,faces_test)
+                        if face_test == 0
+                            continue
+                        end
                         $(s_qty[3])
                         dofs_test = face_to_dofs_test[face_test]
                         ndofs_test = length(dofs_test)
                         for ($face_around_trial,face_trial) in zip(faces_around_trial,faces_trial)
+                            if face_trial == 0
+                                continue
+                            end
                             $(s_qty[4])
                             dofs_trial = face_to_dofs_trial[face_trial]
                             ndofs_trial = length(dofs_trial)

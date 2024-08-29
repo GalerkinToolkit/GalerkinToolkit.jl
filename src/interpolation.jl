@@ -575,6 +575,9 @@ end
 
 # TODO a better name
 function face_shape_function(rid_to_fs,face_to_rid,face,dof)
+    if dof == 0 || face == 0
+        return first(first(rid_to_fs))
+    end
     fs = reference_value(rid_to_fs,face_to_rid,face)
     fs[dof]
 end
@@ -602,7 +605,7 @@ function shape_functions(a::AbstractSpace,dim)
         else
             @term begin
                 fs = face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
-                bool = $face_around == $(face_around_per_dim[dim])
+                bool = ($face_around == $(face_around_per_dim[dim])) & ($face  != 0)
                 mask_function(fs,bool)
             end
         end
@@ -807,10 +810,17 @@ function shape_functions(a::CartesianProductSpace,dim,field)
     GT.quantity(GT.prototype(qty),GT.domain(qty)) do index
         # TODO field_per_dim[dim] has possibly already a numeric value
         field_per_dim = index.field_per_dim
+        dof_per_dim = index.dof_per_dim
+        dof = @term begin
+            coeff = $field == $(field_per_dim[dim])
+            coeff*$(dof_per_dim[dim])
+        end
+        dof_per_dim2 = Base.setindex(dof_per_dim,dof,dim)
+        index2 = replace_dof_per_dim(index,dof_per_dim2)
         @assert field_per_dim !== nothing
         @term begin
             bool = $field == $(field_per_dim[dim])
-            mask_function($(t(index)),bool)
+            mask_function($(t(index2)),bool)
         end
     end
 end
