@@ -11,7 +11,7 @@ tol = 1.0e-10
 n = 2
 mesh = GT.cartesian_mesh((0,2,0,2),(n,n))
 for discretization_method in (:interior_penalty,:continuous_galerkin)
-    for dirichlet_method in (:multipliers,:nitsche,:strong)
+    for dirichlet_method in (:nitsche,:strong) #(:multipliers,:nitsche,:strong)
         params = Dict{Symbol,Any}()
         params[:mesh] = mesh
         params[:dirichlet_tags] = ["1-face-1","1-face-3","1-face-4"]

@@ -589,7 +589,7 @@ function analytical_field(f,dom::AbstractDomain)
     constant_quantity(f,dom)
 end
 
-function face_constant_field_impl(date,face::Integer)
+function face_constant_field_impl(data,face::Integer)
     x->data[face]
 end
 
