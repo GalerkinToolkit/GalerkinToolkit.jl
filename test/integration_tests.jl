@@ -53,7 +53,7 @@ int = ∫(dΩref) do q
     dV = abs(det(J))
     u(x)*dV
 end
-
+sum(int)
 @test sum(int) ≈ 8
 
 int = ∫(dΩref) do q
@@ -74,7 +74,6 @@ end
 u = GT.analytical_field(x->1,Ω)
 int = ∫(u,dΩ)
 @test sum(int) ≈ 4
-
 
 D = GT.num_dims(mesh)
 Γref = GT.boundary(mesh;
@@ -119,7 +118,8 @@ end
 
 @test sum(int) ≈ 8
 
-@test sum(GT.face_diameter(Γ)) ≈ 4
+fd = GT.face_diameter(Γ)
+@test sum(fd) ≈ 4
 
 h = GT.face_diameter_field(Γ)
 
@@ -132,14 +132,15 @@ dΛref = GT.measure(Λref,degree)
 ϕ_Λref_Λ = GT.domain_map(Λref,Λ)
 ϕ_Λref_Ωref = GT.domain_map(Λref,Ωref)
 
-jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
+jump(u,ϕ,q) = u(ϕ[+](q))[+]-u(ϕ[-](q))[-]
 
 int = 10*∫(dΛref) do p
     J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
     3*jump(uref,ϕ_Λref_Ωref,p)*dS(J)
 end
 
-@test sum(int*1) + 1 ≈ 1
+s = sum(int*1)
+@test s + 1 ≈ 1
 @test sum(int/1) + 1 ≈ 1
 
 # Parallel
@@ -168,7 +169,8 @@ int = ∫(dΩref) do q
     u(x)*dV
 end
 
-@test sum(int) ≈ 8
+s = sum(int)
+@test s ≈ 8
 
 int = ∫(dΩref) do q
     J = ForwardDiff.jacobian(ϕ,q)

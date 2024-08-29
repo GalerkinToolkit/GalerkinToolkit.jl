@@ -200,11 +200,15 @@ function coordinates(measure::Measure,domain::ReferenceDomain)
     prototype = first(GT.coordinates(first(refid_to_quad)))
     GT.quantity(prototype,domain) do index
         domface = index.face
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        coords = refid_to_coords[refid]
         point = index.point
-        coords[point]
+        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_coords_sym = get!(index.dict,refid_to_coords,gensym("refid_to_coords"))
+        @term begin
+            face = $domface_to_face_sym[$domface]
+            coords = reference_value($refid_to_coords_sym,$face_to_refid_sym,face)
+            coords[$point]
+        end
     end
 end
 
@@ -235,16 +239,24 @@ function weights(measure::Measure,domain::ReferenceDomain)
     face_to_refid = GT.face_reference_id(mesh,d)
     domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_w = map(GT.weights,refid_to_quad)
+    refid_to_ws = map(GT.weights,refid_to_quad)
     prototype = first(GT.weights(first(refid_to_quad)))
     GT.quantity(prototype,domain) do index
         domface = index.face
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        w = refid_to_w[refid]
         point = index.point
-        w[point]
+        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_ws_sym = get!(index.dict,refid_to_ws,gensym("refid_to_ws"))
+        @term begin
+            face = $domface_to_face_sym[$domface]
+            ws = reference_value($refid_to_ws_sym,$face_to_refid_sym,face)
+            ws[$point]
+        end
     end
+end
+
+function change_of_measure(J)
+    sqrt(det(transpose(J)*J))
 end
 
 function weights(measure::Measure,domain::PhysicalDomain)
@@ -253,9 +265,8 @@ function weights(measure::Measure,domain::PhysicalDomain)
     ϕ = GT.domain_map(Ωref,Ω)
     w = GT.weights(measure,Ωref)
     x = GT.coordinates(measure,Ωref)
-    f(J) = sqrt(det(transpose(J)*J))
     J = GT.call(ForwardDiff.jacobian,ϕ,x)
-    dV = GT.call(f,J)
+    dV = GT.call(change_of_measure,J)
     GT.call(*,w,dV)
 end
 
@@ -266,13 +277,17 @@ function num_points(measure::Measure)
     face_to_refid = GT.face_reference_id(mesh,d)
     domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_w = map(GT.weights,refid_to_quad)
+    refid_to_ws = map(GT.weights,refid_to_quad)
     index -> begin
         domface = index.face
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        w = refid_to_w[refid]
-        length(w)
+        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_ws_sym = get!(index.dict,refid_to_ws,gensym("refid_to_ws"))
+        @term begin
+            face = $domface_to_face_sym[$domface]
+            ws = reference_value($refid_to_ws_sym,$face_to_refid_sym,face)
+            length(ws)
+        end
     end
 end
 
@@ -281,25 +296,21 @@ function integrate(f,measure::Measure)
     x = GT.coordinates(measure)
     fx = f(x)
     contrib = integrate_impl(fx,measure)
-    integral((domain=>contrib,))
+    integral((measure=>contrib,))
 end
 const ∫ = integrate
 
 function integrate_impl(fx,measure)
     w = GT.weights(measure)
-    p_fx = GT.prototype(fx)
-    p_w = GT.prototype(w)
-    t_fx = GT.term(fx)
-    t_w = GT.term(w)
-    prototype = p_fx*p_w + p_fx*p_w
-    num_points = GT.num_points(measure)
-    contrib = GT.quantity(prototype,GT.domain(measure)) do index
-        np = num_points(index)
-        sum(1:np) do point
-            index2 = replace_point(index,point)
-            t_fx(index2)*t_w(index2)
-        end
-    end
+    GT.call(*,fx,w)
+    #p_fx = GT.prototype(fx)
+    #p_w = GT.prototype(w)
+    #t_fx = GT.term(fx)
+    #t_w = GT.term(w)
+    #prototype = p_fx*p_w + p_fx*p_w
+    #GT.quantity(prototype,GT.domain(measure)) do index
+    #    GT.call(*,t_fx(index),t_w(index))
+    #end
 end
 
 function integrate(f,measure::Measure{<:PMesh})
@@ -310,14 +321,14 @@ function integrate(f,measure::Measure{<:PMesh})
     prototype = map(GT.prototype,q) |> PartitionedArrays.getany
     domain = measure |> GT.domain
     contrib = GT.quantity(term,prototype,domain)
-    integral((domain=>contrib,))
+    integral((measure=>contrib,))
 end
 
 function integral(contribs)
     Integral(contribs)
 end
 
-# TODO Rename contributions with domain_contribution
+# TODO Rename contributions with measure_contribution ?
 struct Integral{A}
     contributions::A
 end
@@ -328,69 +339,126 @@ function Base.sum(int::Integral)
 end
 
 function sum_contribution(contrib)
-    domain, qty = contrib
-    sum_contribution(domain,qty)
+    measure, qty = contrib
+    sum_contribution(measure,qty)
 end
 
-function sum_contribution(domain,qty)
+function sum_contribution(measure,qty)
+    domain = GT.domain(measure)
     nfaces = GT.num_faces(domain)
     facemask = fill(true,nfaces)
-    sum_contribution_impl(qty,facemask)
+    sum_contribution_impl(qty,measure,facemask)
 end
 
-function sum_contribution(domain::AbstractDomain{<:PMesh},qty::AbstractQuantity{<:PMesh})
+function sum_contribution(measure::Measure{<:PMesh},qty::AbstractQuantity{<:PMesh})
+    domain = GT.domain(measure)
     mesh = domain |> GT.mesh
     d = GT.num_dims(domain)
     # TODO allow the user to skip or not to skip ghosts
-    map(partition(domain),partition(qty),GT.face_partition(mesh,d)) do mydom,myqty,myfaces
+    map(partition(measure),partition(qty),GT.face_partition(mesh,d)) do mymeasure,myqty,myfaces
+        mydom = GT.domain(mymeasure)
         facemask = (part_id(myfaces) .== local_to_owner(myfaces))[GT.faces(mydom)]
-        sum_contribution_impl(myqty,facemask)
+        sum_contribution_impl(myqty,mymeasure,facemask)
     end |> sum
 end
 
-function sum_contribution_impl(qty,facemask)
+function sum_contribution_impl(qty,measure,facemask)
     # TODO some code duplication with face_contribution_impl
-    z = zero(GT.prototype(qty))
-    nfaces = length(facemask)
-    term = GT.term(qty)
-    for face in 1:nfaces
-        if ! facemask[face]
-            continue
+    # Yes, but this allocates less memory
+    term_qty = GT.term(qty)
+    term_npoints = GT.num_points(measure)
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    expr_qty = term_qty(index) |> simplify
+    expr_npoints = term_npoints(index) |> simplify
+    # TODO merge statements
+    s_qty = GT.topological_sort(expr_qty,(face,point))
+    s_npoints = GT.topological_sort(expr_npoints,(face,))
+    expr = quote
+        function loop(z,facemask,storage)
+            s = zero(z)
+            $(unpack_storage(index.dict,:storage))
+            $(s_qty[1])
+            $(s_npoints[1])
+            nfaces = length(facemask)
+            for $face in 1:nfaces
+                if ! facemask[$face]
+                    continue
+                end
+                $(s_qty[2])
+                npoints = $(s_npoints[2])
+                for $point in 1:npoints
+                    s += $(s_qty[3])
+                end
+            end
+            s
         end
-        index = GT.index(;face)
-        z += term(index)
     end
-    z
+    loop = eval(expr)
+    storage = GT.storage(index)
+    z = zero(GT.prototype(qty))
+    s = invokelatest(loop,z,facemask,storage)
+    s
 end
 
 function face_contribution(int::Integral,domain)
-    for (domain2,qty) in int.contributions
+    for (measure,qty) in int.contributions
+        domain2 = GT.domain(measure)
         if domain2 == domain
-            return face_contribution(domain2,qty)
+            return face_contribution(measure,qty)
         end
     end
     error("Domain not in integral")
 end
 
-function face_contribution(domain,qty)
+function face_contribution(measure,qty)
+    domain = GT.domain(measure)
     nfaces = GT.num_faces(domain)
     facemask = fill(true,nfaces)
-    face_contribution_impl(qty,facemask)
+    face_contribution_impl(qty,measure,facemask)
 end
 
-function face_contribution_impl(qty,facemask)
+function face_contribution_impl(qty,measure,facemask)
+    term_qty = GT.term(qty)
+    term_npoints = GT.num_points(measure)
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    expr_qty = term_qty(index) |> simplify
+    expr_npoints = term_npoints(index) |> simplify
+    # TODO merge statements
+    s_qty = GT.topological_sort(expr_qty,(face,point))
+    s_npoints = GT.topological_sort(expr_npoints,(face,))
+    expr = quote
+        function loop!(facevals,facemask,storage)
+            $(unpack_storage(index.dict,:storage))
+            $(s_qty[1])
+            $(s_npoints[1])
+            nfaces = length(facemask)
+            z = zero(eltype(facevals))
+            for $face in 1:nfaces
+                if ! facemask[$face]
+                    continue
+                end
+                $(s_qty[2])
+                npoints = $(s_npoints[2])
+                s = z
+                for $point in 1:npoints
+                    s += $(s_qty[3])
+                end
+                facevals[$face] = s
+            end
+            facevals
+        end
+    end
+    loop! = eval(expr)
+    storage = GT.storage(index)
     z = zero(GT.prototype(qty))
     nfaces = length(facemask)
-    r = fill(z,nfaces)
-    term = GT.term(qty)
-    for face in 1:nfaces
-        if ! facemask[face]
-            continue
-        end
-        index = GT.index(;face)
-        r[face] = term(index)
-    end
-    r
+    facevals = fill(z,nfaces)
+    invokelatest(loop!,facevals,facemask,storage)
+    facevals
 end
 
 function face_diameter(Ω)

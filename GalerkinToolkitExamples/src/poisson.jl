@@ -34,8 +34,8 @@ laplacian(u) = x-> tr(ForwardDiff.jacobian(y->ForwardDiff.gradient(u,y),x))
 Δ(u,x) = Δ(u)(x)
 ∇(u,x) = ∇(u)(x)
 
-mean(u,x) = 0.5*(u(x)[1]+u(x)[2])
-jump(u,n,x) = u(x)[1]*n[1](x) + u(x)[2]*n[2](x)
+mean(u,x) = 0.5*(u(x)[+]+u(x)[-])
+jump(u,n,x) = u(x)[+]*n[+](x) + u(x)[-]*n[-](x)
 
 function main_automatic(params)
     timer = params[:timer]
@@ -74,21 +74,18 @@ function main_automatic(params)
 
     if params[:dirichlet_method] === :strong
         V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
-        uh = GT.zero_field(Float64,V)
-        GT.interpolate_dirichlet!(u,uh)
+        uhd = GT.dirichlet_field(Float64,V)
+        GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(Γd,Ω)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
         V = GT.lagrange_space(Ω,interpolation_degree;conformity)
-        uh = GT.zero_field(Float64,V)
     end
 
     if params[:dirichlet_method] === :multipliers
         Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
         VxQ = V × Q
-        uh_qh = GT.zero_field(Float64,VxQ)
-        uh, qh = uh_qh
     end
 
     function a(u,v)
@@ -123,21 +120,32 @@ function main_automatic(params)
             r += ∫(x->u(x)*q(x), dΓd)
             r
         end
-        Uh = uh_qh
-    else
-        A = a
-        L = l
-        Uh = uh
     end
 
     @timeit timer "assembly" begin
-        # TODO give a hint when dirichlet BCS are homogeneous or not present
-        x,A,b = GT.linear_problem(Uh,A,L)
+        if params[:dirichlet_method] === :strong
+            # TODO give a hint when dirichlet BCS are homogeneous
+            x,K,b = GT.linear_problem(uhd,a,l)
+        elseif params[:dirichlet_method] === :multipliers
+            x,K,b = GT.linear_problem(Float64,VxQ,A,L)
+        else
+            x,K,b = GT.linear_problem(Float64,V,a,l)
+        end
     end
 
     @timeit timer "solver" begin
-        P = ps.setup(params[:solver],x,A,b)
+        P = ps.setup(params[:solver],x,K,b)
+        # TODO the solver should tell if the initial guess will be actually used
+        fill!(x,0) # set initial guess
         ps.solve!(x,P,b)
+        if params[:dirichlet_method] === :strong
+            uh = GT.solution_field(uhd,x)
+        elseif params[:dirichlet_method] === :multipliers
+            uh_ph = GT.solution_field(VxQ,x)
+            uh, ph = uh_ph
+        else
+            uh = GT.solution_field(V,x)
+        end
     end
 
     @timeit timer "error_norms" begin

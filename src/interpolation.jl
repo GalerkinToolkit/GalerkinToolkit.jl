@@ -139,12 +139,24 @@ Base.length(m::AbstractSpace) = num_fields(m)
 
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 
+function free_dofs(a::AbstractSpace,field)
+    @assert field == 1
+    free_dofs(a)
+end
+
 function free_dofs(a::AbstractSpace)
-    GT.dofs(free_values_strategy(a))
+    nfree = length(first(free_and_dirichlet_dofs(a)))
+    Base.OneTo(nfree)
+end
+
+function dirichlet_dofs(a::AbstractSpace,field)
+    @assert field == 1
+    dirichlet_dofs(a)
 end
 
 function dirichlet_dofs(a::AbstractSpace)
-    GT.dofs(dirichlet_values_strategy(a))
+    ndiri = length(last(free_and_dirichlet_dofs(a)))
+    Base.OneTo(ndiri)
 end
 
 # Single field by default
@@ -455,6 +467,11 @@ function face_dofs(space::AbstractSpace)
     state.cell_to_dofs # TODO rename face_dofs ?
 end
 
+function face_dofs(space::AbstractSpace,field)
+    @assert field == 1
+    face_dofs(space)
+end
+
 function free_and_dirichlet_dofs(V::AbstractSpace)
     state = generate_dof_ids(V)
     state.free_and_dirichlet_dofs
@@ -465,57 +482,79 @@ function dirichlet_dof_location(V::AbstractSpace)
     state.dirichlet_dof_location
 end
 
-function num_face_dofs(a::AbstractSpace,dim)
-    field = 1
-    num_face_dofs(a,dim,field)
-end
+#function num_face_dofs(a::AbstractSpace,dim)
+#    field = 1
+#    num_face_dofs(a,dim,field)
+#end
+#
+#function num_face_dofs(a::AbstractSpace,dim,field)
+#    face_to_dofs = face_dofs(a)
+#    index -> begin
+#        dict = index.dict
+#        field_sym = get!(dict,field,gensym("field"))
+#        face_to_dofs_sym = get!(dict,face_to_dofs,gensym("face_to_dofs"))
+#        dim_sym = get!(dict,dim,gensym("dim"))
+#        face = index.face
+#        field_per_dim = index.field_per_dim
+#        @assert face !== nothing
+#        @assert field_per_dim !== nothing
+#        @term begin
+#            f = length($face_to_dofs_sym[$face])
+#            bool = ($field_per_dim[$dim_sym] != $field_sym) | ($face == 0)
+#            ifelse(bool,0,f)
+#        end
+#    end
+#end
+#
+#function dof_map(a::AbstractSpace,dim)
+#    field = 1
+#    dof_map(a,dim,field)
+#end
+#
+#function dof_map(a::AbstractSpace,dim,field)
+#    face_to_dofs = face_dofs(a)
+#    T = eltype(eltype(face_to_dofs))
+#    z = T(-1)
+#    index -> begin
+#        dict = index.dict
+#        field_sym = get!(dict,field,gensym("field"))
+#        z_sym = get!(dict,z,gensym("z"))
+#        face_to_dofs_sym = get!(dict,face_to_dofs,gensym("face_to_dofs"))
+#        dim_sym = get!(dict,dim,gensym("dim"))
+#        face = index.face
+#        dof = index.dof
+#        dof_per_dim = index.dof_per_dim
+#        field_per_dim = index.field_per_dim
+#        @assert face !== nothing
+#        @assert dof !== nothing
+#        @assert dof_per_dim !== nothing
+#        @assert field_per_dim !== nothing
+#        @term begin
+#            dof = $dof_per_dim[$dim_sym]
+#            f = $face_to_dofs_sym[$face][dof]
+#            bool = ($field_per_dim[$dim_sym] != $field_sym) | ($face == 0)
+#            ifelse(bool,$z_sym,f)
+#        end
+#    end
+#end
 
-function num_face_dofs(a::AbstractSpace,dim,field)
-    face_to_dofs = face_dofs(a)
-    index -> begin
-        face = index.face
-        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
-            return 0
-        end
-        length(face_to_dofs[face])
-    end
-end
-
-function dof_map(a::AbstractSpace,dim)
-    field = 1
-    dof_map(a,dim,field)
-end
-
-function dof_map(a::AbstractSpace,dim,field)
-    face_to_dofs = face_dofs(a)
-    T = eltype(eltype(face_to_dofs))
-    index -> begin
-        face = index.face
-        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
-            return T(-1)
-        end
-        dof = index.dof_per_dim[dim]
-        face_to_dofs[face][dof]
-    end
-end
-
-# TODO I guess this is not needed anymore
-function shape_function_mask(f,face_around_per_dim,face_around,dim)
-    @assert face_around !== nothing
-    x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
-end
-
-function shape_function_mask(f,face_around_per_dim::Nothing,face_around,dim)
-    f
-end
-
-function shape_function_mask(f,face_around_per_dim::Nothing,face_around::Nothing,dim)
-    f
-end
-
-function shape_function_mask(f,face_around_per_dim,face_around::Nothing,dim)
-    f
-end
+## TODO I guess this is not needed anymore
+#function shape_function_mask(f,face_around_per_dim,face_around,dim)
+#    @assert face_around !== nothing
+#    x -> face_around_per_dim[dim] == face_around ? f(x) : zero(f(x))
+#end
+#
+#function shape_function_mask(f,face_around_per_dim::Nothing,face_around,dim)
+#    f
+#end
+#
+#function shape_function_mask(f,face_around_per_dim::Nothing,face_around::Nothing,dim)
+#    f
+#end
+#
+#function shape_function_mask(f,face_around_per_dim,face_around::Nothing,dim)
+#    f
+#end
 
 function primal_map(a::AbstractSpace)
     nothing
@@ -525,12 +564,25 @@ function dual_map(a::AbstractSpace)
     nothing
 end
 
-function shape_functions(a::AbstractSpace,dim)
-    field=1
-    GT.shape_functions(a,dim,field)
+function shape_functions(a::AbstractSpace,dim,field)
+    @assert field == 1
+    GT.shape_functions(a,dim)
 end
 
-function shape_functions(a::AbstractSpace,dim,field)
+function mask_function(f,bool)
+    x->bool*f(x)
+end
+
+# TODO a better name
+function face_shape_function(rid_to_fs,face_to_rid,face,dof)
+    if dof == 0 || face == 0
+        return first(first(rid_to_fs))
+    end
+    fs = reference_value(rid_to_fs,face_to_rid,face)
+    fs[dof]
+end
+
+function shape_functions(a::AbstractSpace,dim)
     @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
@@ -538,15 +590,85 @@ function shape_functions(a::AbstractSpace,dim,field)
     domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
     qty = GT.quantity(prototype,domain) do index
+        dict = index.dict
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
         face = index.face
-        if (index.field_per_dim !== nothing && index.field_per_dim[dim] != field) || face == 0
-            return x -> zero(prototype(x))
+        dof_per_dim = index.dof_per_dim
+        face_around_per_dim = index.face_around_per_dim
+        face_around = index.face_around
+        @assert face !== nothing
+        @assert dof_per_dim !== nothing
+        dof = dof_per_dim[dim]
+        if face_around_per_dim === nothing || face_around == nothing
+            @term face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
+        else
+            @term begin
+                fs = face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
+                bool = ($face_around == $(face_around_per_dim[dim])) & ($face  != 0)
+                mask_function(fs,bool)
+            end
         end
-        refid = face_to_refid[face]
-        dof = index.dof_per_dim[dim]
-        f = refid_to_funs[refid][dof]
-        g = shape_function_mask(f,index.face_around_per_dim,index.face_around,dim)
-        shape_function_mask(g,index.field_per_dim,field,dim)
+    end
+    if is_reference_domain(GT.domain(a))
+        return qty
+    end
+    Ω = GT.domain(a)
+    Ωref = GT.reference_domain(Ω)
+    ϕ = GT.domain_map(Ωref,Ω)
+    ϕinv = GT.inverse_map(ϕ)
+    compose(qty,ϕinv)
+end
+
+# TODO a better name
+function face_function_free_and_dirichlet(
+    rid_to_fs,
+    face_to_rid,
+    face_to_dofs,
+    free_dofs_to_value,
+    diri_dofs_to_value,
+    face)
+    fs = reference_value(rid_to_fs,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    x -> begin
+        ndofs = length(dofs)
+        sum(1:ndofs) do idof
+            dof = dofs[idof]
+            coeff =  dof > 0 ? free_dofs_to_value[dof] : diri_dofs_to_value[-dof]
+            f = fs[idof]
+            f(x)*coeff
+        end
+    end
+end
+
+function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
+    @assert primal_map(a) === nothing
+    face_to_refid = face_reference_id(a)
+    refid_to_reffes = reference_fes(a)
+    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+    domain = GT.domain(a)
+    f_prototype = first(first(refid_to_funs))
+    z = zero(eltype(free_vals))
+    prototype = x-> z*f_prototype(x) + z*f_prototype(x)
+    face_to_dofs = GT.face_dofs(a)
+    qty = GT.quantity(prototype,domain) do index
+        dict = index.dict
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+        face_to_dofs_sym = get!(dict,face_to_dofs,gensym("face_to_dofs"))
+        free_vals_sym = get!(dict,free_vals,gensym("free_vals"))
+        diri_vals_sym = get!(dict,diri_vals,gensym("diri_vals"))
+        face = index.face
+        @assert face !== nothing
+        @term begin
+            face_function_free_and_dirichlet(
+                                             $refid_to_funs_sym,
+                                             $face_to_refid_sym,
+                                             $face_to_dofs_sym,
+                                             $free_vals_sym,
+                                             $diri_vals_sym,
+                                             $face)
+        end
     end
     if is_reference_domain(GT.domain(a))
         return qty
@@ -566,10 +688,18 @@ function dual_basis(a::AbstractSpace,dim)
     domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
     qty = GT.quantity(prototype,domain) do index
+        dict = index.dict
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
         face = index.face
-        refid = face_to_refid[face]
-        dof = index.dof_per_dim[dim]
-        refid_to_funs[refid][dof]
+        dof_per_dim = index.dof_per_dim
+        @assert face !== nothing
+        @assert dof_per_dim !== nothing
+        dof = dof_per_dim[dim]
+        @term begin
+            refid = $face_to_refid_sym[$face]
+            $refid_to_funs_sym[refid][$dof]
+        end
     end
     if is_reference_domain(GT.domain(a))
         return qty
@@ -580,47 +710,12 @@ function dual_basis(a::AbstractSpace,dim)
     u -> qty(compose(u,ϕ))
 end
 
-struct VectorStrategy{A,B,C,D}
-    dofs::A
-    allocate_values::B
-    restrict_values::C
-    prolongate_dof::D
+function cartesian_product(spaces::AbstractSpace...)
+    CartesianProductSpace(spaces)
 end
 
-dofs(a::VectorStrategy) = a.dofs
-allocate_values(a::VectorStrategy,args...) = a.allocate_values(args...)
-restrict_values(a::VectorStrategy,args...) = a.restrict_values(args...)
-prolongate_dof(a::VectorStrategy,args...) = a.prolongate_dof(args...)
-
-function monolithic_field_major_strategy(field_to_dofs)
-    offset = 0
-    field_to_offset = map(field_to_dofs) do dofs
-        myoffset = offset
-        offset += length(dofs)
-        return myoffset
-    end
-    ndofs = offset
-    dofs = Base.OneTo(ndofs)
-    allocate_values(::Type{T}) where T = Vector{T}(undef,ndofs)
-    restrict_values(v,field) = view(v,field_to_dofs[field])
-    prolongate_dof(dof,field) = dof + field_to_offset[field]
-    VectorStrategy(dofs,allocate_values,restrict_values,prolongate_dof)
-end
-
-function cartesian_product(spaces::AbstractSpace...;
-        free_values_strategy = GT.monolithic_field_major_strategy,
-        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
-    )
-    CartesianProductSpace(
-        spaces,
-        free_values_strategy(map(GT.free_dofs,spaces)),
-        dirichlet_values_strategy(map(GT.dirichlet_dofs,spaces)),)
-end
-
-struct CartesianProductSpace{A,B,C} <: GT.AbstractSpace
+struct CartesianProductSpace{A} <: GT.AbstractSpace
     spaces::A
-    free_values_strategy::B
-    dirichlet_values_strategy::C
 end
 
 function mesh(space::CartesianProductSpace)
@@ -637,14 +732,6 @@ end
 
 function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
     cartesian_product(a,b.spaces...)
-end
-
-function free_values_strategy(a::CartesianProductSpace)
-    a.free_values_strategy
-end
-
-function dirichlet_values_strategy(a::CartesianProductSpace)
-    a.dirichlet_values_strategy
 end
 
 function components(a::CartesianProductSpace)
@@ -677,41 +764,36 @@ function domain(a::CartesianProductSpace,field)
     GT.domain(GT.component(a,field))
 end
 
-function num_face_dofs(a::CartesianProductSpace,dim)
-    error("Casenot implemented (perhaps not needed in practice)")
+function face_dofs(a::CartesianProductSpace)
+    error("Not implemented, not needed in practice")
 end
 
-function num_face_dofs(a::CartesianProductSpace,dim,field)
+function face_dofs(a::CartesianProductSpace,field)
+    face_dofs(a.spaces[field])
+end
+
+function free_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        free_dofs(a,field)
+    end |> BRange
+end
+
+function free_dofs(a::CartesianProductSpace,field)
     f = component(a,field)
-    num_face_dofs(f,dim,field)
-    #terms = map(s->GT.num_face_dofs(s,dim),a.spaces)
-    #index -> begin
-    #    field = index.field_per_dim[dim]
-    #    @assert field !== nothing
-    #    index2 = replace_field_per_dim(index,nothing)
-    #    terms[field](index2)
-    #end
+    free_dofs(f)
 end
 
-function dof_map(a::CartesianProductSpace,dim)
-    error("Casenot implemented (perhaps not needed in practice)")
+function dirichlet_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        dirichlet_dofs(a,field)
+    end |> BRange
 end
 
-function dof_map(a::CartesianProductSpace,dim,field)
-    strategy = GT.free_values_strategy(a)
+function dirichlet_dofs(a::CartesianProductSpace,field)
     f = component(a,field)
-    term = dof_map(f,dim,field)
-    index -> begin
-        dof = term(index)
-        prolongate_dof(strategy,dof,field)
-    end
-    #terms = map(s->GT.dof_map(s,dim),a.spaces)
-    #index -> begin
-    #    field = index.field_per_dim[dim]
-    #    @assert field !== nothing
-    #    index2 = replace_field_per_dim(index,nothing)
-    #    terms[field](index2)
-    #end
+    dirichlet_dofs(f)
 end
 
 function shape_functions(a::CartesianProductSpace,dim)
@@ -723,23 +805,50 @@ end
 
 function shape_functions(a::CartesianProductSpace,dim,field)
     f = component(a,field)
-    shape_functions(f,dim,field)
+    qty = shape_functions(f,dim)
+    t = GT.term(qty)
+    GT.quantity(GT.prototype(qty),GT.domain(qty)) do index
+        # TODO field_per_dim[dim] has possibly already a numeric value
+        field_per_dim = index.field_per_dim
+        dof_per_dim = index.dof_per_dim
+        dof = @term begin
+            coeff = $field == $(field_per_dim[dim])
+            coeff*$(dof_per_dim[dim])
+        end
+        dof_per_dim2 = Base.setindex(dof_per_dim,dof,dim)
+        index2 = replace_dof_per_dim(index,dof_per_dim2)
+        @assert field_per_dim !== nothing
+        @term begin
+            bool = $field == $(field_per_dim[dim])
+            mask_function($(t(index2)),bool)
+        end
+    end
+end
+
+function discrete_field_qty(a::CartesianProductSpace,free_vals,diri_vals)
+    nothing
 end
 
 function dual_basis(a::CartesianProductSpace)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function discrete_field(space,free_values,dirichlet_values)
-    mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values)
+function dual_basis(a::CartesianProductSpace,field)
+    error("Not implemented yet. Not needed in practice.")
 end
 
-struct DiscreteField{A,B,C,D} <: GT.AbstractQuantity{A}
+function discrete_field(space,free_values,dirichlet_values)
+    qty = discrete_field_qty(space,free_values,dirichlet_values)
+    mesh = space |> GT.mesh
+    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
+end
+
+struct DiscreteField{A,B,C,D,E} <: GT.AbstractQuantity{A}
     mesh::A
     space::B
     free_values::C
     dirichlet_values::D
+    quantity::E
 end
 
 Base.iterate(m::DiscreteField) = iterate(components(m))
@@ -747,9 +856,31 @@ Base.iterate(m::DiscreteField,state) = iterate(components(m),state)
 Base.getindex(m::DiscreteField,field::Integer) = component(m,field)
 Base.length(m::DiscreteField) = num_fields(m)
 
+function allocate_values(::Type{T},dofs) where T
+    n = length(dofs)
+    Vector{T}(undef,n)
+end
+
+function allocate_values(::Type{T},dofs::BRange) where T
+    map(dofs.blocks) do dofs_i
+        allocate_values(T,dofs_i)
+    end |> BVector
+end
+
+function constant_values(f,dofs)
+    n = length(dofs)
+    Fill(f,n)
+end
+
+function constant_values(f,dofs::BRange)
+    map(dofs.blocks) do dofs_i
+        constant_values(f,dofs_i)
+    end |> BVector
+end
+
 function undef_field(::Type{T},space::AbstractSpace) where T
-    free_values = allocate_values(free_values_strategy(space),T)
-    dirichlet_values = allocate_values(dirichlet_values_strategy(space),T)
+    free_values = allocate_values(T,GT.free_dofs(space))
+    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
     discrete_field(space,free_values,dirichlet_values)
 end
 
@@ -770,6 +901,22 @@ end
 
 # TODO rand_field
 
+function undef_dirichlet_field(::Type{T},space::AbstractSpace) where T
+    free_values = constant_values(zero(T),GT.free_dofs(space))
+    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
+end
+
+function zero_dirichlet_field(::Type{T},space::AbstractSpace) where T
+    uh = undef_dirichlet_field(T,space)
+    fill!(dirichlet_values(uh),zero(T))
+    uh
+end
+
+function dirichlet_field(::Type{T},space::AbstractSpace) where T
+    zero_dirichlet_field(T,space)
+end
+
 function num_fields(u::DiscreteField)
     num_fields(GT.space(u))
 end
@@ -783,8 +930,8 @@ end
 function component(u::DiscreteField,field::Integer)
     space = GT.space(u)
     space_field = component(space,field)
-    free_values_field = restrict_values(free_values_strategy(space),free_values(u),field)
-    dirichlet_values_field = restrict_values(dirichlet_values_strategy(space),dirichlet_values(u),field)
+    free_values_field = view(free_values(u),Block(field))
+    dirichlet_values_field = view(dirichlet_values(u),Block(field))
     discrete_field(space_field,free_values_field,dirichlet_values_field)
 end
 
@@ -805,42 +952,47 @@ function domain(u::DiscreteField)
 end
 
 function prototype(u::DiscreteField)
-    space = GT.space(u)
-    dim = 2
-    basis = GT.shape_functions(space,dim)
-    f = GT.prototype(basis)
-    T = eltype(GT.free_values(u))
-    z = zero(T)
-    # TODO use also dirichlet values type?
-    x -> f(x)*z + f(x)*z
+    GT.prototype(u.quantity)
+    #space = GT.space(u)
+    #dim = 2
+    #basis = GT.shape_functions(space,dim)
+    #f = GT.prototype(basis)
+    #T = eltype(GT.free_values(u))
+    #z = zero(T)
+    ## TODO use also dirichlet values type?
+    #x -> f(x)*z + f(x)*z
 end
 
 function term(u::DiscreteField)
-    space = GT.space(u)
-    free_vals = GT.free_values(u)
-    diri_vals = GT.dirichlet_values(u)
-    dim = 2
-    dof_map = GT.dof_map(space,dim)
-    num_face_dofs = GT.num_face_dofs(space,dim)
-    basis = GT.shape_functions(space,dim)
-    basis_term = GT.term(basis)
-    index -> begin
-        x -> begin
-            index2 = GT.index(
-                              face=index.face,
-                              local_face=index.local_face,
-                              face_around=index.face_around)
-            ndofs = num_face_dofs(index2)
-            sum(1:ndofs) do dof
-                dof_per_dim = (nothing,dof)
-                index3 = replace_dof_per_dim(index2,dof_per_dim)
-                dof = dof_map(index3)
-                f = basis_term(index3)
-                coeff =  dof > 0 ? free_vals[dof] : diri_vals[-dof]
-                f(x)*coeff
-            end
-        end
-    end
+    GT.term(u.quantity)
+    #space = GT.space(u)
+    #free_vals = GT.free_values(u)
+    #diri_vals = GT.dirichlet_values(u)
+    #space = GT.space(u)
+    #free_vals = GT.free_values(u)
+    #diri_vals = GT.dirichlet_values(u)
+    #dim = 2
+    #dof_map = GT.dof_map(space,dim)
+    #num_face_dofs = GT.num_face_dofs(space,dim)
+    #basis = GT.shape_functions(space,dim)
+    #basis_term = GT.term(basis)
+    #index -> begin
+    #    x -> begin
+    #        index2 = GT.index(
+    #                          face=index.face,
+    #                          local_face=index.local_face,
+    #                          face_around=index.face_around)
+    #        ndofs = num_face_dofs(index2)
+    #        sum(1:ndofs) do dof
+    #            dof_per_dim = (nothing,dof)
+    #            index3 = replace_dof_per_dim(index2,dof_per_dim)
+    #            dof = dof_map(index3)
+    #            f = basis_term(index3)
+    #            coeff =  dof > 0 ? free_vals[dof] : diri_vals[-dof]
+    #            f(x)*coeff
+    #        end
+    #    end
+    #end
 end
 
 # TODO
@@ -863,8 +1015,16 @@ function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
 end
 
+function interpolate!(f,u::DiscreteField,field)
+    interpolate!(f,u,nothing,field)
+end
+
 function interpolate_free!(f,u::DiscreteField)
     interpolate!(f,u,FREE)
+end
+
+function interpolate_free!(f,u::DiscreteField,field)
+    interpolate!(f,u,FREE,field)
 end
 
 function interpolate_dirichlet!(f,u::DiscreteField)
@@ -872,8 +1032,19 @@ function interpolate_dirichlet!(f,u::DiscreteField)
     interpolate!(f,u,DIRICHLET)
 end
 
+function interpolate_dirichlet!(f,u::DiscreteField,field)
+    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
+    interpolate!(f,u,DIRICHLET,field)
+end
+
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
     interpolate_impl!(f,u,free_or_diri)
+end
+
+function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
+    ui = component(u,field)
+    interpolate_impl!(f,ui,free_or_diri)
+    u
 end
 
 function interpolate_impl!(f,u,free_or_diri;location=1)
@@ -882,30 +1053,48 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
     space = GT.space(u)
     dim = 1
     sigma = GT.dual_basis(space,dim)
-    dof_map = GT.dof_map(space,dim)
+    face_to_dofs = GT.face_dofs(space)
     vals = sigma(f)
     vals_term = GT.term(vals)
     domain = GT.domain(space)
-    num_face_dofs = GT.num_face_dofs(space,dim)
     dirichlet_dof_location = GT.dirichlet_dof_location(space)
-    for face in 1:GT.num_faces(domain)
-        index = GT.index(;face)
-        for dof in 1:num_face_dofs(index)
-            index2 = replace_dof_per_dim(index,(dof,))
-            v = vals_term(index2)
-            dof = dof_map(index2)
-            if dof > 0
-                if free_or_diri != DIRICHLET
-                    free_vals[dof] = v
-                end
-            else
-                diri_dof = -dof
-                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
-                    diri_vals[diri_dof] = v
+    face = :face
+    dof = :dof
+    index = GT.index(;face,dof_per_dim=(dof,))
+    expr_qty = vals_term(index) |> simplify
+    s_qty = GT.topological_sort(expr_qty,(face,dof))
+    expr = quote
+        function loop!(args,storage)
+            (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri) = args
+            $(unpack_storage(index.dict,:storage))
+            $(s_qty[1])
+            for $face in 1:nfaces
+                $(s_qty[2])
+                dofs = face_to_dofs[$face]
+                ndofs = length(dofs)
+                for $dof in 1:ndofs
+                    v = $(s_qty[3])
+                    gdof = dofs[$dof]
+                    if gdof > 0
+                        if free_or_diri != DIRICHLET
+                            free_vals[gdof] = v
+                        end
+                    else
+                        diri_dof = -gdof
+                        if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                            diri_vals[diri_dof] = v
+                        end
+                    end
                 end
             end
         end
     end
+    loop! = eval(expr)
+    storage = GT.storage(index)
+    nfaces = GT.num_faces(domain)
+    args = (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri)
+    invokelatest(loop!,args,storage)
+    u
 end
 
 function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
@@ -916,20 +1105,14 @@ end
 
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
-# TODO think about free_values_strategy and dirichlet_values_strategy
 function iso_parametric_space(dom::ReferenceDomain;
-        dirichlet_boundary=nothing,
-        free_values_strategy = GT.monolithic_field_major_strategy,
-        dirichlet_values_strategy = GT.monolithic_field_major_strategy,
-    )
-    IsoParametricSpace(dom,dirichlet_boundary,free_values_strategy,dirichlet_values_strategy)
+        dirichlet_boundary=nothing)
+    IsoParametricSpace(dom,dirichlet_boundary)
 end
 
-struct IsoParametricSpace{A,B,C,D} <: AbstractSpace
+struct IsoParametricSpace{A,B} <: AbstractSpace
     domain::A
     dirichlet_boundary::B
-    free_values_strategy::C
-    dirichlet_values_strategy::D
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace)
@@ -1004,16 +1187,6 @@ function face_reference_id(V::IsoParametricSpace)
     view(face_refid,faces)
 end
 
-function free_values_strategy(a::IsoParametricSpace)
-    n = length(first(free_and_dirichlet_nodes(a)))
-    a.free_values_strategy( (Base.OneTo(n),) )
-end
-
-function dirichlet_values_strategy(a::IsoParametricSpace)
-    n = length(last(free_and_dirichlet_nodes(a)))
-    a.dirichlet_values_strategy( (Base.OneTo(n),) )
-end
-
 function domain(a::IsoParametricSpace)
     a.domain
 end
@@ -1022,8 +1195,6 @@ end
 function lagrange_space(domain,order;
     conformity = :default,
     dirichlet_boundary=nothing,
-    free_values_strategy = GT.monolithic_field_major_strategy,
-    dirichlet_values_strategy = GT.monolithic_field_major_strategy,
     space=nothing,
     major=:component,
     shape=SCALAR_SHAPE)
@@ -1035,21 +1206,17 @@ function lagrange_space(domain,order;
                   order,
                   conformity,
                   dirichlet_boundary,
-                  free_values_strategy,
-                  dirichlet_values_strategy,
                   space,
                   major,
                   shape)
 
 end
 
-struct LagrangeSpace{A,B,C,D,E,F,G,H} <: AbstractSpace
+struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     domain::A
     order::B
     conformity::Symbol
     dirichlet_boundary::C
-    free_values_strategy::D
-    dirichlet_values_strategy::E
     space::F # TODO rename this one?
     major::G
     shape::H
@@ -1090,15 +1257,5 @@ function reference_fes(space::LagrangeSpace)
         lagrangian_fe(geometry,order;space=space2,major,shape)
     end
     ctype_to_reffe
-end
-
-function free_values_strategy(a::LagrangeSpace)
-    n = length(first(free_and_dirichlet_dofs(a)))
-    a.free_values_strategy( (Base.OneTo(n),) )
-end
-
-function dirichlet_values_strategy(a::LagrangeSpace)
-    n = length(last(free_and_dirichlet_dofs(a)))
-    a.dirichlet_values_strategy( (Base.OneTo(n),) )
 end
 

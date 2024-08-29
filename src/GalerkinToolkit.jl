@@ -9,11 +9,15 @@ import LinearAlgebra
 import ForwardDiff
 using Gmsh
 using PartitionedArrays
+using BlockArrays
+using FillArrays
 using Combinatorics
 using SparseArrays
 using Metis
+using Metatheory
 
 include("geometry.jl")
+include("symbolics.jl")
 include("domain.jl")
 include("integration.jl")
 include("interpolation.jl")

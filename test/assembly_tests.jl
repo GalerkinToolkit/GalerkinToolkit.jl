@@ -55,7 +55,7 @@ function dS(J)
     sqrt(det(Jt*J))
 end
 
-jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
+jump(u,ϕ,q) = u(ϕ[+](q))[+]-u(ϕ[-](q))[-]
 
 function l(v)
     ∫(dΩref) do q
@@ -73,7 +73,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V)
+b = GT.assemble_vector(l,V,Float64)
 
 function l(v)
     ∫(dΛref) do p
@@ -82,7 +82,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V)
+b = GT.assemble_vector(l,V,Float64)
 @test sum(b)+1 ≈ 1
 
 V² = V × V
@@ -98,7 +98,7 @@ function l((v1,v2))
     end
 end
 
-b = GT.assemble_vector(l,V²)
+b = GT.assemble_vector(l,V²,Float64)
 
 function a(u,v)
     ∫(dΩref) do q
@@ -116,7 +116,7 @@ function a(u,v)
     end
 end
 
-A = GT.assemble_matrix(a,V,V)
+A = GT.assemble_matrix(a,V,V,Float64)
 
 function a((u1,u2),(v1,v2))
     ∫(dΩref) do q
@@ -129,7 +129,14 @@ function a((u1,u2),(v1,v2))
     end
 end
 
-A = GT.assemble_matrix(a,V²,V²)
+A = GT.assemble_matrix(a,V²,V²,Float64)
+
+x = similar(b,axes(A,2))
+fill!(x,0)
+uh = GT.solution_field(V²,x)
+uh1,uh2 = uh
+fill!(GT.free_values(uh2),1)
+@test x[end] == 1
 
 function dV(ϕ,q)
     J = ForwardDiff.jacobian(ϕ,q)
@@ -143,10 +150,10 @@ f = GT.analytical_field(sum,Ω)
 l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
 V = GT.iso_parametric_space(Ωref)
-uh = GT.zero_field(Float64,V)
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(Float64,V,a,l)
 x .= A\b
+uh = GT.solution_field(V,x)
 
 function ∇(u,phi,q)
    J = ForwardDiff.jacobian(phi,q)
@@ -158,6 +165,7 @@ a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
 l(v) = 0
 
 x,A,b = GT.linear_problem(uh,a,l)
+display(A)
 x .= A\b
 
 # Poisson solve (reference domain)
@@ -180,10 +188,10 @@ order = 3
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
 u = GT.analytical_field(sum,Ω)
-uh = GT.zero_field(Float64,V)
+uhd = GT.dirichlet_field(Float64,V)
 # TODO
 #GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
-GT.interpolate_dirichlet!(u∘ϕ,uh)
+GT.interpolate_dirichlet!(u∘ϕ,uhd)
 
 function ∇(u,q)
    J = ForwardDiff.jacobian(ϕ,q)
@@ -202,8 +210,9 @@ dΩref = GT.measure(Ωref,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uhd,a,l)
 x .= A\b
+uh = GT.solution_field(uhd,x)
 
 # TODO
 # Functions like this ones should
@@ -222,8 +231,8 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
-uh = GT.zero_field(Float64,V)
-GT.interpolate_dirichlet!(u,uh)
+uhd = GT.dirichlet_field(Float64,V)
+GT.interpolate_dirichlet!(u,uhd)
 
 dΩ = GT.measure(Ω,degree)
 
@@ -232,8 +241,9 @@ dΩ = GT.measure(Ω,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uh,a,l)
+x,A,b = GT.linear_problem(uhd,a,l)
 x .= A\b
+uh = GT.solution_field(uhd,x)
 
 eh(q) = u(q) - uh(q)
 ∇eh(q) = ∇(u,q) - ∇(uh,q)

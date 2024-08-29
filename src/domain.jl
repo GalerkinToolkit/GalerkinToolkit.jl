@@ -41,6 +41,7 @@ function domain(mesh;
     physical_names=GT.physical_names(mesh,face_dim),
     is_reference_domain = Val(false),
     face_around=nothing,
+    cache=nothing,
     )
 
     if val_parameter(is_reference_domain)
@@ -50,6 +51,7 @@ function domain(mesh;
                         physical_names,
                         Val(val_parameter(face_dim)),
                         face_around,
+                        cache,
                        )
     else
         PhysicalDomain(
@@ -58,26 +60,41 @@ function domain(mesh;
                         physical_names,
                         Val(val_parameter(face_dim)),
                         face_around,
+                        cache,
                        )
-    end
-
+    end |> setup_domain
 end
 
-struct PhysicalDomain{A,B,C,D,E} <: AbstractDomain{A}
+function setup_domain(domain)
+    if domain.cache !== nothing
+        return domain
+    end
+    faces = GT.faces(domain)
+    cache = domain_cache(;faces)
+    replace_cache(domain,cache)
+end
+
+function domain_cache(;kwargs...)
+    (;kwargs...)
+end
+
+struct PhysicalDomain{A,B,C,D,E,F} <: AbstractDomain{A}
     mesh::A
     mesh_id::B
     physical_names::C
     face_dim::Val{D}
     face_around::E
+    cache::F
 end
 is_reference_domain(a::PhysicalDomain) = false
 
-struct ReferenceDomain{A,B,C,D,E} <: AbstractDomain{A}
+struct ReferenceDomain{A,B,C,D,E,F} <: AbstractDomain{A}
     mesh::A
     mesh_id::B
     physical_names::C
     face_dim::Val{D}
     face_around::E
+    cache::F
 end
 is_reference_domain(a::ReferenceDomain) = true
 
@@ -96,7 +113,18 @@ function replace_face_around(domain::AbstractDomain,face_around)
     mesh_id = GT.mesh_id(domain)
     physical_names = GT.physical_names(domain)
     is_reference_domain = GT.is_reference_domain(domain)
-    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
+end
+
+function replace_cache(domain::AbstractDomain,cache)
+    mesh = GT.mesh(domain)
+    face_dim = GT.face_dim(domain)
+    mesh_id = GT.mesh_id(domain)
+    physical_names = GT.physical_names(domain)
+    is_reference_domain = GT.is_reference_domain(domain)
+    face_around = GT.face_around(domain)
+    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function PartitionedArrays.partition(domain::AbstractDomain{<:PMesh})
@@ -123,7 +151,8 @@ function reference_domain(domain::PhysicalDomain)
     physical_names = GT.physical_names(domain)
     is_reference_domain = Val(true)
     face_around = GT.face_around(domain)
-    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function reference_domain(domain::ReferenceDomain)
@@ -137,7 +166,8 @@ function physical_domain(domain::ReferenceDomain)
     physical_names = GT.physical_names(domain)
     face_around = GT.face_around(domain)
     is_reference_domain = Val(false)
-    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around)
+    cache = domain.cache
+    GT.domain(mesh;face_dim,mesh_id,physical_names,is_reference_domain,face_around,cache)
 end
 
 function physical_domain(domain::PhysicalDomain)
@@ -145,6 +175,9 @@ function physical_domain(domain::PhysicalDomain)
 end
 
 function faces(domain::AbstractDomain)
+    if domain.cache !== nothing
+        return domain.cache.faces
+    end
     mesh = domain |> GT.mesh
     D = GT.face_dim(domain)
     Dface_to_tag = zeros(Int,GT.num_faces(mesh,D))
@@ -322,7 +355,8 @@ end
 
 function constant_quantity(v,domain::AbstractDomain)
     GT.quantity(v,domain) do index
-        v
+        v_sym = get!(index.dict,v,gensym("constant_quantity_value"))
+        v_sym
     end
 end
 
@@ -341,7 +375,9 @@ function index(;
     point=nothing,
     field_per_dim =nothing,
     dof_per_dim=nothing,
-    face_around_per_dim=nothing
+    face_around_per_dim=nothing,
+    state=gensym("state"),
+    dict=IdDict{Any,Symbol}()
     )
     Index(
           face,
@@ -350,7 +386,9 @@ function index(;
           point,
           field_per_dim,
           dof_per_dim,
-          face_around_per_dim
+          face_around_per_dim,
+          state,
+          dict,
          )
 end
 
@@ -362,6 +400,12 @@ struct Index{A,B,D,E,F,G,H}
     field_per_dim::F
     dof_per_dim::G
     face_around_per_dim::H
+    state::Symbol #TODO remove
+    dict::IdDict{Any,Symbol}
+end
+
+function storage(index::Index)
+    (;( key=>val for (val,key) in index.dict )...)
 end
 
 function replace_face(index::Index,face)
@@ -372,7 +416,9 @@ function replace_face(index::Index,face)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -384,7 +430,9 @@ function replace_local_face(index::Index,local_face)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -396,7 +444,9 @@ function replace_face_around(index::Index,face_around)
           index.point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -408,7 +458,9 @@ function replace_point(index::Index,point)
           point,
           index.field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -420,7 +472,9 @@ function replace_field_per_dim(index::Index,field_per_dim)
           index.point,
           field_per_dim,
           index.dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -432,7 +486,9 @@ function replace_dof_per_dim(index::Index,dof_per_dim)
           index.point,
           index.field_per_dim,
           dof_per_dim,
-          index.face_around_per_dim
+          index.face_around_per_dim,
+          index.state,
+          index.dict,
          )
 end
 
@@ -444,23 +500,27 @@ function call(f,args...)
     f(args...)
 end
 
-function call(g,args::AbstractQuantity...)
+function call(g::AbstractQuantity,args::AbstractQuantity...)
     fs = map(GT.term,args)
     domain = args |> first |> GT.domain
     #msg = "All quantities need to be defined on the same domain"
     #@assert all(dom->dom==domain,map(GT.domain,args)) msg
     # TODO check everything except reference/physical domain?
     # Maybe check reference/physical domain only when evaluating functions?
-    prototype = GT.return_prototype(g,map(GT.prototype,args)...)
+    prototype = GT.return_prototype(GT.prototype(g),(map(GT.prototype,args)...))
+    g_term = GT.term(g)
     GT.quantity(prototype,domain) do index
-        g(map(f->f(index),fs)...)
+        f_exprs = map(f->f(index),fs)
+        g_expr = g_term(index)
+        :($g_expr($(f_exprs...)))
     end
 end
 
-function call(g,args::AbstractQuantity{<:PMesh}...)
+function call(g::AbstractQuantity,args::AbstractQuantity{<:PMesh}...)
+    pg = partition(g)
     pargs = map(partition,args)
-    q = map(pargs...) do myargs...
-        GT.call(g,myargs...)
+    q = map(pg,pargs...) do myg,myargs...
+        GT.call(myg,myargs...)
     end
     domain = args |> first |> GT.domain
     term = map(GT.term,q)
@@ -468,12 +528,18 @@ function call(g,args::AbstractQuantity{<:PMesh}...)
     GT.quantity(term,prototype,domain)
 end
 
+function call(g,args::AbstractQuantity...)
+    domain = args |> first |> GT.domain
+    g_qty = GT.constant_quantity(g,domain)
+    call(g_qty,args...)
+end
+
 function (f::AbstractQuantity)(x::AbstractQuantity)
     domain = GT.domain(x)
     codomain = GT.domain(f)
     flag = physical_domain(domain) == physical_domain(codomain)
     if flag
-        call(call,f,x)
+        call(f,x)
     else
         align_and_call(f,x)
     end
@@ -488,29 +554,51 @@ end
 
 function align_and_call(f,x,glue::InteriorGlue)
     g = GT.align_field(f,GT.domain(glue))
-    call(call,g,x)
+    call(g,x)
 end
 
 function align_and_call(f,x,glue::BoundaryGlue)
     g = GT.align_field(f,GT.domain(glue))
-    call(call,g,x)
+    call(g,x)
 end
 
 function align_and_call(f,x,glue::CoboundaryGlue)
-    aligned_call(g,x) = map(gi->gi(x),g)
     g = GT.align_field(f,GT.domain(glue))
-    call(aligned_call,g,x)
+    call(g,x)
+end
+
+function Base.getindex(q::AbstractQuantity,::typeof(+))
+    face_around = 1
+    term = GT.term(q)
+    GT.quantity(GT.prototype(q),GT.domain(q)) do index
+        index2 = GT.replace_face_around(index,face_around)
+        term(index2)
+    end
+end
+
+function Base.getindex(q::AbstractQuantity,::typeof(-))
+    face_around = 2
+    term = GT.term(q)
+    GT.quantity(GT.prototype(q),GT.domain(q)) do index
+        index2 = GT.replace_face_around(index,face_around)
+        term(index2)
+    end
 end
 
 function analytical_field(f,dom::AbstractDomain)
     constant_quantity(f,dom)
 end
 
+function face_constant_field_impl(data,face::Integer)
+    x->data[face]
+end
+
 function face_constant_field(data,dom::AbstractDomain)
     prototype = x->zero(eltype(data))
     GT.quantity(prototype,dom) do index
         face = index.face
-        x->data[face]
+        data_sym = get!(index.dict,data,gensym("face_to_constant_value"))
+        @term face_constant_field_impl($data_sym,$face)
     end
 end
 
@@ -529,15 +617,82 @@ end
 function domain_map(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
     domain = glue.domain
     prototype = identity
-    term = identity
+    term = index -> :identity
     GT.quantity(term,prototype,domain)
 end
 
 function domain_map(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
     domain = glue.domain
     prototype = identity
-    term = identity
+    term = index -> :identity
     GT.quantity(term,prototype,domain)
+end
+
+function linear_combination(funs,coefs)
+    q -> begin
+        sum(1:length(coefs)) do i
+            x = coefs[i]
+            fun = funs[i]
+            coeff = fun(q)
+            coeff*x
+        end
+    end
+end
+
+#function linear_combination(funs,coefs,ids)
+#    q -> begin
+#        sum(1:length(ids)) do i
+#            x = coefs[ids[i]]
+#            fun = funs[i]
+#            coeff = fun(q)
+#            coeff*x
+#        end
+#    end
+#end
+
+# TODO a better name
+function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
+    fs = reference_value(rid_to_fs,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    linear_combination(fs,values)
+end
+
+#function reference_point(rid_to_x,face_to_rid,face,point)
+#    reference_value(rid_to_x,face_to_rid,face)[point]
+#end
+
+#function reference_tabulators(rid_to_fs,rid_to_xs)
+#    map((fs,xs)->map(x->map(f->f(x),fs),xs),rid_to_fs,rid_to_xs)
+#end
+
+function reference_tabulator(fs,xs)
+    f = fs[1]
+    z = zero(eltype(xs))
+    T = typeof(f(z))
+    nx = length(xs)
+    nf = length(fs)
+    A = Matrix{T}(undef,nf,nx)
+    for j in 1:nx
+        for i in 1:nf
+            A[i,j] = fs[i](xs[j])
+        end
+    end
+    A
+end
+
+function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+    tab = reference_value(rid_to_tab,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    n = length(values)
+    sum(i->tab[i,point]*values[i],1:n)
+end
+
+function reference_value(rid_to_value,face_to_rid,face)
+    rid = face_to_rid[face]
+    value = rid_to_value[rid]
+    value
 end
 
 function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
@@ -555,18 +710,22 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     prototype = y->x
     GT.quantity(prototype,domain) do index
         sface = index.face
-        face = sface_to_face[sface]
-        refid = face_to_refid[face]
-        funs = refid_to_funs[refid]
-        nodes = face_to_nodes[face]
-        coords = node_to_coords[nodes]
-        q -> begin
-            sum(1:length(coords)) do i
-                x = coords[i]
-                fun = funs[i]
-                coeff = fun(q)
-                coeff*x
-            end
+        state = index.state
+        dict = index.dict
+        sface_to_face_sym = get!(dict,sface_to_face,gensym("sface_to_face"))
+        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+        face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
+        node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_refface_sym = get!(dict,refid_to_refface,gensym("face_to_refid"))
+        @term begin
+            face = $sface_to_face_sym[$sface]
+            face_function(
+                $refid_to_funs_sym,
+                $face_to_refid_sym,
+                $face_to_nodes_sym,
+                $node_to_coords_sym,
+                $face)
         end
     end
 end
@@ -590,8 +749,8 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     node_to_coords = GT.node_coordinates(boundary)
     T = eltype(node_to_coords)
     x = zero(T)
-    prototype = [y->x,y->x]
-    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around = glue |> GT.target_face
+    prototype = y -> x
+    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
     tface_to_Dface = codomain |> GT.faces
     d = domain |> GT.face_dim
     topo = mesh |> GT.topology
@@ -621,28 +780,32 @@ function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
     drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        faces_around = sface_to_faces_around[sface]
-        n_faces_around = length(lfaces)
-        map(faces_around) do face_around
-            tface = tfaces[face_around]
-            lface = lfaces[face_around]
-            Dface = tface_to_Dface[tface]
-            dface = sface_to_dface[sface]
-            perm = Dface_to_lface_to_perm[Dface][lface]
-            Drefid = Dface_to_Drefid[Dface]
-            drefid = dface_to_drefid[dface]
-            coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-            funs = drefid_to_funs[drefid]
-            q -> begin
-                sum(1:length(coords)) do i
-                    x = coords[i]
-                    fun = funs[i]
-                    coeff = fun(q)
-                    coeff*x
-                end
-            end
+        dict = index.dict
+        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
+        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
+        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
+        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
+        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
+        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
+        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
+        face_around = index.face_around
+        @assert face_around !== nothing
+        @term begin
+            boundary_face_function(
+                $sface,
+                $sface_to_tfaces_sym,
+                $sface_to_lfaces_sym,
+                $tface_to_Dface_sym,
+                $sface_to_dface_sym,
+                $Dface_to_lface_to_perm_sym,
+                $Dface_to_Drefid_sym,
+                $dface_to_drefid_sym,
+                $Drefid_to_lface_to_perm_to_coords_sym,
+                $drefid_to_funs_sym,
+                $face_around,
+           )
         end
     end
 end
@@ -657,6 +820,33 @@ end
 
 function domain_map(glue::BoundaryGlue,::PhysicalDomain,::PhysicalDomain)
     error("Case not yet implemented")
+end
+
+function boundary_face_function(
+        sface,
+        sface_to_tfaces,
+        sface_to_lfaces,
+        tface_to_Dface,
+        sface_to_dface,
+        Dface_to_lface_to_perm,
+        Dface_to_Drefid,
+        dface_to_drefid,
+        Drefid_to_lface_to_perm_to_coords,
+        drefid_to_funs,
+        face_around,
+    )
+    tfaces = sface_to_tfaces[sface]
+    lfaces = sface_to_lfaces[sface]
+    tface = tfaces[face_around]
+    lface = lfaces[face_around]
+    Dface = tface_to_Dface[tface]
+    dface = sface_to_dface[sface]
+    perm = Dface_to_lface_to_perm[Dface][lface]
+    Drefid = Dface_to_Drefid[Dface]
+    drefid = dface_to_drefid[dface]
+    coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+    funs = drefid_to_funs[drefid]
+    linear_combination(funs,coords)
 end
 
 function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
@@ -701,22 +891,31 @@ function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
     drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
-        Dface = tface_to_Dface[tface]
-        dface = sface_to_dface[sface]
-        perm = Dface_to_lface_to_perm[Dface][lface]
-        Drefid = Dface_to_Drefid[Dface]
-        drefid = dface_to_drefid[dface]
-        coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-        funs = drefid_to_funs[drefid]
-        q -> begin
-            sum(1:length(coords)) do i
-                x = coords[i]
-                fun = funs[i]
-                coeff = fun(q)
-                coeff*x
-            end
+        dict = index.dict
+        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
+        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
+        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
+        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
+        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
+        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
+        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
+        face_around = 1
+        @term begin
+            boundary_face_function(
+                $sface,
+                $sface_to_tfaces_sym,
+                $sface_to_lfaces_sym,
+                $tface_to_Dface_sym,
+                $sface_to_dface_sym,
+                $Dface_to_lface_to_perm_sym,
+                $Dface_to_Drefid_sym,
+                $dface_to_drefid_sym,
+                $Drefid_to_lface_to_perm_to_coords_sym,
+                $drefid_to_funs_sym,
+                $face_around,
+           )
         end
     end
 end
@@ -748,7 +947,8 @@ function align_field(a::AbstractQuantity,glue::InteriorGlue)
     sface_to_tfaces, = GT.target_face(glue)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         ai
@@ -756,25 +956,20 @@ function align_field(a::AbstractQuantity,glue::InteriorGlue)
 end
 
 function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
-    pa = GT.prototype(a)
-    prototype = [pa,pa]
+    prototype = GT.prototype(a)
     domain = glue |> GT.domain
     term_a = GT.term(a)
     sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
     GT.quantity(prototype,domain) do index
+        face_around = index.face_around
+        @assert face_around !== nothing
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        n_faces_around = length(tfaces)
-        # TODO This should be a tuple
-        map(1:n_faces_around) do face_around
-            tface = sface_to_tfaces[sface][face_around]
-            lface = sface_to_lfaces[sface][face_around]
-            index2 = replace_face(index,tface)
-            index3 = replace_face_around(index2,face_around)
-            ai = term_a(index3)
-            ai
-        end
+        dict = index.dict
+        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
+        ai
     end
 end
 
@@ -786,8 +981,9 @@ function align_field(a::AbstractQuantity,glue::BoundaryGlue)
     face_around = GT.face_around(glue.domain)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
+        dict = index.dict
+        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
@@ -853,11 +1049,12 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
     sface_to_tfaces, = GT.target_face(glue)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         ai = term_a(index2)
         phii = term_phi(index)
-        x-> ai(phii(x))
+        @term $ai∘$phii
     end
 
 end
@@ -866,26 +1063,22 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
     @assert GT.domain(a) == GT.codomain(glue)
     g = GT.prototype(a)
     f = GT.prototype(phi)
-    prototype = map(fi->(x->g(fi(x))),f)
+    prototype = x-> g(f(x))
     domain = phi |> GT.domain
     term_a = GT.term(a)
     term_phi = GT.term(phi)
     sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+    face_around = GT.face_around(glue.domain)
     GT.quantity(prototype,domain) do index
+        face_around = index.face_around
+        @assert face_around !== nothing
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        n_faces_around = length(tfaces)
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+        index2 = replace_face(index,tface)
+        ai = term_a(index2)
         phii = term_phi(index)
-        # TODO This should be a tuple
-        map(1:n_faces_around) do face_around
-            tface = sface_to_tfaces[sface][face_around]
-            lface = sface_to_lfaces[sface][face_around]
-            index2 = replace_face(index,tface)
-            index3 = replace_face_around(index2,face_around)
-            ai = term_a(index3)
-            x -> ai(phii[face_around](x))
-        end
+        @term $ai∘$phii
     end
 end
 
@@ -901,13 +1094,13 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::BoundaryGlue)
     face_around = GT.face_around(glue.domain)
     GT.quantity(prototype,domain) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         index3 = replace_face_around(index2,face_around)
         ai = term_a(index3)
         phii = term_phi(index)
-        x -> ai(phii(x))
+        @term $ai∘$phii
     end
 end
 
@@ -956,11 +1149,20 @@ function reference_coordinates(plt::Plot)
     face_to_refid = GT.face_reference_id(mesh,d)
     prototype = first(first(refid_to_snode_to_coords))
     GT.quantity(prototype,domain) do index
-        domface = index.face[1]
+        domface = index.face
         point = index.point
-        face = domface_to_face[domface]
-        refid = face_to_refid[face]
-        refid_to_snode_to_coords[refid][point]
+        dict = index.dict
+        domface_to_face_sym = get!(dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_snode_to_coords_sym = get!(dict,refid_to_snode_to_coords,gensym("refid_to_snode_to_coords"))
+        @term begin
+            face = $domface_to_face_sym[$domface]
+            coords = reference_value(
+                $refid_to_snode_to_coords_sym,
+                $face_to_refid_sym,
+                $face)
+            coords[$point]
+        end
     end
 end
 
@@ -1000,19 +1202,35 @@ function plot!(plt::Plot,field;label)
     plot_impl!(plt,term,label,T)
 end
 
+
 function plot_impl!(plt,term,label,::Type{T}) where T
     vmesh,vglue = plt.visualization_mesh
     nnodes = GT.num_nodes(vmesh)
     data = zeros(T,nnodes)
     face_to_nodes = vglue.face_fine_nodes
-    for face in 1:length(face_to_nodes)
-        nodes = face_to_nodes[face]
-        for point in 1:length(nodes)
-            index = GT.index(;face,point)
-            v = term(index)
-            data[nodes[point]] = v
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    dict = index.dict
+    dict[face_to_nodes] = :face_to_nodes
+    deps = (face,point)
+    expr1 = term(index) |> simplify
+    v = GT.topological_sort(expr1,deps)
+    expr = quote
+        function filldata!(data,state)
+            $(unpack_storage(dict,:state))
+            $(v[1])
+            for $face in 1:length(face_to_nodes)
+                nodes = face_to_nodes[$face]
+                $(v[2])
+                for $point in 1:length(nodes)
+                    data[nodes[$point]] = $(v[3])
+                end
+            end
         end
     end
+    filldata! = eval(expr)
+    invokelatest(filldata!,data,GT.storage(index))
     plt.node_data[label] = data
     plt
 end
@@ -1089,7 +1307,23 @@ function unit_normal(domain::AbstractDomain,codomain::AbstractDomain)
     unit_normal(domain,codomain,glue)
 end
 
-# TODO a lot of code duplication
+# TODO think about this name
+function boundary_unit_normal(φ_fun,ϕ_fun,n)
+    q -> begin
+        p = φ_fun(q)
+        J = ForwardDiff.jacobian(ϕ_fun,p)
+        Jt = transpose(J)
+        pinvJt = transpose(inv(Jt*J)*Jt)
+        v = pinvJt*n
+        m = sqrt(inner(v,v))
+        if m < eps()
+            return zero(v)
+        else
+            return v/m
+        end
+    end
+end
+
 function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
     Γref = domain
     Ω = codomain
@@ -1111,27 +1345,22 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Boun
     prototype = GT.prototype(φ)
     GT.quantity(prototype,Γref) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
-        face = tface_to_face[tface]
-        ctype = face_to_ctype[face]
-        lface_to_n = ctype_to_lface_to_n[ctype]
-        n = lface_to_n[lface]
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         ϕ_fun = ϕ_term(index2)
         φ_fun = φ_term(index)
-        q -> begin
-            p = φ_fun(q)
-            J = ForwardDiff.jacobian(ϕ_fun,p)
-            Jt = transpose(J)
-            pinvJt = transpose(inv(Jt*J)*Jt)
-            v = pinvJt*n
-            m = sqrt(inner(v,v))
-            if m < eps()
-                return zero(v)
-            else
-                return v/m
-            end
+        @term begin
+            lface = $sface_to_lfaces_sym[$sface][1]
+            face = $tface_to_face_sym[$tface]
+            ctype = $face_to_ctype_sym[face]
+            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+            n = lface_to_n[lface]
+            boundary_unit_normal($φ_fun,$ϕ_fun,n)
         end
     end
 end
@@ -1160,27 +1389,22 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::Bound
     prototype = GT.prototype(ϕ)
     GT.quantity(prototype,Γref) do index
         sface = index.face
-        tface = sface_to_tfaces[sface][1]
-        lface = sface_to_lfaces[sface][1]
-        face = tface_to_face[tface]
-        ctype = face_to_ctype[face]
-        lface_to_n = ctype_to_lface_to_n[ctype]
-        n = lface_to_n[lface]
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+        tface = @term $sface_to_tfaces_sym[$sface][1]
         index2 = replace_face(index,tface)
         ϕinv_fun = ϕinv_term(index2)
         ϕ_fun = ϕ_term(index2)
-        x -> begin
-            q = ϕinv_fun(x)
-            J = ForwardDiff.jacobian(ϕ_fun,q)
-            Jt = transpose(J)
-            pinvJt = transpose(inv(Jt*J)*Jt)
-            v = pinvJt*n
-            m = sqrt(inner(v,v))
-            if m < eps()
-                return zero(v)
-            else
-                return v/m
-            end
+        @term begin
+            lface = $sface_to_lfaces_sym[$sface][1]
+            face = $tface_to_face_sym[$tface]
+            ctype = $face_to_ctype_sym[face]
+            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+            n = lface_to_n[lface]
+            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
         end
     end
 end
@@ -1204,44 +1428,32 @@ function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::Cobo
     end
     ϕ_term = GT.term(ϕ)
     φ_term = GT.term(φ)
-    #fun_φ = GT.prototype(φ)
-    #prototype = [q->(fun_φ(q)[1]),q->(fun_φ(q)[1])]
     prototype = GT.prototype(φ)
     GT.quantity(prototype,Γref) do index
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        n_faces_around = length(tfaces)
-        map(1:n_faces_around) do face_around
-            tface = tfaces[face_around]
-            lface = lfaces[face_around]
-            face = tface_to_face[tface]
-            ctype = face_to_ctype[face]
-            lface_to_n = ctype_to_lface_to_n[ctype]
+        face_around = index.face_around
+        @assert face_around !== nothing
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+        index2 = replace_face(index,tface)
+        index3 = replace_face_around(index2,nothing)
+        ϕ_fun = ϕ_term(index3)
+        φ_fun = φ_term(index)
+        @term begin
+            lface = $sface_to_lfaces_sym[$sface][$face_around]
+            face = $tface_to_face_sym[$tface]
+            ctype = $face_to_ctype_sym[face]
+            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
             n = lface_to_n[lface]
-            index2 = replace_face(index,tface)
-            ϕ_fun = ϕ_term(index2)
-            φ_fun = φ_term(index)
-            # TODO this is not consistent with align_map
-            # which one is the good one?
-            q -> begin
-                p = φ_fun[face_around](q)
-                J = ForwardDiff.jacobian(ϕ_fun,p)
-                Jt = transpose(J)
-                pinvJt = transpose(inv(Jt*J)*Jt)
-                v = pinvJt*n
-                m = sqrt(inner(v,v))
-                if m < eps()
-                    return zero(v)
-                else
-                    return v/m
-                end
-            end
+            boundary_unit_normal($φ_fun,$ϕ_fun,n)
         end
     end
 end
 
-# TODO a lot of code duplication
 function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
     Γ = domain
     Γref = GT.physical_domain(Γ)
@@ -1256,40 +1468,34 @@ function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::Cobou
     tface_to_face = GT.faces(Ωref)
     face_to_ctype = GT.face_reference_id(mesh,D)
     ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_lface_to_n = map(ctype_to_refface) do refface
+    ctype_to_lface_to_n= map(ctype_to_refface) do refface
         boundary = refface |> GT.geometry |> GT.boundary
         boundary |> GT.outwards_normals # TODO also rename?
     end
     ϕinv_term = GT.term(ϕinv)
     ϕ_term = GT.term(ϕ)
-    prototype = [GT.prototype(ϕ),GT.prototype(ϕ)]
+    prototype = GT.prototype(ϕ)
     GT.quantity(prototype,Γref) do index
         sface = index.face
-        tfaces = sface_to_tfaces[sface]
-        lfaces = sface_to_lfaces[sface]
-        map(tfaces,lfaces) do tface,lface
-            face = tface_to_face[tface]
-            ctype = face_to_ctype[face]
-            lface_to_n = ctype_to_lface_to_n[ctype]
+        face_around = index.face_around
+        @assert face_around !== nothing
+        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+        index2 = replace_face(index,tface)
+        index3 = replace_face_around(index2,nothing)
+        ϕinv_fun = ϕinv_term(index3)
+        ϕ_fun = ϕ_term(index3)
+        @term begin
+            lface = $sface_to_lfaces_sym[$sface][$face_around]
+            face = $tface_to_face_sym[$tface]
+            ctype = $face_to_ctype_sym[face]
+            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
             n = lface_to_n[lface]
-            index2 = replace_face(index,tface)
-            ϕinv_fun = ϕinv_term(index2)
-            ϕ_fun = ϕ_term(index2)
-            # TODO this is not consistent with align_map
-            # which one is the good one?
-            x -> begin
-                q = ϕinv_fun(x)
-                J = ForwardDiff.jacobian(ϕ_fun,q)
-                Jt = transpose(J)
-                pinvJt = transpose(inv(Jt*J)*Jt)
-                v = pinvJt*n
-                m = sqrt(inner(v,v))
-                if m < eps()
-                    return zero(v)
-                else
-                    return v/m
-                end
-            end
+            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
         end
     end
 end

@@ -18,8 +18,10 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 @test Ω == Ω
 @test Ω != Ωref
 
-u = GT.analytical_field(x->sum(x),Ω)
+u = GT.analytical_field(sum,Ω)
+
 ϕ = GT.domain_map(Ωref,Ω)
+
 ϕinv = GT.inverse_map(ϕ)
 
 uref = u∘ϕ
@@ -29,7 +31,6 @@ GT.vtk_plot(joinpath(outdir,"omega"),Ω;refinement=4) do plt
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,u2;label="u2")
 end
-
 
 GT.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=4) do plt
     GT.plot!(plt,uref;label="u")
@@ -48,13 +49,13 @@ g = uref∘ϕ
 
 n = GT.unit_normal(Γref,Ω)
 n2 = GT.unit_normal(Γ,Ω)
-h = GT.face_diameter_field(Γ)
+#h = GT.face_diameter_field(Γ)
 
 GT.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
     GT.plot!(plt,g;label="u")
     GT.plot!(plt,n;label="n")
-    GT.plot!(plt,q->n2(ϕ(q));label="n2")
-    GT.plot!(plt,h;label="h")
+    GT.plot!(plt,q->n2(ϕ(q));label="n2") # TODO
+    # GT.plot!(plt,h;label="h") TODO
     GT.plot!(plt;label="u2") do q
         x = ϕ(q)
         uref(x)
@@ -65,7 +66,8 @@ GT.vtk_plot(joinpath(outdir,"gamma"),Γ) do plt
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,n;label="n")
     GT.plot!(plt,n2;label="n2")
-    GT.plot!(plt,h;label="h")
+    # TODO
+    #GT.plot!(plt,h;label="h")
 end
 
 Λref = GT.skeleton(mesh;
@@ -76,38 +78,35 @@ end
 
 Λ = GT.physical_domain(Λref)
 
+# TODO
 n = GT.unit_normal(Λref,Ω)
-
 n2 = GT.unit_normal(Λ,Ω)
-h = GT.face_diameter_field(Λ)
+#h = GT.face_diameter_field(Λ)
 
-jump(u,q) = u[2](q)-u[1](q)
-jump(u,ϕ,q) = u(ϕ[2](q))[2]-u(ϕ[1](q))[1]
+jump(u) = u[+] - u[-]
 
 GT.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
-    GT.plot!(plt,n[1];label="n1")
-    GT.plot!(plt,n[2];label="n2")
+    GT.plot!(plt,n[+];label="n1")
+    GT.plot!(plt,n[-];label="n2")
     GT.plot!(plt;label="jump_u2") do q
-        jump(uref∘ϕ,q)
+        jump((uref∘ϕ)(q))
     end
-    GT.plot!(plt,h;label="h")
+    #GT.plot!(plt,h;label="h")
     GT.plot!(plt;label="jump_u") do q
-        jump(uref,ϕ,q)
+        jump(uref(ϕ(q)))
     end
 end
 
-jump(u) = u[2]-u[1]
-jump(u,x) = u(x)[2]-u(x)[1]
+jump2(u) = q -> jump(u(q))
+
 GT.vtk_plot(joinpath(outdir,"lambda"),Λ) do plt
-    GT.plot!(plt,n2[1];label="n1")
-    GT.plot!(plt,n2[2];label="n2")
+    GT.plot!(plt,n2[+];label="n1")
+    GT.plot!(plt,n2[-];label="n2")
     GT.plot!(plt;label="jump_u") do q
-        jump(u,q)
-    end
-    GT.plot!(plt;label="jump_u2") do q
         jump(u(q))
     end
-    GT.plot!(plt,h;label="h")
+    GT.plot!(plt,jump2(u);label="jump_u2")
+    #GT.plot!(plt,h;label="h")
 end
 
 # Parallel
