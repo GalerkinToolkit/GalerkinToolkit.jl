@@ -992,6 +992,14 @@ function align_field(a::AbstractQuantity,glue::BoundaryGlue)
 end
 
 function inverse_map_impl(f,x0)
+    function pseudo_inverse_if_not_square(J)
+        m,n = size(J)
+        if m != n
+            pinv(J)
+        else
+            inv(J)
+        end
+    end
     function invf(fx)
         x = x0
         tol = 1.0e-12
@@ -999,7 +1007,8 @@ function inverse_map_impl(f,x0)
         niters = 100
         for _ in 1:niters
             J = ForwardDiff.jacobian(f,x)
-            dx = pinv(J)*(fx-f(x))
+            Jinv = pseudo_inverse_if_not_square(J)
+            dx = Jinv*(fx-f(x))
             x += dx
             if norm(dx) < tol
                 return x
