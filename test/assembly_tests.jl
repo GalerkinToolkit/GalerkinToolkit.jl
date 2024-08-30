@@ -254,4 +254,21 @@ el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
 eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 @test el2 < tol
 
+# 3d case
+
+n = 2
+domain = (0,1,0,1,0,1)
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+Ω = GT.interior(mesh)
+k = 1
+V = GT.lagrange_space(Ω,k)
+dΩ = GT.measure(Ω,2*k)
+gradient(u) = x->ForwardDiff.gradient(u,x)
+∇(u,x) = GT.call(gradient,u)(x)
+a(u,v) = GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
+l(v) = 0
+x,A,b = GT.linear_problem(Float64,V,a,l)
+A |> display
+
 end # module
