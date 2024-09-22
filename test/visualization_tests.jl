@@ -13,11 +13,13 @@ GT.plot!(plt,GT.physical_faces)
 GT.save_vtk("mesh",plt)
 GT.save_vtk("mesh",mesh)
 
-plt = GT.shrink(plt)
+plt = GT.shrink(plt,coeff=0.8)
 
 fig = Figure()
-ax = Axis(fig, aspect=DataAspect())
+ax = Axis(fig[1,1], aspect=DataAspect())
 GT.render_with_makie!(ax,plt;color=GT.FaceColor("1-face-1"))
+hidedecorations!(ax)
+hidespines!(ax)
 display(fig)
 
 
