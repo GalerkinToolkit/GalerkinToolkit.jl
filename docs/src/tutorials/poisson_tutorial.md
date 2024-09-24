@@ -6,7 +6,7 @@ EditURL = "../../poisson_tutorial.jl"
 
 In this tutorial, we will learn
 
-   -  How to solve a simple PDE in Julia with Gridap
+   -  How to solve a simple PDE in Julia with GalerkinToolkit
    -  How to load a discrete model (aka a FE mesh) from a file
    -  How to build a conforming Lagrangian FE space
    -  How to define the different terms in a weak form
