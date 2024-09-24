@@ -15,7 +15,7 @@ end
 
 makedocs(;
     modules=[GalerkinToolkit],
-    authors="Francesc Verdugo <fverdugo@cimne.upc.edu> and contributors",
+    authors="Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors",
     sitename="GalerkinToolkit.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
