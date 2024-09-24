@@ -6,20 +6,26 @@ struct PlotNew{A,B,C,D}
     params::D
 end
 
-face_data(a::PlotNew,d) = a.face_data[d+1]
+function plot(
+    mesh;
+    node_data = Dict{String,Any}(),
+    face_data = [ Dict{String,Any}() for _ in 0:num_dims(mesh) ],
+    params...)
+    PlotNew(mesh,face_data,node_data,params)
+end
 
-function face_data(a::PlotNew;merge_dims=true)
-    # TODO if all dims are empty except one
-    # do not create new data
+face_data(plt::PlotNew,d) = plt.face_data[d+1]
+
+function face_data(plt::PlotNew;merge_dims=false)
     if merge_dims
-        mesh = a.mesh
+        mesh = plt.mesh
         nfaces = sum(num_faces(mesh))
         offsets = face_offset(mesh)
         D = num_dims(mesh)
         dict = Dict{String,Any}()
         for d in 0:D
             offset = offsets[d+1]
-            for group in a.face_data[d+1]
+            for group in plt.face_data[d+1]
                 name,data = group
                 if !haskey(dict,name)
                     face_mask = zeros(eltype(data),nfaces)
@@ -32,31 +38,11 @@ function face_data(a::PlotNew;merge_dims=true)
         end
         dict
     else
-        a.face_data
+        plt.face_data
     end
 end
 
-node_data(a::PlotNew) = a.node_data
-
-function plot(mesh;params...)
-    D = num_dims(mesh)
-    face_data = [ Dict{String,Any}() for _ in 0:D ]
-    node_data = Dict{String,Any}()
-    PlotNew(mesh,face_data,node_data,params)
-end
-
-function plot(mesh,face_data,node_data;params...)
-    PlotNew(mesh,face_data,node_data,params)
-end
-
-function mesh_of_dim(mesh,d)
-    error("todo")
-end
-
-function plot(mesh,d;params...)
-    dmesh = mesh_of_dim(mesh,d)
-    plot(dmesh;params...)
-end
+node_data(plt::PlotNew) = plt.node_data
 
 function plot!(plt::PlotNew,::typeof(physical_faces),d)
     mesh = plt.mesh
@@ -80,7 +66,29 @@ function plot!(plt::PlotNew,::typeof(physical_faces))
     plt
 end
 
-function shrink(plt;coeff=0.75)
+function restrict_to_dim(plt::PlotNew,d)
+    mesh = restrict_to_dim(plt.mesh,d)
+    pltd = plot(mesh;
+         node_data = node_data(plt)
+        )
+    face_data(pltd)[d+1] = face_data(plt,d)
+    pltd
+end
+
+function restrict(plt::PlotNew,newnodes,newfaces)
+    mesh = restrict(plt.mesh,newnodes,newfaces)
+    nodedata = node_data(plt)[newnodes]
+    facedata = map(face_data(plt),newfaces) do data,nfs
+        dict = copy(data)
+        for (k,v) in dict
+            dict[k] = dict[k][nfs]
+        end
+        dict
+    end
+    plot(mesh;node_data=nodedata,face_data=facedata)
+end
+
+function shrink(plt::PlotNew;scale=0.75)
     mesh = plt.mesh
     D = num_dims(mesh)
     nnewnodes = 0
@@ -109,7 +117,7 @@ function shrink(plt;coeff=0.75)
                 newnode += 1
                 x = node_to_x[node]
                 newnodes[i] = newnode
-                newnode_to_x[newnode] = coeff*(x-xm) + xm
+                newnode_to_x[newnode] = scale*(x-xm) + xm
                 newnode_to_node[newnode] = node
             end
         end
@@ -126,9 +134,10 @@ function shrink(plt;coeff=0.75)
     for (k,node_to_val) in node_data(plt)
         newnode_data[k] = node_to_val[newnode_to_node]
     end
-    plot(new_mesh,plt.face_data,newnode_data)
+    plot(new_mesh;face_data=plt.face_data,node_data=newnode_data)
 end
 
+# VTK
 
 function save_vtk(f,filename,plt::PlotNew)
     function translate(v)
@@ -165,11 +174,77 @@ function save_vtk(filename,mesh::AbstractMesh)
     save_vtk(identity,filename,mesh)
 end
 
-function makie_mesh_args(plt)
+# Makie
+
+Makie.@recipe(MakieVolumes) do scene
+    dt = Makie.default_theme(scene, Makie.Mesh)
+    dt
+end
+
+Makie.preferred_axis_type(plot::MakieVolumes) = Makie.LScene
+
+function Makie.plot!(sc::MakieVolumes{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    plt2 = Makie.lift(makie_volumes_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, MakieFaces)
+    makiefaces!(sc,valid_attributes,plt2)
+end
+
+function makie_volumes_impl(plt::PlotNew)
+    D=3
+    d=2
+    mesh, = complexify(restrict_to_dim(plt.mesh,D))
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    face_isboundary = map(cells->length(cells)==1,face_to_cells)
+    mesh2 = restrict_to_dim(mesh,d)
+    newnodes = 1:num_nodes(mesh)
+    newfaces = [ Int[] for _ in 0:d ]
+    newfaces[end] = findall(face_isboundary)
+    mesh3 = restrict(mesh,newnodes,newfaces)
+    face_to_cell = map(first,face_to_cells)
+    newface_to_cell = face_to_cell[newfaces[end]]
+    celldata = copy(face_data(plt,D))
+    for (k,v) in celldata
+        celldata[k] = v[newface_to_cell]
+    end
+    plt3 = plot(mesh3;node_data=node_data(plt))
+    face_data(plt3)[d+1] = celldata
+    plt3
+end
+
+Makie.@recipe(MakieVolumeEdges) do scene
+    dt = Makie.default_theme(scene, MakieFaceEdges)
+    dt
+end
+
+function Makie.plot!(sc::MakieVolumeEdges{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    plt2 = Makie.lift(makie_volumes_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, MakieFaceEdges)
+    makiefaceedges!(sc,valid_attributes,plt2)
+end
+
+Makie.preferred_axis_type(plot::MakieVolumeEdges) = Makie.LScene
+
+Makie.@recipe(MakieFaces) do scene
+    dt = Makie.default_theme(scene, Makie.Mesh)
+    dt
+end
+
+function Makie.plot!(sc::MakieFaces{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    args = Makie.lift(makie_faces_impl,plt)
+    vert = Makie.lift(a->a.vert,args)
+    conn = Makie.lift(a->a.conn,args)
+    valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
+    Makie.mesh!(sc,valid_attributes,vert,conn)
+end
+
+Makie.preferred_axis_type(plot::MakieFaces) = Makie.LScene
+
+function makie_faces_impl(plt)
     mesh = plt.mesh
-    # assumes that mesh is a "visualizable" mesh
-    # i.e., all 2d objects are triangles.
-    # Only 2d objects (triangles) are handled
     D = num_ambient_dims(mesh)
     nnodes = num_nodes(mesh)
     vert = zeros(Float64,nnodes,D)
@@ -184,10 +259,51 @@ function makie_mesh_args(plt)
     for (face,nodes) in enumerate(face_to_nodes)
         conn[face,:] = nodes
     end
-    (vert,conn)
+    (;vert,conn)
 end
 
-function makie_linesegments_args(plt)
+Makie.@recipe(MakieFaceEdges) do scene
+    dt = Makie.default_theme(scene, MakieEdges)
+    dt
+end
+
+function Makie.plot!(sc::MakieFaceEdges{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    plt2 = Makie.lift(makie_face_edges_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, MakieEdges)
+    makieedges!(sc,valid_attributes,plt2)
+end
+
+function makie_face_edges_impl(plt)
+    # TODO maybe already complexified
+    D=2
+    d=1
+    mesh2, = complexify(restrict_to_dim(plt.mesh,D))
+    topo = topology(mesh2)
+    edge_to_faces = face_incidence(topo,d,D)
+    facedata = copy(face_data(plt,D))
+    for (k,v) in facedata
+        facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
+    end
+    mesh3 = restrict_to_dim(mesh2,d)
+    plt3 = plot(mesh3;node_data=node_data(plt))
+    face_data(plt3)[d+1] = facedata
+    plt3
+end
+
+Makie.@recipe(MakieEdges) do scene
+    dt = Makie.default_theme(scene, Makie.LineSegments)
+    dt
+end
+
+function Makie.plot!(sc::MakieEdges{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    x = Makie.lift(makie_edges_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
+    Makie.linesegments!(sc,valid_attributes,x)
+end
+
+function makie_edges_impl(plt)
     mesh = plt.mesh
     d = 1
     nedges = num_faces(mesh,d)
@@ -205,10 +321,22 @@ function makie_linesegments_args(plt)
             p[k] = node_to_x[node]
         end
     end
-    (p,)
+    p
 end
 
-function makie_scatter_args(plt)
+Makie.@recipe(MakieVertices) do scene
+    dt = Makie.default_theme(scene, Makie.Scatter)
+    dt
+end
+
+function Makie.plot!(sc::MakieVertices{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    x = Makie.lift(makie_vertices_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
+    Makie.scatter!(sc,valid_attributes,x)
+end
+
+function makie_vertices_impl(plt)
     mesh = plt.mesh
     d = 0
     nedges = num_faces(mesh,d)
@@ -226,107 +354,215 @@ function makie_scatter_args(plt)
             p[k] = node_to_x[node]
         end
     end
-    (p,)
+    p
 end
 
-struct FaceColor
-    name::String
-end
 
-struct NodeColor
-    name::String
-end
 
-function makie_mesh_color(plt,color)
-    (;color)
-end
-
-function makie_linesegments_color(plt,color)
-    (;color)
-end
-
-function makie_scatter_color(plt,color)
-    (;color)
-end
-
-function makie_mesh_color(plt,::Nothing)
-    (;)
-end
-
-function makie_linesegments_color(plt,::Nothing)
-    (;)
-end
-
-function makie_scatter_color(plt,::Nothing)
-    (;)
-end
-
-function makie_mesh_color(plt,fc::FaceColor)
-    mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[fc.name]
-    minc = minimum(allcolors)
-    maxc = maximum(allcolors)
-    colorrange = (minc,maxc)
-    d = 2
-    offset = face_offset(mesh,d)
-    npoints = num_faces(mesh,d)
-    points = 1:npoints
-    dface_to_color = allcolors[points .+ offset]
-    node_to_color = similar(dface_to_color,num_nodes(mesh))
-    dface_to_nodes = face_nodes(mesh,d)
-    for face in 1:npoints
-        nodes = dface_to_nodes[face]
-        node_to_color[nodes] .= dface_to_color[face]
-    end
-    color = node_to_color
-    (;color,colorrange)
-end
-
-function makie_linesegments_color(plt,fc::FaceColor)
-    mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[fc.name]
-    minc = minimum(allcolors)
-    maxc = maximum(allcolors)
-    colorrange = (minc,maxc)
-    d = 1
-    offset = face_offset(mesh,d)
-    npoints = num_faces(mesh,d)
-    points = 1:npoints
-    dface_to_color = allcolors[points .+ offset]
-    color = similar(dface_to_color,2*npoints)
-    color[1:2:(end-1)] = dface_to_color
-    color[2:2:end] = dface_to_color
-    (;color,colorrange)
-end
-
-function makie_scatter_color(plt,fc::FaceColor)
-    mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[fc.name]
-    minc = minimum(allcolors)
-    maxc = maximum(allcolors)
-    colorrange = (minc,maxc)
-    d = 0
-    offset = face_offset(mesh,d)
-    npoints = num_faces(mesh,d)
-    points = 1:npoints
-    color = allcolors[points .+ offset]
-    (;color,colorrange)
-end
-
-function render_with_makie!(ax,plt::PlotNew;color=nothing)
-    plt = shrink(plt;coeff=1)
-    args1 = makie_mesh_args(plt)
-    args2 = makie_linesegments_args(plt)
-    args3 = makie_scatter_args(plt)
-    color1 = makie_mesh_color(plt,color)
-    color2 = makie_linesegments_color(plt,color)
-    color3 = makie_scatter_color(plt,color)
-    MakieCore.mesh!(ax,args1...;color1...)
-    MakieCore.linesegments!(ax,args2...;color2...)
-    MakieCore.scatter!(ax,args3...;color3...)
-    ax
-end
-
+#function makie_mesh_args(plt)
+#    mesh = plt.mesh
+#    # assumes that mesh is a "visualizable" mesh
+#    # i.e., all 2d objects are triangles.
+#    # Only 2d objects (triangles) are handled
+#    D = num_ambient_dims(mesh)
+#    nnodes = num_nodes(mesh)
+#    vert = zeros(Float64,nnodes,D)
+#    node_to_x = node_coordinates(mesh)
+#    for (node,x) in enumerate(node_to_x)
+#        vert[node,:] = x
+#    end
+#    d = 2
+#    nfaces = num_faces(mesh,d)
+#    face_to_nodes = face_nodes(mesh,d)
+#    conn = zeros(Int32,nfaces,3)
+#    for (face,nodes) in enumerate(face_to_nodes)
+#        conn[face,:] = nodes
+#    end
+#    (vert,conn)
+#end
+#
+#function makie_linesegments_args(plt)
+#    mesh = plt.mesh
+#    d = 1
+#    nedges = num_faces(mesh,d)
+#    node_to_x = node_coordinates(mesh)
+#    edge_to_nodes = face_nodes(mesh,d)
+#    T = eltype(eltype(node_to_x))
+#    S = num_ambient_dims(mesh)
+#    V = eltype(node_to_x)
+#    p = Vector{V}(undef,2*nedges)
+#    k = 0
+#    for edge in 1:nedges
+#        nodes = edge_to_nodes[edge]
+#        for node in nodes
+#            k += 1
+#            p[k] = node_to_x[node]
+#        end
+#    end
+#    (p,)
+#end
+#
+#function makie_scatter_args(plt)
+#    mesh = plt.mesh
+#    d = 0
+#    nedges = num_faces(mesh,d)
+#    node_to_x = node_coordinates(mesh)
+#    edge_to_nodes = face_nodes(mesh,d)
+#    T = eltype(eltype(node_to_x))
+#    S = num_ambient_dims(mesh)
+#    V = eltype(node_to_x)
+#    p = Vector{V}(undef,nedges)
+#    k = 0
+#    for edge in 1:nedges
+#        nodes = edge_to_nodes[edge]
+#        for node in nodes
+#            k += 1
+#            p[k] = node_to_x[node]
+#        end
+#    end
+#    (p,)
+#end
+#
+#struct FaceColor
+#    name::String
+#end
+#
+#struct NodeColor
+#    name::String
+#end
+#
+#function makie_mesh_color(plt,color)
+#    (;color)
+#end
+#
+#function makie_linesegments_color(plt,color)
+#    (;color)
+#end
+#
+#function makie_scatter_color(plt,color)
+#    (;color)
+#end
+#
+#function makie_mesh_color(plt,::Nothing)
+#    (;)
+#end
+#
+#function makie_linesegments_color(plt,::Nothing)
+#    (;)
+#end
+#
+#function makie_scatter_color(plt,::Nothing)
+#    (;)
+#end
+#
+#function makie_mesh_color(plt,fc::FaceColor)
+#    mesh = plt.mesh
+#    allcolors = face_data(plt;merge_dims=true)[fc.name]
+#    minc = minimum(allcolors)
+#    maxc = maximum(allcolors)
+#    colorrange = (minc,maxc)
+#    d = 2
+#    offset = face_offset(mesh,d)
+#    npoints = num_faces(mesh,d)
+#    points = 1:npoints
+#    dface_to_color = allcolors[points .+ offset]
+#    node_to_color = similar(dface_to_color,num_nodes(mesh))
+#    dface_to_nodes = face_nodes(mesh,d)
+#    for face in 1:npoints
+#        nodes = dface_to_nodes[face]
+#        node_to_color[nodes] .= dface_to_color[face]
+#    end
+#    color = node_to_color
+#    (;color,colorrange)
+#end
+#
+#function makie_linesegments_color(plt,fc::FaceColor)
+#    mesh = plt.mesh
+#    allcolors = face_data(plt;merge_dims=true)[fc.name]
+#    minc = minimum(allcolors)
+#    maxc = maximum(allcolors)
+#    colorrange = (minc,maxc)
+#    d = 1
+#    offset = face_offset(mesh,d)
+#    npoints = num_faces(mesh,d)
+#    points = 1:npoints
+#    dface_to_color = allcolors[points .+ offset]
+#    color = similar(dface_to_color,2*npoints)
+#    color[1:2:(end-1)] = dface_to_color
+#    color[2:2:end] = dface_to_color
+#    (;color,colorrange)
+#end
+#
+#function makie_scatter_color(plt,fc::FaceColor)
+#    mesh = plt.mesh
+#    allcolors = face_data(plt;merge_dims=true)[fc.name]
+#    minc = minimum(allcolors)
+#    maxc = maximum(allcolors)
+#    colorrange = (minc,maxc)
+#    d = 0
+#    offset = face_offset(mesh,d)
+#    npoints = num_faces(mesh,d)
+#    points = 1:npoints
+#    color = allcolors[points .+ offset]
+#    (;color,colorrange)
+#end
+#
+#function render_with_makie!(ax,plt::PlotNew;color=nothing)
+#    plt = shrink(plt;scale=1)
+#    args1 = makie_mesh_args(plt)
+#    args2 = makie_linesegments_args(plt)
+#    args3 = makie_scatter_args(plt)
+#    color1 = makie_mesh_color(plt,color)
+#    color2 = makie_linesegments_color(plt,color)
+#    color3 = makie_scatter_color(plt,color)
+#    Makie.mesh!(ax,args1...;color1...)
+#    Makie.linesegments!(ax,args2...;color2...)
+#    Makie.scatter!(ax,args3...;color3...)
+#    ax
+#end
+#
+#Makie.@recipe(MakiePlot) do scene
+#    dt = Makie.default_theme(scene, Makie.Mesh)
+#    Makie.Attributes(
+#        color=dt[:color],
+#
+#      )
+#end
+#
+#function makie_mesh_color_2(plt,fc)
+#    fc
+#end
+#
+#function makie_mesh_color_2(plt,fc::FaceColor)
+#    mesh = plt.mesh
+#    allcolors = face_data(plt;merge_dims=true)[fc.name]
+#    minc = minimum(allcolors)
+#    maxc = maximum(allcolors)
+#    colorrange = (minc,maxc)
+#    d = 2
+#    offset = face_offset(mesh,d)
+#    npoints = num_faces(mesh,d)
+#    points = 1:npoints
+#    dface_to_color = allcolors[points .+ offset]
+#    node_to_color = similar(dface_to_color,num_nodes(mesh))
+#    dface_to_nodes = face_nodes(mesh,d)
+#    for face in 1:npoints
+#        nodes = dface_to_nodes[face]
+#        node_to_color[nodes] .= dface_to_color[face]
+#    end
+#    color = node_to_color
+#    color
+#end
+#
+#function Makie.plot!(sc::MakiePlot{<:Tuple{<:PlotNew}})
+#    plt = sc[1]
+#    args1 = Makie.lift(makie_mesh_args,plt)
+#    vert = Makie.lift(first,args1)
+#    conn = Makie.lift(last,args1)
+#    valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
+#    valid_attributes[:color] = Makie.lift(makie_mesh_color_2,plt,valid_attributes[:color])
+#    Makie.mesh!(sc,valid_attributes,vert,conn)
+#end
 
 
 

@@ -15,7 +15,7 @@ using Combinatorics
 using SparseArrays
 using Metis
 using Metatheory
-using MakieCore
+import Makie
 
 include("geometry.jl")
 include("symbolics.jl")
