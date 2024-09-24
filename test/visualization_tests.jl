@@ -5,7 +5,7 @@ using GLMakie
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
-mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
+mesh = GT.cartesian_mesh(domain,cells,simplexify=true,complexify=false)
 
 plt = GT.plot(mesh)
 GT.plot!(plt,GT.physical_faces)
@@ -17,12 +17,15 @@ plt = GT.shrink(plt,scale=0.7)
 
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())
-fig = GT.makievolumes(plt;shading=Makie.NoShading)
-GT.makievolumeedges!(plt,color=:red)
-#GT.makiefaceedges!(plt,color=:red)
-#GT.makieedges!(plt)
-#GT.makievertices!(plt)
+fig = GT.makie3d(plt;shading=Makie.NoShading)
+GT.makie3d1d!(plt,color=:red)
+GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
+GT.makie2d1d!(plt,color=:cyan)
+GT.makie1d!(plt,color=:green)
+GT.makie0d!(plt,color=:black)
 display(fig)
+
+
 
 
 #fig = Figure()

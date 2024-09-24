@@ -176,18 +176,19 @@ end
 
 # Makie
 
-Makie.@recipe(MakieVolumes) do scene
+
+Makie.@recipe(Makie3d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
     dt
 end
 
-Makie.preferred_axis_type(plot::MakieVolumes) = Makie.LScene
+Makie.preferred_axis_type(plot::Makie3d) = Makie.LScene
 
-function Makie.plot!(sc::MakieVolumes{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie3d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     plt2 = Makie.lift(makie_volumes_impl,plt)
-    valid_attributes = Makie.shared_attributes(sc, MakieFaces)
-    makiefaces!(sc,valid_attributes,plt2)
+    valid_attributes = Makie.shared_attributes(sc, Makie2d)
+    makie2d!(sc,valid_attributes,plt2)
 end
 
 function makie_volumes_impl(plt::PlotNew)
@@ -213,26 +214,26 @@ function makie_volumes_impl(plt::PlotNew)
     plt3
 end
 
-Makie.@recipe(MakieVolumeEdges) do scene
-    dt = Makie.default_theme(scene, MakieFaceEdges)
+Makie.@recipe(Makie3d1d) do scene
+    dt = Makie.default_theme(scene, Makie2d1d)
     dt
 end
 
-function Makie.plot!(sc::MakieVolumeEdges{<:Tuple{<:PlotNew}})
+Makie.preferred_axis_type(plot::Makie3d1d) = Makie.LScene
+
+function Makie.plot!(sc::Makie3d1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     plt2 = Makie.lift(makie_volumes_impl,plt)
-    valid_attributes = Makie.shared_attributes(sc, MakieFaceEdges)
-    makiefaceedges!(sc,valid_attributes,plt2)
+    valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
+    makie2d1d!(sc,valid_attributes,plt2)
 end
 
-Makie.preferred_axis_type(plot::MakieVolumeEdges) = Makie.LScene
-
-Makie.@recipe(MakieFaces) do scene
+Makie.@recipe(Makie2d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
     dt
 end
 
-function Makie.plot!(sc::MakieFaces{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     args = Makie.lift(makie_faces_impl,plt)
     vert = Makie.lift(a->a.vert,args)
@@ -241,7 +242,7 @@ function Makie.plot!(sc::MakieFaces{<:Tuple{<:PlotNew}})
     Makie.mesh!(sc,valid_attributes,vert,conn)
 end
 
-Makie.preferred_axis_type(plot::MakieFaces) = Makie.LScene
+Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
 
 function makie_faces_impl(plt)
     mesh = plt.mesh
@@ -262,16 +263,18 @@ function makie_faces_impl(plt)
     (;vert,conn)
 end
 
-Makie.@recipe(MakieFaceEdges) do scene
-    dt = Makie.default_theme(scene, MakieEdges)
+Makie.@recipe(Makie2d1d) do scene
+    dt = Makie.default_theme(scene, Makie1d)
     dt
 end
 
-function Makie.plot!(sc::MakieFaceEdges{<:Tuple{<:PlotNew}})
+Makie.preferred_axis_type(plot::Makie2d1d) = Makie.LScene
+
+function Makie.plot!(sc::Makie2d1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     plt2 = Makie.lift(makie_face_edges_impl,plt)
-    valid_attributes = Makie.shared_attributes(sc, MakieEdges)
-    makieedges!(sc,valid_attributes,plt2)
+    valid_attributes = Makie.shared_attributes(sc, Makie1d)
+    makie1d!(sc,valid_attributes,plt2)
 end
 
 function makie_face_edges_impl(plt)
@@ -291,12 +294,14 @@ function makie_face_edges_impl(plt)
     plt3
 end
 
-Makie.@recipe(MakieEdges) do scene
+Makie.@recipe(Makie1d) do scene
     dt = Makie.default_theme(scene, Makie.LineSegments)
     dt
 end
 
-function Makie.plot!(sc::MakieEdges{<:Tuple{<:PlotNew}})
+Makie.preferred_axis_type(plot::Makie1d) = Makie.LScene
+
+function Makie.plot!(sc::Makie1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     x = Makie.lift(makie_edges_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
@@ -324,12 +329,14 @@ function makie_edges_impl(plt)
     p
 end
 
-Makie.@recipe(MakieVertices) do scene
+Makie.@recipe(Makie0d) do scene
     dt = Makie.default_theme(scene, Makie.Scatter)
     dt
 end
 
-function Makie.plot!(sc::MakieVertices{<:Tuple{<:PlotNew}})
+Makie.preferred_axis_type(plot::Makie0d) = Makie.LScene
+
+function Makie.plot!(sc::Makie0d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     x = Makie.lift(makie_vertices_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
