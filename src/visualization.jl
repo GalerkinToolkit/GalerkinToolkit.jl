@@ -9,7 +9,7 @@ struct PPlot{A} <: AbstractType
     partition::A
 end
 
-function partition(plt::PPlot)
+function PartitionedArrays.partition(plt::PPlot)
     plt.partition
 end
 
@@ -267,6 +267,114 @@ function shrink(pplt::PPlot;scale=0.75)
     PPlot(plts)
 end
 
+function plotnew(domain::AbstractDomain;fields=(;),kwargs...)
+    mesh = GT.mesh(domain)
+    d = GT.face_dim(domain)
+    domface_to_face = GT.faces(domain)
+    vismesh = GT.visualization_mesh(mesh,d,domface_to_face;kwargs...)
+    node_data = Dict{String,Any}()
+    quad = PlotQuadrature(mesh,domain,vismesh)
+    foreach(pairs(fields)) do (sym,field)
+        node_data[string(sym)] = plot_field(quad,field)
+    end
+    vmesh,vglue = vismesh
+    PlotNew(vmesh,face_data(vmesh),node_data)
+end
+
+struct PlotQuadrature{A,B,C} <: AbstractType
+    mesh::A
+    domain::B
+    visualization_mesh::C
+end
+
+domain(plt::PlotQuadrature) = plt.domain
+visualization_mesh(plt::PlotQuadrature) = plt.visualization_mesh
+
+function coordinates(plt::PlotQuadrature)
+    domain = plt |> GT.domain
+    GT.coordinates(plt,domain)
+end
+
+function coordinates(plt::PlotQuadrature,::ReferenceDomain)
+    GT.reference_coordinates(plt)
+end
+
+function coordinates(plt::PlotQuadrature,::PhysicalDomain)
+    domain_phys = plt |> GT.domain
+    domain_ref = domain_phys |> reference_domain
+    phi = GT.domain_map(domain_ref,domain_phys)
+    q = GT.reference_coordinates(plt)
+    phi(q)
+end
+
+function reference_coordinates(plt::PlotQuadrature)
+    domain = GT.reference_domain(plt.domain)
+    d = GT.face_dim(domain)
+    domface_to_face = GT.faces(domain)
+    mesh = GT.mesh(domain)
+    vmesh, vglue = GT.visualization_mesh(plt)
+    refid_to_snode_to_coords = vglue.reference_coordinates
+    d = GT.num_dims(vmesh)
+    face_to_refid = GT.face_reference_id(mesh,d)
+    prototype = first(first(refid_to_snode_to_coords))
+    GT.quantity(prototype,domain) do index
+        domface = index.face
+        point = index.point
+        dict = index.dict
+        domface_to_face_sym = get!(dict,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+        refid_to_snode_to_coords_sym = get!(dict,refid_to_snode_to_coords,gensym("refid_to_snode_to_coords"))
+        @term begin
+            face = $domface_to_face_sym[$domface]
+            coords = reference_value(
+                $refid_to_snode_to_coords_sym,
+                $face_to_refid_sym,
+                $face)
+            coords[$point]
+        end
+    end
+end
+
+
+function plot_field(plt::PlotQuadrature,field)
+    q = GT.coordinates(plt)
+    f_q = field(q)
+    term = GT.term(f_q)
+    T = typeof(GT.prototype(f_q))
+    plot_field_impl(plt,term,T)
+end
+
+function plot_field_impl(plt,term,::Type{T}) where T
+    vmesh,vglue = plt.visualization_mesh
+    nnodes = GT.num_nodes(vmesh)
+    data = zeros(T,nnodes)
+    face_to_nodes = vglue.face_fine_nodes
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    dict = index.dict
+    dict[face_to_nodes] = :face_to_nodes
+    deps = (face,point)
+    expr1 = term(index) |> simplify
+    v = GT.topological_sort(expr1,deps)
+    expr = quote
+        function filldata!(data,state)
+            $(unpack_storage(dict,:state))
+            $(v[1])
+            for $face in 1:length(face_to_nodes)
+                nodes = face_to_nodes[$face]
+                $(v[2])
+                for $point in 1:length(nodes)
+                    data[nodes[$point]] = $(v[3])
+                end
+            end
+        end
+    end
+    filldata! = eval(expr)
+    invokelatest(filldata!,data,GT.storage(index))
+    data
+end
+
 # VTK
 
 function translate_vtk_data(v)
@@ -405,6 +513,40 @@ function Makie.convert_arguments(::Type{<:MakiePlot},mesh::AbstractMesh)
     (plt,)
 end
 
+Makie.plottype(::AbstractDomain) = MakiePlot
+
+function Makie.plot!(sc::MakiePlot{<:Tuple{<:AbstractDomain}})
+    dom = sc[1]
+    valid_attributes = Makie.shared_attributes(sc, MakiePlot)
+    color = valid_attributes[:color]
+    args = Makie.lift(dom,color) do dom,color
+        if isa(color,AbstractQuantity)
+            sym = gensym()
+            plt = plotnew(dom;fields=Dict(sym=>color))
+            color = NodeColor(string(sym))
+        else
+            plt = plotnew(dom)
+        end
+        (;plt,color)
+    end
+    plt = Makie.lift(i->i.plt,args)
+    color = Makie.lift(i->i.color,args)
+    valid_attributes[:color] = color
+    makieplot!(sc,valid_attributes,plt)
+end
+
+# TODO not sure about this
+# what if u is not scalar-valued?
+#Makie.plottype(::AbstractQuantity) = MakiePlot
+#
+#function Makie.plot!(sc::MakiePlot{<:Tuple{<:AbstractQuantity}})
+#    u = sc[1]
+#    valid_attributes = Makie.shared_attributes(sc, MakiePlot)
+#    dom = Makie.lift(domain,u)
+#    valid_attributes[:color] = u
+#    makieplot!(sc,valid_attributes,dom)
+#end
+
 ## TODO not sure about this
 # function vector_of_observables(a)
 #    #TODO remove trick for DebugArray
@@ -467,7 +609,7 @@ function makie_volumes_impl(plt::PlotNew)
     face_to_cells = face_incidence(topo,d,D)
     face_isboundary = map(cells->length(cells)==1,face_to_cells)
     mesh2 = restrict_to_dim(mesh,d)
-    newnodes = 1:num_nodes(mesh)
+    newnodes = 1:num_nodes(mesh2)
     newfaces = [ Int[] for _ in 0:d ]
     newfaces[end] = findall(face_isboundary)
     mesh3 = restrict(mesh2,newnodes,newfaces)

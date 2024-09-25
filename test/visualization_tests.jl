@@ -4,27 +4,27 @@ import GalerkinToolkit as GT
 using GLMakie
 using PartitionedArrays
 
-domain = (0,1,0,1)
-cells = (4,4)
-np = 4
-parts = identity(LinearIndices((np,)))
-parts = DebugArray(LinearIndices((np,)))
-mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
-pmesh = GT.partition_mesh(mesh,np;parts)
-
-plt = GT.plot(pmesh)
-GT.save_vtk("pmesh",plt)
-GT.save_vtk("pmesh",pmesh)
-
-plt = GT.shrink(plt,scale=0.7)
-GT.save_vtk("shrink",plt)
+#domain = (0,1,0,1)
+#cells = (4,4)
+#np = 4
+#parts = identity(LinearIndices((np,)))
+#parts = DebugArray(LinearIndices((np,)))
+#mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
+#pmesh = GT.partition_mesh(mesh,np;parts)
+#
+#plt = GT.plot(pmesh)
+#GT.save_vtk("pmesh",plt)
+#GT.save_vtk("pmesh",pmesh)
+#
+#plt = GT.shrink(plt,scale=0.7)
+#GT.save_vtk("shrink",plt)
 
 #fig = GT.makie2d(plt;shading=Makie.NoShading,color=GT.FaceColor("__OWNER__"))
 #display(fig)
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
-mesh = GT.cartesian_mesh(domain,cells,simplexify=true,complexify=false)
+mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
 
 plt = GT.plot(mesh)
 GT.save_vtk("mesh",plt)
@@ -33,6 +33,18 @@ GT.save_vtk("mesh",mesh)
 plt = GT.shrink(plt,scale=0.7)
 GT.save_vtk("shrink",plt)
 
+Ω = GT.interior(mesh)
+u = GT.analytical_field(sum,Ω)
+
+plt = GT.plotnew(Ω;fields=(;u))
+GT.save_vtk("domain",plt)
+fig = Makie.plot(plt,color=GT.NodeColor("u"))
+display(fig)
+
+fig = Makie.plot(Ω;color=u)
+display(fig)
+
+
 #using StaticArrays
 #x = SVector{2,Float64}[[0,0],[1,1]]
 #fig = Makie.linesegments(x,color=[1,2])
@@ -40,6 +52,7 @@ GT.save_vtk("shrink",plt)
 #
 #xxx
 
+plt = GT.plot(mesh)
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())
 fig = GT.makie3d(plt;shading=Makie.NoShading,color=:blue)

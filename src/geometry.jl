@@ -2326,7 +2326,7 @@ function chain_from_arrays(
     face_nodes,
     face_reference_id,
     reference_faces;
-    periodic_nodes = eltype(eltype(face_reference_id))[],
+    periodic_nodes = eltype(eltype(face_reference_id))[] => eltype(eltype(face_reference_id))[],
     physical_faces = Dict{String,Vector{eltype(eltype(face_reference_id))}}(),
     outwards_normals = nothing
     )
