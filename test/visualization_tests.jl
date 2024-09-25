@@ -8,7 +8,6 @@ cells = (2,2,2)
 mesh = GT.cartesian_mesh(domain,cells,simplexify=true,complexify=false)
 
 plt = GT.plot(mesh)
-GT.plot!(plt,GT.physical_faces)
 GT.save_vtk("mesh",plt)
 GT.save_vtk("mesh",mesh)
 

@@ -1,23 +1,14 @@
 
-struct PlotNew{A,B,C,D}
+struct PlotNew{A,B,C} <: AbstractType
     mesh::A
     face_data::B
     node_data::C
-    params::D
-end
-
-function plot(
-    mesh;
-    node_data = Dict{String,Any}(),
-    face_data = [ Dict{String,Any}() for _ in 0:num_dims(mesh) ],
-    params...)
-    PlotNew(mesh,face_data,node_data,params)
 end
 
 face_data(plt::PlotNew,d) = plt.face_data[d+1]
 
-function face_data(plt::PlotNew;merge_dims=false)
-    if merge_dims
+function face_data(plt::PlotNew;merge_dims=Val(false))
+    if val_parameter(merge_dims)
         mesh = plt.mesh
         nfaces = sum(num_faces(mesh))
         offsets = face_offset(mesh)
@@ -44,34 +35,50 @@ end
 
 node_data(plt::PlotNew) = plt.node_data
 
-function plot!(plt::PlotNew,::typeof(physical_faces),d)
-    mesh = plt.mesh
+function plot(mesh::AbstractMesh)
+    PlotNew(mesh,face_data(mesh),node_data(mesh))
+end
+
+function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
-    dict = face_data(plt,d)
+    dict = Dict{String,Vector{Int32}}()
     for group in physical_faces(mesh,d)
         name,faces = group
-        face_mask = zeros(Int,ndfaces)
+        face_mask = zeros(Int32,ndfaces)
         face_mask[faces] .= 1
         dict[name] = face_mask
     end
-    plt
+    dict
 end
 
-function plot!(plt::PlotNew,::typeof(physical_faces))
-    mesh = plt.mesh
-    D = num_dims(mesh)
-    for d in 0:D
-        plot!(plt,physical_faces,d)
+function node_data(mesh::AbstractMesh)
+    nnodes = num_nodes(mesh)
+    dict = Dict{String,Vector{Int32}}()
+    for group in physical_nodes(mesh;merge_dims=Val(true))
+        name,nodes = group
+        node_mask = zeros(Int32,nnodes)
+        node_mask[nodes] .= 1
+        dict[name] = node_mask
     end
-    plt
+    dict
+end
+
+function face_data(mesh::AbstractMesh)
+    D = num_dims(mesh)
+    map(d->face_data(mesh,d),0:D)
 end
 
 function restrict_to_dim(plt::PlotNew,d)
     mesh = restrict_to_dim(plt.mesh,d)
-    pltd = plot(mesh;
-         node_data = node_data(plt)
-        )
-    face_data(pltd)[d+1] = face_data(plt,d)
+    dfacedata = face_data(plt,d)
+    fd = map(0:d) do i
+        if i == d
+            dfacedata
+        else
+            typeof(dfacedata)()
+        end
+    end
+    pltd = PlotNew(mesh,fd,node_data(plt))
     pltd
 end
 
@@ -85,7 +92,7 @@ function restrict(plt::PlotNew,newnodes,newfaces)
         end
         dict
     end
-    plot(mesh;node_data=nodedata,face_data=facedata)
+    PlotNew(mesh,facedata,nodedata)
 end
 
 function shrink(plt::PlotNew;scale=0.75)
@@ -134,7 +141,7 @@ function shrink(plt::PlotNew;scale=0.75)
     for (k,node_to_val) in node_data(plt)
         newnode_data[k] = node_to_val[newnode_to_node]
     end
-    plot(new_mesh;face_data=plt.face_data,node_data=newnode_data)
+    PlotNew(new_mesh,plt.face_data,newnode_data)
 end
 
 # VTK
@@ -166,7 +173,6 @@ end
 
 function save_vtk(f,filename,mesh::AbstractMesh)
     plt = plot(mesh)
-    plot!(plt,physical_faces)
     save_vtk(f,filename,plt)
 end
 
@@ -209,8 +215,14 @@ function makie_volumes_impl(plt::PlotNew)
     for (k,v) in celldata
         celldata[k] = v[newface_to_cell]
     end
-    plt3 = plot(mesh3;node_data=node_data(plt))
-    face_data(plt3)[d+1] = celldata
+    fd = map(0:d) do i
+        if i == d
+            celldata
+        else
+            typeof(celldata)()
+        end
+    end
+    plt3 = PlotNew(mesh3,fd,node_data(plt))
     plt3
 end
 
@@ -289,8 +301,14 @@ function makie_face_edges_impl(plt)
         facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
     end
     mesh3 = restrict_to_dim(mesh2,d)
-    plt3 = plot(mesh3;node_data=node_data(plt))
-    face_data(plt3)[d+1] = facedata
+    fd = map(0:d) do i
+        if i == d
+            facedata
+        else
+            typeof(facedata)()
+        end
+    end
+    plt3 = PlotNew(mesh3,fd,node_data(plt))
     plt3
 end
 
