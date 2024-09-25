@@ -5,6 +5,14 @@ struct PlotNew{A,B,C} <: AbstractType
     node_data::C
 end
 
+struct PPlot{A} <: AbstractType
+    partition::A
+end
+
+function partition(plt::PPlot)
+    plt.partition
+end
+
 function face_data(plt::PlotNew,d;merge_dims=Val(false))
     if val_parameter(merge_dims)
         mesh = plt.mesh
@@ -107,6 +115,7 @@ function face_data(mesh::AbstractMesh,d)
         face_mask[faces] .= 1
         dict[name] = face_mask
     end
+    #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
     dict
 end
 
@@ -119,12 +128,60 @@ function node_data(mesh::AbstractMesh)
         node_mask[nodes] .= 1
         dict[name] = node_mask
     end
+    #dict["__LOCAL_NODE__"] = collect(1:nnodes)
     dict
 end
 
 function face_data(mesh::AbstractMesh)
     D = num_dims(mesh)
     map(d->face_data(mesh,d),0:D)
+end
+
+function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
+    facedata = face_data(mesh,d)
+    faceids = face_indices(ids,d)
+    part = part_id(faceids)
+    nfaces = local_length(faceids)
+    facedata["__OWNER__"] = local_to_owner(faceids)
+    facedata["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+    facedata["__PART__"] = fill(part,nfaces)
+    #facedata["__GLOBAL_DFACE__"] = local_to_global(faceids)
+    facedata
+end
+
+function face_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+    D = num_dims(mesh)
+    map(d->face_data(mesh,ids,d),0:D)
+end
+
+function node_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+    nodedata = node_data(mesh)
+    nodeids = node_indices(ids)
+    part = part_id(nodeids)
+    nfaces = local_length(nodeids)
+    nodedata["__OWNER__"] = local_to_owner(nodeids)
+    nodedata["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+    nodedata["__PART__"] = fill(part,nfaces)
+    #nodedata["__GLOBAL_NODE__"] = local_to_global(nodeids)
+    nodedata
+end
+
+function plot(pmesh::PMesh)
+    plts = map(partition(pmesh),index_partition(pmesh)) do mesh,ids
+        PlotNew(mesh,face_data(mesh,ids),node_data(mesh,ids))
+    end
+    PPlot(plts)
+end
+
+function restrict_to_dim(mesh::AbstractMesh,d)
+    chain = chain_from_arrays(
+    node_coordinates(mesh),
+    face_nodes(mesh,d),
+    face_reference_id(mesh,d),
+    reference_faces(mesh,d);
+    periodic_nodes = periodic_nodes(mesh),
+    physical_faces = physical_faces(mesh,d))
+    mesh_from_chain(chain)
 end
 
 function restrict_to_dim(plt::PlotNew,d)
@@ -203,30 +260,60 @@ function shrink(plt::PlotNew;scale=0.75)
     PlotNew(new_mesh,plt.face_data,newnode_data)
 end
 
+function shrink(pplt::PPlot;scale=0.75)
+    plts = map(partition(pplt)) do plt
+        shrink(plt;scale)
+    end
+    PPlot(plts)
+end
+
 # VTK
 
+function translate_vtk_data(v)
+    v
+end
+function translate_vtk_data(v::AbstractVector{<:SVector{2}})
+    z = zero(eltype(eltype(v)))
+    map(vi->SVector((vi...,z)),v)
+end
+
 function save_vtk(f,filename,plt::PlotNew)
-    function translate(v)
-        v
-    end
-    function translate(v::AbstractVector{<:SVector{2}})
-        z = zero(eltype(eltype(v)))
-        map(vi->SVector((vi...,z)),v)
-    end
     mesh = plt.mesh
     D = num_dims(mesh)
     vtk_grid(filename,GT.vtk_args(mesh)...) do vtk
         for (k,v) in node_data(plt)
-            vtk[k,WriteVTK.VTKPointData()] = translate(v)
+            vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
         end
         for (k,v) in face_data(plt;merge_dims=true)
-            vtk[k,WriteVTK.VTKCellData()] = translate(v)
+            vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
         end
         f(vtk)
     end
 end
 
+function save_vtk(f,filename,pplt::PPlot)
+    plts = partition(pplt)
+    parts = linear_indices(plts)
+    nparts = length(parts)
+    map(plts,parts) do plt,part
+        mesh = plt.mesh
+        pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts) do vtk
+            for (k,v) in node_data(plt)
+                vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+            end
+            for (k,v) in face_data(plt;merge_dims=true)
+                vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
+            end
+            f(vtk)
+        end
+    end
+end
+
 function save_vtk(filename,plt::PlotNew)
+    save_vtk(identity,filename,plt)
+end
+
+function save_vtk(filename,plt::PPlot)
     save_vtk(identity,filename,plt)
 end
 
@@ -236,6 +323,15 @@ function save_vtk(f,filename,mesh::AbstractMesh)
 end
 
 function save_vtk(filename,mesh::AbstractMesh)
+    save_vtk(identity,filename,mesh)
+end
+
+function save_vtk(f,filename,mesh::PMesh)
+    plt = plot(mesh)
+    save_vtk(f,filename,plt)
+end
+
+function save_vtk(filename,mesh::PMesh)
     save_vtk(identity,filename,mesh)
 end
 
@@ -309,6 +405,31 @@ function Makie.convert_arguments(::Type{<:MakiePlot},mesh::AbstractMesh)
     (plt,)
 end
 
+## TODO not sure about this
+# function vector_of_observables(a)
+#    #TODO remove trick for DebugArray
+#    function start(v)
+#        first(v)
+#    end
+#    function start(v::DebugArray)
+#        first(v.items)
+#    end
+#    function rest(v)
+#        v[2:end]
+#    end
+#    function rest(v::DebugArray)
+#        v.items[2:end]
+#    end
+#    if length(a[]) == 1
+#        b = Makie.lift(first,a)
+#        return [b,]
+#    else
+#        b = Makie.lift(start,a)
+#        c = Makie.lift(rest,a)
+#        return [b,vector_of_observables(c)...]
+#    end
+#end
+
 Makie.@recipe(Makie3d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
     dt
@@ -327,7 +448,18 @@ function Makie.plot!(sc::Makie3d{<:Tuple{<:PlotNew}})
     makie2d!(sc,valid_attributes,plt2)
 end
 
+# TODO not sure about this
+#function Makie.plot!(sc::Makie3d{<:Tuple{<:PPlot}})
+#    valid_attributes = Makie.shared_attributes(sc,Makie3d)
+#    pplt = sc[1]
+#    plts = vector_of_observables(Makie.lift(partition,pplt))
+#    foreach(plts) do plt
+#        makie3d!(sc,valid_attributes,plt)
+#    end
+#end
+
 function makie_volumes_impl(plt::PlotNew)
+    @assert num_dims(plt.mesh) == 3
     D=3
     d=2
     mesh, = complexify(restrict_to_dim(plt.mesh,D))
@@ -379,6 +511,8 @@ Makie.@recipe(Makie2d) do scene
     dt
 end
 
+Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
+
 function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
@@ -394,7 +528,15 @@ function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
     Makie.mesh!(sc,valid_attributes,vert,conn)
 end
 
-Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
+# TODO Not sure about this
+#function Makie.plot!(sc::Makie2d{<:Tuple{<:PPlot}})
+#    valid_attributes = Makie.shared_attributes(sc,Makie2d)
+#    pplt = sc[1]
+#    plts = vector_of_observables(Makie.lift(partition,pplt))
+#    foreach(plts) do plt
+#        makie2d!(sc,valid_attributes,plt)
+#    end
+#end
 
 function setup_colorrange_impl(plt,color,colorrange)
     if colorrange != Makie.Automatic()

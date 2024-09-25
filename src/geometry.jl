@@ -3284,17 +3284,6 @@ function Base.getindex(a::TwoWayPartition,i::Int)
     end
 end
 
-function restrict_to_dim(mesh::AbstractMesh,d)
-    chain = chain_from_arrays(
-    node_coordinates(mesh),
-    face_nodes(mesh,d),
-    face_reference_id(mesh,d),
-    reference_faces(mesh,d);
-    periodic_nodes = periodic_nodes(mesh),
-    physical_faces = physical_faces(mesh,d))
-    mesh_from_chain(chain)
-end
-
 function restrict(mesh::AbstractMesh,args...)
     restrict_mesh(mesh,args...)
 end

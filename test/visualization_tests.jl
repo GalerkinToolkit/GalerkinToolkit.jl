@@ -2,6 +2,25 @@ module VisualizationTests
 
 import GalerkinToolkit as GT
 using GLMakie
+using PartitionedArrays
+
+domain = (0,1,0,1)
+cells = (4,4)
+np = 4
+parts = identity(LinearIndices((np,)))
+parts = DebugArray(LinearIndices((np,)))
+mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
+pmesh = GT.partition_mesh(mesh,np;parts)
+
+plt = GT.plot(pmesh)
+GT.save_vtk("pmesh",plt)
+GT.save_vtk("pmesh",pmesh)
+
+plt = GT.shrink(plt,scale=0.7)
+GT.save_vtk("shrink",plt)
+
+#fig = GT.makie2d(plt;shading=Makie.NoShading,color=GT.FaceColor("__OWNER__"))
+#display(fig)
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
@@ -53,6 +72,9 @@ display(fig)
 
 fig = Makie.plot(mesh;dim=3,shrink=0.6)
 display(fig)
+
+
+
 
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())
