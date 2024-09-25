@@ -251,8 +251,12 @@ Makie.preferred_axis_type(plot::Makie3d) = Makie.LScene
 
 function Makie.plot!(sc::Makie3d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    plt2 = Makie.lift(makie_volumes_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie2d)
+    colorrange = valid_attributes[:colorrange]
+    color = valid_attributes[:color]
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    valid_attributes[:colorrange] = colorrange
+    plt2 = Makie.lift(makie_volumes_impl,plt)
     makie2d!(sc,valid_attributes,plt2)
 end
 
@@ -282,7 +286,6 @@ function makie_volumes_impl(plt::PlotNew)
         end
     end
     plt3 = PlotNew(mesh3,fd,node_data(plt))
-    #plt3 = shrink(plt3,scale=1)
     plt3
 end
 
@@ -295,8 +298,12 @@ Makie.preferred_axis_type(plot::Makie3d1d) = Makie.LScene
 
 function Makie.plot!(sc::Makie3d1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    plt2 = Makie.lift(makie_volumes_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
+    colorrange = valid_attributes[:colorrange]
+    color = valid_attributes[:color]
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    valid_attributes[:colorrange] = colorrange
+    plt2 = Makie.lift(makie_volumes_impl,plt)
     makie2d1d!(sc,valid_attributes,plt2)
 end
 
@@ -310,11 +317,11 @@ function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
     valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
     color = valid_attributes[:color]
     colorrange = valid_attributes[:colorrange]
-    args = Makie.lift(makie_faces_impl,plt,color,colorrange)
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    args = Makie.lift(makie_faces_impl,plt,color)
     vert = Makie.lift(a->a.vert,args)
     conn = Makie.lift(a->a.conn,args)
     color = Makie.lift(a->a.color,args)
-    colorrange = Makie.lift(a->a.colorrange,args)
     valid_attributes[:color] = color
     valid_attributes[:colorrange] = colorrange
     Makie.mesh!(sc,valid_attributes,vert,conn)
@@ -322,29 +329,27 @@ end
 
 Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
 
-function setup_colorrange_impl(plt,colorrange)
+function setup_colorrange_impl(plt,color,colorrange)
+    if colorrange != Makie.Automatic()
+        return colorrange
+    end
+    if isa(color,FaceColor)
+        colorrange = face_colorrange(plt,color.name)
+    end
+    if isa(color,NodeColor)
+        colorrange = node_colorrange(plt,color.name)
+    end
+    colorrange
 end
 
-function setup_colors_impl(plt,color,colorrange,d)
-    if isa(colorrange,FaceColor)
-        colorrange = face_colorrange(plt,colorrange.name)
-    end
-    if isa(colorrange,NodeColor)
-        colorrange = node_colorrange(plt,colorrange.name)
-    end
+function setup_colors_impl(plt,color,d)
     if isa(color,FaceColor)
         if d == 2
             plt = shrink(plt;scale=1)
         end
-        if colorrange == Makie.Automatic()
-            colorrange = face_colorrange(plt,color.name)
-        end
         color2 = face_color(plt,color.name,d)
     end
     if isa(color,NodeColor)
-        if colorrange == Makie.Automatic()
-            colorrange = face_colorrange(plt,color.name)
-        end
         color2 = node_color(plt,color.name)
     end
     if isa(color,NodeColor) || isa(color,FaceColor)
@@ -371,12 +376,12 @@ function setup_colors_impl(plt,color,colorrange,d)
             error()
         end
     end
-    plt,color,colorrange
+    plt,color
 end
 
-function makie_faces_impl(plt,color,colorrange)
+function makie_faces_impl(plt,color)
     d = 2
-    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
+    plt,color = setup_colors_impl(plt,color,d)
     mesh = plt.mesh
     D = num_ambient_dims(mesh)
     nnodes = num_nodes(mesh)
@@ -391,7 +396,7 @@ function makie_faces_impl(plt,color,colorrange)
     for (face,nodes) in enumerate(face_to_nodes)
         conn[face,:] = nodes
     end
-    (;vert,conn,color,colorrange)
+    (;vert,conn,color)
 end
 
 Makie.@recipe(Makie2d1d) do scene
@@ -403,8 +408,12 @@ Makie.preferred_axis_type(plot::Makie2d1d) = Makie.LScene
 
 function Makie.plot!(sc::Makie2d1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    plt2 = Makie.lift(makie_face_edges_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie1d)
+    colorrange = valid_attributes[:colorrange]
+    color = valid_attributes[:color]
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    valid_attributes[:colorrange] = colorrange
+    plt2 = Makie.lift(makie_face_edges_impl,plt)
     makie1d!(sc,valid_attributes,plt2)
 end
 
@@ -444,18 +453,18 @@ function Makie.plot!(sc::Makie1d{<:Tuple{<:PlotNew}})
     valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
     color = valid_attributes[:color]
     colorrange = valid_attributes[:colorrange]
-    args = Makie.lift(makie_edges_impl,plt,color,colorrange)
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    args = Makie.lift(makie_edges_impl,plt,color)
     p = Makie.lift(a->a.p,args)
     color = Makie.lift(a->a.color,args)
-    colorrange = Makie.lift(a->a.colorrange,args)
     valid_attributes[:color] = color
     valid_attributes[:colorrange] = colorrange
     Makie.linesegments!(sc,valid_attributes,p)
 end
 
-function makie_edges_impl(plt,color,colorrange)
+function makie_edges_impl(plt,color)
     d = 1
-    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
+    plt,color = setup_colors_impl(plt,color,d)
     mesh = plt.mesh
     nedges = num_faces(mesh,d)
     node_to_x = node_coordinates(mesh)
@@ -472,7 +481,7 @@ function makie_edges_impl(plt,color,colorrange)
             p[k] = node_to_x[node]
         end
     end
-    (;p,color,colorrange)
+    (;p,color)
 end
 
 Makie.@recipe(Makie0d) do scene
@@ -487,18 +496,18 @@ function Makie.plot!(sc::Makie0d{<:Tuple{<:PlotNew}})
     valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
     color = valid_attributes[:color]
     colorrange = valid_attributes[:colorrange]
-    args = Makie.lift(makie_vertices_impl,plt,color,colorrange)
+    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
+    args = Makie.lift(makie_vertices_impl,plt,color)
     p = Makie.lift(a->a.p,args)
     color = Makie.lift(a->a.color,args)
-    colorrange = Makie.lift(a->a.colorrange,args)
     valid_attributes[:color] = color
     valid_attributes[:colorrange] = colorrange
     Makie.scatter!(sc,valid_attributes,p)
 end
 
-function makie_vertices_impl(plt,color,colorrange)
+function makie_vertices_impl(plt,color)
     d = 0
-    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
+    plt,color = setup_colors_impl(plt,color,d)
     mesh = plt.mesh
     nedges = num_faces(mesh,d)
     node_to_x = node_coordinates(mesh)
@@ -515,7 +524,7 @@ function makie_vertices_impl(plt,color,colorrange)
             p[k] = node_to_x[node]
         end
     end
-    (;p,color,colorrange)
+    (;p,color)
 end
 
 #function makie_mesh_args(plt)
