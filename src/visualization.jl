@@ -35,6 +35,51 @@ end
 
 node_data(plt::PlotNew) = plt.node_data
 
+function face_color(plt::PlotNew,name,d)
+    mesh = plt.mesh
+    allcolors = face_data(plt;merge_dims=true)[name]
+    offset = face_offset(mesh,d)
+    ndfaces = num_faces(mesh,d)
+    dfaces = 1:ndfaces
+    dface_to_color = allcolors[dfaces .+ offset]
+    node_to_color = similar(dface_to_color,num_nodes(mesh))
+    dface_to_nodes = face_nodes(mesh,d)
+    for face in 1:ndfaces
+        nodes = dface_to_nodes[face]
+        node_to_color[nodes] .= dface_to_color[face]
+    end
+    color = node_to_color
+    color
+end
+
+struct FaceColor
+    name::String
+end
+
+struct NodeColor
+    name::String
+end
+
+function face_colorrange(plt::PlotNew,name)
+    mesh = plt.mesh
+    allcolors = face_data(plt;merge_dims=true)[name]
+    minc = minimum(allcolors)
+    maxc = maximum(allcolors)
+    colorrange = (minc,maxc)
+end
+
+function node_color(plt::PlotNew,name)
+    node_data(plt)[name]
+end
+
+function node_colorrange(plt::PlotNew,name)
+    mesh = plt.mesh
+    allcolors = node_data(plt)[name]
+    minc = minimum(allcolors)
+    maxc = maximum(allcolors)
+    colorrange = (minc,maxc)
+end
+
 function plot(mesh::AbstractMesh)
     PlotNew(mesh,face_data(mesh),node_data(mesh))
 end
@@ -247,16 +292,42 @@ end
 
 function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    args = Makie.lift(makie_faces_impl,plt)
+    valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
+    color = valid_attributes[:color]
+    colorrange = valid_attributes[:colorrange]
+    args = Makie.lift(makie_faces_impl,plt,color,colorrange)
     vert = Makie.lift(a->a.vert,args)
     conn = Makie.lift(a->a.conn,args)
-    valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
+    color = Makie.lift(a->a.color,args)
+    colorrange = Makie.lift(a->a.colorrange,args)
+    valid_attributes[:color] = color
+    valid_attributes[:colorrange] = colorrange
     Makie.mesh!(sc,valid_attributes,vert,conn)
 end
 
 Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
 
-function makie_faces_impl(plt)
+function makie_faces_impl(plt,color,colorrange)
+    d = 2
+    if isa(colorrange,FaceColor)
+        colorrange = face_colorrange(plt,colorrange.name)
+    end
+    if isa(colorrange,NodeColor)
+        colorrange = node_colorrange(plt,colorrange.name)
+    end
+    if isa(color,FaceColor)
+        plt = shrink(deepcopy(plt);scale=1) #TODO deepcopy needed for the test to pas, why?
+        if colorrange == Makie.Automatic()
+            colorrange = face_colorrange(plt,color.name)
+        end
+        color = face_color(plt,color.name,d)
+    end
+    if isa(color,NodeColor)
+        if colorrange == Makie.Automatic()
+            colorrange = face_colorrange(plt,color.name)
+        end
+        color = node_color(plt,color.name)
+    end
     mesh = plt.mesh
     D = num_ambient_dims(mesh)
     nnodes = num_nodes(mesh)
@@ -265,14 +336,13 @@ function makie_faces_impl(plt)
     for (node,x) in enumerate(node_to_x)
         vert[node,:] = x
     end
-    d = 2
     nfaces = num_faces(mesh,d)
     face_to_nodes = face_nodes(mesh,d)
     conn = zeros(Int32,nfaces,3)
     for (face,nodes) in enumerate(face_to_nodes)
         conn[face,:] = nodes
     end
-    (;vert,conn)
+    (;vert,conn,color,colorrange)
 end
 
 Makie.@recipe(Makie2d1d) do scene
@@ -296,7 +366,8 @@ function makie_face_edges_impl(plt)
     mesh2, = complexify(restrict_to_dim(plt.mesh,D))
     topo = topology(mesh2)
     edge_to_faces = face_incidence(topo,d,D)
-    facedata = copy(face_data(plt,D))
+    K = Any
+    facedata = Dict{String,K}()
     for (k,v) in facedata
         facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
     end
