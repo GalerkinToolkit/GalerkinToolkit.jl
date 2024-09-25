@@ -11,20 +11,35 @@ plt = GT.plot(mesh)
 GT.save_vtk("mesh",plt)
 GT.save_vtk("mesh",mesh)
 
-#plt = GT.shrink(plt,scale=0.7)
-#GT.save_vtk("shrink",plt)
+plt0 = GT.plot(mesh)
+plt = GT.shrink(plt,scale=0.7)
+GT.save_vtk("shrink",plt)
+
+#using StaticArrays
+#x = SVector{2,Float64}[[0,0],[1,1]]
+#fig = Makie.linesegments(x,color=[1,2])
+#display(fig)
+#
+#xxx
 
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())
-fig = GT.makie3d(plt;shading=Makie.NoShading)
-GT.makie3d1d!(plt,color=:red)
-GT.makie2d!(plt;shading=Makie.NoShading,color=GT.FaceColor("2-face-1"))
-GT.makie2d1d!(plt,color=:cyan)
-GT.makie1d!(plt,color=:green)
-GT.makie0d!(plt,color=:black)
+#fig = GT.makie3d(plt;shading=Makie.NoShading,color=:blue)
+#GT.makie3d1d!(plt,color=:red)
+#GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
+#GT.makie2d1d!(plt,color=:cyan)
+#GT.makie1d!(plt,color=:green)
+#GT.makie0d!(plt,color=:black)
+#display(fig)
+
+color = GT.FaceColor("3-face-1")
+fig = GT.makie3d1d(plt;color)
+#fig = GT.makie3d(plt;shading=Makie.NoShading,color)
+#GT.makie2d!(plt;shading=Makie.NoShading,color)
+#GT.makie2d1d!(plt;color)
+#GT.makie1d!(plt;color)
+GT.makie0d!(plt;color)
 display(fig)
-
-
 
 
 #fig = Figure()

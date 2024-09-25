@@ -5,7 +5,21 @@ struct PlotNew{A,B,C} <: AbstractType
     node_data::C
 end
 
-face_data(plt::PlotNew,d) = plt.face_data[d+1]
+function face_data(plt::PlotNew,d;merge_dims=Val(false))
+    if val_parameter(merge_dims)
+        mesh = plt.mesh
+        dict = face_data(plt;merge_dims)
+        offsets = face_offset(mesh)
+        offset = offsets[d+1]
+        faces = 1:num_faces(mesh,d)
+        for (k,v) in dict
+            dict[k] = v[faces.+offset]
+        end
+        dict
+    else
+        plt.face_data[d+1]
+    end
+end
 
 function face_data(plt::PlotNew;merge_dims=Val(false))
     if val_parameter(merge_dims)
@@ -115,7 +129,7 @@ end
 
 function restrict_to_dim(plt::PlotNew,d)
     mesh = restrict_to_dim(plt.mesh,d)
-    dfacedata = face_data(plt,d)
+    dfacedata = face_data(plt,d;merge_dims=true)
     fd = map(0:d) do i
         if i == d
             dfacedata
@@ -154,7 +168,7 @@ function shrink(plt::PlotNew;scale=0.75)
     end
     node_to_x = node_coordinates(mesh)
     newnode_to_x = similar(node_to_x,nnewnodes)
-    face_newnodes = map(copy,face_nodes(mesh))
+    face_newnodes = map(deepcopy,face_nodes(mesh)) # copy not properly implemented for JaggedArray?
     newnode = 0
     newnode_to_node = zeros(Int32,nnewnodes)
     for d in 0:D
@@ -253,10 +267,10 @@ function makie_volumes_impl(plt::PlotNew)
     newnodes = 1:num_nodes(mesh)
     newfaces = [ Int[] for _ in 0:d ]
     newfaces[end] = findall(face_isboundary)
-    mesh3 = restrict(mesh,newnodes,newfaces)
+    mesh3 = restrict(mesh2,newnodes,newfaces)
     face_to_cell = map(first,face_to_cells)
     newface_to_cell = face_to_cell[newfaces[end]]
-    celldata = copy(face_data(plt,D))
+    celldata = copy(face_data(plt,D;merge_dims=true))
     for (k,v) in celldata
         celldata[k] = v[newface_to_cell]
     end
@@ -268,6 +282,7 @@ function makie_volumes_impl(plt::PlotNew)
         end
     end
     plt3 = PlotNew(mesh3,fd,node_data(plt))
+    #plt3 = shrink(plt3,scale=1)
     plt3
 end
 
@@ -307,8 +322,10 @@ end
 
 Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
 
-function makie_faces_impl(plt,color,colorrange)
-    d = 2
+function setup_colorrange_impl(plt,colorrange)
+end
+
+function setup_colors_impl(plt,color,colorrange,d)
     if isa(colorrange,FaceColor)
         colorrange = face_colorrange(plt,colorrange.name)
     end
@@ -316,18 +333,50 @@ function makie_faces_impl(plt,color,colorrange)
         colorrange = node_colorrange(plt,colorrange.name)
     end
     if isa(color,FaceColor)
-        plt = shrink(deepcopy(plt);scale=1) #TODO deepcopy needed for the test to pas, why?
+        if d == 2
+            plt = shrink(plt;scale=1)
+        end
         if colorrange == Makie.Automatic()
             colorrange = face_colorrange(plt,color.name)
         end
-        color = face_color(plt,color.name,d)
+        color2 = face_color(plt,color.name,d)
     end
     if isa(color,NodeColor)
         if colorrange == Makie.Automatic()
             colorrange = face_colorrange(plt,color.name)
         end
-        color = node_color(plt,color.name)
+        color2 = node_color(plt,color.name)
     end
+    if isa(color,NodeColor) || isa(color,FaceColor)
+        face_to_nodes = face_nodes(plt.mesh,d)
+        nfaces = length(face_to_nodes)
+        if d == 0
+            color = similar(color2,nfaces)
+            for (face,nodes) in enumerate(face_to_nodes)
+                node = first(nodes)
+                color[face] = color2[node]
+            end
+        elseif d == 1
+            color = similar(color2,2*nfaces)
+            k = 0
+            for nodes in face_to_nodes
+                for node in nodes
+                    k+=1
+                    color[k] = color2[node]
+                end
+            end
+        elseif d == 2
+            color = color2
+        else
+            error()
+        end
+    end
+    plt,color,colorrange
+end
+
+function makie_faces_impl(plt,color,colorrange)
+    d = 2
+    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
     mesh = plt.mesh
     D = num_ambient_dims(mesh)
     nnodes = num_nodes(mesh)
@@ -368,7 +417,7 @@ function makie_face_edges_impl(plt)
     edge_to_faces = face_incidence(topo,d,D)
     K = Any
     facedata = Dict{String,K}()
-    for (k,v) in facedata
+    for (k,v) in face_data(plt,D;merge_dims=true)
         facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
     end
     mesh3 = restrict_to_dim(mesh2,d)
@@ -392,14 +441,22 @@ Makie.preferred_axis_type(plot::Makie1d) = Makie.LScene
 
 function Makie.plot!(sc::Makie1d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    x = Makie.lift(makie_edges_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
-    Makie.linesegments!(sc,valid_attributes,x)
+    color = valid_attributes[:color]
+    colorrange = valid_attributes[:colorrange]
+    args = Makie.lift(makie_edges_impl,plt,color,colorrange)
+    p = Makie.lift(a->a.p,args)
+    color = Makie.lift(a->a.color,args)
+    colorrange = Makie.lift(a->a.colorrange,args)
+    valid_attributes[:color] = color
+    valid_attributes[:colorrange] = colorrange
+    Makie.linesegments!(sc,valid_attributes,p)
 end
 
-function makie_edges_impl(plt)
-    mesh = plt.mesh
+function makie_edges_impl(plt,color,colorrange)
     d = 1
+    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
+    mesh = plt.mesh
     nedges = num_faces(mesh,d)
     node_to_x = node_coordinates(mesh)
     edge_to_nodes = face_nodes(mesh,d)
@@ -415,7 +472,7 @@ function makie_edges_impl(plt)
             p[k] = node_to_x[node]
         end
     end
-    p
+    (;p,color,colorrange)
 end
 
 Makie.@recipe(Makie0d) do scene
@@ -427,14 +484,22 @@ Makie.preferred_axis_type(plot::Makie0d) = Makie.LScene
 
 function Makie.plot!(sc::Makie0d{<:Tuple{<:PlotNew}})
     plt = sc[1]
-    x = Makie.lift(makie_vertices_impl,plt)
     valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
-    Makie.scatter!(sc,valid_attributes,x)
+    color = valid_attributes[:color]
+    colorrange = valid_attributes[:colorrange]
+    args = Makie.lift(makie_vertices_impl,plt,color,colorrange)
+    p = Makie.lift(a->a.p,args)
+    color = Makie.lift(a->a.color,args)
+    colorrange = Makie.lift(a->a.colorrange,args)
+    valid_attributes[:color] = color
+    valid_attributes[:colorrange] = colorrange
+    Makie.scatter!(sc,valid_attributes,p)
 end
 
-function makie_vertices_impl(plt)
-    mesh = plt.mesh
+function makie_vertices_impl(plt,color,colorrange)
     d = 0
+    plt,color,colorrange = setup_colors_impl(plt,color,colorrange,d)
+    mesh = plt.mesh
     nedges = num_faces(mesh,d)
     node_to_x = node_coordinates(mesh)
     edge_to_nodes = face_nodes(mesh,d)
@@ -450,10 +515,8 @@ function makie_vertices_impl(plt)
             p[k] = node_to_x[node]
         end
     end
-    p
+    (;p,color,colorrange)
 end
-
-
 
 #function makie_mesh_args(plt)
 #    mesh = plt.mesh
