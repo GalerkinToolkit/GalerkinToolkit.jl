@@ -40,6 +40,19 @@ GT.makie1d!(plt;color)
 GT.makie0d!(plt;color)
 display(fig)
 
+#plt = GT.restrict_to_dim(plt,3)
+fig = GT.makieplot(plt;dim=3)
+display(fig)
+
+plt = GT.restrict_to_dim(plt,3)
+fig = GT.makieplot(plt)
+display(fig)
+
+fig = Makie.plot(plt;dim=3)
+display(fig)
+
+fig = Makie.plot(mesh;dim=3,shrink=0.6)
+display(fig)
 
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())

@@ -241,6 +241,73 @@ end
 
 # Makie
 
+Makie.@recipe(MakiePlot) do scene
+    t1 = Makie.Theme(
+        dim = nothing,
+        shrink = false,
+        edgecolor = :darkblue,
+        color      = :lightblue,
+        colormap   = :bluesreds,
+        shading    = Makie.NoShading,
+        cycle      = nothing,
+       )
+    t2 = Makie.default_theme(scene, Makie.Mesh)
+    merge(t1,t2)
+end
+
+Makie.preferred_axis_type(plot::MakiePlot) = Makie.LScene
+
+function Makie.plot!(sc::MakiePlot{<:Tuple{<:PlotNew}})
+    plt = sc[1]
+    # TODO these are not reactive
+    if sc[:shrink][] != false
+        scale = sc[:shrink]
+        plt = Makie.lift((a,b)->shrink(a;scale=b),plt,scale)
+    end
+    dim = sc[:dim][]
+    d = num_dims(plt[].mesh)
+    edgecolor = sc[:edgecolor][]
+    if dim === nothing
+        cmp = (x,y) -> x >= y
+    else
+        cmp = (x,y) -> y==dim
+    end
+    if cmp(d,0)
+        valid_attributes = Makie.shared_attributes(sc, Makie0d)
+        makie0d!(sc,valid_attributes,plt)
+    end
+    if cmp(d,1)
+        valid_attributes = Makie.shared_attributes(sc, Makie1d)
+        makie1d!(sc,valid_attributes,plt)
+    end
+    if cmp(d,2)
+        valid_attributes = Makie.shared_attributes(sc, Makie2d)
+        makie2d!(sc,valid_attributes,plt)
+        if edgecolor !== nothing
+            valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
+            valid_attributes[:color] = sc[:edgecolor]
+            makie2d1d!(sc,valid_attributes,plt)
+        end
+    end
+    if cmp(d,3)
+        valid_attributes = Makie.shared_attributes(sc, Makie3d)
+        makie3d!(sc,valid_attributes,plt)
+        if edgecolor !== nothing
+            valid_attributes = Makie.shared_attributes(sc, Makie3d1d)
+            valid_attributes[:color] = sc[:edgecolor]
+            makie3d1d!(sc,valid_attributes,plt)
+        end
+    end
+end
+
+Makie.plottype(::PlotNew) = MakiePlot
+
+Makie.plottype(::AbstractMesh) = MakiePlot
+
+function Makie.convert_arguments(::Type{<:MakiePlot},mesh::AbstractMesh)
+    plt = plot(mesh)
+    (plt,)
+end
 
 Makie.@recipe(Makie3d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
@@ -395,6 +462,12 @@ function makie_faces_impl(plt,color)
     conn = zeros(Int32,nfaces,3)
     for (face,nodes) in enumerate(face_to_nodes)
         conn[face,:] = nodes
+    end
+    if nfaces == 0
+        vert = ones(Float64,3,D)
+        conn = zeros(Int32,1,3)
+        conn[:] = 1:3
+        color =:pink
     end
     (;vert,conn,color)
 end
