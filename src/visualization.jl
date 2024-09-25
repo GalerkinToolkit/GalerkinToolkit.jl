@@ -553,9 +553,9 @@ end
 
 function setup_colors_impl(plt,color,d)
     if isa(color,FaceColor)
-        #if d == 2
-        #    plt = shrink(plt;scale=1)
-        #end
+        if d == 2
+            plt = shrink(plt;scale=1)
+        end
         color2 = face_color(plt,color.name,d)
     end
     if isa(color,NodeColor)
@@ -590,7 +590,7 @@ end
 
 function makie_faces_impl(plt,color)
     d = 2
-    plt = shrink(plt,scale=0.995)
+    #plt = shrink(plt,scale=0.995)
     plt,color = setup_colors_impl(plt,color,d)
     mesh = plt.mesh
     D = num_ambient_dims(mesh)
