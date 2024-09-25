@@ -151,7 +151,7 @@ function measure(f,dom::AbstractDomain,degree)
     Measure(mesh,f,dom,degree)
 end
 
-struct Measure{A,B,C,D}
+struct Measure{A,B,C,D} <: GT.AbstractType
     mesh::A
     quadrature_rule::B
     domain::C
