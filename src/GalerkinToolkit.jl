@@ -16,7 +16,8 @@ using SparseArrays
 using Metis
 using Metatheory
 
-include("geometry.jl")
+include("mesh.jl")
+include("p_mesh.jl")
 include("symbolics.jl")
 include("domain.jl")
 include("integration.jl")
