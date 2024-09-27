@@ -19,7 +19,7 @@ using PartitionedArrays
 #plt = GT.shrink(plt,scale=0.7)
 #GT.save_vtk("shrink",plt)
 
-#fig = GT.makie2d(plt;shading=Makie.NoShading,color=GT.FaceColor("__OWNER__"))
+#fig = GT.makie2d(plt;shading=Makie.NoShading,color=GT.FaceData("__OWNER__"))
 #display(fig)
 
 domain = (0,1,0,1,0,1)
@@ -38,7 +38,7 @@ u = GT.analytical_field(sum,Ω)
 
 plt = GT.plotnew(Ω;fields=(;u))
 GT.save_vtk("domain",plt)
-fig = Makie.plot(plt,color=GT.NodeColor("u"))
+fig = Makie.plot(plt,color=GT.NodeData("u"))
 display(fig)
 
 fig = Makie.plot(Ω;color=u)
@@ -63,7 +63,7 @@ GT.makie1d!(plt,color=:green)
 GT.makie0d!(plt,color=:black)
 display(fig)
 
-color = GT.FaceColor("3-face-1")
+color = GT.FaceData("3-face-1")
 fig = GT.makie3d1d(plt;color)
 GT.makie3d!(plt;shading=Makie.NoShading,color=:blue)
 GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
@@ -91,12 +91,12 @@ display(fig)
 
 #fig = Figure()
 #ax = Axis(fig[1,1], aspect=DataAspect())
-#GT.render_with_makie!(ax,plt;color=GT.FaceColor("1-face-1")#)
+#GT.render_with_makie!(ax,plt;color=GT.FaceData("1-face-1")#)
 #hidedecorations!(ax)
 #hidespines!(ax)
 #display(fig)
 
-#fig = GT.makieplot(plt;color=GT.FaceColor("2-face-1"),alpha=0.1)
+#fig = GT.makieplot(plt;color=GT.FaceData("2-face-1"),alpha=0.1)
 
 #display(fig)
 
@@ -110,8 +110,8 @@ display(fig)
 #save_vtk(plt)
 
 
-#makie_render(plt,render=:surface,showedges=true,color=GT.NodeColor("0-face-1"),points3d=true,edges3d=true)
+#makie_render(plt,render=:surface,showedges=true,color=GT.NodeData("0-face-1"),points3d=true,edges3d=true)
 
-#plt = visualize(mtf,render=:surface,showedges=true,color=GT.NodeColor("0-face-1"),points3d=true,edges3d=true)
+#plt = visualize(mtf,render=:surface,showedges=true,color=GT.NodeData("0-face-1"),points3d=true,edges3d=true)
 
 end # module

@@ -1,8 +1,16 @@
 
-struct PlotNew{A,B,C} <: AbstractType
+struct PlotNew{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B
     node_data::C
+    cache::D
+    function PlotNew(mesh,face_data,node_data,cache=nothing)
+        A = typeof(mesh)
+        B = typeof(face_data)
+        C = typeof(node_data)
+        D = typeof(cache)
+        new{A,B,C,D}(mesh,face_data,node_data,cache)
+    end
 end
 
 struct PPlot{A} <: AbstractType
@@ -74,11 +82,11 @@ function face_color(plt::PlotNew,name,d)
     color
 end
 
-struct FaceColor
+struct FaceData
     name::String
 end
 
-struct NodeColor
+struct NodeData
     name::String
 end
 
@@ -267,39 +275,79 @@ function shrink(pplt::PPlot;scale=0.75)
     PPlot(plts)
 end
 
-function plotnew(domain::AbstractDomain;fields=(;),kwargs...)
+function plotnew(domain::AbstractDomain;kwargs...)
     mesh = GT.mesh(domain)
     d = GT.face_dim(domain)
     domface_to_face = GT.faces(domain)
     vismesh = GT.visualization_mesh(mesh,d,domface_to_face;kwargs...)
     node_data = Dict{String,Any}()
-    quad = PlotQuadrature(mesh,domain,vismesh)
-    foreach(pairs(fields)) do (sym,field)
-        node_data[string(sym)] = plot_field(quad,field)
+    #quad = PlotQuadrature(mesh,domain,vismesh)
+    #foreach(pairs(fields)) do (sym,field)
+    #    node_data[string(sym)] = plot_field(quad,field)
+    #end
+    vmesh,glue = vismesh
+    cache = (;glue,domain)
+    PlotNew(vmesh,face_data(vmesh),node_data,cache)
+end
+
+function plot!(field,plt::PlotNew;label)
+    plot!(plt,field;label)
+end
+
+function plot!(plt::PlotNew,field;label)
+    q = GT.coordinates(plt)
+    f_q = field(q)
+    term = GT.term(f_q)
+    T = typeof(GT.prototype(f_q))
+    plot_impl!(plt,term,label,T)
+end
+
+function plot_impl!(plt,term,label,::Type{T}) where T
+    vmesh  = plt.mesh
+    vglue = plt.cache.glue
+    nnodes = GT.num_nodes(vmesh)
+    data = zeros(T,nnodes)
+    face_to_nodes = vglue.face_fine_nodes
+    face = :face
+    point = :point
+    index = GT.index(;face,point)
+    dict = index.dict
+    dict[face_to_nodes] = :face_to_nodes
+    deps = (face,point)
+    expr1 = term(index) |> simplify
+    v = GT.topological_sort(expr1,deps)
+    expr = quote
+        function filldata!(data,state)
+            $(unpack_storage(dict,:state))
+            $(v[1])
+            for $face in 1:length(face_to_nodes)
+                nodes = face_to_nodes[$face]
+                $(v[2])
+                for $point in 1:length(nodes)
+                    data[nodes[$point]] = $(v[3])
+                end
+            end
+        end
     end
-    vmesh,vglue = vismesh
-    PlotNew(vmesh,face_data(vmesh),node_data)
+    filldata! = eval(expr)
+    invokelatest(filldata!,data,GT.storage(index))
+    plt.node_data[label] = data
+    plt
 end
 
-struct PlotQuadrature{A,B,C} <: AbstractType
-    mesh::A
-    domain::B
-    visualization_mesh::C
-end
+domain(plt::PlotNew) = plt.cache.domain
+visualization_mesh(plt::PlotNew) = (plt.mesh, plt.cache.glue)
 
-domain(plt::PlotQuadrature) = plt.domain
-visualization_mesh(plt::PlotQuadrature) = plt.visualization_mesh
-
-function coordinates(plt::PlotQuadrature)
+function coordinates(plt::PlotNew)
     domain = plt |> GT.domain
     GT.coordinates(plt,domain)
 end
 
-function coordinates(plt::PlotQuadrature,::ReferenceDomain)
+function coordinates(plt::PlotNew,::ReferenceDomain)
     GT.reference_coordinates(plt)
 end
 
-function coordinates(plt::PlotQuadrature,::PhysicalDomain)
+function coordinates(plt::PlotNew,::PhysicalDomain)
     domain_phys = plt |> GT.domain
     domain_ref = domain_phys |> reference_domain
     phi = GT.domain_map(domain_ref,domain_phys)
@@ -307,7 +355,7 @@ function coordinates(plt::PlotQuadrature,::PhysicalDomain)
     phi(q)
 end
 
-function reference_coordinates(plt::PlotQuadrature)
+function reference_coordinates(plt::PlotNew)
     domain = GT.reference_domain(plt.domain)
     d = GT.face_dim(domain)
     domface_to_face = GT.faces(domain)
@@ -335,46 +383,6 @@ function reference_coordinates(plt::PlotQuadrature)
     end
 end
 
-
-function plot_field(plt::PlotQuadrature,field)
-    q = GT.coordinates(plt)
-    f_q = field(q)
-    term = GT.term(f_q)
-    T = typeof(GT.prototype(f_q))
-    plot_field_impl(plt,term,T)
-end
-
-function plot_field_impl(plt,term,::Type{T}) where T
-    vmesh,vglue = plt.visualization_mesh
-    nnodes = GT.num_nodes(vmesh)
-    data = zeros(T,nnodes)
-    face_to_nodes = vglue.face_fine_nodes
-    face = :face
-    point = :point
-    index = GT.index(;face,point)
-    dict = index.dict
-    dict[face_to_nodes] = :face_to_nodes
-    deps = (face,point)
-    expr1 = term(index) |> simplify
-    v = GT.topological_sort(expr1,deps)
-    expr = quote
-        function filldata!(data,state)
-            $(unpack_storage(dict,:state))
-            $(v[1])
-            for $face in 1:length(face_to_nodes)
-                nodes = face_to_nodes[$face]
-                $(v[2])
-                for $point in 1:length(nodes)
-                    data[nodes[$point]] = $(v[3])
-                end
-            end
-        end
-    end
-    filldata! = eval(expr)
-    invokelatest(filldata!,data,GT.storage(index))
-    data
-end
-
 # VTK
 
 function translate_vtk_data(v)
@@ -385,63 +393,111 @@ function translate_vtk_data(v::AbstractVector{<:SVector{2}})
     map(vi->SVector((vi...,z)),v)
 end
 
-function save_vtk(f,filename,plt::PlotNew)
+function WriteVTK.vtk_grid(filename,plt::PlotNew;kwargs...)
     mesh = plt.mesh
     D = num_dims(mesh)
-    vtk_grid(filename,GT.vtk_args(mesh)...) do vtk
-        for (k,v) in node_data(plt)
-            vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
-        end
-        for (k,v) in face_data(plt;merge_dims=true)
-            vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
-        end
-        f(vtk)
+    vtk = vtk_grid(filename,GT.vtk_args(mesh)...;kwargs...)
+    for (k,v) in node_data(plt)
+        vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
     end
+    for (k,v) in face_data(plt;merge_dims=true)
+        vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
+    end
+    cache = (;vtk,plt.cache...)
+    PlotNew(plt.mesh,plt.face_data,plt.node_data,cache)
 end
 
-function save_vtk(f,filename,pplt::PPlot)
+function WriteVTK.vtk_grid(f,filename,plt::Union{PlotNew,PPlot};kwargs...)
+    vtk = vtk_grid(filename,plt)
+    try
+        f(vtk)
+    finally
+        files = close(vtk)
+    end
+    files
+end
+
+function WriteVTK.vtk_grid(filename,pplt::PPlot;kwargs...)
     plts = partition(pplt)
     parts = linear_indices(plts)
     nparts = length(parts)
-    map(plts,parts) do plt,part
+    plts  = map(plts,parts) do plt,part
         mesh = plt.mesh
-        pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts) do vtk
+        vtk = pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts;kwargs...) do vtk
             for (k,v) in node_data(plt)
                 vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
             end
             for (k,v) in face_data(plt;merge_dims=true)
                 vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
             end
-            f(vtk)
         end
+        cache = (;vtk,plt.cache...)
+        PlotNew(plt.mesh,plt.face_data,plt.node_data,cache)
+    end
+    PPlot(plts)
+end
+
+function WriteVTK.close(plt::PlotNew)
+    WriteVTK.close(pplot.cache.vtk)
+end
+
+function WriteVTK.close(plt::PPlot)
+    map(WriteVTK.close,pplot.partition)
+end
+
+struct PVD{A} <: AbstractType
+    pvd::A
+end
+
+struct PPVD{A} <: AbstractType
+    partition::A
+end
+
+function Base.setindex!(a::PVD,time,plt::PlotNew)
+    a.pvd[time] = plt.cache.vtk
+end
+
+function Base.setindex!(a::PPVD,time,plt::PPlot)
+    map_main(a.partition,plt.partition) do a,plt
+        a[time] = plt
     end
 end
 
-function save_vtk(filename,plt::PlotNew)
-    save_vtk(identity,filename,plt)
+function WriteVTK.paraview_collection(filename,pplt::PlotNew;kwargs...)
+    WriteVTK.paraview_collection(filename;kwargs...)
 end
 
-function save_vtk(filename,plt::PPlot)
-    save_vtk(identity,filename,plt)
+function WriteVTK.paraview_collection(filename,pplt::PPlot;kwargs...)
+    pvds = map_main(partition(pplt)) do _
+        WriteVTK.paraview_collection(filename;kwargs...)
+    end
+    PPVD(pvds)
 end
 
-function save_vtk(f,filename,mesh::AbstractMesh)
-    plt = plot(mesh)
-    save_vtk(f,filename,plt)
+function WriteVTK.close(ppvd::PPVD)
+    map_main(WriteVTK.close,ppvd.partition)
 end
 
-function save_vtk(filename,mesh::AbstractMesh)
-    save_vtk(identity,filename,mesh)
+function WriteVTK.paraview_collection(f,filename,plt::Union{PlotNew,PPlot};kwaargs...)
+    vtk = WriteVTK.paraview_collection(filename,plt;kwargs...)
+    try
+        f(vtk)
+    finally
+        files = close(vtk)
+    end
+    files
 end
 
-function save_vtk(f,filename,mesh::PMesh)
-    plt = plot(mesh)
-    save_vtk(f,filename,plt)
+function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+    plt = plotnew(mesh;plot_params...)
+    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
 
-function save_vtk(filename,mesh::PMesh)
-    save_vtk(identity,filename,mesh)
+function WriteVTK.vtk_grid(filename,mesh::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+    plt = plotnew(mesh;plot_params...)
+    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
+
 
 # Makie
 
@@ -449,10 +505,10 @@ Makie.@recipe(MakiePlot) do scene
     t1 = Makie.Theme(
         dim = nothing,
         shrink = false,
-        edgecolor = :darkblue,
+        edgecolor = nothing,
         color      = :lightblue,
         colormap   = :bluesreds,
-        shading    = Makie.NoShading,
+        #shading    = Makie.NoShading,
         cycle      = nothing,
        )
     t2 = Makie.default_theme(scene, Makie.Mesh)
@@ -523,7 +579,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:AbstractDomain}})
         if isa(color,AbstractQuantity)
             sym = gensym()
             plt = plotnew(dom;fields=Dict(sym=>color))
-            color = NodeColor(string(sym))
+            color = NodeData(string(sym))
         else
             plt = plotnew(dom)
         end
@@ -684,26 +740,26 @@ function setup_colorrange_impl(plt,color,colorrange)
     if colorrange != Makie.Automatic()
         return colorrange
     end
-    if isa(color,FaceColor)
+    if isa(color,FaceData)
         colorrange = face_colorrange(plt,color.name)
     end
-    if isa(color,NodeColor)
+    if isa(color,NodeData)
         colorrange = node_colorrange(plt,color.name)
     end
     colorrange
 end
 
 function setup_colors_impl(plt,color,d)
-    if isa(color,FaceColor)
+    if isa(color,FaceData)
         if d == 2
             plt = shrink(plt;scale=1)
         end
         color2 = face_color(plt,color.name,d)
     end
-    if isa(color,NodeColor)
+    if isa(color,NodeData)
         color2 = node_color(plt,color.name)
     end
-    if isa(color,NodeColor) || isa(color,FaceColor)
+    if isa(color,NodeData) || isa(color,FaceData)
         face_to_nodes = face_nodes(plt.mesh,d)
         nfaces = length(face_to_nodes)
         if d == 0
@@ -949,11 +1005,11 @@ end
 #    (p,)
 #end
 #
-#struct FaceColor
+#struct FaceData
 #    name::String
 #end
 #
-#struct NodeColor
+#struct NodeData
 #    name::String
 #end
 #
@@ -981,7 +1037,7 @@ end
 #    (;)
 #end
 #
-#function makie_mesh_color(plt,fc::FaceColor)
+#function makie_mesh_color(plt,fc::FaceData)
 #    mesh = plt.mesh
 #    allcolors = face_data(plt;merge_dims=true)[fc.name]
 #    minc = minimum(allcolors)
@@ -1002,7 +1058,7 @@ end
 #    (;color,colorrange)
 #end
 #
-#function makie_linesegments_color(plt,fc::FaceColor)
+#function makie_linesegments_color(plt,fc::FaceData)
 #    mesh = plt.mesh
 #    allcolors = face_data(plt;merge_dims=true)[fc.name]
 #    minc = minimum(allcolors)
@@ -1019,7 +1075,7 @@ end
 #    (;color,colorrange)
 #end
 #
-#function makie_scatter_color(plt,fc::FaceColor)
+#function makie_scatter_color(plt,fc::FaceData)
 #    mesh = plt.mesh
 #    allcolors = face_data(plt;merge_dims=true)[fc.name]
 #    minc = minimum(allcolors)
@@ -1059,7 +1115,7 @@ end
 #    fc
 #end
 #
-#function makie_mesh_color_2(plt,fc::FaceColor)
+#function makie_mesh_color_2(plt,fc::FaceData)
 #    mesh = plt.mesh
 #    allcolors = face_data(plt;merge_dims=true)[fc.name]
 #    minc = minimum(allcolors)
