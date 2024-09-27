@@ -290,6 +290,14 @@ function plotnew(domain::AbstractDomain;kwargs...)
     PlotNew(vmesh,face_data(vmesh),node_data,cache)
 end
 
+function plot(domain::AbstractDomain{<:PMesh};kwargs...)
+    mesh = GT.mesh(domain)
+    plts = map(partition(domain)) do mydom
+        plt = plotnew(mydom;kwargs...)
+    end
+    PPlot(plts)
+end
+
 function plot!(field,plt::PlotNew;label)
     plot!(plt,field;label)
 end
@@ -332,6 +340,17 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     filldata! = eval(expr)
     invokelatest(filldata!,data,GT.storage(index))
     plt.node_data[label] = data
+    plt
+end
+
+function plot!(plt::PPlot,field;label)
+    q = GT.coordinates(plt)
+    f_q = field(q)
+    term = GT.term(f_q)
+    T = typeof(GT.prototype(f_q))
+    map(partition(plt),term) do myplt, myterm
+        plot_impl!(myplt,myterm,label,T)
+    end
     plt
 end
 
@@ -381,6 +400,13 @@ function reference_coordinates(plt::PlotNew)
             coords[$point]
         end
     end
+end
+
+function reference_coordinates(plt::PPlot)
+    q = map(GT.reference_coordinates,partition(plt))
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+    GT.quantity(term,prototype,plt.domain)
 end
 
 # VTK
@@ -478,7 +504,7 @@ function WriteVTK.close(ppvd::PPVD)
     map_main(WriteVTK.close,ppvd.partition)
 end
 
-function WriteVTK.paraview_collection(f,filename,plt::Union{PlotNew,PPlot};kwaargs...)
+function WriteVTK.paraview_collection(f,filename,plt::Union{PlotNew,PPlot};kwargs...)
     vtk = WriteVTK.paraview_collection(filename,plt;kwargs...)
     try
         f(vtk)
@@ -497,7 +523,6 @@ function WriteVTK.vtk_grid(filename,mesh::AbstractDomain;plot_params=(;),vtk_gri
     plt = plotnew(mesh;plot_params...)
     WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
-
 
 # Makie
 
