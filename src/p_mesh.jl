@@ -137,7 +137,7 @@ node_indices(a::PMeshLocalIds) = a.node_indices
 face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
 function partition_mesh(mesh,np;
-    partition_strategy=GP.partition_strategy(),
+    partition_strategy=GT.partition_strategy(),
     parts = LinearIndices((np,)),
     graph = mesh_graph(mesh;partition_strategy),
     graph_partition = Metis.partition(graph,np),

@@ -1,10 +1,10 @@
 
-struct PlotNew{A,B,C,D} <: AbstractType
+struct Plot{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B
     node_data::C
     cache::D
-    function PlotNew(mesh,face_data,node_data,cache=nothing)
+    function Plot(mesh,face_data,node_data,cache=nothing)
         A = typeof(mesh)
         B = typeof(face_data)
         C = typeof(node_data)
@@ -13,15 +13,21 @@ struct PlotNew{A,B,C,D} <: AbstractType
     end
 end
 
-struct PPlot{A} <: AbstractType
+struct PPlot{A,B} <: AbstractType
     partition::A
+    function PPlot(p,cache=nothing)
+        A = typeof(p)
+        B = typeof(cache)
+        new{A,B}(p,cache)
+    end
+    cache::B
 end
 
 function PartitionedArrays.partition(plt::PPlot)
     plt.partition
 end
 
-function face_data(plt::PlotNew,d;merge_dims=Val(false))
+function face_data(plt::Plot,d;merge_dims=Val(false))
     if val_parameter(merge_dims)
         mesh = plt.mesh
         dict = face_data(plt;merge_dims)
@@ -37,7 +43,7 @@ function face_data(plt::PlotNew,d;merge_dims=Val(false))
     end
 end
 
-function face_data(plt::PlotNew;merge_dims=Val(false))
+function face_data(plt::Plot;merge_dims=Val(false))
     if val_parameter(merge_dims)
         mesh = plt.mesh
         nfaces = sum(num_faces(mesh))
@@ -63,9 +69,9 @@ function face_data(plt::PlotNew;merge_dims=Val(false))
     end
 end
 
-node_data(plt::PlotNew) = plt.node_data
+node_data(plt::Plot) = plt.node_data
 
-function face_color(plt::PlotNew,name,d)
+function face_color(plt::Plot,name,d)
     mesh = plt.mesh
     allcolors = face_data(plt;merge_dims=true)[name]
     offset = face_offset(mesh,d)
@@ -90,7 +96,7 @@ struct NodeData
     name::String
 end
 
-function face_colorrange(plt::PlotNew,name)
+function face_colorrange(plt::Plot,name)
     mesh = plt.mesh
     allcolors = face_data(plt;merge_dims=true)[name]
     minc = minimum(allcolors)
@@ -98,11 +104,11 @@ function face_colorrange(plt::PlotNew,name)
     colorrange = (minc,maxc)
 end
 
-function node_color(plt::PlotNew,name)
+function node_color(plt::Plot,name)
     node_data(plt)[name]
 end
 
-function node_colorrange(plt::PlotNew,name)
+function node_colorrange(plt::Plot,name)
     mesh = plt.mesh
     allcolors = node_data(plt)[name]
     minc = minimum(allcolors)
@@ -111,7 +117,7 @@ function node_colorrange(plt::PlotNew,name)
 end
 
 function plot(mesh::AbstractMesh)
-    PlotNew(mesh,face_data(mesh),node_data(mesh))
+    Plot(mesh,face_data(mesh),node_data(mesh))
 end
 
 function face_data(mesh::AbstractMesh,d)
@@ -176,7 +182,7 @@ end
 
 function plot(pmesh::PMesh)
     plts = map(partition(pmesh),index_partition(pmesh)) do mesh,ids
-        PlotNew(mesh,face_data(mesh,ids),node_data(mesh,ids))
+        Plot(mesh,face_data(mesh,ids),node_data(mesh,ids))
     end
     PPlot(plts)
 end
@@ -192,7 +198,7 @@ function restrict_to_dim(mesh::AbstractMesh,d)
     mesh_from_chain(chain)
 end
 
-function restrict_to_dim(plt::PlotNew,d)
+function restrict_to_dim(plt::Plot,d)
     mesh = restrict_to_dim(plt.mesh,d)
     dfacedata = face_data(plt,d;merge_dims=true)
     fd = map(0:d) do i
@@ -202,11 +208,11 @@ function restrict_to_dim(plt::PlotNew,d)
             typeof(dfacedata)()
         end
     end
-    pltd = PlotNew(mesh,fd,node_data(plt))
+    pltd = Plot(mesh,fd,node_data(plt))
     pltd
 end
 
-function restrict(plt::PlotNew,newnodes,newfaces)
+function restrict(plt::Plot,newnodes,newfaces)
     mesh = restrict(plt.mesh,newnodes,newfaces)
     nodedata = node_data(plt)[newnodes]
     facedata = map(face_data(plt),newfaces) do data,nfs
@@ -216,10 +222,10 @@ function restrict(plt::PlotNew,newnodes,newfaces)
         end
         dict
     end
-    PlotNew(mesh,facedata,nodedata)
+    Plot(mesh,facedata,nodedata)
 end
 
-function shrink(plt::PlotNew;scale=0.75)
+function shrink(plt::Plot;scale=0.75)
     mesh = plt.mesh
     D = num_dims(mesh)
     nnewnodes = 0
@@ -265,7 +271,7 @@ function shrink(plt::PlotNew;scale=0.75)
     for (k,node_to_val) in node_data(plt)
         newnode_data[k] = node_to_val[newnode_to_node]
     end
-    PlotNew(new_mesh,plt.face_data,newnode_data)
+    Plot(new_mesh,plt.face_data,newnode_data)
 end
 
 function shrink(pplt::PPlot;scale=0.75)
@@ -275,7 +281,7 @@ function shrink(pplt::PPlot;scale=0.75)
     PPlot(plts)
 end
 
-function plotnew(domain::AbstractDomain;kwargs...)
+function plot(domain::AbstractDomain;kwargs...)
     mesh = GT.mesh(domain)
     d = GT.face_dim(domain)
     domface_to_face = GT.faces(domain)
@@ -287,27 +293,39 @@ function plotnew(domain::AbstractDomain;kwargs...)
     #end
     vmesh,glue = vismesh
     cache = (;glue,domain)
-    PlotNew(vmesh,face_data(vmesh),node_data,cache)
+    Plot(vmesh,face_data(vmesh),node_data,cache)
 end
 
 function plot(domain::AbstractDomain{<:PMesh};kwargs...)
     mesh = GT.mesh(domain)
     plts = map(partition(domain)) do mydom
-        plt = plotnew(mydom;kwargs...)
+        plt = plot(mydom;kwargs...)
     end
-    PPlot(plts)
+    cache = (;domain)
+    PPlot(plts,cache)
 end
 
-function plot!(field,plt::PlotNew;label)
+function plot!(field,plt::Plot;label)
     plot!(plt,field;label)
 end
 
-function plot!(plt::PlotNew,field;label)
+function plot!(plt::Plot,field;label)
     q = GT.coordinates(plt)
     f_q = field(q)
     term = GT.term(f_q)
     T = typeof(GT.prototype(f_q))
     plot_impl!(plt,term,label,T)
+end
+
+function plot!(plt::PPlot,field;label)
+    q = GT.coordinates(plt)
+    f_q = field(q)
+    term = GT.term(f_q)
+    T = typeof(GT.prototype(f_q))
+    map(partition(plt),term) do myplt, myterm
+        plot_impl!(myplt,myterm,label,T)
+    end
+    plt
 end
 
 function plot_impl!(plt,term,label,::Type{T}) where T
@@ -343,30 +361,19 @@ function plot_impl!(plt,term,label,::Type{T}) where T
     plt
 end
 
-function plot!(plt::PPlot,field;label)
-    q = GT.coordinates(plt)
-    f_q = field(q)
-    term = GT.term(f_q)
-    T = typeof(GT.prototype(f_q))
-    map(partition(plt),term) do myplt, myterm
-        plot_impl!(myplt,myterm,label,T)
-    end
-    plt
-end
+domain(plt::Union{Plot,PPlot}) = plt.cache.domain
+visualization_mesh(plt::Plot) = (plt.mesh, plt.cache.glue)
 
-domain(plt::PlotNew) = plt.cache.domain
-visualization_mesh(plt::PlotNew) = (plt.mesh, plt.cache.glue)
-
-function coordinates(plt::PlotNew)
+function coordinates(plt::Union{Plot,PPlot})
     domain = plt |> GT.domain
     GT.coordinates(plt,domain)
 end
 
-function coordinates(plt::PlotNew,::ReferenceDomain)
+function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
     GT.reference_coordinates(plt)
 end
 
-function coordinates(plt::PlotNew,::PhysicalDomain)
+function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
     domain_phys = plt |> GT.domain
     domain_ref = domain_phys |> reference_domain
     phi = GT.domain_map(domain_ref,domain_phys)
@@ -374,8 +381,8 @@ function coordinates(plt::PlotNew,::PhysicalDomain)
     phi(q)
 end
 
-function reference_coordinates(plt::PlotNew)
-    domain = GT.reference_domain(plt.domain)
+function reference_coordinates(plt::Plot)
+    domain = GT.reference_domain(plt.cache.domain)
     d = GT.face_dim(domain)
     domface_to_face = GT.faces(domain)
     mesh = GT.mesh(domain)
@@ -406,7 +413,7 @@ function reference_coordinates(plt::PPlot)
     q = map(GT.reference_coordinates,partition(plt))
     term = map(GT.term,q)
     prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    GT.quantity(term,prototype,plt.domain)
+    GT.quantity(term,prototype,plt.cache.domain)
 end
 
 # VTK
@@ -419,7 +426,20 @@ function translate_vtk_data(v::AbstractVector{<:SVector{2}})
     map(vi->SVector((vi...,z)),v)
 end
 
-function WriteVTK.vtk_grid(filename,plt::PlotNew;kwargs...)
+struct VTKPlot{A,B}
+    plot::A
+    vtk::B
+end
+
+function plot!(field,plt::VTKPlot;label)
+    plot!(plt.plot,field;label)
+end
+
+function plot!(plt::VTKPlot,field;label)
+    plot!(plt.plot,field;label)
+end
+
+function WriteVTK.vtk_grid(filename,plt::Plot;kwargs...)
     mesh = plt.mesh
     D = num_dims(mesh)
     vtk = vtk_grid(filename,GT.vtk_args(mesh)...;kwargs...)
@@ -429,12 +449,12 @@ function WriteVTK.vtk_grid(filename,plt::PlotNew;kwargs...)
     for (k,v) in face_data(plt;merge_dims=true)
         vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
     end
-    cache = (;vtk,plt.cache...)
-    PlotNew(plt.mesh,plt.face_data,plt.node_data,cache)
+    VTKPlot(plt,vtk)
 end
 
-function WriteVTK.vtk_grid(f,filename,plt::Union{PlotNew,PPlot};kwargs...)
+function WriteVTK.vtk_grid(f::Function,filename,plt::Union{Plot,PPlot};kwargs...)
     vtk = vtk_grid(filename,plt)
+    files = nothing
     try
         f(vtk)
     finally
@@ -447,28 +467,51 @@ function WriteVTK.vtk_grid(filename,pplt::PPlot;kwargs...)
     plts = partition(pplt)
     parts = linear_indices(plts)
     nparts = length(parts)
-    plts  = map(plts,parts) do plt,part
+    vtks  = map(plts,parts) do plt,part
         mesh = plt.mesh
-        vtk = pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts;kwargs...) do vtk
-            for (k,v) in node_data(plt)
-                vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
-            end
-            for (k,v) in face_data(plt;merge_dims=true)
-                vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
-            end
+        vtk = pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts,kwargs...)
+        for (k,v) in node_data(plt)
+            vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
         end
-        cache = (;vtk,plt.cache...)
-        PlotNew(plt.mesh,plt.face_data,plt.node_data,cache)
+        for (k,v) in face_data(plt;merge_dims=true)
+            vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
+        end
+        vtk
     end
-    PPlot(plts)
+    plts = PPlot(plts,pplt.cache)
+    VTKPlot(plts,vtks)
 end
 
-function WriteVTK.close(plt::PlotNew)
-    WriteVTK.close(pplot.cache.vtk)
+function WriteVTK.close(plt::VTKPlot)
+    vtk_close_impl(plt.plot,plt.vtk)
 end
 
-function WriteVTK.close(plt::PPlot)
-    map(WriteVTK.close,pplot.partition)
+function vtk_close_impl(plt::Plot,vtk)
+    WriteVTK.close(vtk)
+end
+
+function vtk_close_impl(plt::PPlot,vtks)
+    map(WriteVTK.close,vtks)
+end
+
+function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+    plt = plot(mesh;plot_params...)
+    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.vtk_grid(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+    plt = plot(dom;plot_params...)
+    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.vtk_grid(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+    plt = plot(mesh;plot_params...)
+    WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.vtk_grid(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+    plt = plot(dom;plot_params...)
+    WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
 
 struct PVD{A} <: AbstractType
@@ -479,18 +522,26 @@ struct PPVD{A} <: AbstractType
     partition::A
 end
 
-function Base.setindex!(a::PVD,time,plt::PlotNew)
-    a.pvd[time] = plt.cache.vtk
+function WriteVTK.close(pvd::PVD)
+    WriteVTK.close(pvd.pvd)
 end
 
-function Base.setindex!(a::PPVD,time,plt::PPlot)
-    map_main(a.partition,plt.partition) do a,plt
-        a[time] = plt
+function WriteVTK.close(ppvd::PPVD)
+    map_main(WriteVTK.close,ppvd.partition)
+end
+
+function Base.setindex!(a::PVD,plt::VTKPlot,time)
+    a.pvd[time] = plt.vtk
+end
+
+function Base.setindex!(a::PPVD,plt::VTKPlot,time)
+    map_main(a.partition,plt.vtk) do a,vtk
+        a[time] = vtk
     end
 end
 
-function WriteVTK.paraview_collection(filename,pplt::PlotNew;kwargs...)
-    WriteVTK.paraview_collection(filename;kwargs...)
+function WriteVTK.paraview_collection(filename,pplt::Plot;kwargs...)
+    WriteVTK.paraview_collection(filename;kwargs...) |> PVD
 end
 
 function WriteVTK.paraview_collection(filename,pplt::PPlot;kwargs...)
@@ -500,12 +551,9 @@ function WriteVTK.paraview_collection(filename,pplt::PPlot;kwargs...)
     PPVD(pvds)
 end
 
-function WriteVTK.close(ppvd::PPVD)
-    map_main(WriteVTK.close,ppvd.partition)
-end
-
-function WriteVTK.paraview_collection(f,filename,plt::Union{PlotNew,PPlot};kwargs...)
+function WriteVTK.paraview_collection(f::Function,filename,plt::Union{Plot,PPlot};kwargs...)
     vtk = WriteVTK.paraview_collection(filename,plt;kwargs...)
+    files = nothing
     try
         f(vtk)
     finally
@@ -514,14 +562,24 @@ function WriteVTK.paraview_collection(f,filename,plt::Union{PlotNew,PPlot};kwarg
     files
 end
 
-function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
-    plt = plotnew(mesh;plot_params...)
-    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
+function WriteVTK.paraview_collection(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+    plt = plot(mesh;plot_params...)
+    WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.vtk_grid(filename,mesh::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
-    plt = plotnew(mesh;plot_params...)
-    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
+function WriteVTK.paraview_collection(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+    plt = plot(dom;plot_params...)
+    WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.paraview_collection(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+    plt = plot(mesh;plot_params...)
+    WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.paraview_collection(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+    plt = plot(dom;plot_params...)
+    WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
 end
 
 # Makie
@@ -542,7 +600,7 @@ end
 
 Makie.preferred_axis_type(plot::MakiePlot) = Makie.LScene
 
-function Makie.plot!(sc::MakiePlot{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::MakiePlot{<:Tuple{<:Plot}})
     plt = sc[1]
     # TODO these are not reactive
     if sc[:shrink][] != false
@@ -585,7 +643,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:PlotNew}})
     end
 end
 
-Makie.plottype(::PlotNew) = MakiePlot
+Makie.plottype(::Plot) = MakiePlot
 
 Makie.plottype(::AbstractMesh) = MakiePlot
 
@@ -602,11 +660,12 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:AbstractDomain}})
     color = valid_attributes[:color]
     args = Makie.lift(dom,color) do dom,color
         if isa(color,AbstractQuantity)
-            sym = gensym()
-            plt = plotnew(dom;fields=Dict(sym=>color))
-            color = NodeData(string(sym))
+            label = string(gensym())
+            plt = plot(dom)
+            plot!(plt,color;label)
+            color = NodeData(label)
         else
-            plt = plotnew(dom)
+            plt = plot(dom)
         end
         (;plt,color)
     end
@@ -660,7 +719,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie3d) = Makie.LScene
 
-function Makie.plot!(sc::Makie3d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie3d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie2d)
     colorrange = valid_attributes[:colorrange]
@@ -681,7 +740,7 @@ end
 #    end
 #end
 
-function makie_volumes_impl(plt::PlotNew)
+function makie_volumes_impl(plt::Plot)
     @assert num_dims(plt.mesh) == 3
     D=3
     d=2
@@ -707,7 +766,7 @@ function makie_volumes_impl(plt::PlotNew)
             typeof(celldata)()
         end
     end
-    plt3 = PlotNew(mesh3,fd,node_data(plt))
+    plt3 = Plot(mesh3,fd,node_data(plt))
     plt3
 end
 
@@ -718,7 +777,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie3d1d) = Makie.LScene
 
-function Makie.plot!(sc::Makie3d1d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie3d1d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
     colorrange = valid_attributes[:colorrange]
@@ -736,7 +795,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
 
-function Makie.plot!(sc::Makie2d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie2d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
     color = valid_attributes[:color]
@@ -845,7 +904,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie2d1d) = Makie.LScene
 
-function Makie.plot!(sc::Makie2d1d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie2d1d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie1d)
     colorrange = valid_attributes[:colorrange]
@@ -876,7 +935,7 @@ function makie_face_edges_impl(plt)
             typeof(facedata)()
         end
     end
-    plt3 = PlotNew(mesh3,fd,node_data(plt))
+    plt3 = Plot(mesh3,fd,node_data(plt))
     plt3
 end
 
@@ -887,7 +946,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie1d) = Makie.LScene
 
-function Makie.plot!(sc::Makie1d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie1d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
     color = valid_attributes[:color]
@@ -930,7 +989,7 @@ end
 
 Makie.preferred_axis_type(plot::Makie0d) = Makie.LScene
 
-function Makie.plot!(sc::Makie0d{<:Tuple{<:PlotNew}})
+function Makie.plot!(sc::Makie0d{<:Tuple{<:Plot}})
     plt = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
     color = valid_attributes[:color]
@@ -1114,7 +1173,7 @@ end
 #    (;color,colorrange)
 #end
 #
-#function render_with_makie!(ax,plt::PlotNew;color=nothing)
+#function render_with_makie!(ax,plt::Plot;color=nothing)
 #    plt = shrink(plt;scale=1)
 #    args1 = makie_mesh_args(plt)
 #    args2 = makie_linesegments_args(plt)
@@ -1161,7 +1220,7 @@ end
 #    color
 #end
 #
-#function Makie.plot!(sc::MakiePlot{<:Tuple{<:PlotNew}})
+#function Makie.plot!(sc::MakiePlot{<:Tuple{<:Plot}})
 #    plt = sc[1]
 #    args1 = Makie.lift(makie_mesh_args,plt)
 #    vert = Makie.lift(first,args1)

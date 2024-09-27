@@ -2,59 +2,63 @@ module VisualizationTests
 
 import GalerkinToolkit as GT
 using GLMakie
+using WriteVTK
 using PartitionedArrays
-
-#domain = (0,1,0,1)
-#cells = (4,4)
-#np = 4
-#parts = identity(LinearIndices((np,)))
-#parts = DebugArray(LinearIndices((np,)))
-#mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
-#pmesh = GT.partition_mesh(mesh,np;parts)
-#
-#plt = GT.plot(pmesh)
-#GT.save_vtk("pmesh",plt)
-#GT.save_vtk("pmesh",pmesh)
-#
-#plt = GT.shrink(plt,scale=0.7)
-#GT.save_vtk("shrink",plt)
-
-#fig = GT.makie2d(plt;shading=Makie.NoShading,color=GT.FaceData("__OWNER__"))
-#display(fig)
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
 mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
+np = 2
+parts = DebugArray(LinearIndices((np,)))
+pmesh = GT.partition_mesh(mesh,np;parts)
 
-plt = GT.plot(mesh)
-GT.save_vtk("mesh",plt)
-GT.save_vtk("mesh",mesh)
+for mesh2 in (mesh,pmesh)
 
-plt = GT.shrink(plt,scale=0.7)
-GT.save_vtk("shrink",plt)
+    plt = GT.plot(mesh2)
+    vtk_grid("mesh",plt) |> close
+    vtk_grid("mesh",mesh2) |> close
+
+    plt = GT.shrink(plt,scale=0.7)
+    vtk_grid("shrink",plt) |> close
+
+    Ω = GT.interior(mesh2)
+    u = GT.analytical_field(sum,Ω)
+
+    plt = GT.plot(Ω)
+    GT.plot!(plt,u;label="u")
+    vtk_grid("domain",plt) |> close
+
+    vtk_grid("domain",Ω) do plt
+        GT.plot!(plt,u;label="u")
+    end
+
+    paraview_collection("domain",plt) do pvd
+        vtk_grid("domain1",plt) do plt
+            GT.plot!(plt,u;label="u")
+            pvd[1] = plt
+        end
+    end
+
+    paraview_collection("domain",Ω) do pvd
+        vtk_grid("domain1",Ω) do plt
+            GT.plot!(plt,u;label="u")
+            pvd[1] = plt
+        end
+    end
+
+end
 
 Ω = GT.interior(mesh)
 u = GT.analytical_field(sum,Ω)
-
-plt = GT.plotnew(Ω;fields=(;u))
-GT.save_vtk("domain",plt)
+plt = GT.plot(Ω)
+GT.plot!(plt,u;label="u")
 fig = Makie.plot(plt,color=GT.NodeData("u"))
 display(fig)
 
 fig = Makie.plot(Ω;color=u)
 display(fig)
 
-
-#using StaticArrays
-#x = SVector{2,Float64}[[0,0],[1,1]]
-#fig = Makie.linesegments(x,color=[1,2])
-#display(fig)
-#
-#xxx
-
 plt = GT.plot(mesh)
-#fig = Figure()
-#ax = Axis(fig[1,1], aspect=DataAspect())
 fig = GT.makie3d(plt;shading=Makie.NoShading,color=:blue)
 GT.makie3d1d!(plt,color=:red)
 GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
@@ -87,31 +91,5 @@ fig = Makie.plot(mesh;dim=3,shrink=0.6)
 display(fig)
 
 
-
-
-#fig = Figure()
-#ax = Axis(fig[1,1], aspect=DataAspect())
-#GT.render_with_makie!(ax,plt;color=GT.FaceData("1-face-1")#)
-#hidedecorations!(ax)
-#hidespines!(ax)
-#display(fig)
-
-#fig = GT.makieplot(plt;color=GT.FaceData("2-face-1"),alpha=0.1)
-
-#display(fig)
-
-
-
-#plt = GT.plot(Ω)
-#GT.plot!(plt,uh;label="uh")
-#GT.plot!(plt,uh;label="uh")
-#GT.plot!(plt,uh;label="uh")
-#GT.plot!(plt,uh;label="uh")
-#save_vtk(plt)
-
-
-#makie_render(plt,render=:surface,showedges=true,color=GT.NodeData("0-face-1"),points3d=true,edges3d=true)
-
-#plt = visualize(mtf,render=:surface,showedges=true,color=GT.NodeData("0-face-1"),points3d=true,edges3d=true)
 
 end # module
