@@ -12,6 +12,7 @@ using LinearAlgebra
 using SparseArrays
 using PartitionedArrays
 using TimerOutputs
+using WriteVTK
 
 function main(params_in)
     params_default = default_params()
@@ -158,12 +159,12 @@ function main_automatic(params)
     end
 
     @timeit timer "vtk" if params[:export_vtu]
-        GT.vtk_plot(params[:example_path]*"_Ω",Ω;refinement=4) do plt
+        vtk_grid(params[:example_path]*"_Ω",Ω;plot_params=(;refinement=4)) do plt
             GT.plot!(plt,u;label="u")
             GT.plot!(plt,f;label="f")
             GT.plot!(plt,uh;label="uh")
         end
-        GT.vtk_plot(params[:example_path]*"_Γn",Γn;refinement=4) do plt
+        vtk_grid(params[:example_path]*"_Γn",Γn;plot_params=(;refinement=4)) do plt
             GT.plot!(plt,n_Γn;label="n")
             GT.plot!(plt,g;label="g")
         end

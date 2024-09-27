@@ -494,22 +494,22 @@ function vtk_close_impl(plt::PPlot,vtks)
     map(WriteVTK.close,vtks)
 end
 
-function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.vtk_grid(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.vtk_grid(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
     plt = plot(dom;plot_params...)
     WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.vtk_grid(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.vtk_grid(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.vtk_grid(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.vtk_grid(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
     plt = plot(dom;plot_params...)
     WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
@@ -562,22 +562,22 @@ function WriteVTK.paraview_collection(f::Function,filename,plt::Union{Plot,PPlot
     files
 end
 
-function WriteVTK.paraview_collection(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.paraview_collection(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.paraview_collection(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.paraview_collection(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
     plt = plot(dom;plot_params...)
     WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.paraview_collection(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.paraview_collection(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.paraview_collection(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params=(;))
+function WriteVTK.paraview_collection(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
     plt = plot(dom;plot_params...)
     WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
 end
