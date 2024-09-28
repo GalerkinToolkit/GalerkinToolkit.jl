@@ -12,6 +12,13 @@ np = 2
 parts = DebugArray(LinearIndices((np,)))
 pmesh = GT.partition_mesh(mesh,np;parts)
 
+plt = GT.plot(pmesh)
+
+fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),edgecolor=:black)
+display(fig)
+
+xxx
+
 for mesh2 in (mesh,pmesh)
 
     plt = GT.plot(mesh2)

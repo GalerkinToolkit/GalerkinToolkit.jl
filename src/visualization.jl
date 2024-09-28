@@ -643,7 +643,20 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:Plot}})
     end
 end
 
+function Makie.plot!(sc::MakiePlot{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,MakiePlot)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makieplot!(sc,valid_attributes,plt)
+        end
+    end
+end
+
+
 Makie.plottype(::Plot) = MakiePlot
+Makie.plottype(::PPlot) = MakiePlot
 
 Makie.plottype(::AbstractMesh) = MakiePlot
 
@@ -687,30 +700,40 @@ end
 #    makieplot!(sc,valid_attributes,dom)
 #end
 
-## TODO not sure about this
-# function vector_of_observables(a)
-#    #TODO remove trick for DebugArray
-#    function start(v)
-#        first(v)
-#    end
-#    function start(v::DebugArray)
-#        first(v.items)
-#    end
-#    function rest(v)
-#        v[2:end]
-#    end
-#    function rest(v::DebugArray)
-#        v.items[2:end]
-#    end
-#    if length(a[]) == 1
-#        b = Makie.lift(first,a)
-#        return [b,]
-#    else
-#        b = Makie.lift(start,a)
-#        c = Makie.lift(rest,a)
-#        return [b,vector_of_observables(c)...]
-#    end
-#end
+function vector_of_observables(a)
+    #TODO remove trick for DebugArray
+    function start(v)
+        first(v)
+    end
+    function rest(v)
+        v[2:end]
+    end
+    if length(a[]) == 1
+        b = Makie.lift(first,a)
+        return [b,]
+    else
+        b = Makie.lift(start,a)
+        c = Makie.lift(rest,a)
+        return [b,vector_of_observables(c)...]
+    end
+end
+
+function makie_pplot_setup(pplt)
+    obs = Makie.Observable{Any}(nothing)
+    function update!(pplt)
+        map_main(gather(pplt.partition)) do myplts
+            obs[] = myplts
+        end
+    end
+    Makie.on(update!,pplt)
+    update!(pplt[])
+    if obs[] !== nothing
+        plts = vector_of_observables(obs)
+    else
+        plts = nothing
+    end
+    plts
+end
 
 Makie.@recipe(Makie3d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
@@ -730,15 +753,16 @@ function Makie.plot!(sc::Makie3d{<:Tuple{<:Plot}})
     makie2d!(sc,valid_attributes,plt2)
 end
 
-# TODO not sure about this
-#function Makie.plot!(sc::Makie3d{<:Tuple{<:PPlot}})
-#    valid_attributes = Makie.shared_attributes(sc,Makie3d)
-#    pplt = sc[1]
-#    plts = vector_of_observables(Makie.lift(partition,pplt))
-#    foreach(plts) do plt
-#        makie3d!(sc,valid_attributes,plt)
-#    end
-#end
+function Makie.plot!(sc::Makie3d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie3d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie3d!(sc,valid_attributes,plt)
+        end
+    end
+end
 
 function makie_volumes_impl(plt::Plot)
     @assert num_dims(plt.mesh) == 3
@@ -788,6 +812,17 @@ function Makie.plot!(sc::Makie3d1d{<:Tuple{<:Plot}})
     makie2d1d!(sc,valid_attributes,plt2)
 end
 
+function Makie.plot!(sc::Makie3d1d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie3d1d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie3d1d!(sc,valid_attributes,plt)
+        end
+    end
+end
+
 Makie.@recipe(Makie2d) do scene
     dt = Makie.default_theme(scene, Makie.Mesh)
     dt
@@ -810,15 +845,16 @@ function Makie.plot!(sc::Makie2d{<:Tuple{<:Plot}})
     Makie.mesh!(sc,valid_attributes,vert,conn)
 end
 
-# TODO Not sure about this
-#function Makie.plot!(sc::Makie2d{<:Tuple{<:PPlot}})
-#    valid_attributes = Makie.shared_attributes(sc,Makie2d)
-#    pplt = sc[1]
-#    plts = vector_of_observables(Makie.lift(partition,pplt))
-#    foreach(plts) do plt
-#        makie2d!(sc,valid_attributes,plt)
-#    end
-#end
+function Makie.plot!(sc::Makie2d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie2d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie2d!(sc,valid_attributes,plt)
+        end
+    end
+end
 
 function setup_colorrange_impl(plt,color,colorrange)
     if colorrange != Makie.Automatic()
@@ -915,6 +951,17 @@ function Makie.plot!(sc::Makie2d1d{<:Tuple{<:Plot}})
     makie1d!(sc,valid_attributes,plt2)
 end
 
+function Makie.plot!(sc::Makie2d1d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie2d1d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie2d1d!(sc,valid_attributes,plt)
+        end
+    end
+end
+
 function makie_face_edges_impl(plt)
     # TODO maybe already complexified
     D=2
@@ -960,6 +1007,17 @@ function Makie.plot!(sc::Makie1d{<:Tuple{<:Plot}})
     Makie.linesegments!(sc,valid_attributes,p)
 end
 
+function Makie.plot!(sc::Makie1d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie1d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie1d!(sc,valid_attributes,plt)
+        end
+    end
+end
+
 function makie_edges_impl(plt,color)
     d = 1
     plt,color = setup_colors_impl(plt,color,d)
@@ -1001,6 +1059,17 @@ function Makie.plot!(sc::Makie0d{<:Tuple{<:Plot}})
     valid_attributes[:color] = color
     valid_attributes[:colorrange] = colorrange
     Makie.scatter!(sc,valid_attributes,p)
+end
+
+function Makie.plot!(sc::Makie0d{<:Tuple{<:PPlot}})
+    valid_attributes = Makie.shared_attributes(sc,Makie0d)
+    pplt = sc[1]
+    plts = makie_pplot_setup(pplt)
+    if plts !== nothing
+        foreach(plts) do plt
+            makie0d!(sc,valid_attributes,plt)
+        end
+    end
 end
 
 function makie_vertices_impl(plt,color)
