@@ -76,7 +76,6 @@ GT.makie1d!(plt;color)
 GT.makie0d!(plt;color)
 display(fig)
 
-#plt = GT.restrict_to_dim(plt,3)
 fig = GT.makieplot(plt;dim=3)
 display(fig)
 
@@ -87,7 +86,7 @@ display(fig)
 fig = Makie.plot(plt;dim=3)
 display(fig)
 
-fig = Makie.plot(mesh;dim=3,shrink=0.6)
+fig = Makie.plot(mesh;dim=2:3,shrink=0.6,edgecolor=:darkblue)
 display(fig)
 
 
