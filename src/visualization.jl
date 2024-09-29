@@ -589,7 +589,7 @@ Makie.@recipe(MakiePlot) do scene
     t1 = Makie.Theme(
         dim = Makie.Automatic(),
         shrink = false,
-        edgecolor = nothing,
+        strokecolor = nothing,
         color      = :lightblue,
         colormap   = :bluesreds,
         shading    = Makie.NoShading,
@@ -610,7 +610,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:Plot}})
     end
     dim = sc[:dim][]
     d = num_dims(plt[].mesh)
-    edgecolor = sc[:edgecolor][]
+    strokecolor = sc[:strokecolor][]
     if dim == Makie.Automatic()
         dim = d
     end
@@ -626,18 +626,18 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:Plot}})
     if cmp(2)
         valid_attributes = Makie.shared_attributes(sc, Makie2d)
         makie2d!(sc,valid_attributes,plt)
-        if edgecolor !== nothing
+        if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
-            valid_attributes[:color] = sc[:edgecolor]
+            valid_attributes[:color] = sc[:strokecolor]
             makie2d1d!(sc,valid_attributes,plt)
         end
     end
     if cmp(3)
         valid_attributes = Makie.shared_attributes(sc, Makie3d)
         makie3d!(sc,valid_attributes,plt)
-        if edgecolor !== nothing
+        if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie3d1d)
-            valid_attributes[:color] = sc[:edgecolor]
+            valid_attributes[:color] = sc[:strokecolor]
             makie3d1d!(sc,valid_attributes,plt)
         end
     end

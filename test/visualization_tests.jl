@@ -14,7 +14,7 @@ pmesh = GT.partition_mesh(mesh,np;parts)
 
 plt = GT.plot(pmesh)
 
-fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),edgecolor=:black)
+fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),strokecolor=:black)
 display(fig)
 
 for mesh2 in (mesh,pmesh)
@@ -91,7 +91,7 @@ display(fig)
 fig = Makie.plot(plt;dim=3)
 display(fig)
 
-fig = Makie.plot(mesh;dim=2:3,shrink=0.6,edgecolor=:darkblue)
+fig = Makie.plot(mesh;dim=2:3,shrink=0.6,strokecolor=:darkblue)
 display(fig)
 
 
