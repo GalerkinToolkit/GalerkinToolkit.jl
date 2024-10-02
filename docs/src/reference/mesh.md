@@ -1,6 +1,4 @@
-# Geometry
-
 ```@autodocs
 Modules = [GalerkinToolkit]
-Pages = ["geometry.jl"]
+Pages = ["mesh.jl", "p_mesh.jl"]
 ```
