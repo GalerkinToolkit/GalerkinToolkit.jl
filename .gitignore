@@ -4,6 +4,9 @@
 *.swp
 *.swn
 *.swo
+*.pvd
+*.pvtu
+*.vtu
 /output
 /Manifest.toml
 /docs/build/

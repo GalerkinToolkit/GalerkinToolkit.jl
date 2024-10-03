@@ -15,7 +15,6 @@ using Combinatorics
 using SparseArrays
 using Metis
 using Metatheory
-import Makie
 
 include("mesh.jl")
 include("p_mesh.jl")
