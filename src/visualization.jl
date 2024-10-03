@@ -1,4 +1,3 @@
-
 struct Plot{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B
@@ -582,3 +581,19 @@ function WriteVTK.paraview_collection(f::Function,filename,dom::AbstractDomain;p
     WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
 end
 
+# Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
+
+function makieplot end
+function makieplot! end
+function makie0d end
+function makie0d! end
+function makie1d end
+function makie1d! end
+function makie2d end
+function makie2d! end
+function makie2d1d end
+function makie2d1d! end
+function makie3d end
+function makie3d! end
+function makie3d1d end
+function makie3d1d! end

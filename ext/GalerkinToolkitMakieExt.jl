@@ -1,6 +1,11 @@
 module GalerkinToolkitMakieExt
 
 using GalerkinToolkit
+import GalerkinToolkit: makieplot, makieplot!
+import GalerkinToolkit: makie0d, makie0d!, makie1d, makie1d!
+import GalerkinToolkit: makie2d, makie2d!, makie2d1d, makie2d1d!
+import GalerkinToolkit: makie3d, makie3d!, makie3d1d, makie3d1d!
+using PartitionedArrays
 using Makie
 
 Makie.@recipe(MakiePlot) do scene
@@ -24,7 +29,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
     # TODO these are not reactive
     if sc[:shrink][] != false
         scale = sc[:shrink]
-        plt = Makie.lift((a,b)->shrink(a;scale=b),plt,scale)
+        plt = Makie.lift((a,b)->GalerkinToolkit.shrink(a;scale=b),plt,scale)
     end
     dim = sc[:dim][]
     d = GalerkinToolkit.num_dims(plt[].mesh)
@@ -92,7 +97,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.AbstractDomain}})
         if isa(color,GalerkinToolkit.AbstractQuantity)
             label = string(gensym())
             plt = GalerkinToolkit.plot(dom)
-            plot!(plt,color;label)
+            GalerkinToolkit.plot!(plt,color;label)
             color = GalerkinToolkit.NodeData(label)
         else
             plt = GalerkinToolkit.plot(dom)
@@ -138,7 +143,7 @@ end
 function makie_pplot_setup(pplt)
     obs = Makie.Observable{Any}(nothing)
     function update!(pplt)
-        map_main(gather(pplt.partition)) do myplts
+        map_main(PartitionedArrays.gather(pplt.partition)) do myplts
             obs[] = myplts
         end
     end
