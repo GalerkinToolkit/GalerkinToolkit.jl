@@ -600,18 +600,18 @@ function makie3d1d! end
 
 # handler for displaying a hint in case the user tries to call functions defined in the extension module
 # https://github.com/JuliaLang/julia/blob/b9d9b69165493f6fc03870d975be05c67f14a30b/base/errorshow.jl#L1039
-
-function __init__()
-    @static if !isdefined(Base, :get_extension)
-        @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
-            include("../ext/GalerkinToolkitMakieExt.jl")
-        end
-    end
-    Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, kwargs
-        if exc.f in [makieplot, makieplot!, makie0d, makie0d!, makie1d, makie1d!, makie2d, makie2d!, makie2d1d, makie2d1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
-            if isempty(methods(exc.f))
-                print(io, "\n$(exc.f) has no methods, yet. Makie has to be loaded for the plotting extension to be activated. Run `using Makie`, `using CairoMakie`, `using GLMakie` or any other package that also loads Makie.")
-            end
-        end
-    end
-end
+#
+#function __init__()
+#    @static if !isdefined(Base, :get_extension)
+#        @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
+#            include("../ext/GalerkinToolkitMakieExt.jl")
+#        end
+#    end
+#    Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, kwargs
+#        if exc.f in [makieplot, makieplot!, makie0d, makie0d!, makie1d, makie1d!, makie2d, makie2d!, makie2d1d, makie2d1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
+#            if isempty(methods(exc.f))
+#                print(io, "\n$(exc.f) has no methods, yet. Makie has to be loaded for the plotting extension to be activated. Run `using Makie`, `using CairoMakie`, `using GLMakie` or any other package that also loads Makie.")
+#            end
+#        end
+#    end
+#end
