@@ -9,6 +9,7 @@ using Test
     @testset "Integration" begin include("integration_tests.jl") end
     @testset "Interpolation" begin include("interpolation_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
+    @testset "Visualization" begin include("visualization_tests.jl") end
 end
 
 end # module

@@ -3,6 +3,7 @@ module DomainTests
 import GalerkinToolkit as GT
 import PartitionedArrays as pa
 using Test
+using WriteVTK
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
@@ -27,12 +28,12 @@ u = GT.analytical_field(sum,Ω)
 uref = u∘ϕ
 u2 = uref∘ϕinv
 
-GT.vtk_plot(joinpath(outdir,"omega"),Ω;refinement=4) do plt
+vtk_grid(joinpath(outdir,"omega"),Ω,;plot_params=(;refinement=4)) do plt
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,u2;label="u2")
 end
 
-GT.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=4) do plt
+vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=4)) do plt
     GT.plot!(plt,uref;label="u")
 end
 
@@ -51,7 +52,7 @@ n = GT.unit_normal(Γref,Ω)
 n2 = GT.unit_normal(Γ,Ω)
 #h = GT.face_diameter_field(Γ)
 
-GT.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
+vtk_grid(joinpath(outdir,"gamma_ref"),Γref) do plt
     GT.plot!(plt,g;label="u")
     GT.plot!(plt,n;label="n")
     GT.plot!(plt,q->n2(ϕ(q));label="n2") # TODO
@@ -62,7 +63,7 @@ GT.vtk_plot(joinpath(outdir,"gamma_ref"),Γref) do plt
     end
 end
 
-GT.vtk_plot(joinpath(outdir,"gamma"),Γ) do plt
+vtk_grid(joinpath(outdir,"gamma"),Γ) do plt
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,n;label="n")
     GT.plot!(plt,n2;label="n2")
@@ -85,7 +86,7 @@ n2 = GT.unit_normal(Λ,Ω)
 
 jump(u) = u[+] - u[-]
 
-GT.vtk_plot(joinpath(outdir,"lambda_ref"),Λref) do plt
+vtk_grid(joinpath(outdir,"lambda_ref"),Λref) do plt
     GT.plot!(plt,n[+];label="n1")
     GT.plot!(plt,n[-];label="n2")
     GT.plot!(plt;label="jump_u2") do q
@@ -99,7 +100,7 @@ end
 
 jump2(u) = q -> jump(u(q))
 
-GT.vtk_plot(joinpath(outdir,"lambda"),Λ) do plt
+vtk_grid(joinpath(outdir,"lambda"),Λ) do plt
     GT.plot!(plt,n2[+];label="n1")
     GT.plot!(plt,n2[-];label="n2")
     GT.plot!(plt;label="jump_u") do q
@@ -147,7 +148,7 @@ pa.partition(Ω)
 
 GT.faces(Ω)
 
-GT.vtk_plot(joinpath(outdir,"p_omega"),Ω;refinement=4) do plt
+vtk_grid(joinpath(outdir,"p_omega"),Ω;plot_params=(;refinement=4)) do plt
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,q->u(q);label="u2")
 end
@@ -160,7 +161,7 @@ D = GT.num_dims(mesh)
 ϕ = GT.domain_map(Γref,Ωref)
 g = uref∘ϕ
 
-GT.vtk_plot(joinpath(outdir,"p_gamma_ref"),Γref) do plt
+vtk_grid(joinpath(outdir,"p_gamma_ref"),Γref) do plt
     GT.plot!(plt,g;label="u")
     GT.plot!(plt;label="u2") do q
         x = ϕ(q)
