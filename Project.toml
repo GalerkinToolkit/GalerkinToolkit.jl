@@ -37,6 +37,7 @@ Metis = "1"
 PartitionedArrays = "0.5.4"
 StaticArrays = "1"
 WriteVTK = "1"
+Makie = "0.21"
 julia = "1"
 
 [extras]
