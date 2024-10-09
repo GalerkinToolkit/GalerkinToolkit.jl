@@ -432,6 +432,8 @@ end
 
 function translate_vtk_data end
 function translate_vtk_data! end
+function vtk_close_impl end
+function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
