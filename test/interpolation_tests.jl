@@ -6,6 +6,7 @@ using Test
 import ForwardDiff
 using LinearAlgebra
 using BlockArrays
+using WriteVTK
 
 D = 2
 order = 3
@@ -157,7 +158,7 @@ V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,conformity=:L2)
 GT.face_dofs(V)
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
-GT.vtk_plot(joinpath(outdir,"omega_ref"),Ωref;refinement=40) do plt
+vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=40)) do plt
     GT.plot!(plt,v;label="v")
     GT.plot!(plt,v2;label="v2")
     GT.plot!(plt,y1;label="y1")
