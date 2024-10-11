@@ -779,163 +779,20 @@ function reference_face_from_gmsh_eltype(eltype)
     lagrange_mesh_face(geom,order;lib_to_user_nodes=lib_to_gmsh)
 end
 
-function vtk_points(mesh)
-    function barrirer(coords)
-        nnodes = length(coords)
-        points = zeros(3,nnodes)
-        for node in 1:nnodes
-            coord = coords[node]
-            for i in 1:length(coord)
-                points[i,node] = coord[i]
-            end
-        end
-        points
-    end
-    coords = node_coordinates(mesh)
-    barrirer(coords)
-end
+# WriteVTK prototype functions to be defined inside 'ext/GalerkinToolkitWriteVTKExt.jl' extension module.
 
-function vtk_cells(mesh,d)
-    function barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
-        cells = map(face_to_refid,face_to_nodes) do refid, nodes
-            mesh_cell = refid_mesh_cell[refid]
-            if mesh_cell === nothing
-                msg = """
-                Not enough information to visualize this mesh via vtk:
-                vtk_mesh_cell returns nothing for the reference face in position $refid in dimension $d.
-                """
-                error(msg)
-            end
-            mesh_cell(nodes)
-        end
-        cells
-    end
-    face_to_nodes = face_nodes(mesh,d)
-    face_to_refid = face_reference_id(mesh,d)
-    refid_refface = reference_faces(mesh,d)
-    refid_mesh_cell = map(vtk_mesh_cell,refid_refface)
-    barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
-end
-
-"""
-    args = vtk_args(mesh[,d])
-
-Return the arguments `args` to be passed in final position
-to functions like `WriteVTK.vtk_grid`.
-"""
-function vtk_args(mesh,d)
-    points = vtk_points(mesh)
-    cells = vtk_cells(mesh,d)
-    points, cells
-end
-
-function vtk_args(mesh)
-    points = vtk_points(mesh)
-    D = num_dims(mesh)
-    allcells = [vtk_cells(mesh,d) for d in 0:D if num_faces(mesh,d) != 0]
-    cells = reduce(vcat,allcells)
-    points, cells
-end
-
-"""
-"""
-function vtk_physical_faces!(vtk,mesh,d;physical_faces=physical_faces(mesh,d))
-    ndfaces = num_faces(mesh,d)
-    for group in physical_faces
-        name,faces = group
-        face_mask = zeros(Int,ndfaces)
-        face_mask[faces] .= 1
-        vtk[name,WriteVTK.VTKCellData()] = face_mask
-    end
-    vtk
-end
-
-function vtk_physical_faces!(vtk,mesh;physical_faces=physical_faces(mesh))
-    nfaces = sum(num_faces(mesh))
-    offsets = face_offset(mesh)
-    D = num_dims(mesh)
-    data = Dict{String,Vector{Int}}()
-    for d in 0:D
-        for group in physical_faces[d+1]
-            name, = group
-            if !haskey(data,name)
-                face_mask = zeros(Int,nfaces)
-                data[name] = face_mask
-            end
-        end
-    end
-    for d in 0:D
-        for group in physical_faces[d+1]
-            offset = offsets[d+1]
-            name,faces = group
-            face_mask = data[name]
-            face_mask[faces.+offset] .= 1
-        end
-    end
-    for (name,face_mask) in data
-        vtk[name,WriteVTK.VTKCellData()] = face_mask
-    end
-    vtk
-end
-
-function vtk_physical_nodes!(vtk,mesh,d;physical_nodes=physical_nodes(mesh,d))
-    nnodes = num_nodes(mesh)
-    for group in physical_nodes
-        name,nodes = group
-        nodes_mask = zeros(Int,nnodes)
-        nodes_mask[nodes] .= 1
-        vtk[name,WriteVTK.VTKPointData()] = nodes_mask
-    end
-    vtk
-end
-
-function vtk_physical_nodes!(vtk,mesh;physical_nodes=physical_nodes(mesh))
-    D = num_dims(mesh)
-    for d in 0:D
-        vtk_physical_nodes!(vtk,mesh,d,physical_nodes=physical_nodes[d+1])
-    end
-    vtk
-end
-
-"""
-"""
-function vtk_mesh_cell(ref_face)
-    geom = geometry(ref_face)
-    d = num_dims(geom)
-    nnodes = num_nodes(ref_face)
-    lib_to_user = lib_to_user_nodes(ref_face)
-    if d == 0 && nnodes == 1
-        cell_type = WriteVTK.VTKCellTypes.VTK_VERTEX
-        vtk_to_lib = [1]
-    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 2
-        cell_type = WriteVTK.VTKCellTypes.VTK_LINE
-        vtk_to_lib = [1,2]
-    elseif d == 1 && (is_simplex(geom) || is_n_cube(geom)) && nnodes == 3
-        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_EDGE
-        vtk_to_lib = [1,3,2]
-    elseif d == 2 && is_n_cube(geom) && nnodes == 4
-        cell_type = WriteVTK.VTKCellTypes.VTK_QUAD
-        vtk_to_lib = [1,2,4,3]
-    elseif d == 2 && is_simplex(geom) && nnodes == 3
-        cell_type = WriteVTK.VTKCellTypes.VTK_TRIANGLE
-        vtk_to_lib = [1,2,3]
-    elseif d == 2 && is_simplex(geom) && nnodes == 6
-        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TRIANGLE
-        vtk_to_lib = [1,3,6,2,5,4]
-    elseif d == 3 && is_n_cube(geom) && nnodes == 8
-        cell_type = WriteVTK.VTKCellTypes.VTK_HEXAHEDRON
-        vtk_to_lib = [1,2,4,3,5,6,8,7]
-    elseif d == 3 && is_simplex(geom) && nnodes == 4
-        cell_type = WriteVTK.VTKCellTypes.VTK_TETRA
-        vtk_to_lib = [1,2,3,4]
-    elseif d == 3 && is_simplex(geom) && nnodes == 10
-        cell_type = WriteVTK.VTKCellTypes.VTK_QUADRATIC_TETRA
-        vtk_to_lib = [1,3,6,10,2,5,4,7,8,9]
-    else
-        return nothing
-    end
-    nodes -> WriteVTK.MeshCell(cell_type,(nodes[lib_to_user])[vtk_to_lib])
-end
+function vtk_points end
+function vtk_points! end
+function vtk_cells end
+function vtk_cells! end
+function vtk_args end
+function vtk_args! end
+function vtk_physical_faces end
+function vtk_physical_faces! end
+function vtk_physical_nodes end
+function vtk_physical_nodes! end
+function vtk_mesh_cell end
+function vtk_mesh_cell! end
 
 opposite_faces(geom,d) = opposite_faces(geom)[d+1]
 
