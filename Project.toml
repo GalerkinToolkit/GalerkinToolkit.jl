@@ -43,7 +43,7 @@ Metis = "1"
 PartitionedArrays = "0.5.4"
 SparseArrays = "1"
 StaticArrays = "1"
-julia = "1"
+julia = "1.10"
 
 [extras]
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
