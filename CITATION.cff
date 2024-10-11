@@ -1,0 +1,21 @@
+# YAML 1.2
+---
+cff-version: "1.1.0"
+title: "GalerkinToolkit"
+authors:
+  -
+    family-names: Verdugo
+    given-names: Francesc
+    orcid: "https://orcid.org/0000-0003-3667-443X"
+
+date-released: 2024-06-07
+version: "0.2.0"
+repository-code: "https://github.com/fverdugo/GalerkinToolkit.jl"
+keywords:
+  - FEM
+  - Julia
+  - HPC
+  - Scientific computing
+  - PDEs
+message: "If you use this software, please cite it using these metadata."
+license: MIT
