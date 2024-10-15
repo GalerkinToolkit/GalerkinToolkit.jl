@@ -11,7 +11,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
-  build:
+  test:
     name: GalerkinToolkit / Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -63,6 +63,11 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             Pkg.test("GalerkinToolkitExamples")'
+  all_tests:
+    name: All Tests and Examples
+    runs-on: ubuntu-latest
+    needs: [test, examples]
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest
