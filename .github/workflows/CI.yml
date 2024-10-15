@@ -63,6 +63,7 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             Pkg.test("GalerkinToolkitExamples")'
+
   all_tests:
     name: All Tests and Examples
     runs-on: ubuntu-latest
