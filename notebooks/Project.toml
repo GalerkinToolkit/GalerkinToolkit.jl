@@ -1,0 +1,4 @@
+[deps]
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+GalerkinToolkit = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
