@@ -1,7 +1,6 @@
 module GalerkinToolkit
 const GT = GalerkinToolkit
 
-using WriteVTK
 using FastGaussQuadrature
 using StaticArrays
 using LinearAlgebra

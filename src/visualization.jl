@@ -417,100 +417,9 @@ end
 
 # VTK
 
-function translate_vtk_data(v)
-    v
-end
-function translate_vtk_data(v::AbstractVector{<:SVector{2}})
-    z = zero(eltype(eltype(v)))
-    map(vi->SVector((vi...,z)),v)
-end
-
 struct VTKPlot{A,B}
     plot::A
     vtk::B
-end
-
-function plot!(field,plt::VTKPlot;label)
-    plot!(plt.plot,field;label)
-end
-
-function plot!(plt::VTKPlot,field;label)
-    plot!(plt.plot,field;label)
-end
-
-function WriteVTK.vtk_grid(filename,plt::Plot;kwargs...)
-    mesh = plt.mesh
-    D = num_dims(mesh)
-    vtk = vtk_grid(filename,GT.vtk_args(mesh)...;kwargs...)
-    for (k,v) in node_data(plt)
-        vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
-    end
-    for (k,v) in face_data(plt;merge_dims=true)
-        vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
-    end
-    VTKPlot(plt,vtk)
-end
-
-function WriteVTK.vtk_grid(f::Function,filename,plt::Union{Plot,PPlot};kwargs...)
-    vtk = vtk_grid(filename,plt)
-    files = nothing
-    try
-        f(vtk)
-    finally
-        files = close(vtk)
-    end
-    files
-end
-
-function WriteVTK.vtk_grid(filename,pplt::PPlot;kwargs...)
-    plts = partition(pplt)
-    parts = linear_indices(plts)
-    nparts = length(parts)
-    vtks  = map(plts,parts) do plt,part
-        mesh = plt.mesh
-        vtk = pvtk_grid(filename,GT.vtk_args(mesh)...;part,nparts,kwargs...)
-        for (k,v) in node_data(plt)
-            vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
-        end
-        for (k,v) in face_data(plt;merge_dims=true)
-            vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
-        end
-        vtk
-    end
-    plts = PPlot(plts,pplt.cache)
-    VTKPlot(plts,vtks)
-end
-
-function WriteVTK.close(plt::VTKPlot)
-    vtk_close_impl(plt.plot,plt.vtk)
-end
-
-function vtk_close_impl(plt::Plot,vtk)
-    WriteVTK.close(vtk)
-end
-
-function vtk_close_impl(plt::PPlot,vtks)
-    map(WriteVTK.close,vtks)
-end
-
-function WriteVTK.vtk_grid(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
-    plt = plot(mesh;plot_params...)
-    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.vtk_grid(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
-    plt = plot(dom;plot_params...)
-    WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.vtk_grid(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
-    plt = plot(mesh;plot_params...)
-    WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.vtk_grid(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
-    plt = plot(dom;plot_params...)
-    WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
 
 struct PVD{A} <: AbstractType
@@ -521,65 +430,10 @@ struct PPVD{A} <: AbstractType
     partition::A
 end
 
-function WriteVTK.close(pvd::PVD)
-    WriteVTK.close(pvd.pvd)
-end
-
-function WriteVTK.close(ppvd::PPVD)
-    map_main(WriteVTK.close,ppvd.partition)
-end
-
-function Base.setindex!(a::PVD,plt::VTKPlot,time)
-    a.pvd[time] = plt.vtk
-end
-
-function Base.setindex!(a::PPVD,plt::VTKPlot,time)
-    map_main(a.partition,plt.vtk) do a,vtk
-        a[time] = vtk
-    end
-end
-
-function WriteVTK.paraview_collection(filename,pplt::Plot;kwargs...)
-    WriteVTK.paraview_collection(filename;kwargs...) |> PVD
-end
-
-function WriteVTK.paraview_collection(filename,pplt::PPlot;kwargs...)
-    pvds = map_main(partition(pplt)) do _
-        WriteVTK.paraview_collection(filename;kwargs...)
-    end
-    PPVD(pvds)
-end
-
-function WriteVTK.paraview_collection(f::Function,filename,plt::Union{Plot,PPlot};kwargs...)
-    vtk = WriteVTK.paraview_collection(filename,plt;kwargs...)
-    files = nothing
-    try
-        f(vtk)
-    finally
-        files = close(vtk)
-    end
-    files
-end
-
-function WriteVTK.paraview_collection(filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
-    plt = plot(mesh;plot_params...)
-    WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.paraview_collection(filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
-    plt = plot(dom;plot_params...)
-    WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.paraview_collection(f::Function,filename,mesh::Union{AbstractMesh,PMesh};plot_params=(;),vtk_grid_params...)
-    plt = plot(mesh;plot_params...)
-    WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
-end
-
-function WriteVTK.paraview_collection(f::Function,filename,dom::AbstractDomain;plot_params=(;),vtk_grid_params...)
-    plt = plot(dom;plot_params...)
-    WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
-end
+function translate_vtk_data end
+function translate_vtk_data! end
+function vtk_close_impl end
+function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
