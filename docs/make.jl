@@ -9,7 +9,7 @@ makedocs(;
     sitename="GalerkinToolkit.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://fverdugo.github.io/GalerkinToolkit.jl",
+        canonical="https://GalerkinToolkit.github.io/GalerkinToolkit.jl",
         assets=String[],
     ),
     pages=[
@@ -23,6 +23,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/fverdugo/GalerkinToolkit.jl",
+    repo="github.com/GalerkinToolkit/GalerkinToolkit.jl",
     devbranch="main",
 )
