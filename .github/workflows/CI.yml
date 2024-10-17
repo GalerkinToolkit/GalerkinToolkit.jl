@@ -63,6 +63,16 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             Pkg.test("GalerkinToolkitExamples")'
+
+  all_tests:
+    name: All Tests and Examples
+    runs-on: ubuntu-latest
+    needs: [test, examples]
+    steps:
+      - name: All test jobs have been successful        
+        run: |
+          echo "All test jobs have been successful"
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest
