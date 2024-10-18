@@ -1,4 +1,4 @@
-# [Developer documentation](@id dev_docs)
+# [Developer documentation](@id developer)
 
 !!! note "Contributing guidelines"
     If you haven't, please read the [Contributing guidelines](90-contributing.md) first.
