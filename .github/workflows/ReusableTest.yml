@@ -29,7 +29,7 @@ on:
 
 jobs:
   test:
-    name: Julia ${{ inputs.version }} - ${{ inputs.os }} - ${{ inputs.arch }} - ${{ github.event_name }}
+    name: GalerkinToolkit / Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ inputs.os }}
     continue-on-error: ${{ inputs.allow_failure }}
 
@@ -52,3 +52,31 @@ jobs:
         with:
           file: lcov.info
           token: ${{ secrets.codecov_token }}
+  examples:
+    name: GalerkinToolkitExamples / Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ inputs.allow_failure }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: ${{ matrix.version }}
+          arch: ${{ matrix.arch }}
+      - uses: julia-actions/cache@v1
+      - uses: julia-actions/julia-buildpkg@v1
+      - run: |
+          julia --project=GalerkinToolkitExamples -e '
+            using Pkg
+            Pkg.develop(path=".")
+            Pkg.test("GalerkinToolkitExamples")'
+
+  all_tests:
+    name: All Tests and Examples
+    runs-on: ${{ matrix.os }}
+    needs: [test, examples]
+
+    steps:
+      - name: All test jobs have been successful
+        run: |
+          echo "All test jobs have been successful"

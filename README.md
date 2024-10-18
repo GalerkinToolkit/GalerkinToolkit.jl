@@ -1,11 +1,12 @@
 # GalerkinToolkit
 
-[![Stable Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/stable/)
-[![Dev Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/dev/)
-[![Build Status](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Test workflow status](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Test.yml/badge.svg?branch=main)](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Test.yml?query=branch%3Amain)
-[![Lint workflow Status](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Lint.yml?query=branch%3Amain)
-[![Docs workflow Status](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Docs.yml/badge.svg?branch=main)](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/Docs.yml?query=branch%3Amain)
+[![Stable Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://GalerkinToolKit.github.io/GalerkinToolKit.jl/stable)
+[![In development documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://GalerkinToolKit.github.io/GalerkinToolKit.jl/dev)
+[![Build Status](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/workflows/Test/badge.svg)](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions)
+[![Test workflow status](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Test.yml/badge.svg?branch=main)](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Test.yml?query=branch%3Amain)
+[![Lint workflow Status](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Lint.yml?query=branch%3Amain)
+[![Docs workflow Status](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Docs.yml/badge.svg?branch=main)](https://github.com/GalerkinToolKit/GalerkinToolKit.jl/actions/workflows/Docs.yml?query=branch%3Amain)
+
 [![Coverage](https://codecov.io/gh/GalerkinToolkit/GalerkinToolkit.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/GalerkinToolkit/GalerkinToolkit.jl)
 [![DOI](https://zenodo.org/badge/497260571.svg)](https://doi.org/10.5281/zenodo.13938389)
 
