@@ -1,3 +1,7 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 GalerkinToolkit = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
+Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
