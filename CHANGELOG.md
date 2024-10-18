@@ -20,4 +20,3 @@ This version is a major refactor of the code with improvements in the software a
 ## Previous versions
 
 A changelog is not maintained for older versions than 0.2.0.
-

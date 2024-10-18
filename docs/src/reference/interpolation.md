@@ -4,4 +4,3 @@
 Modules = [GalerkinToolkit]
 Pages = ["interpolation.jl"]
 ```
-

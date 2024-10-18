@@ -18,23 +18,20 @@ const SCALAR_SHAPE = ScalarShape()
 """
 lagrangian_fe(args...) = GenericLagrangeFE(args...)
 
-function lagrangian_fe(geometry,order;
-        space = default_space(geometry),
-        lib_to_user_nodes = int_type(geometry)[],
-        major = :component,
-        shape = SCALAR_SHAPE)
+function lagrangian_fe(
+    geometry,
+    order;
+    space = default_space(geometry),
+    lib_to_user_nodes = int_type(geometry)[],
+    major = :component,
+    shape = SCALAR_SHAPE,
+)
     D = num_dims(geometry)
-    order_per_dir = repeat_per_dir(geometry,order)
-    lagrangian_fe(
-               geometry,
-               order_per_dir,
-               space,
-               lib_to_user_nodes,
-               major,
-               shape)
+    order_per_dir = repeat_per_dir(geometry, order)
+    lagrangian_fe(geometry, order_per_dir, space, lib_to_user_nodes, major, shape)
 end
 
-order(fe::AbstractLagrangeFE) = maximum(order_per_dir(fe),init=0)
+order(fe::AbstractLagrangeFE) = maximum(order_per_dir(fe), init = 0)
 
 function lib_to_user_nodes(fe::AbstractLagrangeFE)
     if length(fe.lib_to_user_nodes) == 0
@@ -47,13 +44,17 @@ function lib_to_user_nodes(fe::AbstractLagrangeFE)
 end
 
 function monomial_exponents(fe::AbstractLagrangeFE)
-    monomial_exponents_from_space(fe.space,fe.order_per_dir,fe.geometry |> int_type)
+    monomial_exponents_from_space(fe.space, fe.order_per_dir, fe.geometry |> int_type)
 end
 
 function node_coordinates(fe::AbstractLagrangeFE)
     @assert fe |> geometry |> is_unitary
     mexps = monomial_exponents(fe)
-    node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
+    node_coordinates_from_monomials_exponents(
+        mexps,
+        fe.order_per_dir,
+        fe.geometry |> real_type,
+    )
 end
 
 function tensor_basis(fe::AbstractLagrangeFE)
@@ -66,63 +67,63 @@ function tensor_basis(fe::AbstractLagrangeFE)
         init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Tv}
         cis_flat = cis[:]
         return map(cis_flat) do ci
-            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
+            init_tensor(ntuple(j -> cis[j] == ci ? 1 : 0, Val(l)))
         end
     end
 end
 
 function primal_basis(fe::AbstractLagrangeFE)
-    scalar_basis = map(e->(x-> prod(x.^e)),fe|>monomial_exponents)
+    scalar_basis = map(e -> (x -> prod(x .^ e)), fe |> monomial_exponents)
     if fe.shape == SCALAR_SHAPE
         return scalar_basis
     else
         primal_nested = map(scalar_basis) do monomial
-            map(tensor_basis(fe))  do e
-                x -> monomial(x)*e
+            map(tensor_basis(fe)) do e
+                x -> monomial(x) * e
             end
         end
-        return reduce(vcat,primal_nested)
+        return reduce(vcat, primal_nested)
     end
 end
 
 function dual_basis(fe::AbstractLagrangeFE)
-    node_coordinates_reffe = fe|>node_coordinates
-    scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
+    node_coordinates_reffe = fe |> node_coordinates
+    scalar_basis = map(x -> (f -> f(x)), node_coordinates_reffe)
     if fe.shape == SCALAR_SHAPE
         return scalar_basis
     else
         if fe.major === :component
             dual_nested = map(node_coordinates_reffe) do x
                 map(tensor_basis(fe)) do e
-                    f->inner(e,f(x))
+                    f -> inner(e, f(x))
                 end
             end
         elseif fe.major === :node
             dual_nested = map(tensor_basis(fe)) do e
                 map(node_coordinates_reffe) do x
-                    f->inner(e,f(x))
+                    f -> inner(e, f(x))
                 end
             end
         else
             error("Not Implemented")
         end
-        return reduce(vcat,dual_nested)
+        return reduce(vcat, dual_nested)
     end
 end
 
-function face_dofs(a::AbstractLagrangeFE,d)
+function face_dofs(a::AbstractLagrangeFE, d)
     @assert a.shape == SCALAR_SHAPE
-    face_nodes(a,d)
+    face_nodes(a, d)
 end
 
-function face_own_dofs(a::AbstractLagrangeFE,d)
+function face_own_dofs(a::AbstractLagrangeFE, d)
     @assert a.shape == SCALAR_SHAPE
-    face_interior_nodes(a,d)
+    face_interior_nodes(a, d)
 end
 
-function face_own_dof_permutations(a::AbstractLagrangeFE,d)
+function face_own_dof_permutations(a::AbstractLagrangeFE, d)
     @assert a.shape == SCALAR_SHAPE
-    face_interior_node_permutations(a,d)
+    face_interior_node_permutations(a, d)
 end
 
 function num_dofs(a::AbstractLagrangeFE)
@@ -133,13 +134,13 @@ end
 abstract type AbstractSpace <: GT.AbstractType end
 
 Base.iterate(m::AbstractSpace) = iterate(components(m))
-Base.iterate(m::AbstractSpace,state) = iterate(components(m),state)
-Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
+Base.iterate(m::AbstractSpace, state) = iterate(components(m), state)
+Base.getindex(m::AbstractSpace, field::Integer) = component(m, field)
 Base.length(m::AbstractSpace) = num_fields(m)
 
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 
-function free_dofs(a::AbstractSpace,field)
+function free_dofs(a::AbstractSpace, field)
     @assert field == 1
     free_dofs(a)
 end
@@ -149,7 +150,7 @@ function free_dofs(a::AbstractSpace)
     Base.OneTo(nfree)
 end
 
-function dirichlet_dofs(a::AbstractSpace,field)
+function dirichlet_dofs(a::AbstractSpace, field)
     @assert field == 1
     dirichlet_dofs(a)
 end
@@ -169,19 +170,19 @@ function components(a::AbstractSpace)
     (a,)
 end
 
-function component(a::AbstractSpace,field)
+function component(a::AbstractSpace, field)
     @assert field == 1
     a
 end
 
-function domain(space::AbstractSpace,field)
+function domain(space::AbstractSpace, field)
     @assert field == 1
     space |> GT.domain
 end
 
-@enum FreeOrDirichlet FREE=1 DIRICHLET=2
+@enum FreeOrDirichlet FREE = 1 DIRICHLET = 2
 
-function dofs(a,free_or_diri::FreeOrDirichlet)
+function dofs(a, free_or_diri::FreeOrDirichlet)
     if free_or_diri == FREE
         free_dofs(a)
     else
@@ -189,7 +190,7 @@ function dofs(a,free_or_diri::FreeOrDirichlet)
     end
 end
 
-function values(a,free_or_diri::FreeOrDirichlet)
+function values(a, free_or_diri::FreeOrDirichlet)
     if free_or_diri == FREE
         free_values(a)
     else
@@ -199,7 +200,7 @@ end
 
 function generate_dof_ids(space::AbstractSpace)
     state = generate_dof_ids_step_1(space)
-    generate_dof_ids_step_2(state,space |> GT.dirichlet_boundary)
+    generate_dof_ids_step_2(state, space |> GT.dirichlet_boundary)
 end
 
 function generate_dof_ids_step_1(space)
@@ -208,63 +209,71 @@ function generate_dof_ids_step_1(space)
     cell_to_Dface = domain |> GT.faces
     mesh = domain |> GT.mesh
     topology = mesh |> GT.topology
-    d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
+    d_to_ndfaces = map(d -> GT.num_faces(topology, d), 0:D)
     ctype_to_reference_fe = space |> GT.reference_fes
     cell_to_ctype = space |> GT.face_reference_id
-    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
-    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
-    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    d_to_dface_to_dof_offset = map(d -> zeros(Int32, GT.num_faces(topology, d)), 0:D)
+    d_to_ctype_to_ldface_to_own_dofs = map(d -> GT.reference_face_own_dofs(space, d), 0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm =
+        map(d -> GT.reference_face_own_dof_permutations(space, d), 0:D)
+    d_to_ctype_to_ldface_to_num_own_dofs = map(
+        d -> map(
+            ldface_to_own_dofs -> length.(ldface_to_own_dofs),
+            d_to_ctype_to_ldface_to_own_dofs[d+1],
+        ),
+        0:D,
+    )
+    d_to_ctype_to_ldface_to_dofs =
+        map(d -> map(fe -> GT.face_dofs(fe, d), ctype_to_reference_fe), 0:D)
     #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
-    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
-    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+    d_to_Dface_to_dfaces = map(d -> face_incidence(topology, D, d), 0:D)
+    d_to_Dface_to_ldface_to_pindex = map(d -> face_permutation_ids(topology, D, d), 0:D)
+    ctype_to_num_dofs = map(GT.num_dofs, ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     dof_offset = 0
-    for d in 0:D
+    for d = 0:D
         ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ndfaces = length(dface_to_dof_offset)
-        for cell in 1:ncells
+        for cell = 1:ncells
             ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
             ldface_to_num_own_dofs = ctype_to_ldface_to_num_own_dofs[ctype]
             ldface_to_dface = Dface_to_dfaces[Dface]
             nldfaces = length(ldface_to_num_own_dofs)
-            for ldface in 1:nldfaces
+            for ldface = 1:nldfaces
                 num_own_dofs = ldface_to_num_own_dofs[ldface]
                 dface = ldface_to_dface[ldface]
                 dface_to_dof_offset[dface] = num_own_dofs
             end
         end
-        for dface in 1:ndfaces
+        for dface = 1:ndfaces
             num_own_dofs = dface_to_dof_offset[dface]
             dface_to_dof_offset[dface] = dof_offset
             dof_offset += num_own_dofs
         end
     end
     ndofs = dof_offset
-    cell_to_ptrs = zeros(Int32,ncells+1)
-    for cell in 1:ncells
+    cell_to_ptrs = zeros(Int32, ncells + 1)
+    for cell = 1:ncells
         ctype = cell_to_ctype[cell]
         num_dofs = ctype_to_num_dofs[ctype]
         cell_to_ptrs[cell+1] = num_dofs
     end
     length_to_ptrs!(cell_to_ptrs)
-    ndata = cell_to_ptrs[end]-1
-    cell_to_dofs = JaggedArray(zeros(Int32,ndata),cell_to_ptrs)
+    ndata = cell_to_ptrs[end] - 1
+    cell_to_dofs = JaggedArray(zeros(Int32, ndata), cell_to_ptrs)
     # TODO we assume non oriented
     # Optimize for the oriented case?
     # TODO add different numbering strategies
-    for d in 0:D
+    for d = 0:D
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
         ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
         Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
-        for cell in 1:ncells
+        for cell = 1:ncells
             ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
             ldof_to_dof = cell_to_dofs[cell]
@@ -273,7 +282,7 @@ function generate_dof_ids_step_1(space)
             ldface_to_pindex_to_perm = ctype_to_ldface_to_pindex_to_perm[ctype]
             ldface_to_pindex = Dface_to_ldface_to_pindex[Dface]
             nldfaces = length(ldface_to_dface)
-            for ldface in 1:nldfaces
+            for ldface = 1:nldfaces
                 dface = ldface_to_dface[ldface]
                 own_ldofs = ldface_to_own_ldofs[ldface]
                 dof_offset = dface_to_dof_offset[dface]
@@ -281,7 +290,7 @@ function generate_dof_ids_step_1(space)
                 pindex = ldface_to_pindex[ldface]
                 perm = pindex_to_perm[pindex]
                 n_own_dofs = length(own_ldofs)
-                for i in 1:n_own_dofs
+                for i = 1:n_own_dofs
                     j = perm[i]
                     dof = j + dof_offset
                     own_dof = own_ldofs[i]
@@ -290,34 +299,46 @@ function generate_dof_ids_step_1(space)
             end
         end
     end
-    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
-     cell_to_ctype,cell_to_Dface)
+    (;
+        ndofs,
+        cell_to_dofs,
+        d_to_Dface_to_dfaces,
+        d_to_ctype_to_ldface_to_dofs,
+        d_to_ndfaces,
+        cell_to_ctype,
+        cell_to_Dface,
+    )
 end
 
-function generate_dof_ids_step_2(state,dirichlet_boundary::Nothing)
-    (;ndofs,cell_to_dofs) = state
-    dof_to_tag = zeros(Int32,ndofs)
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
-    dirichlet_dof_location = zeros(Int32,0)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+function generate_dof_ids_step_2(state, dirichlet_boundary::Nothing)
+    (; ndofs, cell_to_dofs) = state
+    dof_to_tag = zeros(Int32, ndofs)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i -> i == 0, dof_to_tag)
+    dirichlet_dof_location = zeros(Int32, 0)
+    (; cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
-    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dof_to_tag = zeros(Int32,ndofs)
+function generate_dof_ids_step_2(state, dirichlet_boundary::AbstractDomain)
+    (;
+        ndofs,
+        cell_to_dofs,
+        d_to_Dface_to_dfaces,
+        d_to_ctype_to_ldface_to_dofs,
+        d_to_ndfaces,
+        cell_to_ctype,
+        cell_to_Dface,
+    ) = state
+    dof_to_tag = zeros(Int32, ndofs)
     N = GT.num_dims(dirichlet_boundary)
     physical_names = dirichlet_boundary |> GT.physical_names
-    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+    Nface_to_tag = zeros(Int32, d_to_ndfaces[N+1])
     mesh = dirichlet_boundary |> GT.mesh
-    classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    classify_mesh_faces!(Nface_to_tag, mesh, N, physical_names)
     ncells = length(cell_to_dofs)
     let d = N
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
-        for cell in 1:ncells
+        for cell = 1:ncells
             ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
             ldof_to_dof = cell_to_dofs[cell]
@@ -325,7 +346,7 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
             ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
             nldfaces = length(ldface_to_dface)
             dofs = cell_to_dofs[cell]
-            for ldface in 1:nldfaces
+            for ldface = 1:nldfaces
                 ldofs = ldface_to_ldofs[ldface]
                 dface = ldface_to_dface[ldface]
                 Nface = dface
@@ -333,48 +354,54 @@ function generate_dof_ids_step_2(state,dirichlet_boundary::AbstractDomain)
                 if tag == 0
                     continue
                 end
-                dof_to_tag[view(dofs,ldofs)] .= tag
+                dof_to_tag[view(dofs, ldofs)] .= tag
             end
         end
     end
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i -> i == 0, dof_to_tag)
     dof_permutation = GT.permutation(free_and_dirichlet_dofs)
     n_free_dofs = length(first(free_and_dirichlet_dofs))
     f = dof -> begin
         dof2 = dof_permutation[dof]
         T = typeof(dof2)
         if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
+            return T(n_free_dofs - dof2)
         end
         dof2
     end
     data = cell_to_dofs.data
     data .= f.(data)
     ndiri = length(last(free_and_dirichlet_dofs))
-    dirichlet_dof_location = ones(Int32,ndiri)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    dirichlet_dof_location = ones(Int32, ndiri)
+    (; cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
-    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dof_to_location = zeros(Int32,ndofs)
-    D = length(d_to_ndfaces)-1
-    for d in D:-1:0
-        for (location,dirichlet_boundary) in dirichlet_boundary_all.domains |> enumerate
+function generate_dof_ids_step_2(state, dirichlet_boundary_all::PiecewiseDomain)
+    (;
+        ndofs,
+        cell_to_dofs,
+        d_to_Dface_to_dfaces,
+        d_to_ctype_to_ldface_to_dofs,
+        d_to_ndfaces,
+        cell_to_ctype,
+        cell_to_Dface,
+    ) = state
+    dof_to_location = zeros(Int32, ndofs)
+    D = length(d_to_ndfaces) - 1
+    for d = D:-1:0
+        for (location, dirichlet_boundary) in dirichlet_boundary_all.domains |> enumerate
             N = GT.num_dims(dirichlet_boundary)
             if d != N
                 continue
             end
             physical_names = dirichlet_boundary |> GT.physical_names
-            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+            Nface_to_tag = zeros(Int32, d_to_ndfaces[N+1])
             mesh = dirichlet_boundary |> GT.mesh
-            classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            classify_mesh_faces!(Nface_to_tag, mesh, N, physical_names)
             ncells = length(cell_to_dofs)
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
             ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
-            for cell in 1:ncells
+            for cell = 1:ncells
                 ctype = cell_to_ctype[cell]
                 Dface = cell_to_Dface[cell]
                 ldof_to_dof = cell_to_dofs[cell]
@@ -382,7 +409,7 @@ function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
                 ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
                 nldfaces = length(ldface_to_dface)
                 dofs = cell_to_dofs[cell]
-                for ldface in 1:nldfaces
+                for ldface = 1:nldfaces
                     ldofs = ldface_to_ldofs[ldface]
                     dface = ldface_to_dface[ldface]
                     Nface = dface
@@ -390,45 +417,45 @@ function generate_dof_ids_step_2(state,dirichlet_boundary_all::PiecewiseDomain)
                     if tag == 0
                         continue
                     end
-                    dof_to_location[view(dofs,ldofs)] .= location
+                    dof_to_location[view(dofs, ldofs)] .= location
                 end
             end
         end
     end
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_location)
+    free_and_dirichlet_dofs = GT.partition_from_mask(i -> i == 0, dof_to_location)
     dof_permutation = GT.permutation(free_and_dirichlet_dofs)
     n_free_dofs = length(first(free_and_dirichlet_dofs))
     f = dof -> begin
         dof2 = dof_permutation[dof]
         T = typeof(dof2)
         if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
+            return T(n_free_dofs - dof2)
         end
         dof2
     end
     data = cell_to_dofs.data
     data .= f.(data)
     dirichlet_dof_location = dof_to_location[last(free_and_dirichlet_dofs)]
-    (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
+    (; cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
-function reference_face_own_dofs(space::AbstractSpace,d)
+function reference_face_own_dofs(space::AbstractSpace, d)
     ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
+    ctype_to_ldface_to_own_ldofs = map(fe -> GT.face_own_dofs(fe, d), ctype_to_reference_fe)
     if GT.conformity(space) === :default
         ctype_to_ldface_to_own_ldofs
     elseif GT.conformity(space) === :L2
-        ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+        ctype_to_num_dofs = map(GT.num_dofs, ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
-        map(ctype_to_num_dofs,ctype_to_ldface_to_own_ldofs) do ndofs,ldface_to_own_ldofs
+        map(ctype_to_num_dofs, ctype_to_ldface_to_own_ldofs) do ndofs, ldface_to_own_ldofs
             map(ldface_to_own_ldofs) do own_ldofs
                 dofs = if d == D
                     collect(1:ndofs)
                 else
                     Int[]
                 end
-                convert(typeof(own_ldofs),dofs)
+                convert(typeof(own_ldofs), dofs)
             end
         end
     else
@@ -436,16 +463,20 @@ function reference_face_own_dofs(space::AbstractSpace,d)
     end
 end
 
-function reference_face_own_dof_permutations(space::AbstractSpace,d)
+function reference_face_own_dof_permutations(space::AbstractSpace, d)
     ctype_to_reference_fe = reference_fes(space)
-    ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
+    ctype_to_ldface_to_pindex_to_perm =
+        map(fe -> GT.face_own_dof_permutations(fe, d), ctype_to_reference_fe)
     if GT.conformity(space) === :default
         ctype_to_ldface_to_pindex_to_perm
     elseif GT.conformity(space) === :L2
-        ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+        ctype_to_num_dofs = map(GT.num_dofs, ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
-        map(ctype_to_num_dofs,ctype_to_ldface_to_pindex_to_perm) do ndofs,ldface_to_pindex_to_perm
+        map(
+            ctype_to_num_dofs,
+            ctype_to_ldface_to_pindex_to_perm,
+        ) do ndofs, ldface_to_pindex_to_perm
             map(ldface_to_pindex_to_perm) do pindex_to_perm
                 map(pindex_to_perm) do perm
                     dofs = if d == D
@@ -453,7 +484,7 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
                     else
                         Int[]
                     end
-                    convert(typeof(perm),dofs)
+                    convert(typeof(perm), dofs)
                 end
             end
         end
@@ -467,7 +498,7 @@ function face_dofs(space::AbstractSpace)
     state.cell_to_dofs # TODO rename face_dofs ?
 end
 
-function face_dofs(space::AbstractSpace,field)
+function face_dofs(space::AbstractSpace, field)
     @assert field == 1
     face_dofs(space)
 end
@@ -564,35 +595,35 @@ function dual_map(a::AbstractSpace)
     nothing
 end
 
-function shape_functions(a::AbstractSpace,dim,field)
+function shape_functions(a::AbstractSpace, dim, field)
     @assert field == 1
-    GT.shape_functions(a,dim)
+    GT.shape_functions(a, dim)
 end
 
-function mask_function(f,bool)
-    x->bool*f(x)
+function mask_function(f, bool)
+    x -> bool * f(x)
 end
 
 # TODO a better name
-function face_shape_function(rid_to_fs,face_to_rid,face,dof)
+function face_shape_function(rid_to_fs, face_to_rid, face, dof)
     if dof == 0 || face == 0
         return first(first(rid_to_fs))
     end
-    fs = reference_value(rid_to_fs,face_to_rid,face)
+    fs = reference_value(rid_to_fs, face_to_rid, face)
     fs[dof]
 end
 
-function shape_functions(a::AbstractSpace,dim)
+function shape_functions(a::AbstractSpace, dim)
     @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+    refid_to_funs = map(GT.shape_functions, refid_to_reffes)
     domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
-    qty = GT.quantity(prototype,domain) do index
+    qty = GT.quantity(prototype, domain) do index
         dict = index.dict
-        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+        face_to_refid_sym = get!(dict, face_to_refid, gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict, refid_to_funs, gensym("refid_to_funs"))
         face = index.face
         dof_per_dim = index.dof_per_dim
         face_around_per_dim = index.face_around_per_dim
@@ -601,12 +632,12 @@ function shape_functions(a::AbstractSpace,dim)
         @assert dof_per_dim !== nothing
         dof = dof_per_dim[dim]
         if face_around_per_dim === nothing || face_around == nothing
-            @term face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
+            @term face_shape_function($refid_to_funs_sym, $face_to_refid_sym, $face, $dof)
         else
             @term begin
-                fs = face_shape_function($refid_to_funs_sym,$face_to_refid_sym,$face,$dof)
-                bool = ($face_around == $(face_around_per_dim[dim])) & ($face  != 0)
-                mask_function(fs,bool)
+                fs = face_shape_function($refid_to_funs_sym, $face_to_refid_sym, $face, $dof)
+                bool = ($face_around == $(face_around_per_dim[dim])) & ($face != 0)
+                mask_function(fs, bool)
             end
         end
     end
@@ -615,9 +646,9 @@ function shape_functions(a::AbstractSpace,dim)
     end
     Ω = GT.domain(a)
     Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
+    ϕ = GT.domain_map(Ωref, Ω)
     ϕinv = GT.inverse_map(ϕ)
-    compose(qty,ϕinv)
+    compose(qty, ϕinv)
 end
 
 # TODO a better name
@@ -627,47 +658,49 @@ function face_function_free_and_dirichlet(
     face_to_dofs,
     free_dofs_to_value,
     diri_dofs_to_value,
-    face)
-    fs = reference_value(rid_to_fs,face_to_rid,face)
+    face,
+)
+    fs = reference_value(rid_to_fs, face_to_rid, face)
     dofs = face_to_dofs[face]
     x -> begin
         ndofs = length(dofs)
         sum(1:ndofs) do idof
             dof = dofs[idof]
-            coeff =  dof > 0 ? free_dofs_to_value[dof] : diri_dofs_to_value[-dof]
+            coeff = dof > 0 ? free_dofs_to_value[dof] : diri_dofs_to_value[-dof]
             f = fs[idof]
-            f(x)*coeff
+            f(x) * coeff
         end
     end
 end
 
-function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
+function discrete_field_qty(a::AbstractSpace, free_vals, diri_vals)
     @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+    refid_to_funs = map(GT.shape_functions, refid_to_reffes)
     domain = GT.domain(a)
     f_prototype = first(first(refid_to_funs))
     z = zero(eltype(free_vals))
-    prototype = x-> z*f_prototype(x) + z*f_prototype(x)
+    prototype = x -> z * f_prototype(x) + z * f_prototype(x)
     face_to_dofs = GT.face_dofs(a)
-    qty = GT.quantity(prototype,domain) do index
+    qty = GT.quantity(prototype, domain) do index
         dict = index.dict
-        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
-        face_to_dofs_sym = get!(dict,face_to_dofs,gensym("face_to_dofs"))
-        free_vals_sym = get!(dict,free_vals,gensym("free_vals"))
-        diri_vals_sym = get!(dict,diri_vals,gensym("diri_vals"))
+        face_to_refid_sym = get!(dict, face_to_refid, gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict, refid_to_funs, gensym("refid_to_funs"))
+        face_to_dofs_sym = get!(dict, face_to_dofs, gensym("face_to_dofs"))
+        free_vals_sym = get!(dict, free_vals, gensym("free_vals"))
+        diri_vals_sym = get!(dict, diri_vals, gensym("diri_vals"))
         face = index.face
         @assert face !== nothing
         @term begin
             face_function_free_and_dirichlet(
-                                             $refid_to_funs_sym,
-                                             $face_to_refid_sym,
-                                             $face_to_dofs_sym,
-                                             $free_vals_sym,
-                                             $diri_vals_sym,
-                                             $face)
+                $refid_to_funs_sym,
+                $face_to_refid_sym,
+                $face_to_dofs_sym,
+                $free_vals_sym,
+                $diri_vals_sym,
+                $face,
+            )
         end
     end
     if is_reference_domain(GT.domain(a))
@@ -675,22 +708,22 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     end
     Ω = GT.domain(a)
     Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
+    ϕ = GT.domain_map(Ωref, Ω)
     ϕinv = GT.inverse_map(ϕ)
-    compose(qty,ϕinv)
+    compose(qty, ϕinv)
 end
 
-function dual_basis(a::AbstractSpace,dim)
+function dual_basis(a::AbstractSpace, dim)
     @assert dual_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
-    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
+    refid_to_funs = map(GT.dual_basis, refid_to_reffes)
     domain = GT.domain(a)
     prototype = first(first(refid_to_funs))
-    qty = GT.quantity(prototype,domain) do index
+    qty = GT.quantity(prototype, domain) do index
         dict = index.dict
-        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+        face_to_refid_sym = get!(dict, face_to_refid, gensym("face_to_refid"))
+        refid_to_funs_sym = get!(dict, refid_to_funs, gensym("refid_to_funs"))
         face = index.face
         dof_per_dim = index.dof_per_dim
         @assert face !== nothing
@@ -706,8 +739,8 @@ function dual_basis(a::AbstractSpace,dim)
     end
     Ω = GT.domain(a)
     Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
-    u -> qty(compose(u,ϕ))
+    ϕ = GT.domain_map(Ωref, Ω)
+    u -> qty(compose(u, ϕ))
 end
 
 function cartesian_product(spaces::AbstractSpace...)
@@ -722,23 +755,23 @@ function mesh(space::CartesianProductSpace)
     GT.mesh(first(space.spaces))
 end
 
-function LinearAlgebra.:×(a::AbstractSpace,b::AbstractSpace)
-    cartesian_product(a,b)
+function LinearAlgebra.:×(a::AbstractSpace, b::AbstractSpace)
+    cartesian_product(a, b)
 end
 
-function LinearAlgebra.:×(a::CartesianProductSpace,b::AbstractSpace)
-    cartesian_product(a.spaces...,b)
+function LinearAlgebra.:×(a::CartesianProductSpace, b::AbstractSpace)
+    cartesian_product(a.spaces..., b)
 end
 
-function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
-    cartesian_product(a,b.spaces...)
+function LinearAlgebra.:×(a::AbstractSpace, b::CartesianProductSpace)
+    cartesian_product(a, b.spaces...)
 end
 
 function components(a::CartesianProductSpace)
     a.spaces
 end
 
-function component(u::CartesianProductSpace,field::Integer)
+function component(u::CartesianProductSpace, field::Integer)
     u.spaces[field]
 end
 
@@ -747,9 +780,9 @@ function num_fields(a::CartesianProductSpace)
 end
 
 function domain(a::CartesianProductSpace)
-    domains = map(GT.domain,a.spaces)
+    domains = map(GT.domain, a.spaces)
     domain = first(domains)
-    if all(dom -> dom == domain,domains)
+    if all(dom -> dom == domain, domains)
         domain
     else
         # TODO generalize the concept of AbstractQuantity
@@ -760,72 +793,72 @@ function domain(a::CartesianProductSpace)
     end
 end
 
-function domain(a::CartesianProductSpace,field)
-    GT.domain(GT.component(a,field))
+function domain(a::CartesianProductSpace, field)
+    GT.domain(GT.component(a, field))
 end
 
 function face_dofs(a::CartesianProductSpace)
     error("Not implemented, not needed in practice")
 end
 
-function face_dofs(a::CartesianProductSpace,field)
+function face_dofs(a::CartesianProductSpace, field)
     face_dofs(a.spaces[field])
 end
 
 function free_dofs(a::CartesianProductSpace)
     nfields = GT.num_fields(a)
     map(1:nfields) do field
-        free_dofs(a,field)
+        free_dofs(a, field)
     end |> BRange
 end
 
-function free_dofs(a::CartesianProductSpace,field)
-    f = component(a,field)
+function free_dofs(a::CartesianProductSpace, field)
+    f = component(a, field)
     free_dofs(f)
 end
 
 function dirichlet_dofs(a::CartesianProductSpace)
     nfields = GT.num_fields(a)
     map(1:nfields) do field
-        dirichlet_dofs(a,field)
+        dirichlet_dofs(a, field)
     end |> BRange
 end
 
-function dirichlet_dofs(a::CartesianProductSpace,field)
-    f = component(a,field)
+function dirichlet_dofs(a::CartesianProductSpace, field)
+    f = component(a, field)
     dirichlet_dofs(f)
 end
 
-function shape_functions(a::CartesianProductSpace,dim)
-    fields = ntuple(identity,GT.num_fields(a))
+function shape_functions(a::CartesianProductSpace, dim)
+    fields = ntuple(identity, GT.num_fields(a))
     map(fields) do field
-        GT.shape_functions(a,dim,field)
+        GT.shape_functions(a, dim, field)
     end
 end
 
-function shape_functions(a::CartesianProductSpace,dim,field)
-    f = component(a,field)
-    qty = shape_functions(f,dim)
+function shape_functions(a::CartesianProductSpace, dim, field)
+    f = component(a, field)
+    qty = shape_functions(f, dim)
     t = GT.term(qty)
-    GT.quantity(GT.prototype(qty),GT.domain(qty)) do index
+    GT.quantity(GT.prototype(qty), GT.domain(qty)) do index
         # TODO field_per_dim[dim] has possibly already a numeric value
         field_per_dim = index.field_per_dim
         dof_per_dim = index.dof_per_dim
         dof = @term begin
             coeff = $field == $(field_per_dim[dim])
-            coeff*$(dof_per_dim[dim])
+            coeff * $(dof_per_dim[dim])
         end
-        dof_per_dim2 = Base.setindex(dof_per_dim,dof,dim)
-        index2 = replace_dof_per_dim(index,dof_per_dim2)
+        dof_per_dim2 = Base.setindex(dof_per_dim, dof, dim)
+        index2 = replace_dof_per_dim(index, dof_per_dim2)
         @assert field_per_dim !== nothing
         @term begin
             bool = $field == $(field_per_dim[dim])
-            mask_function($(t(index2)),bool)
+            mask_function($(t(index2)), bool)
         end
     end
 end
 
-function discrete_field_qty(a::CartesianProductSpace,free_vals,diri_vals)
+function discrete_field_qty(a::CartesianProductSpace, free_vals, diri_vals)
     nothing
 end
 
@@ -833,14 +866,14 @@ function dual_basis(a::CartesianProductSpace)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function dual_basis(a::CartesianProductSpace,field)
+function dual_basis(a::CartesianProductSpace, field)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function discrete_field(space,free_values,dirichlet_values)
-    qty = discrete_field_qty(space,free_values,dirichlet_values)
+function discrete_field(space, free_values, dirichlet_values)
+    qty = discrete_field_qty(space, free_values, dirichlet_values)
     mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
+    DiscreteField(mesh, space, free_values, dirichlet_values, qty)
 end
 
 struct DiscreteField{A,B,C,D,E} <: GT.AbstractQuantity{A}
@@ -852,69 +885,69 @@ struct DiscreteField{A,B,C,D,E} <: GT.AbstractQuantity{A}
 end
 
 Base.iterate(m::DiscreteField) = iterate(components(m))
-Base.iterate(m::DiscreteField,state) = iterate(components(m),state)
-Base.getindex(m::DiscreteField,field::Integer) = component(m,field)
+Base.iterate(m::DiscreteField, state) = iterate(components(m), state)
+Base.getindex(m::DiscreteField, field::Integer) = component(m, field)
 Base.length(m::DiscreteField) = num_fields(m)
 
-function allocate_values(::Type{T},dofs) where T
+function allocate_values(::Type{T}, dofs) where {T}
     n = length(dofs)
-    Vector{T}(undef,n)
+    Vector{T}(undef, n)
 end
 
-function allocate_values(::Type{T},dofs::BRange) where T
+function allocate_values(::Type{T}, dofs::BRange) where {T}
     map(dofs.blocks) do dofs_i
-        allocate_values(T,dofs_i)
+        allocate_values(T, dofs_i)
     end |> BVector
 end
 
-function constant_values(f,dofs)
+function constant_values(f, dofs)
     n = length(dofs)
-    Fill(f,n)
+    Fill(f, n)
 end
 
-function constant_values(f,dofs::BRange)
+function constant_values(f, dofs::BRange)
     map(dofs.blocks) do dofs_i
-        constant_values(f,dofs_i)
+        constant_values(f, dofs_i)
     end |> BVector
 end
 
-function undef_field(::Type{T},space::AbstractSpace) where T
-    free_values = allocate_values(T,GT.free_dofs(space))
-    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
-    discrete_field(space,free_values,dirichlet_values)
+function undef_field(::Type{T}, space::AbstractSpace) where {T}
+    free_values = allocate_values(T, GT.free_dofs(space))
+    dirichlet_values = allocate_values(T, GT.dirichlet_dofs(space))
+    discrete_field(space, free_values, dirichlet_values)
 end
 
-function zero_field(::Type{T},space::AbstractSpace) where T
-    fill_field(zero(T),space)
+function zero_field(::Type{T}, space::AbstractSpace) where {T}
+    fill_field(zero(T), space)
 end
 
-function fill_field!(u::DiscreteField,z)
-    fill!(free_values(u),z)
-    fill!(dirichlet_values(u),z)
+function fill_field!(u::DiscreteField, z)
+    fill!(free_values(u), z)
+    fill!(dirichlet_values(u), z)
     u
 end
 
-function fill_field(z,space::AbstractSpace)
-    u = undef_field(typeof(z),space)
-    fill_field!(u,z)
+function fill_field(z, space::AbstractSpace)
+    u = undef_field(typeof(z), space)
+    fill_field!(u, z)
 end
 
 # TODO rand_field
 
-function undef_dirichlet_field(::Type{T},space::AbstractSpace) where T
-    free_values = constant_values(zero(T),GT.free_dofs(space))
-    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
-    discrete_field(space,free_values,dirichlet_values)
+function undef_dirichlet_field(::Type{T}, space::AbstractSpace) where {T}
+    free_values = constant_values(zero(T), GT.free_dofs(space))
+    dirichlet_values = allocate_values(T, GT.dirichlet_dofs(space))
+    discrete_field(space, free_values, dirichlet_values)
 end
 
-function zero_dirichlet_field(::Type{T},space::AbstractSpace) where T
-    uh = undef_dirichlet_field(T,space)
-    fill!(dirichlet_values(uh),zero(T))
+function zero_dirichlet_field(::Type{T}, space::AbstractSpace) where {T}
+    uh = undef_dirichlet_field(T, space)
+    fill!(dirichlet_values(uh), zero(T))
     uh
 end
 
-function dirichlet_field(::Type{T},space::AbstractSpace) where T
-    zero_dirichlet_field(T,space)
+function dirichlet_field(::Type{T}, space::AbstractSpace) where {T}
+    zero_dirichlet_field(T, space)
 end
 
 function num_fields(u::DiscreteField)
@@ -923,16 +956,16 @@ end
 
 function components(u)
     ntuple(GT.num_fields(u)) do field
-        component(u,field)
+        component(u, field)
     end
 end
 
-function component(u::DiscreteField,field::Integer)
+function component(u::DiscreteField, field::Integer)
     space = GT.space(u)
-    space_field = component(space,field)
-    free_values_field = view(free_values(u),Block(field))
-    dirichlet_values_field = view(dirichlet_values(u),Block(field))
-    discrete_field(space_field,free_values_field,dirichlet_values_field)
+    space_field = component(space, field)
+    free_values_field = view(free_values(u), Block(field))
+    dirichlet_values_field = view(dirichlet_values(u), Block(field))
+    discrete_field(space_field, free_values_field, dirichlet_values_field)
 end
 
 function space(x::DiscreteField)
@@ -1011,48 +1044,53 @@ end
 # Solution: Two options: u is defined either on the domain of the space
 # or on the Dirichlet boundary
 
-function interpolate!(f,u::DiscreteField)
-    interpolate!(f,u,nothing)
+function interpolate!(f, u::DiscreteField)
+    interpolate!(f, u, nothing)
 end
 
-function interpolate!(f,u::DiscreteField,field)
-    interpolate!(f,u,nothing,field)
+function interpolate!(f, u::DiscreteField, field)
+    interpolate!(f, u, nothing, field)
 end
 
-function interpolate_free!(f,u::DiscreteField)
-    interpolate!(f,u,FREE)
+function interpolate_free!(f, u::DiscreteField)
+    interpolate!(f, u, FREE)
 end
 
-function interpolate_free!(f,u::DiscreteField,field)
-    interpolate!(f,u,FREE,field)
+function interpolate_free!(f, u::DiscreteField, field)
+    interpolate!(f, u, FREE, field)
 end
 
-function interpolate_dirichlet!(f,u::DiscreteField)
+function interpolate_dirichlet!(f, u::DiscreteField)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
-    interpolate!(f,u,DIRICHLET)
+    interpolate!(f, u, DIRICHLET)
 end
 
-function interpolate_dirichlet!(f,u::DiscreteField,field)
+function interpolate_dirichlet!(f, u::DiscreteField, field)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
-    interpolate!(f,u,DIRICHLET,field)
+    interpolate!(f, u, DIRICHLET, field)
 end
 
-function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
-    interpolate_impl!(f,u,free_or_diri)
+function interpolate!(f, u::DiscreteField, free_or_diri::Union{Nothing,FreeOrDirichlet})
+    interpolate_impl!(f, u, free_or_diri)
 end
 
-function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
-    ui = component(u,field)
-    interpolate_impl!(f,ui,free_or_diri)
+function interpolate!(
+    f,
+    u::DiscreteField,
+    free_or_diri::Union{Nothing,FreeOrDirichlet},
+    field,
+)
+    ui = component(u, field)
+    interpolate_impl!(f, ui, free_or_diri)
     u
 end
 
-function interpolate_impl!(f,u,free_or_diri;location=1)
+function interpolate_impl!(f, u, free_or_diri; location = 1)
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)
     space = GT.space(u)
     dim = 1
-    sigma = GT.dual_basis(space,dim)
+    sigma = GT.dual_basis(space, dim)
     face_to_dofs = GT.face_dofs(space)
     vals = sigma(f)
     vals_term = GT.term(vals)
@@ -1060,19 +1098,27 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
     dirichlet_dof_location = GT.dirichlet_dof_location(space)
     face = :face
     dof = :dof
-    index = GT.index(;face,dof_per_dim=(dof,))
+    index = GT.index(; face, dof_per_dim = (dof,))
     expr_qty = vals_term(index) |> simplify
-    s_qty = GT.topological_sort(expr_qty,(face,dof))
+    s_qty = GT.topological_sort(expr_qty, (face, dof))
     expr = quote
-        function loop!(args,storage)
-            (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri) = args
-            $(unpack_storage(index.dict,:storage))
+        function loop!(args, storage)
+            (;
+                face_to_dofs,
+                free_vals,
+                diri_vals,
+                nfaces,
+                dirichlet_dof_location,
+                location,
+                free_or_diri,
+            ) = args
+            $(unpack_storage(index.dict, :storage))
             $(s_qty[1])
-            for $face in 1:nfaces
+            for $face = 1:nfaces
                 $(s_qty[2])
                 dofs = face_to_dofs[$face]
                 ndofs = length(dofs)
-                for $dof in 1:ndofs
+                for $dof = 1:ndofs
                     v = $(s_qty[3])
                     gdof = dofs[$dof]
                     if gdof > 0
@@ -1081,7 +1127,8 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
                         end
                     else
                         diri_dof = -gdof
-                        if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                        if free_or_diri != FREE &&
+                           dirichlet_dof_location[diri_dof] == location
                             diri_vals[diri_dof] = v
                         end
                     end
@@ -1092,22 +1139,29 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
     loop! = eval(expr)
     storage = GT.storage(index)
     nfaces = GT.num_faces(domain)
-    args = (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri)
-    invokelatest(loop!,args,storage)
+    args = (;
+        face_to_dofs,
+        free_vals,
+        diri_vals,
+        nfaces,
+        dirichlet_dof_location,
+        location,
+        free_or_diri,
+    )
+    invokelatest(loop!, args, storage)
     u
 end
 
-function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
-    for (location,field) in f.fields |> enumerate
-        interpolate_impl!(field,u,free_or_diri;location)
+function interpolate_impl!(f::PiecewiseField, u, free_or_diri)
+    for (location, field) in f.fields |> enumerate
+        interpolate_impl!(field, u, free_or_diri; location)
     end
 end
 
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
-function iso_parametric_space(dom::ReferenceDomain;
-        dirichlet_boundary=nothing)
-    IsoParametricSpace(dom,dirichlet_boundary)
+function iso_parametric_space(dom::ReferenceDomain; dirichlet_boundary = nothing)
+    IsoParametricSpace(dom, dirichlet_boundary)
 end
 
 struct IsoParametricSpace{A,B} <: AbstractSpace
@@ -1116,21 +1170,21 @@ struct IsoParametricSpace{A,B} <: AbstractSpace
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace)
-    free_and_dirichlet_nodes(V,V.dirichlet_boundary)
+    free_and_dirichlet_nodes(V, V.dirichlet_boundary)
 end
 
-function free_and_dirichlet_nodes(V::IsoParametricSpace,dirichlet_boundary::Nothing)
+function free_and_dirichlet_nodes(V::IsoParametricSpace, dirichlet_boundary::Nothing)
     n = V |> GT.domain |> GT.mesh |> GT.num_nodes
-    GT.partition_from_mask(fill(true,n))
+    GT.partition_from_mask(fill(true, n))
 end
 
-function free_and_dirichlet_nodes(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
+function free_and_dirichlet_nodes(V::IsoParametricSpace, dirichlet_boundary::AbstractDomain)
     mesh = V |> GT.domain |> GT.mesh
     n = mesh |> GT.num_nodes
-    node_to_tag = fill(Int32(0),n)
+    node_to_tag = fill(Int32(0), n)
     tag_to_name = dirichlet_boundary |> GT.physical_names
-    GT.classify_mesh_nodes!(node_to_tag,mesh,tag_to_name)
-    GT.partition_from_mask(i->i==0,node_to_tag)
+    GT.classify_mesh_nodes!(node_to_tag, mesh, tag_to_name)
+    GT.partition_from_mask(i -> i == 0, node_to_tag)
 end
 
 function free_and_dirichlet_dofs(V::IsoParametricSpace)
@@ -1139,24 +1193,24 @@ end
 
 function dirichlet_dof_location(V::IsoParametricSpace)
     ndiri = length(last(free_and_dirichlet_nodes(V)))
-    ones(Int32,ndiri)
+    ones(Int32, ndiri)
 end
 
 function face_dofs(V::IsoParametricSpace)
-    face_dofs(V,V.dirichlet_boundary)
+    face_dofs(V, V.dirichlet_boundary)
 end
 
-function face_dofs(V::IsoParametricSpace,dirichlet_boundary::Nothing)
+function face_dofs(V::IsoParametricSpace, dirichlet_boundary::Nothing)
     domain = GT.domain(V)
     d = GT.face_dim(domain)
     faces = GT.faces(domain)
-    face_nodes(GT.mesh(domain),d)
-    face_to_nodes = view(face_nodes(GT.mesh(domain),d),faces)
+    face_nodes(GT.mesh(domain), d)
+    face_to_nodes = view(face_nodes(GT.mesh(domain), d), faces)
     face_to_nodes
 end
 
-function face_dofs(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
-    face_to_nodes = JaggedArray(GT.face_dofs(V,nothing))
+function face_dofs(V::IsoParametricSpace, dirichlet_boundary::AbstractDomain)
+    face_to_nodes = JaggedArray(GT.face_dofs(V, nothing))
     free_and_dirichlet_nodes = GT.free_and_dirichlet_nodes(V)
     node_to_free_node = GT.permutation(free_and_dirichlet_nodes)
     n_free = length(first(free_and_dirichlet_nodes))
@@ -1165,10 +1219,10 @@ function face_dofs(V::IsoParametricSpace,dirichlet_boundary::AbstractDomain)
         if free_node <= n_free
             return Int(free_node)
         end
-        Int(-(free_node-n_free))
+        Int(-(free_node - n_free))
     end
     face_to_dofs_data = node_to_dof.(face_to_nodes.data)
-    face_to_dofs = JaggedArray(face_to_dofs_data,face_to_nodes.ptrs)
+    face_to_dofs = JaggedArray(face_to_dofs_data, face_to_nodes.ptrs)
     face_to_dofs
 end
 
@@ -1176,15 +1230,15 @@ function reference_fes(V::IsoParametricSpace)
     domain = GT.domain(V)
     d = GT.face_dim(domain)
     # TODO LagrangianMesh face needs to be a AbstractElement
-    reference_faces(GT.mesh(domain),d)
+    reference_faces(GT.mesh(domain), d)
 end
 
 function face_reference_id(V::IsoParametricSpace)
     domain = GT.domain(V)
     faces = GT.faces(domain)
     d = GT.face_dim(domain)
-    face_refid = face_reference_id(GT.mesh(domain),d)
-    view(face_refid,faces)
+    face_refid = face_reference_id(GT.mesh(domain), d)
+    view(face_refid, faces)
 end
 
 function domain(a::IsoParametricSpace)
@@ -1192,23 +1246,19 @@ function domain(a::IsoParametricSpace)
 end
 
 # TODO rename kwarg space?
-function lagrange_space(domain,order;
+function lagrange_space(
+    domain,
+    order;
     conformity = :default,
-    dirichlet_boundary=nothing,
-    space=nothing,
-    major=:component,
-    shape=SCALAR_SHAPE)
+    dirichlet_boundary = nothing,
+    space = nothing,
+    major = :component,
+    shape = SCALAR_SHAPE,
+)
 
-    @assert conformity in (:default,:L2)
+    @assert conformity in (:default, :L2)
 
-    LagrangeSpace(
-                  domain,
-                  order,
-                  conformity,
-                  dirichlet_boundary,
-                  space,
-                  major,
-                  shape)
+    LagrangeSpace(domain, order, conformity, dirichlet_boundary, space, major, shape)
 
 end
 
@@ -1237,7 +1287,7 @@ function face_reference_id(space::LagrangeSpace)
     mesh = domain |> GT.mesh
     cell_to_Dface = domain |> GT.faces
     D = domain |> GT.num_dims
-    Dface_to_ctype = GT.face_reference_id(mesh,D)
+    Dface_to_ctype = GT.face_reference_id(mesh, D)
     cell_to_ctype = Dface_to_ctype[cell_to_Dface]
     cell_to_ctype
 end
@@ -1250,12 +1300,11 @@ function reference_fes(space::LagrangeSpace)
     major = space.major
     shape = space.shape
     space3 = space.space # TODO Ugly
-    ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_geometry = map(GT.geometry,ctype_to_refface)
+    ctype_to_refface = GT.reference_faces(mesh, D)
+    ctype_to_geometry = map(GT.geometry, ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
         space2 = space3 === nothing ? default_space(geometry) : space3
-        lagrangian_fe(geometry,order;space=space2,major,shape)
+        lagrangian_fe(geometry, order; space = space2, major, shape)
     end
     ctype_to_reffe
 end
-

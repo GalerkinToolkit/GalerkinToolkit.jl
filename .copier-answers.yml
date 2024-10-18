@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier
+AnswerStrategy: recommended
+Authors: Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors
+CodeOfConductContact: f.verdugo.rojano@vu.nl
+JuliaIndentation: 4
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Francesc Verdugo
+PackageName: GalerkinToolkit
+PackageOwner: GalerkinToolkit
+PackageUUID: 5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4
+_commit: v0.13.0
+_src_path: https://github.com/JuliaBesties/BestieTemplate.jl

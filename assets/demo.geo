@@ -78,7 +78,7 @@ Circle(17) = {6, 1, 12};
 Circle(18) = {12, 1, 3};
 //+
 Recursive Delete {
-  Point{4}; 
+  Point{4};
 }
 //+
 Curve Loop(1) = {1, -6, -5, -2, -4, -3};
@@ -94,19 +94,19 @@ Curve Loop(4) = {11, 12, 13, 14};
 Plane Surface(2) = {3, 4};
 //+
 Extrude {0, 0, 0.1} {
-  Surface{1}; 
+  Surface{1};
 }
 //+
 Extrude {0, 0, 0.1} {
-  Surface{2}; 
+  Surface{2};
 }
 //+
 Extrude {0, 0, 0.1} {
-  Surface{132}; 
+  Surface{132};
 }
 //+
 Extrude {0, 0, -0.1} {
-  Surface{2}; 
+  Surface{2};
 }
 //+
 Physical Surface("boundary1") = {65, 61};
