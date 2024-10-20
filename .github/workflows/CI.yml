@@ -93,3 +93,5 @@ jobs:
             using GalerkinToolkit
             DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
             doctest(GalerkinToolkit)'
+        with:
+          prefix: xvfb-run -s '-screen 0 1024x768x24'
