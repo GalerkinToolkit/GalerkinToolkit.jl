@@ -88,10 +88,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
+          xvfb-run -s '-screen 0 1024x768x24'
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using GalerkinToolkit
             DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
             doctest(GalerkinToolkit)'
-        with:
-          prefix: xvfb-run -s '-screen 0 1024x768x24'
