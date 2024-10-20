@@ -10,6 +10,7 @@
 /output
 /Manifest.toml
 /docs/build/
+/docs/src/examples/*.md
 .vscode
 GalerkinToolkitExamples_output/
 GalerkinToolkitExamples/Manifest.toml
