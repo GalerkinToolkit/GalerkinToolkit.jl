@@ -44,6 +44,6 @@ uh = GT.solution_field(uhd,x)
 GLMakie.plot(Ω;color=uh,strokecolor=:black)
 
 # !!! warning
-#     TODOs:
+#     TODO:
 #     - 2D domains should be visualized as 2D plots by default
 #     - Transparent background so that figures look good in dark mode.
