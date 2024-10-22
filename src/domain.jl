@@ -65,7 +65,7 @@ function domain(mesh;
     end |> setup_domain
 end
 
-function setup_domain(domain)
+function setup_domain(domain::AbstractDomain)
     if domain.cache !== nothing
         return domain
     end
@@ -75,6 +75,10 @@ function setup_domain(domain)
     refid_to_funs = map(GT.shape_functions,GT.reference_faces(mesh,d))
     cache = domain_cache(;faces,refid_to_funs)
     replace_cache(domain,cache)
+end
+
+function setup_domain(domain::AbstractDomain{<:PMesh})
+    domain
 end
 
 function domain_cache(;kwargs...)
