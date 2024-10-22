@@ -329,7 +329,7 @@ function integral(contribs)
 end
 
 # TODO Rename contributions with measure_contribution ?
-struct Integral{A}
+struct Integral{A}  <: GT.AbstractType
     contributions::A
 end
 contributions(a::Integral) = a.contributions
