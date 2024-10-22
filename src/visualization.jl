@@ -417,7 +417,7 @@ end
 
 # VTK
 
-struct VTKPlot{A,B}
+struct VTKPlot{A,B} <: AbstractType
     plot::A
     vtk::B
 end
