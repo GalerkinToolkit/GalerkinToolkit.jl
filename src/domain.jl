@@ -392,7 +392,7 @@ function index(;
          )
 end
 
-struct Index{A,B,D,E,F,G,H}
+struct Index{A,B,D,E,F,G,H} <: AbstractType
     face::A
     local_face::B
     face_around::D
@@ -1319,7 +1319,7 @@ function piecewiese_field(fields::AbstractQuantity...)
     PiecewiseField(fields)
 end
 
-struct PiecewiseField{A}
+struct PiecewiseField{A} <: AbstractType
     fields::A
 end
 
@@ -1332,7 +1332,7 @@ function piecewiese_domain(domains::AbstractDomain...)
     PiecewiseDomain(domains)
 end
 
-struct PiecewiseDomain{A}
+struct PiecewiseDomain{A} <: AbstractType
     domains::A
 end
 
