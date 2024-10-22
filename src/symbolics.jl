@@ -119,7 +119,7 @@ function topological_sort(expr,deps)
     marks = Dict{UInt,Symbol}()
     marks_deps = Dict{UInt,Int}()
     function visit(expr_n::Symbol)
-        id_n = objectid(expr_n)
+        id_n = hash(expr_n)
         marks[id_n] = expr_n
         i = findfirst(e->expr_n===e,deps)
         j = i === nothing ? 0 : Int(i)
@@ -127,7 +127,7 @@ function topological_sort(expr,deps)
         expr_n , j
     end
     function visit(expr_n)
-        id_n = objectid(expr_n)
+        id_n = hash(expr_n)
         if haskey(marks,id_n)
             if marks[id_n] !== temporary
                 return marks[id_n], marks_deps[id_n]
