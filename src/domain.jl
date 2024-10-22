@@ -70,7 +70,10 @@ function setup_domain(domain)
         return domain
     end
     faces = GT.faces(domain)
-    cache = domain_cache(;faces)
+    mesh = domain |> GT.mesh
+    d = domain |> GT.face_dim
+    refid_to_funs = map(GT.shape_functions,GT.reference_faces(mesh,d))
+    cache = domain_cache(;faces,refid_to_funs)
     replace_cache(domain,cache)
 end
 
@@ -703,8 +706,12 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     sface_to_face = domain |> GT.faces
     face_to_nodes = GT.face_nodes(mesh,d)
     face_to_refid = GT.face_reference_id(mesh,d)
-    refid_to_refface = GT.reference_faces(mesh,d)
-    refid_to_funs = map(GT.shape_functions,refid_to_refface)
+    if haskey(domain.cache,:refid_to_funs)
+        refid_to_funs = domain.cache.refid_to_funs
+    else
+        refid_to_refface = GT.reference_faces(mesh,d)
+        refid_to_funs = map(GT.shape_functions,refid_to_refface)
+    end
     T = eltype(GT.node_coordinates(mesh))
     x = zero(T)
     prototype = y->x
@@ -717,15 +724,13 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
         face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
         node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
         face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_refface_sym = get!(dict,refid_to_refface,gensym("face_to_refid"))
         @term begin
-            face = $sface_to_face_sym[$sface]
             face_function(
                 $refid_to_funs_sym,
                 $face_to_refid_sym,
                 $face_to_nodes_sym,
                 $node_to_coords_sym,
-                $face)
+                $sface_to_face_sym[$sface])
         end
     end
 end
@@ -1024,10 +1029,17 @@ function return_prototype(::typeof(inverse_map_impl),f,x0)
 end
 
 function inverse_map(q::AbstractQuantity)
-    D = q |> GT.domain |> GT.num_dims
+    domain = q |> GT.domain
+    D = domain |> GT.num_dims
     x0 = zero(SVector{D,Float64})
-    x = constant_quantity(x0,GT.domain(q))
-    GT.call(inverse_map_impl,q,x)
+    x = constant_quantity(x0,domain)
+    args = (q,x)
+    prototype = GT.return_prototype(inverse_map_impl,(map(GT.prototype,args)...))
+    fs = map(GT.term,args)
+    GT.quantity(prototype,domain) do index
+        f_exprs = map(f->f(index),fs)
+        @term inverse_map_impl($(f_exprs[1]),$(f_exprs[2]))
+    end
 end
 
 function Base.:∘(a::AbstractQuantity,phi::AbstractQuantity)
