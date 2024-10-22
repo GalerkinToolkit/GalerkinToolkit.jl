@@ -519,7 +519,10 @@ function call(g::AbstractQuantity,args::AbstractQuantity...)
     GT.quantity(prototype,domain) do index
         f_exprs = map(f->f(index),fs)
         g_expr = g_term(index)
-        :($g_expr($(f_exprs...)))
+        # We use call since @rule is not able to
+        # identify function calls on variable slots
+        @term call($g_expr,$(f_exprs...))
+        #:($g_expr($(f_exprs...)))
     end
 end
 

@@ -162,8 +162,21 @@ function simplify(expr)
 end
 
 function simplify(expr::Expr)
-    r001 = @slots a b c d e f g @rule face_function(a,b,c,d,e)(reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
-    expr2 = r001(expr)
+    # r_invmap needs to be processed before r_tabulator
+    # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
+    r_invmap = @slots a b c phi @rule call( a ∘ inverse_map_impl(phi,b) , call(phi,c) ) --> call(a,c)
+    r_tabulator = @slots a b c d e f g @rule call(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
+    rules = [
+             r_invmap,
+             r_tabulator,
+            ]
+    expr2 = nothing
+    for rule in rules
+        expr2 = rule(expr)
+        if expr2 !== nothing
+            break
+        end
+    end
     if expr2 === nothing
         args = map(simplify,expr.args)
         Expr(expr.head,args...)
