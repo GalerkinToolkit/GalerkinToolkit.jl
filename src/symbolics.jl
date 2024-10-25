@@ -173,7 +173,7 @@ function simplify(expr::Expr)
     
     r_tabulator = @slots a b c d e f g @rule call(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
     rules = [
-            #  r_invmap_gradient,
+             r_invmap_gradient,
              r_invmap,
              r_tabulator,
             ]
