@@ -83,6 +83,10 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1'
+      - name: Install and Run xvfb
+        run: |
+          sudo apt-get install -y xvfb
+          xvfb-run -s '-screen 0 1024x768x24'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:
@@ -90,7 +94,7 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get install -y xvfb
       - run: |
-          xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e '
+          julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using GalerkinToolkit
             DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
