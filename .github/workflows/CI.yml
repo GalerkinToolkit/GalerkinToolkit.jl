@@ -87,14 +87,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xorg-dev mesa-utils xvfb libgl1 freeglut3-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+      - name: Start xvfb
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 &  # Start xvfb as a background process
       - uses: julia-actions/julia-buildpkg@v1
+        env:
+          DISPLAY: :99  # Set DISPLAY environment variable for xvfb
       - uses: julia-actions/julia-docdeploy@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install xvfb
-        run: sudo apt-get install -y xvfb
       - run: |
-          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e '
+          xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using GalerkinToolkit
             DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
