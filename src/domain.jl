@@ -540,7 +540,10 @@ end
 
 function call(g,args::AbstractQuantity...)
     domain = args |> first |> GT.domain
-    g_qty = GT.constant_quantity(g,domain)
+    # g_qty = GT.constant_quantity(g,domain)
+    g_qty = GT.quantity(g,domain) do index
+        g
+    end
     call(g_qty,args...)
 end
 

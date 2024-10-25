@@ -165,11 +165,19 @@ function simplify(expr::Expr)
     # r_invmap needs to be processed before r_tabulator
     # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
     r_invmap = @slots a b c phi @rule call( a ∘ inverse_map_impl(phi,b) , call(phi,c) ) --> call(a,c)
+
+    # $(\nabla (f\circ\varphi^{-1}))(\varphi(x))$ -> $(J(\varphi(x)))^{-T} (\nabla f)(x)  $
+    # matrix inversion and jacobian may introduce floating point error
+    jacobian = ForwardDiff.jacobian
+    r_invmap_gradient = @slots a b c g phi @rule call(g::typeof(ForwardDiff.gradient), a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(call(jacobian, phi, c))' * call(g, a, c)
+    
     r_tabulator = @slots a b c d e f g @rule call(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
     rules = [
+            #  r_invmap_gradient,
              r_invmap,
              r_tabulator,
             ]
+
     expr2 = nothing
     for rule in rules
         expr2 = rule(expr)
