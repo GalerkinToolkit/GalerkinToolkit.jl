@@ -539,12 +539,21 @@ function call(g::AbstractQuantity,args::AbstractQuantity{<:PMesh}...)
 end
 
 function call(g,args::AbstractQuantity...)
+    ForwardDiff_functions = Set([ForwardDiff.gradient, ForwardDiff.jacobian, ForwardDiff.hessian])
     domain = args |> first |> GT.domain
-    # g_qty = GT.constant_quantity(g,domain)
-    g_qty = GT.quantity(g,domain) do index
-        g
+    
+    if g in ForwardDiff_functions
+        fs = map(GT.term,args)
+        prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
+        g_expr = Symbol(g)
+        GT.quantity(prototype,domain) do index
+            f_exprs = map(f->f(index),fs)
+            :($g_expr($(f_exprs...)))
+        end
+    else
+        g_qty = GT.constant_quantity(g,domain)
+        call(g_qty,args...)
     end
-    call(g_qty,args...)
 end
 
 function (f::AbstractQuantity)(x::AbstractQuantity)

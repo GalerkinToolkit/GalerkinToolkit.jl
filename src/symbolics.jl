@@ -161,6 +161,9 @@ function simplify(expr)
     expr
 end
 
+gradient = ForwardDiff.gradient
+jacobian = ForwardDiff.jacobian
+hessian = ForwardDiff.hessian
 function simplify(expr::Expr)
     # r_invmap needs to be processed before r_tabulator
     # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
@@ -168,9 +171,10 @@ function simplify(expr::Expr)
 
     # $(\nabla (f\circ\varphi^{-1}))(\varphi(x))$ -> $(J(\varphi(x)))^{-T} (\nabla f)(x)  $
     # matrix inversion and jacobian may introduce floating point error
-    jacobian = ForwardDiff.jacobian
-    r_invmap_gradient = @slots a b c g phi @rule call(g::typeof(ForwardDiff.gradient), a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(call(jacobian, phi, c))' * call(g, a, c)
     
+    # r_invmap_gradient = @slots a b c phi @rule call(gradient, a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(call(jacobian, phi, c))' * call(gradient, a, c)
+    r_invmap_gradient = @slots a b c phi @rule gradient(a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(jacobian(phi, c))' * gradient(a, c)
+
     r_tabulator = @slots a b c d e f g @rule call(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
     rules = [
              r_invmap_gradient,
