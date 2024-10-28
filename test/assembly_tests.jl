@@ -1,6 +1,7 @@
 module AssemblyTests
 
 import GalerkinToolkit as GT
+import PartitionedSolvers as PS
 using GalerkinToolkit: ∫, ×
 using Test
 import ForwardDiff
@@ -151,8 +152,8 @@ l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
 V = GT.iso_parametric_space(Ωref)
 
-x,A,b = GT.linear_problem(Float64,V,a,l)
-x .= A\b
+p = GT.linear_problem(Float64,V,a,l)
+x = PS.matrix(p)\PS.rhs(p)
 uh = GT.solution_field(V,x)
 
 function ∇(u,phi,q)
@@ -164,9 +165,9 @@ end
 a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uh,a,l)
-display(A)
-x .= A\b
+p = GT.linear_problem(uh,a,l)
+display(PS.matrix(p))
+x = PS.matrix(p)\PS.rhs(p)
 
 # Poisson solve (reference domain)
 
@@ -210,8 +211,8 @@ dΩref = GT.measure(Ωref,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uhd,a,l)
-x .= A\b
+p = GT.linear_problem(uhd,a,l)
+x = PS.matrix(p)\PS.rhs(p)
 uh = GT.solution_field(uhd,x)
 
 # TODO
@@ -241,8 +242,8 @@ dΩ = GT.measure(Ω,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
 l(v) = 0
 
-x,A,b = GT.linear_problem(uhd,a,l)
-x .= A\b
+p = GT.linear_problem(uhd,a,l)
+x = PS.matrix(p)\PS.rhs(p)
 uh = GT.solution_field(uhd,x)
 
 eh(q) = u(q) - uh(q)
@@ -268,7 +269,7 @@ gradient(u) = x->ForwardDiff.gradient(u,x)
 ∇(u,x) = GT.call(gradient,u)(x)
 a(u,v) = GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
 l(v) = 0
-x,A,b = GT.linear_problem(Float64,V,a,l)
-A |> display
+p = GT.linear_problem(Float64,V,a,l)
+PS.matrix(p) |> display
 
 end # module

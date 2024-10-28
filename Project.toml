@@ -16,6 +16,7 @@ MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 Metatheory = "e9d8d322-4543-424a-9be4-0cc815abe26c"
 Metis = "2679e427-3c69-5b7f-982b-ece356f1e94b"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
+PartitionedSolvers = "11b65f7f-80ac-401b-9ef2-3db765482d62"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
@@ -36,19 +37,19 @@ ForwardDiff = "0.10"
 Gmsh = "0.3"
 IterativeSolvers = "0.9"
 MPI = "0.20"
-Metatheory = "2"
 Makie = "0.21"
-WriteVTK = "1.21"
+Metatheory = "2"
 Metis = "1"
 PartitionedArrays = "0.5.4"
 SparseArrays = "1"
 StaticArrays = "1"
+WriteVTK = "1.21"
 julia = "1.10"
 
 [extras]
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
-WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [targets]
 test = ["Test", "GLMakie", "WriteVTK"]

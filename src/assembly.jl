@@ -137,20 +137,35 @@ function assemble_vector(integral::Integral,space,::Type{T};
     ) where T
 
     setup = vector_strategy.init(GT.free_dofs(space),T)
-    state0 = (;integral,space,vector_strategy,setup)
-    state1 = assemble_vector_count(state0)
+    state0 = (;space,vector_strategy,setup)
+    state1 = assemble_vector_count(integral,state0)
     state2 = assemble_vector_allocate(state1)
-    state3 = assemble_vector_fill(state2)
-    result, cache = assemble_vector_compress(state3)
+    state3 = assemble_vector_fill!(integral,state2)
+    b, bcache = assemble_vector_compress(state3)
+    cache = (;bcache,state2)
     if val_parameter(reuse) == false
-        result
+        b
     else
-        result, cache
+        b, cache
     end
 end
 
-function assemble_vector_count(state)
-    (;integral,space,vector_strategy,setup) = state
+function assemble_vector!(f,space,b,cache)
+    dim = 1
+    dv = GT.shape_functions(space,dim)
+    integral = f(dv)
+    assemble_vector!(integral,b,cache)
+end
+
+function assemble_vector!(integral::Integral,b,cache)
+    (;bcache,state2) = cache
+    state3 = assemble_vector_fill!(integral,state2)
+    assemble_vector_compress!(b,bcache,state3)
+    b
+end
+
+function assemble_vector_count(integral,state)
+    (;space,vector_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     fields = ntuple(identity,num_fields)
@@ -196,8 +211,8 @@ function assemble_vector_allocate(state)
     (;alloc,state...)
 end
 
-function assemble_vector_fill(state)
-    (;integral,space,glues,fields,vector_strategy,alloc,setup) = state
+function assemble_vector_fill!(integral,state)
+    (;space,glues,fields,vector_strategy,alloc,setup) = state
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     counter = vector_strategy.counter(setup)
@@ -272,8 +287,14 @@ end
 
 function assemble_vector_compress(state)
     (;alloc,setup,vector_strategy) = state
-    vec, cache = vector_strategy.compress(alloc,setup)
-    vec, (cache,alloc,setup,vector_strategy)
+    b, bcache = vector_strategy.compress(alloc,setup)
+    b, bcache
+end
+
+function assemble_vector_compress!(b,bcache,state)
+    (;alloc,setup,vector_strategy) = state
+    vector_strategy.compress!(b,bcache,alloc,setup)
+    b
 end
 
 function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
@@ -290,20 +311,37 @@ function assemble_matrix(integral::Integral,trial_space,test_space,::Type{T};
         matrix_strategy = monolithic_matrix_assembly_strategy(),
     ) where T
     setup = matrix_strategy.init(free_dofs(test_space),free_dofs(trial_space),T)
-    state0 = (;integral,test_space,trial_space,matrix_strategy,setup)
-    state1 = assemble_matrix_count(state0)
+    state0 = (;test_space,trial_space,matrix_strategy,setup)
+    state1 = assemble_matrix_count(integral,state0)
     state2 = assemble_matrix_allocate(state1)
-    state3 = assemble_matrix_fill(state2)
-    result, cache = assemble_matrix_compress(state3)
+    state3 = assemble_matrix_fill!(integral,state2)
+    A, Acache = assemble_matrix_compress(state3)
+    cache = (;Acache,state2)
     if reuse == false
-        result
+        A
     else
-        result, cache
+        A, cache
     end
 end
 
-function assemble_matrix_count(state)
-    (;integral,test_space,trial_space,matrix_strategy,setup) = state
+function assemble_matrix!(f,trial_space,test_space,A,cache)
+    test_dim = 1
+    trial_dim = 2
+    dv = GT.shape_functions(test_space,test_dim)
+    du = GT.shape_functions(trial_space,trial_dim)
+    integral = f(du,dv)
+    assemble_matrix!(integral,A,cache)
+end
+
+function assemble_matrix!(integral::Integral,A,cache)
+    (;Acache,state2) = cache
+    state3 = assemble_matrix_fill!(integral,state2)
+    assemble_matrix_compress!(A,Acache,state3)
+    A
+end
+
+function assemble_matrix_count(integral,state)
+    (;test_space,trial_space,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields_test = GT.num_fields(test_space)
     num_fields_trial = GT.num_fields(trial_space)
@@ -380,8 +418,8 @@ function assemble_matrix_allocate(state)
     (;alloc,state...)
 end
 
-function assemble_matrix_fill(state)
-    (;integral,test_space,trial_space,fields_test,fields_trial,alloc,glues_test,glues_trial,matrix_strategy,setup) = state
+function assemble_matrix_fill!(integral,state)
+    (;test_space,trial_space,fields_test,fields_trial,alloc,glues_test,glues_trial,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
     num_fields_test = GT.num_fields(test_space)
     num_fields_trial = GT.num_fields(trial_space)
@@ -487,39 +525,99 @@ end
 
 function assemble_matrix_compress(state)
     (;alloc,matrix_strategy,setup) = state
-    A, cache = matrix_strategy.compress(alloc,setup)
-    A, (cache,alloc,setup,matrix_strategy)
+    A, Acache = matrix_strategy.compress(alloc,setup)
+    A, Acache
 end
 
-function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd))
+function assemble_matrix_compress!(A,Acache,state)
+    (;alloc,matrix_strategy,setup) = state
+    matrix_strategy.compress!(A,Acache,alloc,setup)
+    A
+end
+
+function assemble_matrix_and_vector(a,l,U,V,::Type{T};
+        reuse = Val(false),
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+        vector_strategy = monolithic_vector_assembly_strategy(),
+    ) where T
+    A,Acache = assemble_matrix(a,U,V,T;reuse=Val(true),matrix_strategy)
+    b,bcache = assemble_vector(l,V,T;reuse=Val(true),vector_strategy)
+    cache = (;Acache,bcache)
+    if val_parameter(reuse)
+        A,b,cache
+    else
+        A,b
+    end
+end
+
+function assemble_matrix_and_vector!(a,l,U,V,A,b,cache)
+    (;Acache,bcache) = cache
+    assemble_matrix!(a,U,V,A,Acache)
+    assemble_vector!(b,V,b,bcache)
+    A,b
+end
+
+function assemble_matrix_and_vector_with_dirichlet(a,l,U,V,dirichlet_values;kwargs...)
+    T = eltype(dirichlet_values)
+    free_values = constant_values(zero(T),GT.free_dofs(U))
+    ud = discrete_field(U,free_values,dirichlet_values)
+    l2(v) = l(v) - a(ud,v)
+    assemble_matrix_and_vector(a,l2,U,V,T;kwargs...)
+end
+
+function assemble_matrix_and_vector_with_dirichlet!(a,l,U,V,dirichlet_values,A,b,cache)
+    T = eltype(diri_vals)
+    free_values = constant_values(zero(T),GT.free_dofs(U))
+    ud = discrete_field(U,free_values,dirichlet_values)
+    l2(v) = l(v) - a(ud,v)
+    assemble_matrix_and_vector!(a,l2,U,V,A,b,cache)
+end
+
+function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+        vector_strategy = monolithic_vector_assembly_strategy(),
+    )
     U = GT.space(uhd)
-    T = eltype(dirichlet_values(uhd))
-    A = assemble_matrix(a,U,V,T)
-    b = assemble_vector(l,V,T)
-    d = assemble_vector(v->a(uhd,v),V,T)
-    b .= b .- d
+    A,b = assemble_matrix_and_vector_with_dirichlet(a,l,U,V,dirichlet_values(uhd);matrix_strategy,vector_strategy)
     x = similar(b,axes(A,2))
-    x,A,b
+    PS.linear_problem(x,A,b)
+    #T = eltype(dirichlet_values(uhd))
+    #A = assemble_matrix(a,U,V,T)
+    #b = assemble_vector(l,V,T)
+    #d = assemble_vector(v->a(uhd,v),V,T)
+    #b .= b .- d
+    #x = similar(b,axes(A,2))
+    #PS.linear_problem(x,A,b)
 end
 
-function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U) where T
-    A = assemble_matrix(a,U,V,T)
-    b = assemble_vector(l,V,T)
+function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+        vector_strategy = monolithic_vector_assembly_strategy(),
+    ) where T
+    A,b = assemble_matrix_and_vector(a,l,U,V,T;matrix_strategy,vector_strategy)
     x = similar(b,axes(A,2))
-    x,A,b
+    PS.linear_problem(x,A,b)
 end
 
-function solution_field(U::AbstractSpace,x)
+function solution_field(U::AbstractSpace,x::AbstractVector)
     T = eltype(x)
     uhd = zero_dirichlet_field(T,U)
     solution_field(uhd,x)
 end
 
-function solution_field(uhd::DiscreteField,x)
+function solution_field(uhd::DiscreteField,x::AbstractVector)
     diri_vals = dirichlet_values(uhd)
     U = GT.space(uhd)
     free_vals = free_values_from_solution(x,free_dofs(U))
     discrete_field(U,free_vals,diri_vals)
+end
+
+function solution_field(U::AbstractSpace,p::PS.AbstractProblem)
+    solution_field(U,PS.solution(p))
+end
+
+function solution_field(U::DiscreteField,p::PS.AbstractProblem)
+    solution_field(U,PS.solution(p))
 end
 
 function free_values_from_solution(x,dofs)
