@@ -867,6 +867,17 @@ function allocate_values(::Type{T},dofs::BRange) where T
     end |> BVector
 end
 
+function rand_values(::Type{T},dofs) where T
+    n = length(dofs)
+    rand(T,n)
+end
+
+function rand_values(::Type{T},dofs::BRange) where T
+    map(dofs.blocks) do dofs_i
+        rand_values(T,dofs_i)
+    end |> BVector
+end
+
 function constant_values(f,dofs)
     n = length(dofs)
     Fill(f,n)
@@ -881,6 +892,12 @@ end
 function undef_field(::Type{T},space::AbstractSpace) where T
     free_values = allocate_values(T,GT.free_dofs(space))
     dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
+end
+
+function rand_field(::Type{T},space::AbstractSpace) where T
+    free_values = rand_values(T,GT.free_dofs(space))
+    dirichlet_values = rand_values(T,GT.dirichlet_dofs(space))
     discrete_field(space,free_values,dirichlet_values)
 end
 

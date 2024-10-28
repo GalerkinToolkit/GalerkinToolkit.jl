@@ -553,7 +553,7 @@ end
 function assemble_matrix_and_vector!(a,l,U,V,A,b,cache)
     (;Acache,bcache) = cache
     assemble_matrix!(a,U,V,A,Acache)
-    assemble_vector!(b,V,b,bcache)
+    assemble_vector!(l,V,b,bcache)
     A,b
 end
 
@@ -620,6 +620,15 @@ function solution_field(U::DiscreteField,p::PS.AbstractProblem)
     solution_field(U,PS.solution(p))
 end
 
+function solution_field(U::AbstractSpace,p::PS.AbstractSolver)
+    solution_field(U,PS.solution(p))
+end
+
+function solution_field(U::DiscreteField,p::PS.AbstractSolver)
+    solution_field(U,PS.solution(p))
+end
+
+
 function free_values_from_solution(x,dofs)
     x
 end
@@ -635,6 +644,37 @@ end
 
 function free_values_from_solution(x::BVector,dofs::BRange)
     x
+end
+
+function nonlinear_problem(uh0::DiscreteField,r,j,V=GT.space(uh0);
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+        vector_strategy = monolithic_vector_assembly_strategy(),
+    )
+    a0 = j(uh0)
+    l0 = r(uh0)
+    U = GT.space(uh0)
+    x0 = free_values(uh0)
+    T = eltype(x0)
+    A0,b0,cache = assemble_matrix_and_vector(a0,l0,U,V,T;
+       reuse=Val(true),matrix_strategy,vector_strategy)
+    PS.nonlinear_problem(x0,b0,A0,cache) do p
+        x = PS.solution(p)
+        # TODO call to consistent! in parallel code
+        uh = solution_field(uh0,x)
+        a = j(uh)
+        l = r(uh)
+        A = PS.jacobian(p)
+        b = PS.residual(p)
+        ws = PS.workspace(p)
+        if b !== nothing && A !== nothing
+            assemble_matrix_and_vector!(a,l,U,V,A,b,ws)
+        elseif b !== nothing && A === nothing
+            assemble_vector!(l,V,b,ws.bcache)
+        elseif b === nothing && A !== nothing
+            assemble_matrix!(a,U,V,A,ws.Acache)
+        end
+        p = PS.update(p,solution=x,residual=b,jacobian=A)
+    end
 end
 
 
