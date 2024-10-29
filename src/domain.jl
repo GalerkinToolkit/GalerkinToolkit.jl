@@ -699,6 +699,15 @@ function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,f
     sum(i->tab[i,point]*values[i],1:n)
 end
 
+function jacobian_face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+    tab = reference_value(rid_to_tab,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    n = length(values)
+    sum(i->tab[i,point]*transpose(values[i]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
+end
+
+
 function gradient_reference_tabulator(fs,xs)
     # TODO: generalize this function
     f = fs[1]
@@ -715,7 +724,7 @@ function gradient_reference_tabulator(fs,xs)
     A
 end
 
-function face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
+function gradient_face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
     # @assert face_to_rid[face] == face_to_rid2[sface]
     tab = reference_value(rid_to_tab,face_to_rid,face)
     tab[dof, point]
