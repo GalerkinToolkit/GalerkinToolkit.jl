@@ -161,9 +161,9 @@ function simplify(expr)
     expr
 end
 
-gradient = ForwardDiff.gradient
-jacobian = ForwardDiff.jacobian
-hessian = ForwardDiff.hessian
+const gradient = ForwardDiff.gradient
+const jacobian = ForwardDiff.jacobian
+const hessian = ForwardDiff.hessian
 function simplify(expr::Expr)
     # r_invmap needs to be processed before r_tabulator
     # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
@@ -173,20 +173,24 @@ function simplify(expr::Expr)
     # matrix inversion and jacobian may introduce floating point error
     r_invmap_gradient = @slots a b c phi @rule gradient(a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(jacobian(phi, c))' * gradient(a, c)
 
-    # r_tabulator = @slots a b c d e f g @rule call(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
-    r_tabulator = @slots a b c d e f g @rule jacobian(face_function(a,b,c,d,e),reference_value(f,b,e)[g]) --> jacobian_face_function_value(map(gradient_reference_tabulator,a,f),b,c,d,e,g)
+    # we assume to have the same type of reference face (b[e] == h[i])
+    r_tabulator = @slots a b c d e f g h i @rule call(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
+    r_jacobian_tabulator = @slots a b c d e f g h i @rule jacobian(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> jacobian_face_function_value(map(gradient_reference_tabulator,a,f),b,c,d,e,g)
     
-    # TODO: each time we create an AbstractSpace (like the `uhd` and `V` in `linear_problem`) and call `shape_functions`, we generate a subset of a list as the new `face_to_rid`. maybe use hash to identify objects
+
     r_shape_gradient_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule gradient(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
-        gradient_face_shape_function_value(map(gradient_reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
+        face_shape_function_value(map(gradient_reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
+
+    r_shape_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule call(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
+        face_shape_function_value(map(reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
 
     
-    # TODO: orders of rules? if we make tabulator first we will find the inverse map of face/face_shape functions unmaching (e.g. phi = face_function(args...) in invmap rules)
-    # If we make inverse map first, we need to find gradients/jacobians of face/face_shape functions instead of direct calls
     rules = [
              r_invmap_gradient,
              r_invmap,
              r_tabulator,
+             r_jacobian_tabulator,
+             r_shape_tabulator,
              r_shape_gradient_tabulator,
             ]
 

@@ -724,7 +724,7 @@ function gradient_reference_tabulator(fs,xs)
     A
 end
 
-function gradient_face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
+function face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
     # @assert face_to_rid[face] == face_to_rid2[sface]
     tab = reference_value(rid_to_tab,face_to_rid,face)
     tab[dof, point]
