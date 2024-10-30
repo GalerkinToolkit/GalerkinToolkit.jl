@@ -704,7 +704,7 @@ function jacobian_face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_t
     dofs = face_to_dofs[face]
     values = view(dofs_to_value,dofs)
     n = length(values)
-    sum(i->tab[i,point]*transpose(values[i]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
+    sum(i-> values[i] * transpose(tab[i,point]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
 end
 
 
@@ -1431,11 +1431,10 @@ function call_function_symbol(g,args::AbstractQuantity...)
     fs = map(GT.term,args)
     domain = args |> first |> GT.domain
     prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
-    g_expr = Symbol(g)
+    g_expr = nameof(g)
     GT.quantity(prototype,domain) do index
         f_exprs = map(f->f(index),fs)
         new_term = :($g_expr($(f_exprs...)))
-        @term $new_term
     end
 end
 
