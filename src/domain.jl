@@ -1434,8 +1434,20 @@ function call_function_symbol(g,args::AbstractQuantity...)
     g_expr = nameof(g)
     GT.quantity(prototype,domain) do index
         f_exprs = map(f->f(index),fs)
-        new_term = :($g_expr($(f_exprs...)))
+        :($g_expr($(f_exprs...)))
     end
+end
+
+function call_function_symbol(g,args::AbstractQuantity{<:PMesh}...)
+    pargs = map(partition,args)
+
+    q = map(pargs...) do myargs...
+        call_function_symbol(g, myargs...)
+    end
+    domain = args |> first |> GT.domain
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+    GT.quantity(term,prototype,domain)
 end
 
 for op in (:gradient,:jacobian,:hessian)
