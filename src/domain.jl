@@ -699,6 +699,37 @@ function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,f
     sum(i->tab[i,point]*values[i],1:n)
 end
 
+function jacobian_face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+    tab = reference_value(rid_to_tab,face_to_rid,face)
+    dofs = face_to_dofs[face]
+    values = view(dofs_to_value,dofs)
+    n = length(values)
+    sum(i-> values[i] * transpose(tab[i,point]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
+end
+
+
+function gradient_reference_tabulator(fs,xs)
+    # TODO: generalize this function
+    f = fs[1]
+    z = zero(eltype(xs))
+    T = typeof(ForwardDiff.gradient(f, z))
+    nx = length(xs)
+    nf = length(fs)
+    A = Matrix{T}(undef,nf,nx)
+    for j in 1:nx
+        for i in 1:nf
+            A[i,j] = ForwardDiff.gradient(fs[i], xs[j])
+        end
+    end
+    A
+end
+
+function face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
+    # @assert face_to_rid[face] == face_to_rid2[sface]
+    tab = reference_value(rid_to_tab,face_to_rid,face)
+    tab[dof, point]
+end
+
 function reference_value(rid_to_value,face_to_rid,face)
     rid = face_to_rid[face]
     value = rid_to_value[rid]
@@ -1395,10 +1426,34 @@ end
 
 # ForwardDiff
 
+
+function call_function_symbol(g,args::AbstractQuantity...)
+    fs = map(GT.term,args)
+    domain = args |> first |> GT.domain
+    prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
+    g_expr = nameof(g)
+    GT.quantity(prototype,domain) do index
+        f_exprs = map(f->f(index),fs)
+        :($g_expr($(f_exprs...)))
+    end
+end
+
+function call_function_symbol(g,args::AbstractQuantity{<:PMesh}...)
+    pargs = map(partition,args)
+
+    q = map(pargs...) do myargs...
+        call_function_symbol(g, myargs...)
+    end
+    domain = args |> first |> GT.domain
+    term = map(GT.term,q)
+    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+    GT.quantity(term,prototype,domain)
+end
+
 for op in (:gradient,:jacobian,:hessian)
   @eval begin
-      (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(ForwardDiff.$op,a,b)
-      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call(ForwardDiff.$op,GT.constant_quantity(a,GT.domain(b)),b)
-      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call(ForwardDiff.$op,a,GT.constant_quantity(b,domain(a)))
+      (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,a,b)
+      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,GT.constant_quantity(a,GT.domain(b)),b)
+      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call_function_symbol(ForwardDiff.$op,a,GT.constant_quantity(b,domain(a)))
   end
 end
