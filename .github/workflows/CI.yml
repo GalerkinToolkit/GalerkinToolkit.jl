@@ -90,10 +90,10 @@ jobs:
           sudo apt-get install -y xorg-dev mesa-utils xvfb libgl1 freeglut3-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
       - name: Add GLMakie to project environment
         run: DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'using Pkg; Pkg.instantiate(); Pkg.add("GLMakie")'
-      - name: Build Documentation
-        run: DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make.jl")'
       - uses: julia-actions/julia-docdeploy@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           prefix: xvfb-run
+      - name: Testing Documentation
+        run: DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make.jl")'
