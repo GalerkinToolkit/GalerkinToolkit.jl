@@ -5,7 +5,7 @@ module Poisson
 
 import GalerkinToolkit as GT
 using GalerkinToolkit: ∫
-import PartitionedSolvers as ps
+import PartitionedSolvers as PS
 import ForwardDiff
 using StaticArrays
 using LinearAlgebra
@@ -126,19 +126,21 @@ function main_automatic(params)
     @timeit timer "assembly" begin
         if params[:dirichlet_method] === :strong
             # TODO give a hint when dirichlet BCS are homogeneous
-            x,K,b = GT.linear_problem(uhd,a,l)
+            p = GT.linear_problem(uhd,a,l)
         elseif params[:dirichlet_method] === :multipliers
-            x,K,b = GT.linear_problem(Float64,VxQ,A,L)
+            p = GT.linear_problem(Float64,VxQ,A,L)
         else
-            x,K,b = GT.linear_problem(Float64,V,a,l)
+            p = GT.linear_problem(Float64,V,a,l)
         end
     end
 
     @timeit timer "solver" begin
-        P = ps.setup(params[:solver],x,K,b)
+        s = params[:solver](p)
         # TODO the solver should tell if the initial guess will be actually used
+        x = PS.solution(p)
         fill!(x,0) # set initial guess
-        ps.solve!(x,P,b)
+        s = PS.update(s,solution=x)
+        s = PS.solve(s)
         if params[:dirichlet_method] === :strong
             uh = GT.solution_field(uhd,x)
         elseif params[:dirichlet_method] === :multipliers
@@ -210,7 +212,7 @@ function default_params()
     params[:dirichlet_method] = :strong
     params[:integration_degree] = 1
     params[:interpolation_degree] = 2*params[:integration_degree]
-    params[:solver] = ps.lu_solver()
+    params[:solver] = PS.LinearAlgebra_lu
     params[:example_path] = joinpath(mkpath(joinpath(@__DIR__,"..","output")),"example_001")
     params[:export_vtu] = true
     params

@@ -1400,7 +1400,7 @@ for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
   end
 end
 
-for op in (:+,:-,:*,:/,:\)
+for op in (:+,:-,:*,:/,:\,:^)
   @eval begin
       (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
       (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.constant_quantity(a,GT.domain(b)),b)
@@ -1410,7 +1410,7 @@ end
 
 # LinearAlgebra
 
-for op in (:inv,:det)
+for op in (:inv,:det,:norm)
   @eval begin
     (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
   end

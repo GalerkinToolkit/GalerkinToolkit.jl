@@ -487,6 +487,11 @@ function Base.:-(int1::Integral,int2::Integral)
     int1 + (-1)*int2
 end
 
+function Base.:-(int1::Real,int2::Integral)
+    @assert int1 == 0
+    (-1)*int2
+end
+
 function Base.:*(v::Number,int::Integral)
     contribs = map(GT.contributions(int)) do domain_and_contribution
         domain, contribution = domain_and_contribution
