@@ -94,7 +94,7 @@ jobs:
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
-            Pkg.add("GLMakie")'
+            Pkg.build("GLMakie")'
       - name: Build and deploy
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
