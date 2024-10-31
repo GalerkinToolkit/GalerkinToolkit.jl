@@ -115,6 +115,34 @@ function node_colorrange(plt::Plot,name)
     colorrange = (minc,maxc)
 end
 
+function simplexify(plt::Plot)
+    tmesh, d_to_tface_to_face  = simplexify(plt.mesh;glue=Val(true))
+    D = num_dims(tmesh)
+    fdata = [Dict{String,Any}() for d in 0:D]
+    for d in 0:D
+        groups = plt.face_data[d+1]
+        tgroups = fdata[d+1]
+        nfaces = num_faces(plt.mesh,d)
+        ntfaces = num_faces(tmesh,d)
+        face_to_mask = fill(false,nfaces)
+        tface_to_mask = fill(false,ntfaces)
+        tface_to_face = d_to_tface_to_face[d+1]
+        for (k,v) in groups
+            fill!(face_to_mask,false)
+            fill!(tface_to_mask,false)
+            face_to_mask[v] .= true
+            for tface in 1:ntfaces
+                face = tface_to_face[tface]
+                if face != 0
+                    tface_to_mask[tface] = face_to_mask[face]
+                end
+            end
+            tgroups[k] = findall(tface_to_mask)
+        end
+    end
+    Plot(tmesh,fdata,plt.node_data)
+end
+
 function plot(mesh::AbstractMesh)
     Plot(mesh,face_data(mesh),node_data(mesh))
 end

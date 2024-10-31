@@ -3298,11 +3298,8 @@ function mesh_graph(mesh::AbstractMesh;
     end
 end
 
-function simplexify(mesh::AbstractMesh)
-    simplexify_mesh(mesh)
-end
+function simplexify(mesh::AbstractMesh;glue=Val(false))
 
-function simplexify_mesh(mesh)
     D = num_dims(mesh)
     refid_to_refcell = reference_faces(mesh,D)
     @assert length(refid_to_refcell) == 1
@@ -3395,7 +3392,11 @@ function simplexify_mesh(mesh)
             tgroups[k] = findall(tface_to_mask)
         end
     end
-    tmesh
+    if val_parameter(glue)
+        tmesh, d_to_tface_to_face
+    else
+        tmesh
+    end
 end
 
 function simplexify_generate_tface_to_face(

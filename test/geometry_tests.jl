@@ -277,12 +277,11 @@ domain = (0,1,0,1,0,1)
 cells = (2,2,2)
 mesh = GT.cartesian_mesh(domain,cells)
 smesh = GT.simplexify(mesh)
-vtk_grid("smesh",smesh) |> WriteVTK.close
+WriteVTK.vtk_grid("smesh",smesh) |> WriteVTK.close
 
 domain = (0,1,0,1)
 cells = (2,2)
 mesh = GT.cartesian_mesh(domain,cells)
-
 
 mesh = GT.cartesian_mesh(domain,cells,boundary=false)
 mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
