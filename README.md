@@ -43,5 +43,5 @@ Discuss with the package authors before working on any non-trivial contribution.
 
 ## Examples
 
-For examples on how to use `GalerkinToolkit`, check out the [Examples](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/#examples) section of the documentation.
+For usage examples of `GalerkinToolkit`, see the [Examples](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/#examples) section in the documentation.
 
