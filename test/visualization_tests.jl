@@ -108,6 +108,9 @@ for s in  (false,true)
     fig = Makie.plot(mesh;dim=2:3,shrink=0.6,strokecolor=:darkblue)
     display(fig)
 
+    fig = Makie.plot(mesh;dim=0:3,shrink=0.6,strokecolor=:darkblue)
+    display(fig)
+
 end
 
 

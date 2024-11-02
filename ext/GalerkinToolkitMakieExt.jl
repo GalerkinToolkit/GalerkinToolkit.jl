@@ -79,10 +79,15 @@ end
 
 Makie.plottype(::GalerkinToolkit.Plot) = MakiePlot
 Makie.plottype(::GalerkinToolkit.PPlot) = MakiePlot
-
 Makie.plottype(::GalerkinToolkit.AbstractMesh) = MakiePlot
+Makie.plottype(::GalerkinToolkit.PMesh) = MakiePlot
 
 function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.AbstractMesh)
+    plt = GalerkinToolkit.plot(mesh)
+    (plt,)
+end
+
+function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.PMesh)
     plt = GalerkinToolkit.plot(mesh)
     (plt,)
 end
