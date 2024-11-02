@@ -273,9 +273,16 @@ new_mesh, old_to_new = GT.complexify(mesh)
 
 mesh = GT.mesh_from_gmsh(msh)
 
+domain = (0,1,0,1,0,1)
+cells = (2,2,2)
+mesh = GT.cartesian_mesh(domain,cells)
+smesh = GT.simplexify(mesh)
+WriteVTK.vtk_grid("smesh",smesh) |> WriteVTK.close
+
 domain = (0,1,0,1)
 cells = (2,2)
 mesh = GT.cartesian_mesh(domain,cells)
+
 mesh = GT.cartesian_mesh(domain,cells,boundary=false)
 mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
 mesh = GT.cartesian_mesh(domain,cells,boundary=false,simplexify=true)

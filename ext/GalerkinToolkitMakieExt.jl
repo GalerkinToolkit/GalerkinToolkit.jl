@@ -79,10 +79,15 @@ end
 
 Makie.plottype(::GalerkinToolkit.Plot) = MakiePlot
 Makie.plottype(::GalerkinToolkit.PPlot) = MakiePlot
-
 Makie.plottype(::GalerkinToolkit.AbstractMesh) = MakiePlot
+Makie.plottype(::GalerkinToolkit.PMesh) = MakiePlot
 
 function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.AbstractMesh)
+    plt = GalerkinToolkit.plot(mesh)
+    (plt,)
+end
+
+function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.PMesh)
     plt = GalerkinToolkit.plot(mesh)
     (plt,)
 end
@@ -186,7 +191,7 @@ function Makie.plot!(sc::Makie3d{<:Tuple{<:GalerkinToolkit.PPlot}})
     end
 end
 
-function makie_volumes_impl(plt::GalerkinToolkit.Plot)
+function makie_volumes_impl(plt::GalerkinToolkit.Plot;simplexify=Val(false))
     @assert GalerkinToolkit.num_dims(plt.mesh) == 3
     D=3
     d=2
@@ -213,7 +218,11 @@ function makie_volumes_impl(plt::GalerkinToolkit.Plot)
         end
     end
     plt3 = GalerkinToolkit.Plot(mesh3,fd,GalerkinToolkit.node_data(plt))
-    plt3
+    if GalerkinToolkit.val_parameter(simplexify)
+        GalerkinToolkit.simplexify(plt3)
+    else
+        plt3
+    end
 end
 
 Makie.@recipe(Makie3d1d) do scene
@@ -230,7 +239,7 @@ function Makie.plot!(sc::Makie3d1d{<:Tuple{<:GalerkinToolkit.Plot}})
     color = valid_attributes[:color]
     colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
     valid_attributes[:colorrange] = colorrange
-    plt2 = Makie.lift(makie_volumes_impl,plt)
+    plt2 = Makie.lift(p->makie_volumes_impl(p;simplexify=Val(false)),plt)
     makie2d1d!(sc,valid_attributes,plt2)
 end
 
@@ -329,6 +338,7 @@ function setup_colors_impl(plt,color,d)
 end
 
 function makie_faces_impl(plt,color)
+    plt = GalerkinToolkit.simplexify(plt)
     d = 2
     #plt = shrink(plt,scale=0.995)
     plt,color = setup_colors_impl(plt,color,d)

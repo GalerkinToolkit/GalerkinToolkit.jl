@@ -26,6 +26,10 @@ function PartitionedArrays.partition(plt::PPlot)
     plt.partition
 end
 
+function simplexify(plt::PPlot)
+    PPlot(map(simplexify,plt.partition))
+end
+
 function face_data(plt::Plot,d;merge_dims=Val(false))
     if val_parameter(merge_dims)
         mesh = plt.mesh
@@ -113,6 +117,61 @@ function node_colorrange(plt::Plot,name)
     minc = minimum(allcolors)
     maxc = maximum(allcolors)
     colorrange = (minc,maxc)
+end
+
+function complexify(plt::Plot)
+    mesh = plt.mesh
+    tmesh,old_to_new = complexify(mesh)
+    D = num_dims(mesh)
+    fdata = [Dict{String,Any}() for d in 0:D]
+    for d in 0:D
+        groups = plt.face_data[d+1]
+        tgroups = fdata[d+1]
+        nfaces = num_faces(mesh,d)
+        ntfaces = num_faces(tmesh,d)
+        face_to_tface = old_to_new[d+1]
+        tface_to_face = zeros(Int32,ntfaces)
+        tface_to_face[face_to_tface] = 1:nfaces
+        for (k,v) in groups
+            tface_to_mask = similar(v,ntfaces)
+            fill!(tface_to_mask,zero(eltype(tface_to_mask)))
+            for tface in 1:ntfaces
+                face = tface_to_face[tface]
+                if face != 0
+                    tface_to_mask[tface] = v[face]
+                end
+            end
+            tgroups[k] = tface_to_mask
+        end
+    end
+    Plot(tmesh,fdata,plt.node_data)
+end
+
+function simplexify(plt::Plot)
+    plt = complexify(plt)
+    mesh = plt.mesh
+    tmesh, d_to_tface_to_face  = simplexify(mesh;glue=Val(true))
+    D = num_dims(tmesh)
+    fdata = [Dict{String,Any}() for d in 0:D]
+    for d in 0:D
+        groups = plt.face_data[d+1]
+        tgroups = fdata[d+1]
+        nfaces = num_faces(mesh,d)
+        ntfaces = num_faces(tmesh,d)
+        tface_to_face = d_to_tface_to_face[d+1]
+        for (k,v) in groups
+            tface_to_mask = similar(v,ntfaces)
+            fill!(tface_to_mask,zero(eltype(tface_to_mask)))
+            for tface in 1:ntfaces
+                face = tface_to_face[tface]
+                if face != 0
+                    tface_to_mask[tface] = v[face]
+                end
+            end
+            tgroups[k] = tface_to_mask
+        end
+    end
+    Plot(tmesh,fdata,plt.node_data)
 end
 
 function plot(mesh::AbstractMesh)
