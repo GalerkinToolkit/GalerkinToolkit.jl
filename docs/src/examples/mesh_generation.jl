@@ -20,13 +20,12 @@ function ex()
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
- #ex()
+ex()
 
 # !!! warning
 #     TODO: Visualization only working for simplices at the moment
 
 # Generate a Cartesian mesh of the 2D domain $(0,1)\times(2,3)$ and visualize it.
-
 
 function ex()
     domain = (0,1,2,3)
@@ -35,7 +34,7 @@ function ex()
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
- #ex()
+ex()
 
 
 # Now visualize all objects (vertices, edges, faces) in the mesh.

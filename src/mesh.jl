@@ -3300,11 +3300,15 @@ end
 
 function simplexify(mesh::AbstractMesh;glue=Val(false))
 
+    # TODO add attributes to mesh to figure out if we really
+    # need to simplexify and/or complexify
+    #mesh, = complexify(mesh)
+
     D = num_dims(mesh)
     refid_to_refcell = reference_faces(mesh,D)
-    @assert length(refid_to_refcell) == 1
+    #@assert length(refid_to_refcell) == 1
     refcell = first(refid_to_refcell)
-    @assert order(refcell) == 1
+    #@assert order(refcell) == 1
     ltmesh = simplexify(geometry(refcell))
 
     ltcell_to_lnodes = face_nodes(ltmesh,D)
@@ -3360,7 +3364,11 @@ function simplexify(mesh::AbstractMesh;glue=Val(false))
         tcell_to_tfaces = JaggedArray(face_incidence(ttopo,D,d))
         lface_to_lnodes = face_nodes(boundary(refcell),d)
         ltface_to_ltnodes = face_nodes(boundary(reftcell),d)
-        ntfaces = maximum(tcell_to_tfaces.data)
+        if length(tcell_to_tfaces.data) != 0
+            ntfaces = maximum(tcell_to_tfaces.data)
+        else
+            ntfaces = 0
+        end
         tface_to_face = simplexify_generate_tface_to_face(
                                                           cell_to_faces,
                                                           tcell_to_tfaces,
