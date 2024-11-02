@@ -11,65 +11,61 @@ import Metis
 
 # ## Cartesian meshes
 #
-# Generate a Cartesian mesh of the 3D domain $(0,1)\times(2,3)\times(-1,1)$ using 10 cells per direction and visualize it.
+# Generate a Cartesian mesh of the 3D domain $(0,1)\times(2,3)\times(-1,1)$ using 5 cells per direction and visualize it.
 
 function ex()
     domain = (0,1,1,3,-1,1)
-    cells = (10,10,10)
+    cells = (5,5,5)
     mesh = GT.cartesian_mesh(domain,cells)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
- #ex()
-
-# !!! warning
-#     TODO: Visualization only working for simplices at the moment
+ex()
 
 # Generate a Cartesian mesh of the 2D domain $(0,1)\times(2,3)$ and visualize it.
 
-
 function ex()
     domain = (0,1,2,3)
-    cells = (10,10)
+    cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
- #ex()
+ex()
 
 
 # Now visualize all objects (vertices, edges, faces) in the mesh.
 
 function ex()
     domain = (0,1,2,3)
-    cells = (10,10)
+    cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells)
-    GLMakie.plot(mesh,color=:pink,shrink=0.6,dim=(0:2))
+    GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
- #ex()
+ex()
 
 
 # Now, do not generate low-dimensional objects on the interior of the mesh
 
 function ex()
     domain = (0,1,2,3)
-    cells = (10,10)
+    cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;complexify=false)
-    GLMakie.plot(mesh,color=:pink,shrink=0.6,dim=(0:2))
+    GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
- #ex()
+ex()
 
-# !!! warning
-#     TODO: Error if dim=0:2
+# !!! note
+#     Most algorithms require working with a polytopal complex (i.e., a mesh containing all low dimensional objects). Thus using the option `complexify=false` is not recommended, unless you know what you are doing.
 #
 
 # Now, use triangles instead of squares.
 
 function ex()
     domain = (0,1,2,3)
-    cells = (10,10)
+    cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
@@ -143,10 +139,10 @@ function ex()
     parts_per_dir = (2,2)
     parts = LinearIndices((prod(parts_per_dir),))
     mesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
-    GLMakie.plot(mesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
+    GLMakie.plot(mesh;color=GT.FaceData("__OWNER__"),strokecolor=:blue)
 end
 
- #ex()
+ex()
 
 
 # !!! warning
@@ -173,7 +169,7 @@ function ex()
     GLMakie.plot(mesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
 end
 
- #ex()
+ex()
 
 # Generate a mesh on a single machine (using Gmsh in this case), partition it using Metis into 4 parts, and visualize it.
 
@@ -229,11 +225,5 @@ ex()
 #     
 
 
-# ## Mesh transformations
+# ## Meshes from arrays
 #
-# !!! warning
-#     TODO
-#     * Simplexify
-#     * Complexify
-#     * Refine uniformly
-#     
