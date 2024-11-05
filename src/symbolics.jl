@@ -157,6 +157,129 @@ function topological_sort(expr,deps)
     expr_L
 end
 
+function concat_blocks(exprs)
+    Expr(:block, vcat(map(x -> x.args, exprs)...)...)
+end
+
+function get_export_symbols(expr_src, exprs_dst)
+    vars = Set{Symbol}()
+    result = Set{Symbol}()
+    function findvars!(a)
+        nothing
+    end
+    function findvars!(expr::Expr)
+        if  expr.head === :(=)
+            var = expr.args[1]
+            push!(vars, var)
+        else
+            map(findvars!, expr.args)
+        end
+        nothing
+    end
+
+    function findexports!(a)
+        if a in vars
+            push!(result, a)
+        end
+        nothing
+    end
+    function findexports!(expr::Expr)
+        map(findexports!, expr.args)
+        nothing
+    end
+
+    findvars!(expr_src)
+    map(findexports!, exprs_dst)
+    result
+end
+
+### TODO: rename it
+function rewrite_export_symbols(expr_src, exprs_dst, len_loop_src, loop_idx_src, prototype_idx_src=1)
+    export_symbols = get_export_symbols(expr_src, exprs_dst)
+    newname_export_symbols = marks = Dict{Symbol,Symbol}()
+    for s in export_symbols
+        newname_export_symbols[s] = gensym()
+    end
+
+
+    # TODO: allocate memory on stack?
+    # set the first elem
+
+    expr_alloc = (quote 
+        $v = Vector{typeof($k)}(undef, $len_loop_src)
+        $v[$prototype_idx_src] = $k
+    end for (k, v) in newname_export_symbols)
+    
+    
+    expr_precomputation = quote
+        $loop_idx_src = $prototype_idx_src
+        $(expr_src)
+        $(concat_blocks(expr_alloc))
+    end
+
+    function rewrite(a)
+        if a in export_symbols
+            :($(newname_export_symbols[a])[$loop_idx_src])
+        else
+            a 
+        end
+    end
+
+    function rewrite(expr::Expr)
+        Expr(expr.head, map(rewrite, expr.args)...)
+    end
+    
+    # TODO: rewrite expr_src & expr_dst
+    
+    # return mem alloc, src loop, dst loop
+    (expr_precomputation, rewrite(expr_src), map(rewrite, exprs_dst))
+end
+
+function topological_sort_power(expr,deps)
+    # topological sort with 2^(length(deps)) dep blocks
+    temporary = gensym()
+    expr_L = [Expr(:block) for _ in 1:2^length(deps)]
+    marks = Dict{UInt,Symbol}()
+    marks_deps = Dict{UInt,Int}()
+    function visit(expr_n::Symbol)
+        id_n = hash(expr_n)
+        marks[id_n] = expr_n
+        i = findfirst(e->expr_n===e,deps)
+        j = i === nothing ? 0 : 2^(Int(i)-1)
+        marks_deps[id_n] = j
+        expr_n , j
+    end
+    function visit(expr_n)
+        id_n = hash(expr_n)
+        if haskey(marks,id_n)
+            if marks[id_n] !== temporary
+                return marks[id_n], marks_deps[id_n]
+            else
+                error("Graph has cycles! This is not possible.")
+            end
+        end
+        marks[id_n] = temporary
+        var = gensym()
+        if isa(expr_n,Expr)
+            args = expr_n.args
+            r = map(visit,args)
+            args_var = map(first,r)
+            j = reduce(|, map(last,r))
+            expr_n_new = Expr(expr_n.head,args_var...)
+            assignment = :($var = $expr_n_new)
+        else
+            j = 0
+            assignment = :($var = $expr_n)
+        end
+        marks[id_n] = var
+        marks_deps[id_n] = j
+        push!(expr_L[j+1].args,assignment)
+        var, j
+    end
+    visit(expr)
+    expr_L
+end
+
 function simplify(expr)
     expr
 end

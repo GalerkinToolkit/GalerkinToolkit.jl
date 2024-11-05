@@ -234,8 +234,12 @@ function assemble_vector_fill!(integral,state)
         expr_qty = term_qty(index) |> simplify
         expr_npoints = term_npoints(index) |> simplify
         # TODO merge statements
-        s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
+        # s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
+        s_qty = GT.topological_sort_power(expr_qty,(sface,face_around,idof,point))
         s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        # TODO: try other dependencies
+        (s_alloc, s_src, slist_dst) = rewrite_export_symbols(concat_blocks(s_qty[9:12]), [concat_blocks(s_qty[13:16])], :npoints, :point)
+        s_dst = concat_blocks(slist_dst)
         expr = quote
             function loop!(counter,args,storage)
                 (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup) = args
@@ -253,15 +257,19 @@ function assemble_vector_fill!(integral,state)
                         if face == 0
                             continue
                         end
-                        $(s_qty[3])
+                        $(concat_blocks(s_qty[3:4]))
                         dofs = face_to_dofs[face]
                         ndofs = length(dofs)
+                        $(s_alloc)
+                        for $point in 2:npoints
+                            $(s_src)
+                        end
                         for $idof in 1:ndofs
-                            $(s_qty[4])
+                            $(concat_blocks(s_qty[5:8]))
                             v = z
                             for $point in 1:npoints
-                                v += $(s_qty[5])
-                            end
+                                v += $(s_dst)
+                            end 
                             dof = dofs[$idof]
                             counter = vector_strategy.set!(alloc,counter,setup,v,dof,field)
                         end
@@ -444,8 +452,12 @@ function assemble_matrix_fill!(integral,state)
         expr_qty = term_qty(index) |> simplify
         expr_npoints = term_npoints(index) |> simplify
         # TODO merge statements
-        s_qty = GT.topological_sort(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
+        # s_qty = GT.topological_sort(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
+        s_qty = GT.topological_sort_power(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
         s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        # TODO: pass a list of dependencies and prototypes to support multiple dependencies
+        (s1_alloc, s1_src, slist1_dst) = rewrite_export_symbols(concat_blocks(s_qty[2^5+1:2^5+2^3]), s_qty[2^5+2^3+1:2^6], :npoints, :point) # independent point computation
+        s1_dst = concat_blocks(slist1_dst) # uses all dependencies
         expr = quote
             function loop!(counter,args,storage)
                 (;sface_to_faces_test,sface_to_faces_around_test,
@@ -468,25 +480,29 @@ function assemble_matrix_fill!(integral,state)
                         if face_test == 0
                             continue
                         end
-                        $(s_qty[3])
+                        $(concat_blocks(s_qty[3:4]))
                         dofs_test = face_to_dofs_test[face_test]
                         ndofs_test = length(dofs_test)
                         for ($face_around_trial,face_trial) in zip(faces_around_trial,faces_trial)
                             if face_trial == 0
                                 continue
                             end
-                            $(s_qty[4])
+                            $(concat_blocks(s_qty[5:8]))
                             dofs_trial = face_to_dofs_trial[face_trial]
                             ndofs_trial = length(dofs_trial)
+                            $(s1_alloc)
+                            for $point in 2:npoints
+                                $(s1_src)
+                            end
                             for $idof_test in 1:ndofs_test
-                                $(s_qty[5])
+                                $(concat_blocks(s_qty[9:16]))
                                 dof_test = dofs_test[$idof_test]
                                 for $idof_trial in 1:ndofs_trial
-                                    $(s_qty[6])
+                                    $(concat_blocks(s_qty[17:32]))
                                     dof_trial = dofs_trial[$idof_trial]
                                     v = z
                                     for $point in 1:npoints
-                                        v += $(s_qty[7])
+                                        v += $(s1_dst)
                                     end
                                     counter = matrix_strategy.set!(alloc,counter,setup,v,dof_test,dof_trial,field_test,field_trial)
                                 end
