@@ -24,6 +24,61 @@ end
 
 Makie.preferred_axis_type(plot::MakiePlot) = Makie.LScene
 
+"""
+    Makie.plot!(gt_quantity::GalerkinToolkit.AbstractType; <keyword arguments>)
+
+Creates a Makie plot for general GalerkinToolkit structs. Plots can be either displayied or saved to a file.
+
+This function is a wrapper around all Makie.plot functions defined below and adds a custom `Makie.LScene`.
+
+# Arguments
+- `gt_quantity::GalerkinToolkit.AbstractType`: The data quantity to plot, defined by the `GalerkinToolkit` package and conforming to `AbstractType`.
+- `save_plot::Bool=false`: A flag indicating whether to save the plot as an image file.
+- `filename::String="makie_plot.png"`: The filename for saving the plot, if `save_plot` is set to `true`.
+- `size::Tuple{Int, Int}=(1500, 1500)`: The size of the plot window, specified as a tuple of width and height in pixels.
+- `bgcolor::Tuple{Symbol, Real}=(:white, 0.0)`: Background color for the plot, defined as a tuple where the first element is a color symbol and the second is an opacity value. If opacity is set to 0.0, the plots will have a transparent background.
+- `kwargs...`: Additional keyword arguments passed to `makieplot!` for further customization of the plot.
+
+# Returns
+- `fig`: A `Makie.Figure` object containing the rendered plot.
+
+# Example
+```julia
+# Assuming `quantity` is a GalerkinToolkit.AbstractType instance
+fig = Makie.plot!(quantity, save_plot=true, filename="output_plot.png", size=(800, 600), bgcolor=(:gray, 0.5))
+```
+"""
+function Makie.plot!(
+    gt_quantity::GalerkinToolkit.AbstractType;
+    save_plot::Bool = false,
+    filename::String = "makie_plot.png",
+    size::Tuple{Int, Int} = (1500, 1500),
+    bgcolor::Tuple{Symbol, Real} = (:white, 0.0),
+    kwargs...,
+)
+
+    bgcolor = bgcolor
+    fig = Figure(; size=size, backgroundcolor=bgcolor)
+
+    scene = Makie.LScene(
+        fig[1, 1],
+        show_axis=true,
+        scenekw = (
+            lights=[],
+            backgroundcolor=bgcolor,
+            clear=true,
+            transparency=true,
+            ),
+    )
+    makieplot!(scene,gt_quantity;kwargs...)
+
+    if save_plot
+        save(filename, fig)
+    end
+
+    fig
+end
+
 function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]
     # TODO these are not reactive
@@ -82,9 +137,11 @@ Makie.plottype(::GalerkinToolkit.PPlot) = MakiePlot
 Makie.plottype(::GalerkinToolkit.AbstractMesh) = MakiePlot
 Makie.plottype(::GalerkinToolkit.PMesh) = MakiePlot
 
-function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.AbstractMesh)
+function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.AbstractMesh}})
+    mesh = sc[1][]
     plt = GalerkinToolkit.plot(mesh)
-    (plt,)
+    valid_attributes = Makie.shared_attributes(sc, MakiePlot)
+    makieplot!(sc,valid_attributes,plt)
 end
 
 function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GalerkinToolkit.PMesh)

@@ -5,7 +5,7 @@ repodir = joinpath(@__DIR__,"..","..","..")
 
 import GalerkinToolkit as GT
 import PartitionedArrays as PA
-import GLMakie
+import CairoMakie
 import Gmsh
 import Metis
 
@@ -17,7 +17,7 @@ function ex()
     domain = (0,1,1,3,-1,1)
     cells = (5,5,5)
     mesh = GT.cartesian_mesh(domain,cells)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
 ex()
@@ -28,7 +28,7 @@ function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
 ex()
@@ -40,7 +40,7 @@ function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
 ex()
@@ -52,7 +52,7 @@ function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;complexify=false)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
 ex()
@@ -67,7 +67,7 @@ function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
 ex()
@@ -81,7 +81,7 @@ ex()
 function ex()
     fn = joinpath(repodir,"assets","mesh1.msh")
     mesh = GT.mesh_from_gmsh(fn)
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
 ex()
@@ -102,7 +102,7 @@ function ex()
     """
     #TODO using GMSH.jl to generate the mesh
     mesh = GT.mesh_from_gmsh_module()
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
  # ex()
@@ -118,7 +118,7 @@ function ex()
     #TODO use julia API to generate the mesh above
     #TODO using GMSH.jl to generate the mesh
     mesh = GT.mesh_from_gmsh_module()
-    GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=:pink,strokecolor=:blue)
 end
 
  # ex()
@@ -139,7 +139,7 @@ function ex()
     parts_per_dir = (2,2)
     parts = LinearIndices((prod(parts_per_dir),))
     mesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
-    GLMakie.plot(mesh;color=GT.FaceData("__OWNER__"),strokecolor=:blue)
+    CairoMakie.plot!(mesh;color=GT.FaceData("__OWNER__"),strokecolor=:blue)
 end
 
 ex()
@@ -166,7 +166,7 @@ function ex()
        parts_per_dir,
        parts,
        partition_strategy)
-    GLMakie.plot(mesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
+    CairoMakie.plot!(mesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
 end
 
 ex()
@@ -183,15 +183,12 @@ function ex()
         graph_partition = Metis.partition(graph,np)
         GT.partition_mesh(mesh,np;graph,graph_partition)
     end |> GT.scatter_mesh
-    #GLMakie.plot(pmesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
-    plt = GT.plot(pmesh)
-    GLMakie.plot(plt,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
+    CairoMakie.plot!(pmesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue,colorrange=(1,np))
 end
 
 ex()
 
 # !!! warning
-#     * TODO plot recipie for PMesh missing
 #     * TODO `color=GT.FaceData("__PART__")` not working
 #     * TODO better syntax for `color=GT.FaceData("__PART__")` ?
 #     
@@ -213,9 +210,7 @@ function ex()
         graph_partition = Metis.partition(graph,np)
         GT.partition_mesh(mesh,np;graph,graph_partition,partition_strategy)
     end |> GT.scatter_mesh
-    #GLMakie.plot(pmesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
-    plt = GT.plot(pmesh)
-    GLMakie.plot(plt,color=GT.FaceData("__OWNER__"),strokecolor=:blue)
+    CairoMakie.plot!(pmesh,color=GT.FaceData("__OWNER__"),strokecolor=:blue,colorrange=(1,np))
 end
 
 ex()

@@ -4,7 +4,7 @@
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
-import GLMakie
+import CairoMakie
 using LinearAlgebra
 
 # ## Linear, steady-state, single-field
@@ -46,7 +46,7 @@ function ex()
     s = PS.LinearAlgebra_lu(p)
     s = PS.solve(s)
     uh = GT.solution_field(uhd,s)
-    GLMakie.plot(Ω;color=uh,strokecolor=:black)
+    CairoMakie.plot!(Ω;color=uh,strokecolor=:black)
 end
 
 ex()
@@ -54,7 +54,6 @@ ex()
 # !!! warning
 #     TODO:
 #     - 2D domains should be visualized as 2D plots by default
-#     - Transparent background so that figures look good in dark mode.
 #
 # ## Nonlinear, steady-state, single-field
 #
@@ -99,7 +98,7 @@ function ex()
     s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)
     s = PS.solve(s)
     uh = GT.solution_field(uh,s)
-    GLMakie.plot(Ω;color=uh,strokecolor=:black)
+    CairoMakie.plot!(Ω;color=uh,strokecolor=:black)
 end
 
 ex()
