@@ -19,28 +19,28 @@ ex()</code></pre><img src="af24224c.png" alt="Example block output"/><p>Generate
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
-ex()</code></pre><img src="e9db543e.png" alt="Example block output"/><p>Now visualize all objects (vertices, edges, faces) in the mesh.</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="bf7b2704.png" alt="Example block output"/><p>Now visualize all objects (vertices, edges, faces) in the mesh.</p><pre><code class="language-julia hljs">function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
-ex()</code></pre><img src="79a28dd2.png" alt="Example block output"/><p>Now, do not generate low-dimensional objects on the interior of the mesh</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="9c1511ca.png" alt="Example block output"/><p>Now, do not generate low-dimensional objects on the interior of the mesh</p><pre><code class="language-julia hljs">function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;complexify=false)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.6,dim=(0:2))
 end
 
-ex()</code></pre><img src="2b4cbb47.png" alt="Example block output"/><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>Most algorithms require working with a polytopal complex (i.e., a mesh containing all low dimensional objects). Thus using the option <code>complexify=false</code> is not recommended, unless you know what you are doing.</p></div></div><p>Now, use triangles instead of squares.</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="7ac7ff01.png" alt="Example block output"/><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>Most algorithms require working with a polytopal complex (i.e., a mesh containing all low dimensional objects). Thus using the option <code>complexify=false</code> is not recommended, unless you know what you are doing.</p></div></div><p>Now, use triangles instead of squares.</p><pre><code class="language-julia hljs">function ex()
     domain = (0,1,2,3)
     cells = (5,5)
     mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
 end
 
-ex()</code></pre><img src="dd37b7b8.png" alt="Example block output"/><h2 id="Gmsh-meshes"><a class="docs-heading-anchor" href="#Gmsh-meshes">Gmsh meshes</a><a id="Gmsh-meshes-1"></a><a class="docs-heading-anchor-permalink" href="#Gmsh-meshes" title="Permalink"></a></h2><p>Read a mesh from a &quot;.msh&quot; file and visualize it.</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="a6eb793f.png" alt="Example block output"/><h2 id="Gmsh-meshes"><a class="docs-heading-anchor" href="#Gmsh-meshes">Gmsh meshes</a><a id="Gmsh-meshes-1"></a><a class="docs-heading-anchor-permalink" href="#Gmsh-meshes" title="Permalink"></a></h2><p>Read a mesh from a &quot;.msh&quot; file and visualize it.</p><pre><code class="language-julia hljs">function ex()
     fn = joinpath(repodir,&quot;assets&quot;,&quot;mesh1.msh&quot;)
     mesh = GT.mesh_from_gmsh(fn)
     GLMakie.plot(mesh,color=:pink,strokecolor=:blue)
@@ -75,7 +75,7 @@ end</code></pre><pre class="documenter-example-output"><code class="nohighlight 
     GLMakie.plot(mesh;color=GT.FaceData(&quot;__OWNER__&quot;),strokecolor=:blue)
 end
 
-ex()</code></pre><img src="7c39e2a3.png" alt="Example block output"/><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO Maybe a different API for parts<em>per</em>dir and parts? TODO Maybe a different API for GT.FaceData(&quot;<strong>OWNER</strong>&quot;)</p></div></div><p>Now, by defining a partition strategy.</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="af49aa91.png" alt="Example block output"/><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO Maybe a different API for parts<em>per</em>dir and parts? TODO Maybe a different API for GT.FaceData(&quot;<strong>OWNER</strong>&quot;)</p></div></div><p>Now, by defining a partition strategy.</p><pre><code class="language-julia hljs">function ex()
     domain = (0,1,2,3)
     cells_per_dir = (10,10)
     parts_per_dir = (2,2)
@@ -91,7 +91,7 @@ ex()</code></pre><img src="7c39e2a3.png" alt="Example block output"/><div class=
     GLMakie.plot(mesh,color=GT.FaceData(&quot;__OWNER__&quot;),strokecolor=:blue)
 end
 
-ex()</code></pre><img src="7c39e2a3-001.png" alt="Example block output"/><p>Generate a mesh on a single machine (using Gmsh in this case), partition it using Metis into 4 parts, and visualize it.</p><pre><code class="language-julia hljs">function ex()
+ex()</code></pre><img src="af49aa91-001.png" alt="Example block output"/><p>Generate a mesh on a single machine (using Gmsh in this case), partition it using Metis into 4 parts, and visualize it.</p><pre><code class="language-julia hljs">function ex()
     np = 4
     parts = LinearIndices((np,))
     pmesh = PA.map_main(parts) do parts
@@ -125,4 +125,4 @@ ex()</code></pre><img src="5826227b.png" alt="Example block output"/><div class=
     GLMakie.plot(plt,color=GT.FaceData(&quot;__OWNER__&quot;),strokecolor=:blue)
 end
 
-ex()</code></pre><img src="84bf939a.png" alt="Example block output"/><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO Why colors are not right?</p></div></div><h2 id="Meshes-from-arrays"><a class="docs-heading-anchor" href="#Meshes-from-arrays">Meshes from arrays</a><a id="Meshes-from-arrays-1"></a><a class="docs-heading-anchor-permalink" href="#Meshes-from-arrays" title="Permalink"></a></h2><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../problem_types/">« Problem types</a><a class="docs-footer-nextpage" href="../interpolations/">Interpolation types »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Friday 8 November 2024 17:05">Friday 8 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ex()</code></pre><img src="84bf939a.png" alt="Example block output"/><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO Why colors are not right?</p></div></div><h2 id="Meshes-from-arrays"><a class="docs-heading-anchor" href="#Meshes-from-arrays">Meshes from arrays</a><a id="Meshes-from-arrays-1"></a><a class="docs-heading-anchor-permalink" href="#Meshes-from-arrays" title="Permalink"></a></h2><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../problem_types/">« Problem types</a><a class="docs-footer-nextpage" href="../interpolations/">Interpolation types »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Friday 8 November 2024 18:22">Friday 8 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
