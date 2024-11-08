@@ -22,7 +22,10 @@ Makie.@recipe(MakiePlot) do scene
     merge(t1,t2)
 end
 
-Makie.preferred_axis_type(plot::MakiePlot) = Makie.LScene
+function Makie.preferred_axis_type(plot::MakiePlot)
+    d = GalerkinToolkit.num_ambient_dims(plot[1][])
+    d == 3 ? Makie.LScene : Makie.Axis
+end
 
 function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]
@@ -259,7 +262,10 @@ Makie.@recipe(Makie2d) do scene
     dt
 end
 
-Makie.preferred_axis_type(plot::Makie2d) = Makie.LScene
+function Makie.preferred_axis_type(plot::Makie2d)
+    d = GalerkinToolkit.num_ambient_dims(plot[1][])
+    d == 3 ? Makie.LScene : Makie.Axis
+end
 
 function Makie.plot!(sc::Makie2d{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]
@@ -370,7 +376,10 @@ Makie.@recipe(Makie2d1d) do scene
     dt
 end
 
-Makie.preferred_axis_type(plot::Makie2d1d) = Makie.LScene
+function Makie.preferred_axis_type(plot::Makie2d1d)
+    d = GalerkinToolkit.num_ambient_dims(plot[1][])
+    d == 3 ? Makie.LScene : Makie.Axis
+end
 
 function Makie.plot!(sc::Makie2d1d{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]
@@ -423,7 +432,10 @@ Makie.@recipe(Makie1d) do scene
     dt
 end
 
-Makie.preferred_axis_type(plot::Makie1d) = Makie.LScene
+function Makie.preferred_axis_type(plot::Makie1d)
+    d = GalerkinToolkit.num_ambient_dims(plot[1][])
+    d == 3 ? Makie.LScene : Makie.Axis
+end
 
 function Makie.plot!(sc::Makie1d{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]
@@ -477,7 +489,10 @@ Makie.@recipe(Makie0d) do scene
     dt
 end
 
-Makie.preferred_axis_type(plot::Makie0d) = Makie.LScene
+function Makie.preferred_axis_type(plot::Makie0d)
+    d = GalerkinToolkit.num_ambient_dims(plot[1][])
+    d == 3 ? Makie.LScene : Makie.Axis
+end
 
 function Makie.plot!(sc::Makie0d{<:Tuple{<:GalerkinToolkit.Plot}})
     plt = sc[1]

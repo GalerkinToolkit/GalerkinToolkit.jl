@@ -32,6 +32,10 @@ function num_dims(mesh::PMesh)
     length(mesh.face_partition) - 1
 end
 
+function num_ambient_dims(mesh::PMesh)
+    PartitionedArrays.getany(map(num_ambient_dims,mesh.mesh_partition))
+end
+
 function physical_names(pmesh::PMesh,d)
      map(pmesh.mesh_partition) do mesh
         GT.physical_names(mesh,d)
