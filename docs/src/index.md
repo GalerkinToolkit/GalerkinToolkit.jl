@@ -25,7 +25,7 @@ This package follows a new approach to implement finite-element methods based on
 For users:
 
 - Read the [Examples](@ref) section to learn how the different pieces of the library work together in different scenarios.
-- Do you want more info about a specific function, macro, or data type? Read the docstrings in the [Reference](@ref) section.
+- Do you want more info about a specific function, macro, or data type? Read the docstrings in the [Users manual](@ref).
 
 For developers:
 
