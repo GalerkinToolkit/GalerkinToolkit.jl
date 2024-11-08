@@ -22,6 +22,14 @@ struct PPlot{A,B} <: AbstractType
     end
 end
 
+function num_ambient_dims(plt::Plot)
+    num_ambient_dims(plt.mesh)
+end
+
+function num_ambient_dims(plt::PPlot)
+    PartitionedArrays.getany(map(num_ambient_dims,plt.partition))
+end
+
 function PartitionedArrays.partition(plt::PPlot)
     plt.partition
 end

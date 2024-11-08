@@ -7,6 +7,7 @@ physical_names(a::AbstractDomain) = a.physical_names
 face_dim(a::AbstractDomain) = GT.val_parameter(a.face_dim)
 # TODO two functions for the same
 num_dims(a::AbstractDomain) = face_dim(a)
+num_ambient_dims(a::AbstractDomain) = num_ambient_dims(mesh(a))
 is_reference_domain(a::AbstractDomain) = a.is_reference_domain |> GT.val_parameter
 face_around(a::AbstractDomain) = a.face_around
 
