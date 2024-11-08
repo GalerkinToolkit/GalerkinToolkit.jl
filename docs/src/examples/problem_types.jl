@@ -7,7 +7,7 @@ import ForwardDiff
 import GLMakie
 using LinearAlgebra
 
-# ## Linear, steady-state, single-field
+# ## Poisson
 #
 # Solve the following Poisson equation on the unit square,
 #
@@ -56,7 +56,7 @@ ex()
 #     - 2D domains should be visualized as 2D plots by default
 #     - Transparent background so that figures look good in dark mode.
 #
-# ## Nonlinear, steady-state, single-field
+# ## p-Laplacian
 #
 # Solve the following p-Laplacian equation on the unit square,
 #
