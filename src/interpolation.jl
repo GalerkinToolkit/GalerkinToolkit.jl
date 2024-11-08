@@ -198,6 +198,10 @@ function values(a,free_or_diri::FreeOrDirichlet)
 end
 
 function generate_dof_ids(space::AbstractSpace)
+    # TODO: a new name?
+    if space.dof_ids_cache !== nothing
+        return space.dof_ids_cache
+    end
     state = generate_dof_ids_step_1(space)
     generate_dof_ids_step_2(state,space |> GT.dirichlet_boundary)
 end
@@ -1123,13 +1127,21 @@ end
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
 function iso_parametric_space(dom::ReferenceDomain;
-        dirichlet_boundary=nothing)
-    IsoParametricSpace(dom,dirichlet_boundary)
+        dirichlet_boundary=nothing, use_cache=true)
+
+    result = IsoParametricSpace(dom,dirichlet_boundary,nothing)
+    if(use_cache)
+        cache = generate_dof_ids(result)
+        IsoParametricSpace(dom,dirichlet_boundary,cache)
+    else
+        result
+    end
 end
 
-struct IsoParametricSpace{A,B} <: AbstractSpace
+struct IsoParametricSpace{A,B,C} <: AbstractSpace
     domain::A
     dirichlet_boundary::B
+    dof_ids_cache::C
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace)
@@ -1214,22 +1226,37 @@ function lagrange_space(domain,order;
     dirichlet_boundary=nothing,
     space=nothing,
     major=:component,
-    shape=SCALAR_SHAPE)
+    shape=SCALAR_SHAPE,
+    use_cache=true)
 
     @assert conformity in (:default,:L2)
-
-    LagrangeSpace(
+    
+    result = LagrangeSpace(
                   domain,
                   order,
                   conformity,
                   dirichlet_boundary,
                   space,
                   major,
-                  shape)
-
+                  shape,
+                  nothing)
+    if(use_cache)
+        cache = generate_dof_ids(result)
+        LagrangeSpace(
+                  domain,
+                  order,
+                  conformity,
+                  dirichlet_boundary,
+                  space,
+                  major,
+                  shape,
+                  cache)
+    else
+        result
+    end
 end
 
-struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
+struct LagrangeSpace{A,B,C,F,G,H,J} <: AbstractSpace
     domain::A
     order::B
     conformity::Symbol
@@ -1237,6 +1264,7 @@ struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     space::F # TODO rename this one?
     major::G
     shape::H
+    dof_ids_cache::J
 end
 
 conformity(space::LagrangeSpace) = space.conformity
