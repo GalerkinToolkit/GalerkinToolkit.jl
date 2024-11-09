@@ -2,69 +2,72 @@
 <html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Problem types · GalerkinToolkit</title><meta name="title" content="Problem types · GalerkinToolkit"/><meta property="og:title" content="Problem types · GalerkinToolkit"/><meta property="twitter:title" content="Problem types · GalerkinToolkit"/><meta name="description" content="Documentation for GalerkinToolkit."/><meta property="og:description" content="Documentation for GalerkinToolkit."/><meta property="twitter:description" content="Documentation for GalerkinToolkit."/><meta property="og:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/examples/problem_types/"/><meta property="twitter:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/examples/problem_types/"/><link rel="canonical" href="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/examples/problem_types/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">GalerkinToolkit</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../">Introduction</a></li><li class="is-active"><a class="tocitem" href>Problem types</a><ul class="internal"><li><a class="tocitem" href="#Poisson"><span>Poisson</span></a></li><li><a class="tocitem" href="#p-Laplacian"><span>p-Laplacian</span></a></li></ul></li><li><a class="tocitem" href="../mesh_generation/">Mesh generation</a></li><li><a class="tocitem" href="../interpolations/">Interpolation types</a></li><li><a class="tocitem" href="../boundary_conditions/">Boundary conditions</a></li><li><a class="tocitem" href="../fields/">Field types</a></li><li><a class="tocitem" href="../solvers/">Solvers</a></li><li><a class="tocitem" href="../posprocessing/">Post-processing</a></li><li><a class="tocitem" href="../visualization/">Visualization</a></li></ul></li><li><span class="tocitem">Users manual</span><ul><li><a class="tocitem" href="../../reference/">Introduction</a></li><li><a class="tocitem" href="../../reference/mesh/">Mesh</a></li><li><a class="tocitem" href="../../reference/integration/">Integration</a></li><li><a class="tocitem" href="../../reference/interpolation/">Interpolation</a></li></ul></li><li><a class="tocitem" href="../../developers_guide/">Developers guide</a></li><li><a class="tocitem" href="../../refindex/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Problem types</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Problem types</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/docs/src/examples/problem_types.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Problem-types"><a class="docs-heading-anchor" href="#Problem-types">Problem types</a><a id="Problem-types-1"></a><a class="docs-heading-anchor-permalink" href="#Problem-types" title="Permalink"></a></h1><pre><code class="language-julia hljs">import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
-import GLMakie
+import GLMakie as Makie
 using LinearAlgebra</code></pre><h2 id="Poisson"><a class="docs-heading-anchor" href="#Poisson">Poisson</a><a id="Poisson-1"></a><a class="docs-heading-anchor-permalink" href="#Poisson" title="Permalink"></a></h2><p>Solve the following Poisson equation on the unit square,</p><p class="math-container">\[\left\lbrace
 \begin{aligned}
 -\Delta u = f  \ &amp;\text{in} \ \Omega,\\
 u = g \ &amp;\text{on}\ \partial\Omega,\\
 \end{aligned}
-\right.\]</p><p>with <span>$f=1$</span> and <span>$g=0$</span>.</p><p>Solve it with a piece-wise linear Lagrange interpolation, and visualize the result.</p><pre><code class="language-julia hljs">function ex()
-    domain = (0,1,0,1)
-    cells = (10,10)
-    mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
-    dirichlet_tag = &quot;dirichlet&quot;
-    GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
-    Ω = GT.interior(mesh)
-    Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
-    k = 1
-    V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
-    uhd = GT.dirichlet_field(Float64,V)
-    g = GT.analytical_field(x-&gt;0,Ω)
-    f = GT.analytical_field(x-&gt;1,Ω)
-    GT.interpolate_dirichlet!(g,uhd)
-    dΩ = GT.measure(Ω,2*k)
-    ∇ = ForwardDiff.gradient
-    a(u,v) = GT.∫( x-&gt;∇(u,x)⋅∇(v,x), dΩ)
-    l(v) = GT.∫( x-&gt;v(x)*f(x), dΩ)
-    p = GT.linear_problem(uhd,a,l)
-    s = PS.LinearAlgebra_lu(p)
-    s = PS.solve(s)
-    uh = GT.solution_field(uhd,s)
-    GLMakie.plot(Ω;color=uh,strokecolor=:black)
-end
-
-ex()</code></pre><img src="447160d4.png" alt="Example block output"/><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO:</p><ul><li>2D domains should be visualized as 2D plots by default</li><li>Transparent background so that figures look good in dark mode.</li></ul></div></div><h2 id="p-Laplacian"><a class="docs-heading-anchor" href="#p-Laplacian">p-Laplacian</a><a id="p-Laplacian-1"></a><a class="docs-heading-anchor-permalink" href="#p-Laplacian" title="Permalink"></a></h2><p>Solve the following p-Laplacian equation on the unit square,</p><p class="math-container">\[\left\lbrace
+\right.\]</p><p>with <span>$f=1$</span> and <span>$g=0$</span>.</p><p>Solve it with a piece-wise bi-linear Lagrange interpolation, and visualize the result.</p><pre><code class="language-julia hljs">domain = (0,1,0,1)
+cells = (10,10)
+mesh = GT.cartesian_mesh(domain,cells)
+dirichlet_tag = &quot;dirichlet&quot;
+GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
+Ω = GT.interior(mesh)
+Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
+k = 1
+V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
+uhd = GT.dirichlet_field(Float64,V)
+g = GT.analytical_field(x-&gt;0,Ω)
+f = GT.analytical_field(x-&gt;1,Ω)
+GT.interpolate_dirichlet!(g,uhd)
+dΩ = GT.measure(Ω,2*k)
+∇ = ForwardDiff.gradient
+a(u,v) = GT.∫( x-&gt;∇(u,x)⋅∇(v,x), dΩ)
+l(v) = GT.∫( x-&gt;v(x)*f(x), dΩ)
+p = GT.linear_problem(uhd,a,l)
+s = PS.LinearAlgebra_lu(p)
+s = PS.solve(s)
+uh = GT.solution_field(uhd,s)
+Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><p><img src="../fig_pt_poisson.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO The unit square should look square not rectangular</p></div></div><h2 id="p-Laplacian"><a class="docs-heading-anchor" href="#p-Laplacian">p-Laplacian</a><a id="p-Laplacian-1"></a><a class="docs-heading-anchor-permalink" href="#p-Laplacian" title="Permalink"></a></h2><p>Solve the following p-Laplacian equation on the unit square,</p><p class="math-container">\[\left\lbrace
 \begin{aligned}
 -\nabla \cdot \left( |\nabla u|^{q-2} \ \nabla u \right) = f\ &amp;\text{in}\ \Omega,\\
 u = g \ &amp;\text{on}\ \partial\Omega,\\
 \end{aligned}
-\right.\]</p><p>with <span>$f=1$</span> and <span>$g=0$</span> and <span>$q=3$</span>.</p><p>Solve it with a piece-wise linear Lagrange interpolation, and visualize the result.</p><pre><code class="language-julia hljs">function ex()
-    domain = (0,1,0,1)
-    cells = (10,10)
-    mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
-    dirichlet_tag = &quot;dirichlet&quot;
-    GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
-    Ω = GT.interior(mesh)
-    Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
-    k = 1
-    V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
-    g = GT.analytical_field(x-&gt;0,Ω)
-    f = GT.analytical_field(x-&gt;1,Ω)
-    q = 3
-    flux(∇u) = norm(∇u)^(q-2) * ∇u
-    dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
-    uh = GT.rand_field(Float64,V)
-    GT.interpolate_dirichlet!(g,uh)
-    dΩ = GT.measure(Ω,2*k)
-    ∇ = ForwardDiff.gradient
-    res(u) = v -&gt; GT.∫( x-&gt; ∇(v,x)⋅GT.call(flux,∇(u,x)) - f(x)*v(x) , dΩ)
-    jac(u) = (du,v) -&gt; GT.∫( x-&gt; ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
-    p = GT.nonlinear_problem(uh,res,jac)
-    linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
-    s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)
-    s = PS.solve(s)
-    uh = GT.solution_field(uh,s)
-    GLMakie.plot(Ω;color=uh,strokecolor=:black)
-end
-
-ex()</code></pre><img src="a5c7ce4a.png" alt="Example block output"/><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Friday 8 November 2024 18:22">Friday 8 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+\right.\]</p><p>with <span>$f=1$</span> and <span>$g=0$</span> and <span>$q=3$</span>.</p><p>Solve it with a piece-wise bi-linear Lagrange interpolation, and visualize the result.</p><pre><code class="language-julia hljs">domain = (0,1,0,1)
+cells = (10,10)
+mesh = GT.cartesian_mesh(domain,cells)
+dirichlet_tag = &quot;dirichlet&quot;
+GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
+Ω = GT.interior(mesh)
+Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
+k = 1
+V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
+g = GT.analytical_field(x-&gt;0,Ω)
+f = GT.analytical_field(x-&gt;1,Ω)
+const q = 3
+flux(∇u) = norm(∇u)^(q-2) * ∇u
+dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
+uh = GT.rand_field(Float64,V)
+GT.interpolate_dirichlet!(g,uh)
+dΩ = GT.measure(Ω,2*k)
+∇ = ForwardDiff.gradient
+res(u) = v -&gt; GT.∫( x-&gt; ∇(v,x)⋅GT.call(flux,∇(u,x)) - f(x)*v(x) , dΩ)
+jac(u) = (du,v) -&gt; GT.∫( x-&gt; ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
+p = GT.nonlinear_problem(uh,res,jac)
+linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
+s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton,linsolve)
+s = PS.solve(s)
+uh = GT.solution_field(uh,s)
+Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Iter     f(x) inf-norm    Step 2-norm
+------   --------------   --------------
+     0     1.647662e+01              NaN
+     1     4.116691e+00     6.516220e+00
+     2     1.026818e+00     1.520661e+00
+     3     2.547777e-01     2.922203e-01
+     4     6.401614e-02     5.259804e-02
+     5     2.782274e-02     4.919582e-02
+     6     4.106995e-03     4.735284e-03
+     7     1.951752e-04     1.350593e-04
+     8     4.682939e-07     1.390473e-07
+     9     2.413628e-12     4.399436e-13</code></pre><p><img src="../fig_pt_plaplacian.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Saturday 9 November 2024 08:07">Saturday 9 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
