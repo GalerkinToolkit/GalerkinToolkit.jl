@@ -22,10 +22,16 @@ end
 
 function plot!(field,plt::GalerkinToolkit.VTKPlot;label)
     plot!(plt.plot,field;label)
+    v = plt.plot.node_data[label]
+    plt.vtk[label,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+    plt
 end
 
 function plot!(plt::GalerkinToolkit.VTKPlot,field;label)
     plot!(plt.plot,field;label)
+    v = plt.plot.node_data[label]
+    plt.vtk[label,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+    plt
 end
 
 function WriteVTK.vtk_grid(filename,plt::GalerkinToolkit.Plot;kwargs...)
