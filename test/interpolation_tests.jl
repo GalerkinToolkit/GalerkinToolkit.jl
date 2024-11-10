@@ -36,6 +36,28 @@ GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
+for major in (:component,:node)
+
+    fe = GT.lagrangian_fe(GT.unit_n_cube(Val(D)),order;shape=(2,),major)
+
+    GT.face_nodes(fe,0)
+    GT.face_nodes(fe,1)
+    GT.face_nodes(fe,2)
+
+    GT.face_dofs(fe,0)
+    GT.face_dofs(fe,1)
+    GT.face_dofs(fe,2)
+
+    GT.face_own_dofs(fe,0)
+    GT.face_own_dofs(fe,1)
+    GT.face_own_dofs(fe,2)
+
+    GT.face_own_dof_permutations(fe,0)
+    GT.face_own_dof_permutations(fe,1)
+    GT.face_own_dof_permutations(fe,2)
+
+end
+
 domain = (0,1,0,1)
 cells = (3,3)
 mesh = GT.cartesian_mesh(domain,cells)
@@ -176,5 +198,17 @@ GT.face_dofs(V)
 V = GT.lagrange_space(Γ,order-1;conformity=:L2)
 GT.reference_fes(V) # TODO why 2 reference fes?
 GT.face_dofs(V)
+
+
+order = 3
+V = GT.lagrange_space(Ω,order,shape=(2,))
+GT.face_dofs(V)
+uh = GT.rand_field(Float64,V)
+
+vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
+    GT.plot!(plt,uh;label="uh")
+    GT.plot!(plt,x->uh(x)[1];label="uh1")
+    GT.plot!(plt,x->uh(x)[2];label="uh2")
+end
 
 end #module
