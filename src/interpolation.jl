@@ -188,6 +188,52 @@ function face_dofs_from_nodes(fe::AbstractLagrangeFE,face_to_nodes)
     end
 end
 
+function conforming(fe::AbstractLagrangeFE)
+    !( is_n_cube(fe.geometry) && fe.space === :P    )
+end
+
+function interior_nodes(fe::AbstractLagrangeFE)
+    if conforming(fe)
+        interior_nodes_from_mesh_face(fe)
+    else
+        collect(Int,1:num_nodes(fe))
+    end
+end
+
+function face_nodes(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_nodes_from_mesh_face(fe,d)
+    else
+        D = num_dims(fe)
+        if d == D
+            [collect(Int32,1:GT.num_nodes(fe))]
+        else
+            [Int32[] for _ in 1:num_faces(boundary(fe.geometry),d)]
+        end
+    end
+end
+
+function face_interior_nodes(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_interior_nodes_from_mesh_face(fe,d)
+    else
+        face_nodes(fe,d)
+    end
+end
+
+function face_interior_node_permutations(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_interior_node_permutations_from_mesh_face(fe,d)
+    else
+        D = num_dims(fe)
+        if  d == D
+            [[ collect(1:num_interior_nodes(fe)) ]]
+        else
+            [[ Int32[] ] for _ in 1:num_faces(boundary(fe.geometry),d)]
+        end
+    end
+end
+
 function face_dofs(a::AbstractLagrangeFE,d)
     face_to_nodes = face_nodes(a,d)
     face_dofs_from_nodes(a,face_to_nodes)
