@@ -11,6 +11,7 @@ struct GenericLagrangeFE{A,B,C,D} <: AbstractLagrangeFE
 end
 
 # TODO remove SCALAR_SHAPE and simply use Number?
+# Scalar case should be a separate reffe?
 struct ScalarShape end
 const SCALAR_SHAPE = ScalarShape()
 
@@ -110,24 +111,197 @@ function dual_basis(fe::AbstractLagrangeFE)
     end
 end
 
+function node_dofs(fe::AbstractLagrangeFE)
+    Tv = fe |> geometry |> int_type
+    node_dofs(Tv,fe)
+end
+
+function node_dofs(::Type{Tv},fe) where Tv
+    nnodes = num_nodes(fe)
+    nodes =  1:nnodes
+    if fe.shape == SCALAR_SHAPE
+        return nodes
+    else
+        ndofs_per_node = prod(val_parameter(fe.shape))
+        init_tensor = SArray{Tuple{val_parameter(fe.shape)...},Tv}
+        node_to_dofs = map(nodes) do node
+            t = ntuple(Val(ndofs_per_node)) do li
+                if fe.major === :component
+                    dof = (node-1)*ndofs_per_node + li
+                elseif fe.major === :node
+                    dof = node + (li-1)*nnodes
+                else
+                    error("Not Implemented")
+                end
+            end
+            init_tensor(t)
+        end
+        return node_to_dofs
+    end
+end
+
+function dof_node(fe::AbstractLagrangeFE)
+    Tv = fe |> geometry |> int_type
+    dof_node(Tv,fe)
+end
+
+function dof_node(::Type{Tv},fe::AbstractLagrangeFE) where Tv
+    ndofs = num_dofs(fe)
+    if a.shape == SCALAR_SHAPE
+        return 1:ndofs
+    else
+        dof_to_node = zeros(Tv,ndofs)
+        node_to_dofs = node_dofs(fe)
+        for (node,dofs) in enumerate(node_to_dofs)
+            for dof in dofs
+                dof_to_node[dof] = node
+            end
+        end
+        return node_to_dofs
+    end
+end
+
+function face_dofs_from_nodes(fe::AbstractLagrangeFE,face_to_nodes)
+    if fe.shape == SCALAR_SHAPE
+        return face_to_nodes
+    else
+        node_to_dofs = node_dofs(fe)
+        lis = LinearIndices(val_parameter(fe.shape))
+        face_to_dofs = map(face_to_nodes) do nodes
+            if fe.major === :component
+                nested = map(nodes) do node
+                    dofs = node_to_dofs[node]
+                    collect(dofs[:])
+                end
+            elseif fe.major === :node
+                nested = map(lis[:]) do li
+                    map(nodes) do node
+                        dofs = node_to_dofs[node]
+                        dofs[li]
+                    end
+                end
+            else
+                error("Not Implemented")
+            end
+            reduce(vcat,nested)
+        end
+    end
+end
+
+function conforming(fe::AbstractLagrangeFE)
+    !( is_n_cube(fe.geometry) && fe.space === :P    )
+end
+
+function interior_nodes(fe::AbstractLagrangeFE)
+    if conforming(fe)
+        interior_nodes_from_mesh_face(fe)
+    else
+        collect(Int,1:num_nodes(fe))
+    end
+end
+
+function face_nodes(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_nodes_from_mesh_face(fe,d)
+    else
+        D = num_dims(fe)
+        if d == D
+            [collect(Int32,1:GT.num_nodes(fe))]
+        else
+            [Int32[] for _ in 1:num_faces(boundary(fe.geometry),d)]
+        end
+    end
+end
+
+function face_interior_nodes(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_interior_nodes_from_mesh_face(fe,d)
+    else
+        face_nodes(fe,d)
+    end
+end
+
+function face_interior_node_permutations(fe::AbstractLagrangeFE,d)
+    if conforming(fe)
+        face_interior_node_permutations_from_mesh_face(fe,d)
+    else
+        D = num_dims(fe)
+        if  d == D
+            [[ collect(1:num_interior_nodes(fe)) ]]
+        else
+            [[ Int32[] ] for _ in 1:num_faces(boundary(fe.geometry),d)]
+        end
+    end
+end
+
 function face_dofs(a::AbstractLagrangeFE,d)
-    @assert a.shape == SCALAR_SHAPE
-    face_nodes(a,d)
+    face_to_nodes = face_nodes(a,d)
+    face_dofs_from_nodes(a,face_to_nodes)
 end
 
 function face_own_dofs(a::AbstractLagrangeFE,d)
-    @assert a.shape == SCALAR_SHAPE
-    face_interior_nodes(a,d)
+    face_to_nodes = face_interior_nodes(a,d)
+    face_dofs_from_nodes(a,face_to_nodes)
 end
 
-function face_own_dof_permutations(a::AbstractLagrangeFE,d)
-    @assert a.shape == SCALAR_SHAPE
-    face_interior_node_permutations(a,d)
+function face_own_dof_permutations(fe::AbstractLagrangeFE,d)
+    face_to_pindex_to_inodes = face_interior_node_permutations(fe,d)
+    if fe.shape == SCALAR_SHAPE
+        return face_to_pindex_to_inodes
+    else
+        Tv = fe |> geometry |> int_type
+        node_to_dofs = node_dofs(fe)
+        face_to_inodes = face_interior_nodes(fe,d)
+        face_to_idofs = face_own_dofs(fe,d)
+        nfaces = length(face_to_inodes)
+        ndofs = num_dofs(fe)
+        dof_to_idof = zeros(Tv,ndofs)
+        lis = LinearIndices(val_parameter(fe.shape))
+        map(1:nfaces) do face
+            pindex_to_inodes = face_to_pindex_to_inodes[face]
+            inode_to_node = face_to_inodes[face]
+            idof_to_dof = face_to_idofs[face]
+            fill!(dof_to_idof,Tv(0))
+            dof_to_idof[idof_to_dof] = 1:length(idof_to_dof)
+            map(pindex_to_inodes) do inodes
+                if fe.major === :component
+                    nested = map(inodes) do inode
+                        node = inode_to_node[inode]
+                        dofs = node_to_dofs[node]
+                        map(dofs) do dof
+                            idof = dof_to_idof[dof]
+                            @assert idof != 0
+                            idof
+                        end
+                    end
+                elseif fe.major === :node
+                    nested = map(lis[:]) do li
+                        map(inodes) do inode
+                            node = inode_to_node[inode]
+                            dofs = node_to_dofs[node]
+                            dof = dofs[li]
+                            idof = dof_to_idof[dof]
+                            @assert idof != 0
+                            idof
+                        end
+                    end
+                else
+                    error("Not Implemented")
+                end
+                reduce(vcat,nested)
+            end
+        end
+    end
 end
 
 function num_dofs(a::AbstractLagrangeFE)
-    @assert a.shape == SCALAR_SHAPE
-    num_nodes(a)
+    nnodes = num_nodes(a)
+    if a.shape == SCALAR_SHAPE
+        nnodes
+    else
+        ndofs_per_node = prod(val_parameter(a.shape))
+        nnodes*ndofs_per_node
+    end
 end
 
 abstract type AbstractSpace <: GT.AbstractType end
@@ -1237,6 +1411,14 @@ struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     space::F # TODO rename this one?
     major::G
     shape::H
+end
+
+function node_dofs(space::LagrangeSpace)
+    node_dofs(Int32,space)
+end
+
+function dof_node(space::LagrangeSpace)
+    dof_node(Int32,space)
 end
 
 conformity(space::LagrangeSpace) = space.conformity

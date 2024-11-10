@@ -20,12 +20,24 @@ function translate_vtk_data(v::AbstractVector{<:SVector{2}})
     map(vi->SVector((vi...,z)),v)
 end
 
-function plot!(field,plt::GalerkinToolkit.VTKPlot;label)
+function plot!(field,plt::GalerkinToolkit.VTKPlot{<:GalerkinToolkit.Plot};label)
     plot!(plt.plot,field;label)
+    v = plt.plot.node_data[label]
+    plt.vtk[label,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+    plt
+end
+
+function plot!(field,plt::GalerkinToolkit.VTKPlot{<:GalerkinToolkit.PPlot};label)
+    plot!(plt.plot,field;label)
+    foreach(plt.plot.partition,plt.vtk) do myplt, myvtk
+        v = myplt.node_data[label]
+        myvtk[label,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+    end
+    plt
 end
 
 function plot!(plt::GalerkinToolkit.VTKPlot,field;label)
-    plot!(plt.plot,field;label)
+    plot!(field,plt;label)
 end
 
 function WriteVTK.vtk_grid(filename,plt::GalerkinToolkit.Plot;kwargs...)

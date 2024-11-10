@@ -981,6 +981,10 @@ function boundary_from_mesh_face(refface)
 end
 
 function face_nodes(fe::AbstractMeshFace,d)
+    face_nodes_from_mesh_face(fe,d)
+end
+
+function face_nodes_from_mesh_face(fe,d)
     D = num_dims(fe)
     if d == D
         [collect(Int32,1:GT.num_nodes(fe))]
@@ -991,6 +995,10 @@ function face_nodes(fe::AbstractMeshFace,d)
 end
 
 function face_interior_nodes(fe::AbstractMeshFace,d)
+    face_interior_nodes_from_mesh_face(fe,d)
+end
+
+function face_interior_nodes_from_mesh_face(fe,d)
     D = num_dims(fe)
     if  d == D
         [GT.interior_nodes(fe)]
@@ -1012,6 +1020,10 @@ function num_interior_nodes(fe::AbstractMeshFace)
 end
 
 function face_interior_node_permutations(fe::AbstractMeshFace,d)
+    face_interior_node_permutations_from_mesh_face(fe,d)
+end
+
+function face_interior_node_permutations_from_mesh_face(fe,d)
     D = num_dims(fe)
     if  d == D
         [[ collect(1:num_interior_nodes(fe)) ]]
