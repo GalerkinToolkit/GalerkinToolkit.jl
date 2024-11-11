@@ -13,6 +13,7 @@ Makie.@recipe(MakiePlot) do scene
         dim = Makie.Automatic(),
         shrink = false,
         strokecolor = nothing,
+        strokewidth = nothing,
         color      = :lightblue,
         colormap   = :bluesreds,
         shading    = Makie.NoShading,
@@ -37,6 +38,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
     dim = sc[:dim][]
     d = GalerkinToolkit.num_dims(plt[].mesh)
     strokecolor = sc[:strokecolor][]
+    strokewidth = sc[:strokewidth][]
     if dim == Makie.Automatic()
         dim = d
     end
@@ -55,6 +57,9 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
         if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
             valid_attributes[:color] = sc[:strokecolor]
+            if strokewidth !== nothing
+                valid_attributes[:linewidth] = sc[:strokewidth]
+            end
             makie2d1d!(sc,valid_attributes,plt)
         end
     end
@@ -64,6 +69,9 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
         if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie3d1d)
             valid_attributes[:color] = sc[:strokecolor]
+            if strokewidth !== nothing
+                valid_attributes[:linewidth] = sc[:strokewidth]
+            end
             makie3d1d!(sc,valid_attributes,plt)
         end
     end

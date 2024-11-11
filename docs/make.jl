@@ -17,7 +17,7 @@ examples = [
 codefence = "```julia" => "```"
 for example in examples
     file_jl = joinpath(examples_dir,example*".jl")
-    Literate.markdown(file_jl,examples_dir)#;codefence)
+    Literate.markdown(file_jl,examples_dir;codefence)
 end
 
 DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
