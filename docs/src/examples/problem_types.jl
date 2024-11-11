@@ -52,7 +52,8 @@ FileIO.save(joinpath(@__DIR__,"fig_pt_poisson.png"),Makie.current_figure()) # hi
 # ![](fig_pt_poisson.png)
 
 # !!! warning
-#     TODO The unit square should look square not rectangular
+#     * TODO The unit square should look square not rectangular
+#     * TODO Use a more complex 2d geometry. The map of the Netherlands?
 #     
 
 # ## p-Laplacian
@@ -117,3 +118,39 @@ nothing # hide
 
 # ![](fig_pt_plaplacian.gif)
 
+# ## Heat equation
+#
+#
+# !!! warning
+#     TODO Key missing things
+#     * Implement theta method in PartitionedSolvers (easy)
+#     * function `GT.ode_problem` (challenging)
+
+# ## Wave equation
+#
+# As a 2nd order ODE
+#
+# !!! warning
+#     TODO Key missing things
+#     * Implement Newmark method in PartitionedSolvers (easy)
+#
+# Reducing to a 1st order ODE
+#
+# !!! warning
+#     TODO This should be quite straight forward once the functions above have been implemented
+#
+# ## Helmholtz equation
+#
+# !!! warning
+#     TODO This will illustrate how to use complex numbers.
+#     It should be possible to implement the example with the current state of the code.
+#     (except for periodic boundary conditions)
+#     Help wanted.
+#
+# ## Stokes equation
+#
+# !!! warning
+#     TODO Lid cavity problem. This will illustrate how to use vector-valued spaces and multifield.
+#     The key ingredient missing is to develop a strategy to impose a zero mean constrain on the pressure.
+#
+#
