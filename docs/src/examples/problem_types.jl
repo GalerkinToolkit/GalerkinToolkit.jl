@@ -93,8 +93,7 @@ dΩ = GT.measure(Ω,2*k)
 res(u) = v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - f(x)*v(x) , dΩ)
 jac(u) = (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 p = GT.nonlinear_problem(uh,res,jac)
-linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
-s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton,linsolve)
+s = PS.newton_raphson(p,verbose=true)
 s = PS.solve(s)
 uh = GT.solution_field(uh,s)
 Makie.plot(Ω;color=uh,strokecolor=:black)
@@ -102,6 +101,19 @@ FileIO.save(joinpath(@__DIR__,"fig_pt_plaplacian.png"),Makie.current_figure()) #
 
 # ![](fig_pt_plaplacian.png)
 
+# Now, by showing the intermediate results in the iteration process
 
+uh = GT.rand_field(Float64,V)
+GT.interpolate_dirichlet!(g,uh)
+p = GT.nonlinear_problem(uh,res,jac)
+s = PS.newton_raphson(p)
+color = Makie.Observable(uh)
+fig = Makie.plot(Ω;color,strokecolor=:black)
+fn = joinpath(@__DIR__,"fig_pt_plaplacian.gif")
+Makie.record(fig,fn,PS.history(s);framerate=2) do s
+    color[] = GT.solution_field(uh,s)
+end
+nothing # hide
 
+# ![](fig_pt_plaplacian.gif)
 

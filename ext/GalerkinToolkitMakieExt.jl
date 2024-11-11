@@ -106,7 +106,8 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.AbstractDomain}})
             label = string(gensym())
             plt = GalerkinToolkit.plot(dom)
             GalerkinToolkit.plot!(plt,color;label)
-            color = GalerkinToolkit.NodeData(label)
+            #color = GalerkinToolkit.NodeData(label)
+            color = GalerkinToolkit.node_color(plt,label)
         else
             plt = GalerkinToolkit.plot(dom)
         end
