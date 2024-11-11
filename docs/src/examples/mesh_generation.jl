@@ -208,7 +208,7 @@ FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_3.png"),Makie.current_figure()) # hide
 
 # Now, generate all low-dimensional objects
 
-mesh, = GT.complexify(mesh)
+mesh = GT.complexify(mesh)
 Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))
 FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_4.png"),Makie.current_figure()) # hide
 

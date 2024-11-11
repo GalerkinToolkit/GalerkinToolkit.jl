@@ -129,7 +129,7 @@ end
 
 function complexify(plt::Plot)
     mesh = plt.mesh
-    tmesh,old_to_new = complexify(mesh)
+    tmesh,old_to_new = complexify(mesh;glue=Val(true))
     D = num_dims(mesh)
     fdata = [Dict{String,Any}() for d in 0:D]
     for d in 0:D
