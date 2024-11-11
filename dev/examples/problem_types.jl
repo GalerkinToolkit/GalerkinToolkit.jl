@@ -52,7 +52,8 @@ FileIO.save(joinpath(@__DIR__,"fig_pt_poisson.png"),Makie.current_figure()) # hi
 # ![](fig_pt_poisson.png)
 
 # !!! warning
-#     TODO The unit square should look square not rectangular
+#     * TODO The unit square should look square not rectangular
+#     * TODO Use a more complex 2d geometry. The map of the Netherlands?
 #     
 
 # ## p-Laplacian
@@ -93,8 +94,7 @@ dΩ = GT.measure(Ω,2*k)
 res(u) = v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - f(x)*v(x) , dΩ)
 jac(u) = (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 p = GT.nonlinear_problem(uh,res,jac)
-linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
-s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton,linsolve)
+s = PS.newton_raphson(p,verbose=true)
 s = PS.solve(s)
 uh = GT.solution_field(uh,s)
 Makie.plot(Ω;color=uh,strokecolor=:black)
@@ -102,6 +102,55 @@ FileIO.save(joinpath(@__DIR__,"fig_pt_plaplacian.png"),Makie.current_figure()) #
 
 # ![](fig_pt_plaplacian.png)
 
+# Now, by showing the intermediate results in the iteration process
 
+uh = GT.rand_field(Float64,V)
+GT.interpolate_dirichlet!(g,uh)
+p = GT.nonlinear_problem(uh,res,jac)
+s = PS.newton_raphson(p)
+color = Makie.Observable(uh)
+fig = Makie.plot(Ω;color,strokecolor=:black)
+fn = joinpath(@__DIR__,"fig_pt_plaplacian.gif")
+Makie.record(fig,fn,PS.history(s);framerate=2) do s
+    color[] = GT.solution_field(uh,s)
+end
+nothing # hide
 
+# ![](fig_pt_plaplacian.gif)
 
+# ## Heat equation
+#
+#
+# !!! warning
+#     TODO Key missing things
+#     * Implement theta method in PartitionedSolvers (easy)
+#     * function `GT.ode_problem` (challenging)
+
+# ## Wave equation
+#
+# As a 2nd order ODE
+#
+# !!! warning
+#     TODO Key missing things
+#     * Implement Newmark method in PartitionedSolvers (easy)
+#
+# Reducing to a 1st order ODE
+#
+# !!! warning
+#     TODO This should be quite straight forward once the functions above have been implemented
+#
+# ## Helmholtz equation
+#
+# !!! warning
+#     TODO This will illustrate how to use complex numbers.
+#     It should be possible to implement the example with the current state of the code.
+#     (except for periodic boundary conditions)
+#     Help wanted.
+#
+# ## Stokes equation
+#
+# !!! warning
+#     TODO Lid cavity problem. This will illustrate how to use vector-valued spaces and multifield.
+#     The key ingredient missing is to develop a strategy to impose a zero mean constrain on the pressure.
+#
+#
