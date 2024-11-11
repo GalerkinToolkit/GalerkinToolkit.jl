@@ -735,7 +735,7 @@ function mesh_from_gmsh_module(;complexify=true)
             periodic_nodes,)
 
     if complexify
-        mesh, _ = GT.complexify(mesh)
+        mesh = GT.complexify(mesh)
     end
     mesh
 end
@@ -1582,11 +1582,11 @@ end
 
 """
 """
-function complexify(mesh::AbstractMesh)
-    complexify_mesh(mesh)
+function complexify(mesh::AbstractMesh;kwargs...)
+    complexify_mesh(mesh;kwargs...)
 end
 
-function complexify_mesh(mesh)
+function complexify_mesh(mesh;glue=Val(false))
     Ti = Int32
     T = JaggedArray{Ti,Ti}
     D = num_dims(mesh)
@@ -1688,7 +1688,11 @@ function complexify_mesh(mesh)
             periodic_nodes = periodic_nodes(mesh),
             outwards_normals = outwards_normals(mesh)
            )
-    new_mesh, old_to_new
+    if val_parameter(glue)
+        new_mesh, old_to_new
+    else
+        new_mesh
+    end
 end
 
 function generate_face_vertices(
@@ -2293,7 +2297,7 @@ function simplexify_unit_n_cube(geo)
         reference_cells,
        )
     mesh = mesh_from_chain(chain)
-    mesh_complex, = complexify(mesh)
+    mesh_complex = complexify(mesh)
     groups = [Dict{String,Vector{Int32}}() for d in 0:D]
     for d in 0:(D-1)
         sface_to_nodes = face_nodes(mesh_complex,d)
@@ -2392,7 +2396,7 @@ function simplexify_reference_face(ref_face)
         reference_faces = ref_faces_inter,
     )
     mesh = mesh_from_chain(chain)
-    mesh_complex, = complexify(mesh)
+    mesh_complex = complexify(mesh)
     pg = physical_faces(mesh_complex)
     pg .= physical_faces(mesh_geom)
     mesh_complex
@@ -2424,7 +2428,7 @@ function cartesian_mesh(
         mesh_from_chain(chain)
     end
     if complexify
-        mesh, = GT.complexify(mesh)
+        mesh = GT.complexify(mesh)
     end
     if parts_per_dir === nothing
         return mesh
@@ -3366,7 +3370,7 @@ function simplexify(mesh::AbstractMesh;glue=Val(false))
         tcell_to_nodes,
         tcell_to_refid,
         refid_to_reftcell,)
-    tmesh, = complexify(mesh_from_chain(tchain))
+    tmesh = complexify(mesh_from_chain(tchain))
 
     topo = topology(mesh)
     ttopo = topology(tmesh)

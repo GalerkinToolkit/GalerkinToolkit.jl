@@ -34,7 +34,7 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "Examples" => [ "Introduction" => "examples.md", map(example->"examples/$(example).md",examples)...],
-        "Users manual" =>[
+        "API reference" =>[
                        "Introduction" => "reference.md",
                        "Mesh" => "reference/mesh.md",
                        "Integration" => "reference/integration.md",

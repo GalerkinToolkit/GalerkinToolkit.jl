@@ -269,7 +269,7 @@ GT.lagrange_mesh_face(spx1,order) |> GT.boundary |> GT.topology
 
 mesh = GT.mesh_from_gmsh(msh;complexify=false)
 
-new_mesh, old_to_new = GT.complexify(mesh)
+new_mesh, old_to_new = GT.complexify(mesh,glue=Val(true))
 
 mesh = GT.mesh_from_gmsh(msh)
 

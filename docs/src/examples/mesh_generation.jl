@@ -8,6 +8,7 @@ import GLMakie as Makie
 import Gmsh
 import Metis
 import FileIO # hide
+using StaticArrays
 
 # ## Cartesian meshes
 #
@@ -136,4 +137,79 @@ FileIO.save(joinpath(@__DIR__,"fig_mg_pmesh_a.png"),Makie.current_figure()) # hi
 #     
 
 # ## Meshes from arrays
+
+# Generate a mesh of three triangles from the arrays describing
+# node coordinates and cell connectivity.
+
+order = 1
+triangle = GT.unit_simplex(Val(2))
+triangle3 = GT.lagrange_mesh_face(triangle,order)
+node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
+cell_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
+cell_to_type = [1,1,1]
+type_to_refcell = [triangle3]
+chain = GT.chain_from_arrays(
+        node_to_coords,
+        cell_to_nodes,
+        cell_to_type,
+        type_to_refcell)
+mesh = GT.mesh_from_chain(chain)
+Makie.plot(mesh,color=:pink,strokecolor=:blue)
+FileIO.save(joinpath(@__DIR__,"fig_mg_mfa.png"),Makie.current_figure()) # hide
+
+# ![](fig_mg_mfa.png)
+
+# Now, include also a square element
+
+square = GT.unit_n_cube(Val(2))
+square4 = GT.lagrange_mesh_face(square,order)
+cell_to_nodes = [[1,2,3,4],[2,4,5]]
+cell_to_type = [2,1]
+type_to_refcell = (triangle3,square4)
+chain = GT.chain_from_arrays(
+        node_to_coords,
+        cell_to_nodes,
+        cell_to_type,
+        type_to_refcell)
+mesh = GT.mesh_from_chain(chain)
+Makie.plot(mesh,color=:pink,strokecolor=:blue)
+FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_2.png"),Makie.current_figure()) # hide
+
+# ![](fig_mg_mfa_2.png)
+
+# !!! warning
+#     TODO visualization not working properly when more than one element type present
+#     
 #
+#
+# Generate a mesh that includes cells of different dimensions, i.e.,
+# triangles, segments, and vertices.
+
+segment = GT.unit_simplex(Val(1))
+segment2 = GT.lagrange_mesh_face(segment,order)
+vertex = GT.unit_simplex(Val(0))
+vertex1 = GT.lagrange_mesh_face(vertex,order)
+node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
+face2_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
+face2_to_type = [1,1,1]
+face1_to_nodes = [[1,2],[2,5],[5,4]]
+face1_to_type = [1,1,1]
+face0_to_nodes = [[1],[3]]
+face0_to_type = [1,1]
+face_to_nodes = [face0_to_nodes,face1_to_nodes,face2_to_nodes]
+face_to_type = [face0_to_type,face1_to_type,face2_to_type]
+type_to_refcell = ([vertex1],[segment2],[triangle3])
+mesh = GT.mesh_from_arrays(node_to_coords,face_to_nodes,face_to_type,type_to_refcell)
+Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))
+FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_3.png"),Makie.current_figure()) # hide
+
+# ![](fig_mg_mfa_3.png)
+
+
+# Now, generate all low-dimensional objects
+
+mesh = GT.complexify(mesh)
+Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))
+FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_4.png"),Makie.current_figure()) # hide
+
+# ![](fig_mg_mfa_4.png)

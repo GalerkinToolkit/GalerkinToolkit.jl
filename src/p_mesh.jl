@@ -599,7 +599,7 @@ function two_level_mesh(coarse_mesh,fine_mesh;boundary_names=nothing)
     # the fine faces (just as we did with the fine nodes)
     # TODO maybe we don't need to complexify and only find the faces
     # needed for the physical groups
-    final_mesh, = mesh_from_chain(chain) |> complexify
+    final_mesh = mesh_from_chain(chain) |> complexify
 
     # Refine physical groups
     final_node_to_mask = fill(false,n_final_nodes)

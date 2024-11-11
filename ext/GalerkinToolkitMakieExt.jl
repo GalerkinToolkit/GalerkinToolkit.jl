@@ -13,6 +13,7 @@ Makie.@recipe(MakiePlot) do scene
         dim = Makie.Automatic(),
         shrink = false,
         strokecolor = nothing,
+        strokewidth = nothing,
         color      = :lightblue,
         colormap   = :bluesreds,
         shading    = Makie.NoShading,
@@ -37,6 +38,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
     dim = sc[:dim][]
     d = GalerkinToolkit.num_dims(plt[].mesh)
     strokecolor = sc[:strokecolor][]
+    strokewidth = sc[:strokewidth][]
     if dim == Makie.Automatic()
         dim = d
     end
@@ -55,6 +57,9 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
         if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
             valid_attributes[:color] = sc[:strokecolor]
+            if strokewidth !== nothing
+                valid_attributes[:linewidth] = sc[:strokewidth]
+            end
             makie2d1d!(sc,valid_attributes,plt)
         end
     end
@@ -64,6 +69,9 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.Plot}})
         if strokecolor !== nothing
             valid_attributes = Makie.shared_attributes(sc, Makie3d1d)
             valid_attributes[:color] = sc[:strokecolor]
+            if strokewidth !== nothing
+                valid_attributes[:linewidth] = sc[:strokewidth]
+            end
             makie3d1d!(sc,valid_attributes,plt)
         end
     end
@@ -106,7 +114,8 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GalerkinToolkit.AbstractDomain}})
             label = string(gensym())
             plt = GalerkinToolkit.plot(dom)
             GalerkinToolkit.plot!(plt,color;label)
-            color = GalerkinToolkit.NodeData(label)
+            #color = GalerkinToolkit.NodeData(label)
+            color = GalerkinToolkit.node_color(plt,label)
         else
             plt = GalerkinToolkit.plot(dom)
         end
@@ -198,7 +207,7 @@ function makie_volumes_impl(plt::GalerkinToolkit.Plot;simplexify=Val(false))
     @assert GalerkinToolkit.num_dims(plt.mesh) == 3
     D=3
     d=2
-    mesh, = GalerkinToolkit.complexify(GalerkinToolkit.restrict_to_dim(plt.mesh,D))
+    mesh = GalerkinToolkit.complexify(GalerkinToolkit.restrict_to_dim(plt.mesh,D))
     topo = GalerkinToolkit.topology(mesh)
     face_to_cells = GalerkinToolkit.face_incidence(topo,d,D)
     face_isboundary = map(cells->length(cells)==1,face_to_cells)
@@ -407,7 +416,7 @@ function makie_face_edges_impl(plt)
     # TODO maybe already complexified
     D=2
     d=1
-    mesh2, = GalerkinToolkit.complexify(GalerkinToolkit.restrict_to_dim(plt.mesh,D))
+    mesh2 = GalerkinToolkit.complexify(GalerkinToolkit.restrict_to_dim(plt.mesh,D))
     topo = GalerkinToolkit.topology(mesh2)
     edge_to_faces = GalerkinToolkit.face_incidence(topo,d,D)
     K = Any
