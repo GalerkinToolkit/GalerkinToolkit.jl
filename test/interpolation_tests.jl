@@ -7,6 +7,7 @@ import ForwardDiff
 using LinearAlgebra
 using BlockArrays
 using WriteVTK
+using StaticArrays
 
 D = 2
 order = 3
@@ -227,7 +228,8 @@ GT.face_dofs(V)
 
 
 order = 3
-V = GT.lagrange_space(Ω,order,shape=(2,))
+m = GT.analytical_field(x->SVector(false,true),Γ)
+V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
 GT.face_dofs(V)
 uh = GT.rand_field(Float64,V)
 
