@@ -1411,7 +1411,7 @@ end
 
 # LinearAlgebra
 
-for op in (:inv,:det,:norm)
+for op in (:inv,:det,:norm,:tr)
   @eval begin
     (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
   end
