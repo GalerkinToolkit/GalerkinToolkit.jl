@@ -239,8 +239,8 @@ vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
     GT.plot!(plt,x->uh(x)[2];label="uh2")
 end
 
-order = 3
-V = GT.lagrange_space(Ω,order,space=:P)
+order = 0
+V = GT.lagrange_space(Ω,order,space=:P,dirichlet_boundary=GT.last_dof())
 GT.face_dofs(V)
 uh = GT.rand_field(Float64,V)
 

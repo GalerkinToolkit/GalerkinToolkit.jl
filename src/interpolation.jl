@@ -189,7 +189,8 @@ function face_dofs_from_nodes(fe::AbstractLagrangeFE,face_to_nodes)
 end
 
 function conforming(fe::AbstractLagrangeFE)
-    !( is_n_cube(fe.geometry) && fe.space === :P    )
+    nonconforming = (order(fe) == 0) || (is_n_cube(fe.geometry) && fe.space === :P)
+    ! nonconforming
 end
 
 function interior_nodes(fe::AbstractLagrangeFE)
@@ -669,6 +670,38 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     data .= f.(data)
     dirichlet_dof_location = dof_to_location[last(free_and_dirichlet_dofs)]
     (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
+end
+
+function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseField)
+    error("Not implemented yet")
+end
+
+struct LastDof end
+
+function last_dof()
+    LastDof()
+end
+
+function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::LastDof)
+    (;ndofs,cell_to_dofs) = state
+    dof_to_tag = zeros(Int32,ndofs)
+    dof_to_tag[end] = 1
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+    n_free_dofs = length(first(free_and_dirichlet_dofs))
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    data = cell_to_dofs.data
+    data .= f.(data)
+    ndiri = length(last(free_and_dirichlet_dofs))
+    dirichlet_dof_location = ones(Int32,ndiri)
+    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
 end
 
 function reference_face_own_dofs(space::AbstractSpace,d)
