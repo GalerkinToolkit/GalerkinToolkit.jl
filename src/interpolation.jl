@@ -183,7 +183,7 @@ function face_dofs_from_nodes(fe::AbstractLagrangeFE,face_to_nodes)
             else
                 error("Not Implemented")
             end
-            reduce(vcat,nested)
+            reduce(vcat,nested;init=Int32[])
         end
     end
 end
@@ -289,7 +289,7 @@ function face_own_dof_permutations(fe::AbstractLagrangeFE,d)
                 else
                     error("Not Implemented")
                 end
-                reduce(vcat,nested)
+                reduce(vcat,nested;init=Tv[])
             end
         end
     end

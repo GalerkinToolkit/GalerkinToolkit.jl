@@ -118,7 +118,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
     warp_by_vector = valid_attributes[:warp_by_vector]
     color = valid_attributes[:color]
     args = Makie.lift(dom,color) do dom,color
-        if isa(color,GT.AbstractQuantity)
+        if isa(color,GT.AbstractQuantity) || isa(color,Function)
             label = string(gensym())
             plt = GT.plot(dom)
             GT.plot!(plt,color;label)
