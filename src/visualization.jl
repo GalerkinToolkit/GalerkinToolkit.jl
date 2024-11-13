@@ -12,6 +12,10 @@ struct Plot{A,B,C,D} <: AbstractType
     end
 end
 
+function replace_mesh(plt::Plot,mesh)
+    Plot(mesh,plt.face_data,plt.node_data,plt.cache)
+end
+
 struct PPlot{A,B} <: AbstractType
     partition::A
     cache::B
@@ -345,6 +349,16 @@ function shrink(pplt::PPlot;scale=0.75)
         shrink(plt;scale)
     end
     PPlot(plts)
+end
+
+function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+    mesh = plt.mesh
+    node_to_x = node_coordinates(mesh)
+    node_to_vec = plt.node_data[vec.name]
+    node_to_x = node_to_x .+ scale .* node_to_vec
+    mesh2 = replace_node_coordinates(mesh,node_to_x)
+    plt2 = replace_mesh(plt,mesh2)
+    plt2
 end
 
 function plot(domain::AbstractDomain;kwargs...)

@@ -7,6 +7,7 @@ import ForwardDiff
 using LinearAlgebra
 using BlockArrays
 using WriteVTK
+using StaticArrays
 
 D = 2
 order = 3
@@ -227,7 +228,8 @@ GT.face_dofs(V)
 
 
 order = 3
-V = GT.lagrange_space(Ω,order,shape=(2,))
+m = GT.analytical_field(x->SVector(false,true),Γ)
+V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
 GT.face_dofs(V)
 uh = GT.rand_field(Float64,V)
 
@@ -237,8 +239,24 @@ vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
     GT.plot!(plt,x->uh(x)[2];label="uh2")
 end
 
+Γ1 = GT.boundary(mesh;physical_names=["1-face-1"])
+Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
+
 order = 3
-V = GT.lagrange_space(Ω,order,space=:P)
+m1 = GT.analytical_field(x->SVector(false,true),Γ1)
+m2 = GT.analytical_field(x->SVector(true,false),Γ2)
+m = GT.piecewiese_field(m1,m2)
+V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
+GT.face_dofs(V)
+uh = GT.rand_field(Float64,V)
+vtk_grid(joinpath(outdir,"Vvec2"),Ω;plot_params=(;refinement=10)) do plt
+    GT.plot!(plt,uh;label="uh")
+    GT.plot!(plt,x->uh(x)[1];label="uh1")
+    GT.plot!(plt,x->uh(x)[2];label="uh2")
+end
+
+order = 0
+V = GT.lagrange_space(Ω,order,space=:P,dirichlet_boundary=GT.last_dof())
 GT.face_dofs(V)
 uh = GT.rand_field(Float64,V)
 
