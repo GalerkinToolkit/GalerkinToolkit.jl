@@ -78,11 +78,13 @@ for s in  (false,true)
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,v;label="v")
     fig = Makie.plot(plt,color=GT.NodeData("u"))
+    Makie.plot!(plt,color=nothing,strokecolor=:black,warp_by_vector=GT.NodeData("v"),warp_scale=0.1)
     Makie.arrows!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
     Makie.arrows!(v;lengthscale=0.1,color=u)
     display(fig)
 
     fig = Makie.plot(Ω;color=u)
+    Makie.plot!(Ω;color=nothing,strokecolor=:black,warp_by_vector=v,warp_scale=0.1)
     display(fig)
 
     plt = GT.plot(mesh)

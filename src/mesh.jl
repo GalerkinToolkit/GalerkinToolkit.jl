@@ -496,6 +496,17 @@ function mesh_from_arrays(args...)
     GenericMesh(args...)
 end
 
+function replace_node_coordinates(mesh::AbstractMesh,node_coordinates)
+    GenericMesh(
+                node_coordinates,
+                mesh.face_nodes,
+                mesh.face_reference_id,
+                mesh.reference_faces,
+                mesh.periodic_nodes,
+                mesh.physical_faces,
+                mesh.outwards_normals)
+end
+
 """
 """
 function mesh_from_arrays(
