@@ -66,12 +66,20 @@ for s in  (false,true)
 
     end
 
+    #domain = (0,1,0,1)
+    #cells = (4,4)
+    #mesh = GT.cartesian_mesh(domain,cells;simplexify=s)
+
 
     Ω = GT.interior(mesh)
     u = GT.analytical_field(sum,Ω)
+    v = GT.analytical_field(identity,Ω)
     plt = GT.plot(Ω)
     GT.plot!(plt,u;label="u")
+    GT.plot!(plt,v;label="v")
     fig = Makie.plot(plt,color=GT.NodeData("u"))
+    Makie.arrows!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
+    Makie.arrows!(v;lengthscale=0.1,color=u)
     display(fig)
 
     fig = Makie.plot(Ω;color=u)
