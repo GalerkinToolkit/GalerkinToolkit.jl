@@ -1512,6 +1512,7 @@ function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
     for (location,field) in f.fields |> enumerate
         interpolate_impl!(field,u,free_or_diri;location)
     end
+    u
 end
 
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
