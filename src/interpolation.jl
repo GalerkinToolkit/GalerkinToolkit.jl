@@ -672,8 +672,97 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseField)
-    error("Not implemented yet")
+function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
+    (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
+     d_to_ctype_to_ldface_to_dofs,
+     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+    dof_to_tag = zeros(Int32,ndofs)
+    D = length(d_to_ndfaces)-1
+    for d in D:-1:0
+        for (location,q) in enumerate(q_all.fields)
+            dirichlet_boundary = domain(q)
+            N = GT.num_dims(dirichlet_boundary)
+            if d != N
+                continue
+            end
+            physical_names = dirichlet_boundary |> GT.physical_names
+            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+            mesh = dirichlet_boundary |> GT.mesh
+            classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            ncells = length(cell_to_dofs)
+            dim = 1
+            sigma = GT.dual_basis(space,dim)
+            Dface = :Dface
+            ldof = :ldof
+            index1 = GT.index(;face=Dface,dof_per_dim=(ldof,))
+            sigma_expr = term(sigma)(index1) |> simplify
+            dface = :dface
+            index2 = GT.index(;face=dface)
+            q_expr = term(q)(index2) |> simplify
+            sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
+            # TODO Why empty?
+            #q_texpr = topological_sort(q_expr,(dface,))
+            expr = quote
+                function loop!(args,storage1,storage2)
+                    $(unpack_storage(index1.dict,:storage1))
+                    $(unpack_storage(index2.dict,:storage2))
+                    d = args.d
+                    Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
+                    ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
+                    $(sigma_texpr[1])
+                    for cell in 1:args.ncells
+                        ctype = args.cell_to_ctype[cell]
+                        Dface = args.cell_to_Dface[cell]
+                        $(sigma_texpr[2])
+                        ldface_to_dface = Dface_to_dfaces[Dface]
+                        ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+                        nldfaces = length(ldface_to_dface)
+                        dofs = args.cell_to_dofs[cell]
+                        for ldface in 1:nldfaces
+                            ldofs = ldface_to_ldofs[ldface]
+                            dface = ldface_to_dface[ldface]
+                            Nface = dface
+                            tag = args.Nface_to_tag[Nface]
+                            if tag == 0
+                                continue
+                            end
+                            qfun = $(q_expr)
+                            for ldof in ldofs
+                                sfun = $(sigma_texpr[3])
+                                mask = sfun(qfun)
+                                if !(abs(mask) + 1 ≈ 1)
+                                    dof = dofs[ldof]
+                                    args.dof_to_tag[dof] = tag
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            loop! = eval(expr)
+            storage1 = GT.storage(index1)
+            storage2 = GT.storage(index2)
+            d = N
+            args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
+            invokelatest(loop!,args,storage1,storage2)
+        end
+    end
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+    n_free_dofs = length(first(free_and_dirichlet_dofs))
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    data = cell_to_dofs.data
+    data .= f.(data)
+    ndiri = length(last(free_and_dirichlet_dofs))
+    dirichlet_dof_location = ones(Int32,ndiri)
+    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
 end
 
 struct LastDof end
