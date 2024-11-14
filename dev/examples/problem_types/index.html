@@ -5,7 +5,11 @@ import GLMakie as Makie
 import ForwardDiff
 import StaticArrays
 import Tensors
-using LinearAlgebra</code></pre><h2 id="Poisson"><a class="docs-heading-anchor" href="#Poisson">Poisson</a><a id="Poisson-1"></a><a class="docs-heading-anchor-permalink" href="#Poisson" title="Permalink"></a></h2><p>Solve the following Poisson equation on the unit square,</p><p class="math-container">\[\left\lbrace
+using LinearAlgebra
+
+#TODO no current way of adding this to a recipe
+#https://discourse.julialang.org/t/accessing-axis-in-makie-plot-recipes/66006/1
+Makie.update_theme!(Axis=(;aspect=Makie.DataAspect()))</code></pre><h2 id="Poisson"><a class="docs-heading-anchor" href="#Poisson">Poisson</a><a id="Poisson-1"></a><a class="docs-heading-anchor-permalink" href="#Poisson" title="Permalink"></a></h2><p>Solve the following Poisson equation on the unit square,</p><p class="math-container">\[\left\lbrace
 \begin{aligned}
 -\Delta u = f  \ &amp;\text{in} \ \Omega,\\
 u = g \ &amp;\text{on}\ \partial\Omega,\\
@@ -31,7 +35,7 @@ p = GT.linear_problem(uhd,a,l)
 s = PS.LinearAlgebra_lu(p)
 s = PS.solve(s)
 uh = GT.solution_field(uhd,s)
-Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><p><img src="../fig_pt_poisson.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><ul><li>TODO The unit square should look square not rectangular</li><li>TODO Use a more complex 2d geometry. The map of the Netherlands?</li></ul></div></div><h2 id="p-Laplacian"><a class="docs-heading-anchor" href="#p-Laplacian">p-Laplacian</a><a id="p-Laplacian-1"></a><a class="docs-heading-anchor-permalink" href="#p-Laplacian" title="Permalink"></a></h2><p>Solve the following p-Laplacian equation on the unit square,</p><p class="math-container">\[\left\lbrace
+Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><p><img src="../fig_pt_poisson.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><ul><li>TODO Use a more complex 2d geometry. The map of the Netherlands? Or the 3d mesh in Gridap tutorials.</li></ul></div></div><h2 id="p-Laplacian"><a class="docs-heading-anchor" href="#p-Laplacian">p-Laplacian</a><a id="p-Laplacian-1"></a><a class="docs-heading-anchor-permalink" href="#p-Laplacian" title="Permalink"></a></h2><p>Solve the following p-Laplacian equation on the unit square,</p><p class="math-container">\[\left\lbrace
 \begin{aligned}
 -\nabla \cdot \left( |\nabla u|^{q-2} \ \nabla u \right) = f\ &amp;\text{in}\ \Omega,\\
 u = g \ &amp;\text{on}\ \partial\Omega,\\
@@ -62,16 +66,16 @@ s = PS.solve(s)
 uh = GT.solution_field(uh,s)
 Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">          iterations             residual             solution
    current     target    current     target    current     target
-         0       1000   1.17e+01   1.00e-08        NaN   0.00e+00
-         1       1000   2.91e+00   1.00e-08   4.88e-01   0.00e+00
-         2       1000   7.26e-01   1.00e-08   2.37e-01   0.00e+00
-         3       1000   1.80e-01   1.00e-08   1.11e-01   0.00e+00
-         4       1000   4.30e-02   1.00e-08   5.11e-02   0.00e+00
-         5       1000   1.99e-02   1.00e-08   5.05e-02   0.00e+00
-         6       1000   6.82e-03   1.00e-08   1.78e-02   0.00e+00
-         7       1000   4.10e-04   1.00e-08   5.21e-03   0.00e+00
-         8       1000   1.92e-06   1.00e-08   3.61e-04   0.00e+00
-         9       1000   4.68e-11   1.00e-08   1.73e-06   0.00e+00</code></pre><p><img src="../fig_pt_plaplacian.png" alt/></p><p>Now, by showing the intermediate results in the iteration process</p><pre><code class="language-julia hljs">uh = GT.rand_field(Float64,V)
+         0       1000   1.70e+01   1.00e-08  6.90e-310   0.00e+00
+         1       1000   4.25e+00   1.00e-08   4.86e-01   0.00e+00
+         2       1000   1.06e+00   1.00e-08   2.39e-01   0.00e+00
+         3       1000   2.65e-01   1.00e-08   1.14e-01   0.00e+00
+         4       1000   7.26e-02   1.00e-08   5.46e-02   0.00e+00
+         5       1000   4.56e-02   1.00e-08   7.44e-02   0.00e+00
+         6       1000   5.93e-03   1.00e-08   2.60e-02   0.00e+00
+         7       1000   2.27e-04   1.00e-08   4.12e-03   0.00e+00
+         8       1000   5.09e-07   1.00e-08   1.87e-04   0.00e+00
+         9       1000   2.30e-12   1.00e-08   3.96e-07   0.00e+00</code></pre><p><img src="../fig_pt_plaplacian.png" alt/></p><p>Now, by showing the intermediate results in the iteration process</p><pre><code class="language-julia hljs">uh = GT.rand_field(Float64,V)
 GT.interpolate_dirichlet!(g,uh)
 p = GT.nonlinear_problem(uh,res,jac)
 s = PS.newton_raphson(p)
@@ -109,10 +113,9 @@ l(v) = GT.∫(x-&gt; v(x)⋅f(x), dΩ)
 p = GT.linear_problem(uhd,a,l)
 s = PS.LinearAlgebra_lu(p)
 s = PS.solve(s)
-@show maximum(abs,PS.solution(s))
 uh = GT.solution_field(uhd,s)
 Makie.plot(Ω;color=x-&gt;norm(uh(x)),warp_by_vector=uh,warp_scale=0.002)
-Makie.plot!(Ω;color=nothing,strokecolor=:black)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">maximum(abs, PS.solution(s)) = 34.54311919145108</code></pre><p><img src="../fig_pt_linelast.png" alt/></p><h2 id="Stokes-equation"><a class="docs-heading-anchor" href="#Stokes-equation">Stokes equation</a><a id="Stokes-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Stokes-equation" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO</p><ul><li>Problem statement</li><li>Allow g1 and g1 to be defined on the boundary</li><li>Build a pressure field with zero mean</li></ul></div></div><pre><code class="language-julia hljs">domain = (0,1,0,1)
+Makie.plot!(Ω;color=nothing,strokecolor=:black)</code></pre><p><img src="../fig_pt_linelast.png" alt/></p><h2 id="Stokes-equation"><a class="docs-heading-anchor" href="#Stokes-equation">Stokes equation</a><a id="Stokes-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Stokes-equation" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO</p><ul><li>Problem statement</li><li>Allow g1 and g1 to be defined on the boundary</li><li>Build a pressure field with zero mean</li></ul></div></div><pre><code class="language-julia hljs">domain = (0,1,0,1)
 cells = (20,20)
 D = length(cells)
 mesh = GT.cartesian_mesh(domain,cells)
@@ -148,4 +151,4 @@ s = PS.solve(s)
 #ph = GT.solution_field(uhph_dirichlet,s,p_field;zeromean=true)
 uh,ph = GT.solution_field(uhph_dirichlet,s)
 Makie.plot(Ω,color=ph)
-Makie.arrows!(uh;color=x-&gt;norm(uh(x)),lengthscale=0.1)</code></pre><p><img src="../fig_pt_stokes.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Wednesday 13 November 2024 13:38">Wednesday 13 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Makie.arrows!(uh;color=x-&gt;norm(uh(x)),lengthscale=0.1)</code></pre><p><img src="../fig_pt_stokes.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Thursday 14 November 2024 07:49">Thursday 14 November 2024</span>. Using Julia version 1.11.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
