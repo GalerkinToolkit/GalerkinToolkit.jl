@@ -6,6 +6,7 @@ src_dir = joinpath(@__DIR__,"src")
 examples_dir = joinpath(src_dir,"examples") 
 examples = [
             "problem_types",
+            "methods",
             "mesh_generation",
             "interpolations",
             "boundary_conditions",
