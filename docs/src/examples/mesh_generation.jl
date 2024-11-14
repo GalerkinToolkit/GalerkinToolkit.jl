@@ -1,7 +1,6 @@
 # # Mesh generation
 #
 
-
 import GalerkinToolkit as GT
 import PartitionedArrays as PA
 import GLMakie as Makie
