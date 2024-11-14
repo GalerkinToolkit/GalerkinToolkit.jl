@@ -10,7 +10,9 @@ import Tensors
 using LinearAlgebra
 import FileIO # hide
 
-
+#TODO no current way of adding this to a recipe
+#https://discourse.julialang.org/t/accessing-axis-in-makie-plot-recipes/66006/1
+Makie.update_theme!(Axis=(;aspect=Makie.DataAspect()))
 
 
 # ## Poisson
@@ -57,8 +59,7 @@ FileIO.save(joinpath(@__DIR__,"fig_pt_poisson.png"),Makie.current_figure()) # hi
 # ![](fig_pt_poisson.png)
 
 # !!! warning
-#     * TODO The unit square should look square not rectangular
-#     * TODO Use a more complex 2d geometry. The map of the Netherlands?
+#     * TODO Use a more complex 2d geometry. The map of the Netherlands? Or the 3d mesh in Gridap tutorials.
 #     
 
 # ## p-Laplacian
