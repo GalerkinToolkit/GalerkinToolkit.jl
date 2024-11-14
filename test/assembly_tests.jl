@@ -293,9 +293,37 @@ l(v) = 0
 p = GT.linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
 
-
-
-
+t0 = 0.0
+t1 = 1.0
+domain = (0,1,0,1)
+cells = (20,20)
+mesh = GT.cartesian_mesh(domain,cells)
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
+g(t) = GT.analytical_field(x->exp(-2*t)*sinpi(t*x[1])*(x[2]^2-1), Ω)
+α2(t) = GT.analytical_field(x->1+sin(t)*(x[1]^2+x[2]^2)/4, Ω)
+f2(t) = GT.analytical_field(x->sin(t)*sinpi(x[1])*sinpi(x[2]), Ω)
+order = 1
+dΩ = GT.measure(Ω,2*order)
+∇2 = ForwardDiff.gradient
+m(t,dtu,v) = ∫( x -> v(x)*dtu(x), dΩ)
+a(t,u,v) = ∫( x-> α2(t)(x)*∇2(v,x)⋅∇2(u,x), dΩ)
+l(t,v) = ∫( x->v(x)*f2(t)(x),dΩ)
+res(t,u,dtu) = v -> m(t,dtu,v) + a(t,u,v) - l(t,v)
+jac(t,u,dtu) = ((δu,δdtu),v) -> m(t,δdtu,v) + a(t,δu,v)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+uh = GT.semi_discrete_field(Float64,V) do t,uht
+    GT.interpolate_dirichlet!(g(t),uht)
+end
+GT.interpolate_free!(g(t0),uh(t0))
+dtuh = GT.semi_discrete_field(Float64,V)
+#TODO
+#this one is linear actually
+p = GT.nonlinear_ode((uh,dtuh),t0:t1,res,jac)
+x = GT.free_values(uh(t0))
+dtx = GT.free_values(dtuh(t0))
+PS.update(p,solution=(t0,x,dtx))
 
 
 end # module

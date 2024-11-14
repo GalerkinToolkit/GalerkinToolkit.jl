@@ -10,6 +10,10 @@ import Metis
 import FileIO # hide
 using StaticArrays
 
+#TODO no current way of adding this to a recipe
+#https://discourse.julialang.org/t/accessing-axis-in-makie-plot-recipes/66006/1
+Makie.update_theme!(Axis=(;aspect=Makie.DataAspect()))
+
 # ## Cartesian meshes
 #
 # Generate a Cartesian mesh of the 3D domain $(0,1)\times(2,3)\times(-1,1)$ using 5 cells per direction and visualize it.

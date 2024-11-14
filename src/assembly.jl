@@ -164,6 +164,13 @@ function assemble_vector!(integral::Integral,b,cache)
     b
 end
 
+function assemble_vector!(integral::Integral,V,b,cache)
+    (;bcache,state2) = cache
+    state3 = assemble_vector_fill!(integral,state2)
+    assemble_vector_compress!(b,bcache,state3)
+    b
+end
+
 function assemble_vector_count(integral,state)
     (;space,vector_strategy,setup) = state
     contributions = GT.contributions(integral)
@@ -334,6 +341,13 @@ function assemble_matrix!(f,trial_space,test_space,A,cache)
 end
 
 function assemble_matrix!(integral::Integral,A,cache)
+    (;Acache,state2) = cache
+    state3 = assemble_matrix_fill!(integral,state2)
+    assemble_matrix_compress!(A,Acache,state3)
+    A
+end
+
+function assemble_matrix!(integral::Integral,U,V,A,cache)
     (;Acache,state2) = cache
     state3 = assemble_matrix_fill!(integral,state2)
     assemble_matrix_compress!(A,Acache,state3)
@@ -677,4 +691,92 @@ function nonlinear_problem(uh0::DiscreteField,r,j,V=GT.space(uh0);
     end
 end
 
+function semi_discrete_field(T,V::AbstractSpace)
+    semi_discrete_field(T,V) do t,uh
+        uh
+    end
+end
+
+function semi_discrete_field(f,T,V::AbstractSpace)
+    uh = zero_field(T,V)
+    semi_discrete_field(f,uh)
+end
+
+function semi_discrete_field(uh::DiscreteField)
+    semi_discrete_field(uh) do t,uh
+        uh
+    end
+end
+
+function semi_discrete_field(f,uh::DiscreteField)
+    SemiDiscreteField(f,uh)
+end
+
+struct SemiDiscreteField{A,B}
+    update::A
+    discrete_field::B
+end
+
+function (u::SemiDiscreteField)(t)
+    u.update(t,u.discrete_field)
+    u.discrete_field
+end
+
+function space(u::SemiDiscreteField)
+    space(u.discrete_field)
+end
+
+function discrete_field(u::SemiDiscreteField)
+    u.discrete_field
+end
+
+function nonlinear_ode(
+    uhs,tspan,res,jac,V=space(uhs[1]);
+    constant_jacobian=false,
+    matrix_strategy = monolithic_matrix_assembly_strategy(),
+    vector_strategy = monolithic_vector_assembly_strategy(),
+    )
+
+    U = space(uhs[1])
+    test=1
+    trial=2
+    v = shape_functions(V,test)
+    du = shape_functions(U,trial)
+    function setup_trial_funs(coeff)
+        # TODO this would be better
+        # x -> coeff*s(x)
+        #du
+        call(s->(x->coeff*s(x)),du)
+    end
+    t0 = first(tspan)
+    uhs_0 = map(uh->uh(t0),uhs)
+    coeffs_0 = map(uh_0 -> one(eltype(free_values(uh_0))),uhs_0) 
+    dus_0 = map(setup_trial_funs,coeffs_0)
+    j0_int = jac(t0,uhs_0...)(dus_0,v)
+    r0_int = res(t0,uhs_0...)(v)
+    T = eltype(free_values(uhs_0[1]))
+    A0,b0,cache = assemble_matrix_and_vector(j0_int,r0_int,U,V,T;
+       reuse=Val(true),matrix_strategy,vector_strategy)
+    x0 = (t0,map(free_values,uhs_0)...)
+    PS.ode_problem(x0,b0,A0,tspan,coeffs_0,cache;constant_jacobian) do p
+        coeffs = PS.coefficients(p)
+        x = PS.solution(p)
+        A = PS.jacobian(p)
+        b = PS.residual(p)
+        ws = PS.workspace(p)
+        t = x[1]
+        uhs_t = map((uh,y)->solution_field(uh(t),y),uhs,x[2:end])
+        dus_t = map(setup_trial_funs,coeffs)
+        j_int = jac(t,uhs_t...)(dus_t,v)
+        r_int = res(t,uhs_t...)(v)
+        if b !== nothing && A !== nothing
+            assemble_matrix_and_vector!(j_int,r_int,U,V,A,b,ws)
+        elseif b !== nothing && A === nothing
+            assemble_vector!(r_int,V,b,ws.bcache)
+        elseif b === nothing && A !== nothing
+            assemble_matrix!(j_int,U,V,A,ws.Acache)
+        end
+        p = PS.update(p,solution=x,residual=b,jacobian=A)
+    end
+end
 
