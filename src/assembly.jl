@@ -642,6 +642,18 @@ function solution_field(U::DiscreteField,p::PS.AbstractSolver)
     solution_field(U,PS.solution(p))
 end
 
+function solution_field(uts,p::PS.AbstractODEProblem)
+    x = PS.solution(p)
+    t = x[1]
+    uas = x[2:end]
+    uhs = map((ua,ut)->solution_field(ut(t),ua),uas,uts)
+    t, uhs
+end
+
+function solution_field(uts,p::PS.AbstractODESolver)
+    solution_field(uts,PS.problem(p))
+end
+
 
 function free_values_from_solution(x,dofs)
     x
@@ -731,44 +743,37 @@ function discrete_field(u::SemiDiscreteField)
 end
 
 function nonlinear_ode(
-    uhs,tspan,res,jac,V=space(uhs[1]);
-    constant_jacobian=false,
+    uts,tspan,res,jacs,V=space(uts[1]);
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     vector_strategy = monolithic_vector_assembly_strategy(),
     )
 
-    U = space(uhs[1])
+    U = space(uts[1])
     test=1
     trial=2
     v = shape_functions(V,test)
     du = shape_functions(U,trial)
-    function setup_trial_funs(coeff)
-        # TODO this would be better
-        # x -> coeff*s(x)
-        #du
-        call(s->(x->coeff*s(x)),du)
-    end
     t0 = first(tspan)
-    uhs_0 = map(uh->uh(t0),uhs)
+    uhs_0 = map(uh->uh(t0),uts)
     coeffs_0 = map(uh_0 -> one(eltype(free_values(uh_0))),uhs_0) 
-    dus_0 = map(setup_trial_funs,coeffs_0)
-    j0_int = jac(t0,uhs_0...)(dus_0,v)
-    r0_int = res(t0,uhs_0...)(v)
+    r0_int = res(t0,uhs_0)(v)
+    js0_int = map((jac,coeff)->coeff*jac(t0,uhs_0)(du,v),jacs,coeffs_0)
+    j0_int = sum(js0_int)
     T = eltype(free_values(uhs_0[1]))
     A0,b0,cache = assemble_matrix_and_vector(j0_int,r0_int,U,V,T;
        reuse=Val(true),matrix_strategy,vector_strategy)
     x0 = (t0,map(free_values,uhs_0)...)
-    PS.ode_problem(x0,b0,A0,tspan,coeffs_0,cache;constant_jacobian) do p
+    PS.ode_problem(x0,b0,A0,tspan,coeffs_0,cache) do p
         coeffs = PS.coefficients(p)
         x = PS.solution(p)
         A = PS.jacobian(p)
         b = PS.residual(p)
         ws = PS.workspace(p)
         t = x[1]
-        uhs_t = map((uh,y)->solution_field(uh(t),y),uhs,x[2:end])
-        dus_t = map(setup_trial_funs,coeffs)
-        j_int = jac(t,uhs_t...)(dus_t,v)
-        r_int = res(t,uhs_t...)(v)
+        uhs_t = map((uh,y)->solution_field(uh(t),y),uts,x[2:end])
+        r_int = res(t,uhs_t)(v)
+        js_int = map((jac,coeff)->coeff*jac(t,uhs_t)(du,v),jacs,coeffs)
+        j_int = sum(js_int)
         if b !== nothing && A !== nothing
             assemble_matrix_and_vector!(j_int,r_int,U,V,A,b,ws)
         elseif b !== nothing && A === nothing
