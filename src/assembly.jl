@@ -642,6 +642,18 @@ function solution_field(U::DiscreteField,p::PS.AbstractSolver)
     solution_field(U,PS.solution(p))
 end
 
+function solution_field(uts,p::PS.AbstractODEProblem)
+    x = PS.solution(p)
+    t = x[1]
+    uas = x[2:end]
+    uhs = map((ua,ut)->solution_field(ut(t),ua),uas,uts)
+    t, uhs
+end
+
+function solution_field(uts,p::PS.AbstractODESolver)
+    solution_field(uts,PS.problem(p))
+end
+
 
 function free_values_from_solution(x,dofs)
     x

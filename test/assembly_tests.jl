@@ -294,7 +294,7 @@ p = GT.linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
 
 tini = 0.0
-tend = 1.0
+tend = 10.0
 domain = (0,1,0,1)
 cells = (20,20)
 mesh = GT.cartesian_mesh(domain,cells)
