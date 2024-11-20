@@ -1634,13 +1634,42 @@ struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     shape::H
 end
 
-function node_dofs(space::LagrangeSpace)
-    node_dofs(Int32,space)
+function node_coordinates(a::LagrangeSpace)
+    T = Float64
+    D = num_ambient_dims(a.domain)
+    major = :component
+    shape = (D,)
+    dirichlet_boundary = nothing
+    V = LagrangeSpace(
+                      a.domain,
+                      a.order,
+                      a.conformity,
+                      dirichlet_boundary,
+                      a.space,
+                      major,
+                      shape
+                     )
+    u = zero_field(T,V)
+    x = analytical_field(identity,a.domain)
+    interpolate!(x,u)
+    dof_to_v = free_values(u)
+    ndofs = length(dof_to_v)
+    nnodes = div(ndofs,D)
+    node_to_x = zeros(SVector{D,T},nnodes)
+    for node in 1:nnodes
+        dofs = ntuple(i->i+(node-1)*D,Val{D}())
+        vs = map(dof->dof_to_v[dof],dofs)
+        x = SVector{D,T}(vs)
+        node_to_x[node] = x
+    end
 end
 
-function dof_node(space::LagrangeSpace)
-    dof_node(Int32,space)
-end
+#TODO these would provably need loop over cells
+#function node_dofs(space::LagrangeSpace)
+#end
+#
+#function free_or_dirichlet_dof_node(space::LagrangeSpace)
+#end
 
 conformity(space::LagrangeSpace) = space.conformity
 

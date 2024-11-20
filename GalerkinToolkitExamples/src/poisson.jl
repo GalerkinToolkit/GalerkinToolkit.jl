@@ -180,9 +180,229 @@ function main_automatic(params)
 end
 
 function main_hand_written(params)
+
+    @assert params[:discretization_method] == :continuous_galerkin
+    @assert params[:dirichlet_method] === :strong
+
     timer = TimerOutput()
     results = Dict{Symbol,Any}()
-    error("Not implemented yet")
+
+    timer = params[:timer]
+    results = Dict{Symbol,Any}()
+
+    mesh = params[:mesh]
+    D = GT.num_dims(mesh)
+    Ω = GT.interior(mesh,physical_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;physical_names=params[:dirichlet_tags])
+    interpolation_degree = params[:interpolation_degree]
+    integration_degree = params[:integration_degree]
+    dΩ = GT.measure(Ω,integration_degree)
+    u = params[:u]
+    f(x) = -Δ(u,x)
+
+    V = GT.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
+    uh = GT.zero_field(Float64,V)
+
+    x_free = GT.free_values(uh)
+    x_diri = GT.dirichlet_values(uh)
+    face_to_dofs = GT.face_dofs(V)
+    vnode_to_coord = GT.node_coordinates(V)
+    diri_dof_to_vnode = GT.dirichlet_dof_to_node(V)
+    x_diri .= u.(vnode_to_coord[diri_dof_to_vnode])
+
+    rid_to_reffe = GT.reference_fes(V)
+    face_to_rid = GT.face_reference_id(V)
+    rid_to_refquad = GT.reference_quadratures(dΩ)
+
+    rid_to_refface = GT.reference_faces(mesh,D)
+    cell_to_rid = GT.face_reference_id(mesh,D)
+    face_to_cell = GT.faces(Ω)
+    nfaces = length(face_to_cell)
+
+    matrix_strategy =  GT.monolithic_matrix_assembly_strategy()
+    vector_strategy = GT.monolithic_vector_assembly_strategy()
+
+    free_dofs = GT.free_dofs(V)
+    T = Float64
+    matrix_strategy_init = matrix_strategy.init(free_dofs,free_dofs,T)
+    vector_strategy_init = vector_strategy.init(free_dofs,T)
+    field_i = field_j = 1
+
+    # Count
+    matrix_strategy_counter = matrix_strategy.counter(matrix_strategy_init)
+    vectir_strategy_counter = vector_strategy.counter(vector_strategy_init)
+    for face in 1:nfaces
+        dofs = face_to_dofs[face]
+        for dof_i in dofs
+            vector_strategy_counter =
+            vector_strategy.count(vector_strategy_counter,dof_i,dif_j,field_i,field_j)
+            for dof_j in dofs
+                matrix_strategy_counter =
+                matrix_strategy.count(matrix_strategy_counter,dof_i,dif_j,field_i,field_j)
+            end
+        end
+
+    end
+
+    # Allocate
+    matrix_strategy_alloc = matrix_strategy.allocate(matrix_strategy_counter,matrix_strategy_init)
+    vector_strategy_alloc = vector_strategy.allocate(vector_strategy_counter,vector_strategy_init)
+
+    # Pre compute
+    T = Float64
+    Tgrad = SVector{D,T}
+    Tx = Tgrad
+    TJ = SMatrix{D,D,T}
+    rid_to_cache = map(rid_to_reffe,rid_to_refface,rid_to_refquad) do reffe,refface,refquad
+        ndofs = GT.num_dofs(reffe)
+        A = zeros(T,ndofs,ndofs)
+        b = zeros(T,ndofs)
+        u = zeros(T,ndofs)
+        x = GT.coordinates(refquad)
+        ref_grads = GT.tabulator(reffe)(ForwardDiff.gradient,x)
+        ref_vals_geom = GT.tabulator(refface)(GT.value,x)
+        ref_grads_geom = GT.tabulator(refface)(ForwardDiff.gradient,x)
+        grads = zeros(Tgrad,ndofs)
+        npoints = length(x)
+        weights = GT.weights(refquad)
+        (;A,b,u,ref_vals_geom,ref_grads_geom,grads,ref_grads,npoints,ndofs,weights)
+    end
+    
+    # Fill
+    matrix_strategy_counter = matrix_strategy.counter(matrix_strategy_init)
+    vectir_strategy_counter = vector_strategy.counter(vector_strategy_init)
+    z = zero(T)
+    for face in 1:nfaces
+        rid = face_to_rid[face]
+        cache = rid_to_cache[rid]
+        dofs = face_to_dofs[face]
+        cell = face_to_cell[face]
+        nodes = cell_to_nodes[cell]
+        fill!(cache.A,z)
+        fill!(cache.b,z)
+        fill!(cache.u,z)
+        ndofs = cache.ndofs
+        # Fill in Dirichlet values
+        for i in 1:ndofs
+            dof = dofs[i]
+            if dof < 0
+                cache.u[i] = x_diri[-dof]
+            end
+        end
+        # Integration loop
+        for point in 1:cache.npoints
+            # Compute integration coordinate and Jacobian transpose
+            x = zero(Tx)
+            Jt = zero(TJ)
+            for (inode,node) in enumerate(nodes)
+                coords = node_to_coords[node]
+                x += cache.ref_vals_geom[point,inode]*coords
+                Jt += coords*transpose(cache.ref_grads_geom[point,inode])
+            end
+            # Integration weight
+            dV = det(abs(Jt))*cache.weights[point]
+            # Compute physical gradients
+            invJt = inv(Jt)
+            for i in 1:ndofs
+                cache.grads[i] = invJt*cache.ref_grads[point,i]
+            end
+            # Integrate matrix and vector
+            fx = f(x)
+            for i in 1:ndofs
+                cache.b[i] = cache.vals[i]*fx*dV
+                for j in 1:ndofs
+                    Aij = cache.grads[i]⋅cache.grads[j]*dV
+                    cache.A[i,j] = Aij
+                    cache.b[i] -= Aij*u[j]
+                end
+            end
+        end
+        # Assemble the matrix and vector
+        for (i,dof_i) in enumerate(dofs)
+            vector_strategy_counter =
+            vector_strategy.set!(
+                                 vector_strategy_alloc,
+                                 vector_strategy_counter,
+                                 vector_strategy_init,
+                                 cache.b[i],
+                                 dof_i,field_i)
+            for (j,dof_j) in enumerate(dofs)
+                matrix_strategy_counter =
+                matrix_strategy.set!(
+                                     matrix_strategy_alloc,
+                                     matrix_strategy_counter,
+                                     matrix_strategy_init,
+                                     cache.A[i,j],
+                                     dof_i,dif_j,field_i,field_j)
+            end
+        end
+    end
+
+    # Build the linear system and solve it
+    rhs = vector_strategy.compress(vector_strategy_alloc,vector_strategy_init)
+    matrix = matrix_strategy.compress(matrix_strategy_alloc,matrix_strategy_init)
+    p = PS.linear_problem(x_free,matrix,rhs)
+    s = params[:solver](p)
+    s = PS.solve(s)
+    x_free = PS.solution(s)
+
+    # Integrate error norms
+    el2 = zero(T)
+    eh1 = zero(T)
+    for face in 1:nfaces
+        rid = face_to_rid[face]
+        cache = rid_to_cache[rid]
+        dofs = face_to_dofs[face]
+        cell = face_to_cell[face]
+        nodes = cell_to_nodes[cell]
+        fill!(cache.u,z)
+        ndofs = cache.ndofs
+        # Fill values
+        for i in 1:ndofs
+            dof = dofs[i]
+            if dof < 0
+                cache.u[i] = x_diri[-dof]
+            else
+                cache.u[i] = x_free[dof]
+            end
+        end
+        # Integration loop
+        for point in 1:cache.npoints
+            # Compute integration coordinate and Jacobian transpose
+            x = zero(Tx)
+            Jt = zero(TJ)
+            for (inode,node) in enumerate(nodes)
+                coords = node_to_coords[node]
+                x += cache.ref_vals_geom[point,inode]*coords
+                Jt += coords*transpose(cache.ref_grads_geom[point,inode])
+            end
+            # Integration weight
+            dV = det(abs(Jt))*cache.weights[point]
+            # Compute physical gradients
+            invJt = inv(Jt)
+            for i in 1:ndofs
+                cache.grads[i] = invJt*cache.ref_grads[point,i]
+            end
+            # Compute FE solution and its gradients
+            uhx = z
+            ∇uhx = zero(Tx)
+            for i in 1:ndofs
+                ui = u[i]
+                uhx += cache.vals[point,i]*ui
+                ∇uhx += cache.grads[i]*ui
+            end
+            # Compute and integrate the error
+            ex = u(x)-uhx
+            ∇ex = ForwardDiff.gradient(u,x)-∇uhx
+            el2 += ex*ex*dV
+            eh1 += ∇ex⋅∇ex*dV
+        end
+    end
+    el2 = sqrt(el2)
+    eh1 = sqrt(eh1)
+    results[:error_h1_norm] = eh1
+    results[:error_l2_norm] = el2
+
     results
 end
 
