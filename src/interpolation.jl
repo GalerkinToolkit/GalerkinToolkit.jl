@@ -1662,14 +1662,65 @@ function node_coordinates(a::LagrangeSpace)
         x = SVector{D,T}(vs)
         node_to_x[node] = x
     end
+    node_to_x
 end
 
 #TODO these would provably need loop over cells
 #function node_dofs(space::LagrangeSpace)
 #end
 #
-#function free_or_dirichlet_dof_node(space::LagrangeSpace)
-#end
+
+function free_dof_node(space::LagrangeSpace)
+    free_and_dirichlet_dof_node(space)[1]
+end
+
+function dirichlet_dof_node(space::LagrangeSpace)
+    free_and_dirichlet_dof_node(space)[2]
+end
+
+function free_and_dirichlet_dof_node(space::LagrangeSpace)
+    T = Float64
+    D = num_ambient_dims(space.domain)
+    major = :component
+    shape = SCALAR_SHAPE
+    dirichlet_boundary = nothing
+    V = LagrangeSpace(
+                      space.domain,
+                      space.order,
+                      space.conformity,
+                      dirichlet_boundary,
+                      space.space,
+                      major,
+                      shape
+                     )
+    face_to_nodes = GT.face_dofs(V)
+    face_to_dofs = GT.face_dofs(space)
+    nfree = length(free_dofs(space))
+    ndiri = length(dirichlet_dofs(space))
+    free_dof_to_node = zeros(Int32,nfree)
+    diri_dof_to_node = zeros(Int32,ndiri)
+    rid_to_lnode_to_ldofs = map(node_dofs,reference_fes(space))
+    face_to_rid = face_reference_id(space)
+    nfaces = length(face_to_rid)
+    for face in 1:nfaces
+        nodes = face_to_nodes[face]
+        dofs = face_to_dofs[face]
+        rid = face_to_rid[face]
+        lnode_to_ldofs = rid_to_lnode_to_ldofs[rid]
+        for (lnode,node) in enumerate(nodes)
+            ldofs = lnode_to_ldofs[lnode]
+            for ldof in ldofs
+                dof = dofs[ldof]
+                if dof < 0
+                    diri_dof_to_node[-dof] = node
+                else
+                    free_dof_to_node[dof] = node
+                end
+            end
+        end
+    end
+    free_dof_to_node, diri_dof_to_node
+end
 
 conformity(space::LagrangeSpace) = space.conformity
 

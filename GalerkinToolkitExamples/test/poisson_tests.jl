@@ -26,8 +26,6 @@ for discretization_method in (:continuous_galerkin,)
     end
 end
 
-xxx
-
 for discretization_method in (:interior_penalty,:continuous_galerkin)
     for dirichlet_method in (:multipliers,:nitsche,:strong)
         if implementation === :hand_written && discretization_method !== :continuous_galerkin && dirichlet_method !== :strong
