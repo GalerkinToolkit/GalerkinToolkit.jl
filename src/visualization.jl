@@ -12,6 +12,16 @@ struct Plot{A,B,C,D} <: AbstractType
     end
 end
 
+function visualization_mesh(plt::Plot;glue=Val(false))
+    vis_mesh = plt.mesh
+    vis_glue = plt.cache.glue
+    if val_parameter(glue)
+        vis_mesh, vis_glue
+    else
+        vis_mesh
+    end
+end
+
 function replace_mesh(plt::Plot,mesh)
     Plot(mesh,plt.face_data,plt.node_data,plt.cache)
 end
@@ -442,7 +452,6 @@ function plot_impl!(plt,term,label,::Type{T}) where T
 end
 
 domain(plt::Union{Plot,PPlot}) = plt.cache.domain
-visualization_mesh(plt::Plot) = (plt.mesh, plt.cache.glue)
 
 function coordinates(plt::Union{Plot,PPlot})
     domain = plt |> GT.domain
@@ -466,7 +475,7 @@ function reference_coordinates(plt::Plot)
     d = GT.face_dim(domain)
     domface_to_face = GT.faces(domain)
     mesh = GT.mesh(domain)
-    vmesh, vglue = GT.visualization_mesh(plt)
+    vmesh, vglue = GT.visualization_mesh(plt,glue=true)
     refid_to_snode_to_coords = vglue.reference_coordinates
     d = GT.num_dims(vmesh)
     face_to_refid = GT.face_reference_id(mesh,d)

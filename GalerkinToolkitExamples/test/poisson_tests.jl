@@ -28,10 +28,8 @@ end
 
 for discretization_method in (:interior_penalty,:continuous_galerkin)
     for dirichlet_method in (:multipliers,:nitsche,:strong)
-        if implementation === :hand_written && discretization_method !== :continuous_galerkin && dirichlet_method !== :strong
-            continue
-        end
         params = Dict{Symbol,Any}()
+        params[:implementation] = :automatic
         params[:mesh] = mesh
         params[:dirichlet_tags] = ["1-face-1","1-face-3","1-face-4"]
         params[:neumann_tags] = ["1-face-2"]

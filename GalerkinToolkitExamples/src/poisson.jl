@@ -185,9 +185,6 @@ function main_hand_written(params)
     @assert params[:discretization_method] == :continuous_galerkin
     @assert params[:dirichlet_method] === :strong
 
-    timer = TimerOutput()
-    results = Dict{Symbol,Any}()
-
     timer = params[:timer]
     results = Dict{Symbol,Any}()
 
@@ -210,10 +207,6 @@ function main_hand_written(params)
     vnode_to_coord = GT.node_coordinates(V)
     diri_dof_to_vnode = GT.dirichlet_dof_node(V)
     x_diri .= u.(vnode_to_coord[diri_dof_to_vnode])
-
-    vtk_grid("tmp",Ω) do plt
-        GT.plot!(plt,uh,label="uh")
-    end
 
     rid_to_reffe = GT.reference_fes(V)
     face_to_rid = GT.face_reference_id(V)
@@ -359,10 +352,14 @@ function main_hand_written(params)
     rhs, rhs_cache = vector_strategy.compress(vector_strategy_alloc,vector_strategy_init)
     matrix, matrix_cache = matrix_strategy.compress(matrix_strategy_alloc,matrix_strategy_init)
     p = PS.linear_problem(x_free,matrix,rhs)
-    s = params[:solver](p)
-    s = PS.solve(s)
-    x_free = PS.solution(s)
-    uh = GT.solution_field(uh,x_free)
+
+
+    @timeit timer "solver" begin
+        s = params[:solver](p)
+        s = PS.solve(s)
+        x_free = PS.solution(s)
+        uh = GT.solution_field(uh,x_free)
+    end
 
     # Integrate error norms
     el2 = zero(T)
@@ -419,6 +416,56 @@ function main_hand_written(params)
     eh1 = sqrt(eh1)
     results[:error_h1_norm] = eh1
     results[:error_l2_norm] = el2
+
+    @timeit timer "vtk" if params[:export_vtu]
+        plt = GT.plot(Ω;refinement=4)
+        vis_mesh, vis_glue = GT.visualization_mesh(plt,glue=Val(true))
+        n_vis_nodes = GT.num_nodes(vis_mesh)
+        vis_node_to_uh = zeros(T,n_vis_nodes)
+        rid_to_ref_vis_xs = vis_glue.reference_coordinates
+        rid_to_vis_cache = map(rid_to_ref_vis_xs,rid_to_reffe) do vis_xs,reffe
+            ref_vals = GT.tabulator(reffe)(GT.value,vis_xs)
+            npoints,ndofs = size(ref_vals)
+            ue = zeros(T,ndofs)
+            (;ref_vals,ndofs,ue,npoints)
+        end
+        vis_node = 0
+        for face in 1:nfaces
+            rid = face_to_rid[face]
+            cache = rid_to_vis_cache[rid]
+            dofs = face_to_dofs[face]
+            cell = face_to_cell[face]
+            nodes = cell_to_nodes[cell]
+            ndofs = cache.ndofs
+            # Fill values
+            for i in 1:ndofs
+                dof = dofs[i]
+                if dof < 0
+                    cache.ue[i] = x_diri[-dof]
+                else
+                    cache.ue[i] = x_free[dof]
+                end
+            end
+            # Compute FE solution for each visualization point
+            for point in 1:cache.npoints
+                uhx = z
+                for i in 1:ndofs
+                    ui = cache.ue[i]
+                    uhx += cache.ref_vals[point,i]*ui
+                end
+                vis_node += 1
+                vis_node_to_uh[vis_node] = uhx
+            end
+        end
+        # Set visualization data
+        GT.node_data(plt)["uh"] = vis_node_to_uh
+        # Write it to vtk
+        vtk_grid(params[:example_path]*"_Ω",plt) |> WriteVTK.close
+    end
+
+    if params[:verbose]
+        display(timer)
+    end
 
     results
 end
