@@ -126,6 +126,29 @@ function topological_sort(expr,deps)
         marks_deps[id_n] = j
         expr_n , j
     end
+    function setup_expr_default(expr_n)
+        args = expr_n.args
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = maximum(map(last,r))
+        expr_n_new = Expr(expr_n.head,args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_call_or_ref(expr_n)
+        args = expr_n.args[2:end]
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = maximum(map(last,r))
+        expr_n_new = Expr(expr_n.head,expr_n.args[1],args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_lambda(expr_n)
+        body = expr_n.args[2]
+        body_sorted = topological_sort(body,())[1]
+        j = length(deps)
+        expr_n_new = Expr(expr_n.head,expr_n.args[1],body_sorted)
+        expr_n_new, j
+    end
     function visit(expr_n)
         id_n = hash(expr_n)
         if haskey(marks,id_n)
@@ -138,11 +161,13 @@ function topological_sort(expr,deps)
         marks[id_n] = temporary
         var = gensym()
         if isa(expr_n,Expr)
-            args = expr_n.args
-            r = map(visit,args)
-            args_var = map(first,r)
-            j = maximum(map(last,r))
-            expr_n_new = Expr(expr_n.head,args_var...)
+            if expr_n.head === :call || expr_n.head === :ref
+                expr_n_new, j = setup_expr_call_or_ref(expr_n)
+            elseif expr_n.head === :(->)
+                expr_n_new, j = setup_expr_lambda(expr_n)
+            else
+                expr_n_new, j = setup_expr_default(expr_n)
+            end
             assignment = :($var = $expr_n_new)
         else
             j = 0
@@ -207,14 +232,6 @@ function simplify(expr::Expr)
     else
         simplify(expr2)
     end
-end
-
-function unpack_storage(dict,state)
-    expr = Expr(:block)
-    for k in Base.values(dict) |> collect |> sort
-        push!(expr.args,:($k = $state.$k))
-    end
-    expr
 end
 
 
