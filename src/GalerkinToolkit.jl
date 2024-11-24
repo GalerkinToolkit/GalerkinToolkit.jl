@@ -21,8 +21,8 @@ include("p_mesh.jl")
 include("symbolics.jl")
 include("domain.jl")
 include("integration.jl")
-include("interpolation.jl")
-include("assembly.jl")
+#include("interpolation.jl")
+#include("assembly.jl")
 include("visualization.jl")
 
 end # module

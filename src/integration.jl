@@ -351,17 +351,17 @@ function sum_contribution(measure,qty)
     sum_contribution_impl(qty,measure,facemask)
 end
 
-function sum_contribution(measure::Measure{<:PMesh},qty::AbstractQuantity{<:PMesh})
-    domain = GT.domain(measure)
-    mesh = domain |> GT.mesh
-    d = GT.num_dims(domain)
-    # TODO allow the user to skip or not to skip ghosts
-    map(partition(measure),partition(qty),GT.face_partition(mesh,d)) do mymeasure,myqty,myfaces
-        mydom = GT.domain(mymeasure)
-        facemask = (part_id(myfaces) .== local_to_owner(myfaces))[GT.faces(mydom)]
-        sum_contribution_impl(myqty,mymeasure,facemask)
-    end |> sum
-end
+#function sum_contribution(measure::Measure{<:PMesh},qty::AbstractQuantity{<:PMesh})
+#    domain = GT.domain(measure)
+#    mesh = domain |> GT.mesh
+#    d = GT.num_dims(domain)
+#    # TODO allow the user to skip or not to skip ghosts
+#    map(partition(measure),partition(qty),GT.face_partition(mesh,d)) do mymeasure,myqty,myfaces
+#        mydom = GT.domain(mymeasure)
+#        facemask = (part_id(myfaces) .== local_to_owner(myfaces))[GT.faces(mydom)]
+#        sum_contribution_impl(myqty,mymeasure,facemask)
+#    end |> sum
+#end
 
 function sum_contribution_impl(qty,measure,facemask)
     # TODO some code duplication with face_contribution_impl

@@ -36,6 +36,10 @@ function boundary(mesh::Union{AbstractMesh,PMesh};
     domain(mesh;face_dim=D-1,face_around,mesh_id,physical_names,is_reference_domain)
 end
 
+function is_boundary(dom::AbstractDomain)
+    dom.face_around !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
+end
+
 function domain(mesh;
     mesh_id = objectid(mesh),
     face_dim = Val(GT.num_dims(mesh)),
@@ -71,10 +75,11 @@ function setup_domain(domain::AbstractDomain)
         return domain
     end
     faces = GT.faces(domain)
+    inverse_faces = GT.inverse_faces(domain)
     mesh = domain |> GT.mesh
     d = domain |> GT.face_dim
     refid_to_funs = map(GT.shape_functions,GT.reference_faces(mesh,d))
-    cache = domain_cache(;faces,refid_to_funs)
+    cache = domain_cache(;faces,inverse_faces,refid_to_funs)
     replace_cache(domain,cache)
 end
 
@@ -207,45 +212,61 @@ function num_faces(domain::AbstractDomain{<:PMesh})
     map(GT.num_faces,partition(domain))
 end
 
+function inverse_faces(domain::AbstractDomain)
+    if domain.cache !== nothing
+        return domain.cache.inverse_faces
+    end
+    d = num_dims(domain)
+    ndfaces = num_faces(mesh(domain),d)
+    dface_to_face = zeros(Int32,ndfaces)
+    face_to_dface = faces(domain)
+    dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    dface_to_face
+end
+
+function inverse_faces(domain::AbstractDomain{<:PMesh})
+    map(GT.inverse_faces,partition(domain))
+end
+
 abstract type AbstractDomainGlue{A} <: GT.AbstractType end
-mesh(a::AbstractDomainGlue) = a.mesh
-domain(a::AbstractDomainGlue) = a.domain
-codomain(a::AbstractDomainGlue) = a.codomain
-
-function PartitionedArrays.partition(a::AbstractDomainGlue{<:PMesh})
-    if hasproperty(a,:face_around)
-        map(partition(GT.domain(a)),partition(GT.codomain(a))) do dom,cod
-            GT.domain_glue(dom,cod;a.face_around)
-        end
-    else
-        map(GT.domain_glue,partition(GT.domain(a)),partition(GT.codomain(a)))
-    end
-end
-
-function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;strict=true)
-    msg = "Trying to combine domains on different meshes"
-    @assert GT.mesh_id(domain) == GT.mesh_id(codomain) msg
-    mesh = GT.mesh(domain)
-    Ddom = GT.face_dim(domain)
-    Dcod = GT.face_dim(codomain)
-    face_around = GT.face_around(domain)
-    if Ddom == Dcod
-        InteriorGlue(mesh,domain,codomain)
-    elseif Ddom < Dcod
-        if face_around === nothing
-            CoboundaryGlue(mesh,domain,codomain)
-        else
-            BoundaryGlue(mesh,domain,codomain)
-        end
-    else
-        if strict
-            error("This case does not make sense")
-        else
-            return nothing
-        end
-    end
-end
-
+#mesh(a::AbstractDomainGlue) = a.mesh
+#domain(a::AbstractDomainGlue) = a.domain
+#codomain(a::AbstractDomainGlue) = a.codomain
+#
+#function PartitionedArrays.partition(a::AbstractDomainGlue{<:PMesh})
+#    if hasproperty(a,:face_around)
+#        map(partition(GT.domain(a)),partition(GT.codomain(a))) do dom,cod
+#            GT.domain_glue(dom,cod;a.face_around)
+#        end
+#    else
+#        map(GT.domain_glue,partition(GT.domain(a)),partition(GT.codomain(a)))
+#    end
+#end
+#
+#function domain_glue(domain::AbstractDomain,codomain::AbstractDomain;strict=true)
+#    msg = "Trying to combine domains on different meshes"
+#    @assert GT.mesh_id(domain) == GT.mesh_id(codomain) msg
+#    mesh = GT.mesh(domain)
+#    Ddom = GT.face_dim(domain)
+#    Dcod = GT.face_dim(codomain)
+#    face_around = GT.face_around(domain)
+#    if Ddom == Dcod
+#        InteriorGlue(mesh,domain,codomain)
+#    elseif Ddom < Dcod
+#        if face_around === nothing
+#            CoboundaryGlue(mesh,domain,codomain)
+#        else
+#            BoundaryGlue(mesh,domain,codomain)
+#        end
+#    else
+#        if strict
+#            error("This case does not make sense")
+#        else
+#            return nothing
+#        end
+#    end
+#end
+#
 struct InteriorGlue{A,B,C} <: AbstractDomainGlue{A}
     mesh::A
     domain::B
@@ -263,242 +284,359 @@ struct CoboundaryGlue{A,B,C} <: AbstractDomainGlue{A}
     domain::B
     codomain::C
 end
+#
+#function target_face(glue::InteriorGlue)
+#    mesh = glue |> GT.domain |> GT.mesh
+#    domain = glue |> GT.domain
+#    codomain = glue |> GT.codomain
+#    d = domain |> GT.face_dim
+#    D = codomain |> GT.face_dim
+#    @assert d == D
+#    sface_to_dface = domain |> GT.faces
+#    tface_to_Dface = codomain |> GT.faces
+#    Dface_to_tface = zeros(Int32,GT.num_faces(mesh,D))
+#    tface_to_tface = LinearIndices(tface_to_Dface)
+#    Dface_to_tface[tface_to_Dface] = tface_to_tface
+#    sface_to_tface = Dface_to_tface[sface_to_dface]
+#    nsfaces = length(sface_to_tface)
+#    ptrs = collect(Int32,1:(nsfaces+1))
+#    face_around = 1
+#    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+#    sface_to_lfaces = JaggedArray(fill(Int32(1),nsfaces),ptrs)
+#    sface_to_faces_around = JaggedArray(fill(Int32(face_around),nsfaces),ptrs)
+#    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
+#end
+#
+#function target_face(glue::CoboundaryGlue)
+#    mesh = glue |> GT.domain |> GT.mesh
+#    domain = glue |> GT.domain
+#    codomain = glue |> GT.codomain
+#    d = domain |> GT.face_dim
+#    D = codomain |> GT.face_dim
+#    @assert d < D
+#    sface_to_dface = domain |> GT.faces
+#    tface_to_Dface = codomain |> GT.faces
+#    Dface_to_tface = zeros(Int32,GT.num_faces(mesh,D))
+#    tface_to_tface = LinearIndices(tface_to_Dface)
+#    Dface_to_tface[tface_to_Dface] = tface_to_tface
+#    topo = GT.topology(mesh)
+#    dface_to_lfaces = GT.face_local_faces(topo,d,D)
+#    sface_to_lfaces = JaggedArray(view(dface_to_lfaces,sface_to_dface))
+#    dface_to_Dfaces = GT.face_incidence(topo,d,D)
+#    sface_to_Dfaces = JaggedArray(view(dface_to_Dfaces,sface_to_dface))
+#    data = sface_to_Dfaces.data
+#    f(Dface) = Dface_to_tface[Dface]
+#    data .= f.(data)
+#    sface_to_tfaces = sface_to_Dfaces
+#    sface_to_faces_around_data = zeros(Int32,length(data))
+#    ptrs = sface_to_tfaces.ptrs
+#    nsfaces = length(sface_to_tfaces)
+#    for sface in 1:nsfaces
+#        pini = ptrs[sface]
+#        pend = ptrs[sface+1]-1
+#        for (ip,p) in enumerate(pini:pend)
+#            sface_to_faces_around_data[p] = ip
+#        end
+#    end
+#    sface_to_faces_around = JaggedArray(sface_to_faces_around_data,ptrs)
+#    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
+#end
+#
+#function target_face(glue::BoundaryGlue)
+#    domain = replace_face_around(glue.domain,nothing)
+#    glue2 = domain_glue(domain,glue.codomain)
+#    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around = target_face(glue2)
+#    face_around = GT.face_around(glue.domain)
+#    sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
+#    sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
+#    sface_to_face_around = map(tfaces->tfaces[face_around],sface_to_faces_around)
+#    nsfaces = length(sface_to_tface)
+#    ptrs = collect(Int32,1:(nsfaces+1))
+#    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
+#    sface_to_lfaces = JaggedArray(sface_to_lface,ptrs)
+#    sface_to_faces_around = JaggedArray(sface_to_face_around,ptrs)
+#    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
+#end
 
-function target_face(glue::InteriorGlue)
-    mesh = glue |> GT.domain |> GT.mesh
-    domain = glue |> GT.domain
-    codomain = glue |> GT.codomain
-    d = domain |> GT.face_dim
-    D = codomain |> GT.face_dim
-    @assert d == D
-    sface_to_dface = domain |> GT.faces
-    tface_to_Dface = codomain |> GT.faces
-    Dface_to_tface = zeros(Int32,GT.num_faces(mesh,D))
-    tface_to_tface = LinearIndices(tface_to_Dface)
-    Dface_to_tface[tface_to_Dface] = tface_to_tface
-    sface_to_tface = Dface_to_tface[sface_to_dface]
-    nsfaces = length(sface_to_tface)
-    ptrs = collect(Int32,1:(nsfaces+1))
-    face_around = 1
-    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
-    sface_to_lfaces = JaggedArray(fill(Int32(1),nsfaces),ptrs)
-    sface_to_faces_around = JaggedArray(fill(Int32(face_around),nsfaces),ptrs)
-    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
-end
-
-function target_face(glue::CoboundaryGlue)
-    mesh = glue |> GT.domain |> GT.mesh
-    domain = glue |> GT.domain
-    codomain = glue |> GT.codomain
-    d = domain |> GT.face_dim
-    D = codomain |> GT.face_dim
-    @assert d < D
-    sface_to_dface = domain |> GT.faces
-    tface_to_Dface = codomain |> GT.faces
-    Dface_to_tface = zeros(Int32,GT.num_faces(mesh,D))
-    tface_to_tface = LinearIndices(tface_to_Dface)
-    Dface_to_tface[tface_to_Dface] = tface_to_tface
-    topo = GT.topology(mesh)
-    dface_to_lfaces = GT.face_local_faces(topo,d,D)
-    sface_to_lfaces = JaggedArray(view(dface_to_lfaces,sface_to_dface))
-    dface_to_Dfaces = GT.face_incidence(topo,d,D)
-    sface_to_Dfaces = JaggedArray(view(dface_to_Dfaces,sface_to_dface))
-    data = sface_to_Dfaces.data
-    f(Dface) = Dface_to_tface[Dface]
-    data .= f.(data)
-    sface_to_tfaces = sface_to_Dfaces
-    sface_to_faces_around_data = zeros(Int32,length(data))
-    ptrs = sface_to_tfaces.ptrs
-    nsfaces = length(sface_to_tfaces)
-    for sface in 1:nsfaces
-        pini = ptrs[sface]
-        pend = ptrs[sface+1]-1
-        for (ip,p) in enumerate(pini:pend)
-            sface_to_faces_around_data[p] = ip
-        end
-    end
-    sface_to_faces_around = JaggedArray(sface_to_faces_around_data,ptrs)
-    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
-end
-
-function target_face(glue::BoundaryGlue)
-    domain = replace_face_around(glue.domain,nothing)
-    glue2 = domain_glue(domain,glue.codomain)
-    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around = target_face(glue2)
-    face_around = GT.face_around(glue.domain)
-    sface_to_tface = map(tfaces->tfaces[face_around],sface_to_tfaces)
-    sface_to_lface = map(tfaces->tfaces[face_around],sface_to_lfaces)
-    sface_to_face_around = map(tfaces->tfaces[face_around],sface_to_faces_around)
-    nsfaces = length(sface_to_tface)
-    ptrs = collect(Int32,1:(nsfaces+1))
-    sface_to_tfaces = JaggedArray(sface_to_tface,ptrs)
-    sface_to_lfaces = JaggedArray(sface_to_lface,ptrs)
-    sface_to_faces_around = JaggedArray(sface_to_face_around,ptrs)
-    sface_to_tfaces, sface_to_lfaces, sface_to_faces_around
-end
-
-abstract type AbstractQuantity{A} <: GT.AbstractType end
-mesh(a::AbstractQuantity) = a.mesh
+abstract type AbstractQuantity <: GT.AbstractType end
+#mesh(a::AbstractQuantity) = a.mesh
 term(a::AbstractQuantity) = a.term
 prototype(a::AbstractQuantity) = a.prototype
-domain(a::AbstractQuantity) = a.domain
-function PartitionedArrays.partition(a::AbstractQuantity)
-    prototype = a |> GT.prototype
-    map(GT.term(a),partition(GT.domain(a))) do term,domain
-        GT.quantity(term,prototype,domain)
-    end
+#domain(a::AbstractQuantity) = a.domain
+#function PartitionedArrays.partition(a::AbstractQuantity)
+#    prototype = a |> GT.prototype
+#    map(GT.term(a),partition(GT.domains(a))) do term,domains
+#        GT.quantity(term,prototype,domain)
+#    end
+#end
+
+function quantity(term,prototype)
+    Quantity(term,prototype)
 end
 
-function quantity(term,prototype,domain)
-    mesh = GT.mesh(domain)
-    Quantity(mesh,term,prototype,domain)
-end
-
-struct Quantity{A,B,C,D} <: AbstractQuantity{A}
-    mesh::A
-    term::B
-    prototype::C
-    domain::D
-end
-
-function constant_quantity(v,domain::AbstractDomain)
-    GT.quantity(v,domain) do index
-        v_sym = get!(index.dict,v,gensym("constant_quantity_value"))
-        v_sym
-    end
-end
-
-function constant_quantity(v,domain::AbstractDomain{<:PMesh})
-    pmesh = GT.mesh(domain)
-    term = map(pmesh.mesh_partition) do _
-        index -> v
-    end
-    GT.quantity(term,v,domain)
+struct Quantity{A,B} <: AbstractQuantity
+    term::A
+    prototype::B
 end
 
 function index(;
-    face=nothing,
-    local_face=nothing,
-    face_around=nothing,
+    dummy_face=nothing,
+    actual_faces=nothing,
     point=nothing,
-    field_per_dim =nothing,
-    dof_per_dim=nothing,
-    face_around_per_dim=nothing,
-    state=gensym("state"),
-    dict=IdDict{Any,Symbol}()
+    field=nothing,
+    dof=nothing,
+    face_around=nothing,
+    dict=IdDict{Any,Symbol}(),
     )
-    Index(
-          face,
-          local_face,
-          face_around,
-          point,
-          field_per_dim,
-          dof_per_dim,
-          face_around_per_dim,
-          state,
-          dict,
-         )
+    data = (;dummy_face,actual_faces,point,field,dof,face_around,dict)
+    Index(data)
 end
 
-struct Index{A,B,D,E,F,G,H} <: AbstractType
-    face::A
-    local_face::B
-    face_around::D
-    point::E
-    field_per_dim::F
-    dof_per_dim::G
-    face_around_per_dim::H
-    state::Symbol #TODO remove
-    dict::IdDict{Any,Symbol}
+struct Index{A} <: GT.AbstractType
+    data::A
 end
 
-function storage(index::Index)
-    (;( key=>val for (val,key) in index.dict )...)
+function generate_index(d,D,form_arity=0;
+    prefix=gensym,
+    on_boundary = false,
+    field=[prefix("field-in-axis-$i") for i in 1:form_arity],
+    face_around = [prefix("face-around-in-axis-$a") for a in 1:form_arity],
+    )
+    dummy_face = [ prefix("$d-face-dummy") for d in 0:D ]
+    actual_faces = [ prefix("$j-faces-in-$i-face") for i in 0:D, j in 0:D ]
+    point = prefix("point")
+    dof = [prefix("dof-in-axis-$i") for i in 1:form_arity]
+    dummy_face[d+1] = prefix("$d-face")
+    actual_faces[d+1,d+1] = dummy_face[d+1]
+    if on_boundary
+        dummy_face[(d+1)+1] = prefix("$D-face")
+        actual_faces[d+1,(d+1)+1] = dummy_face[(d+1)+1]
+    end
+    index(;dummy_face,actual_faces,point,field,dof,face_around)
 end
 
-function replace_face(index::Index,face)
-    Index(
-          face,
-          index.local_face,
-          index.face_around,
-          index.point,
-          index.field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function index_storage(index)
+    (;( key=>val for (val,key) in index.data.dict )...)
 end
 
-function replace_local_face(index::Index,local_face)
-    Index(
-          index.face,
-          local_face,
-          index.face_around,
-          index.point,
-          index.field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function unpack_index_storage(index,state)
+    expr = Expr(:block)
+    for k in Base.values(index.data.dict) |> collect |> sort
+        push!(expr.args,:($k = $state.$k))
+    end
+    expr
 end
 
-function replace_face_around(index::Index,face_around)
-    Index(
-          index.face,
-          index.local_face,
-          face_around,
-          index.point,
-          index.field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function get_symbol!(index,val,name="";prefix=gensym)
+    get!(index.data.dict,val,prefix(name))
 end
 
-function replace_point(index::Index,point)
-    Index(
-          index.face,
-          index.local_face,
-          index.face_around,
-          point,
-          index.field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function dummy_face_index(index,d)
+    index.data.dummy_face[d+1]
 end
 
-function replace_field_per_dim(index::Index,field_per_dim)
-    Index(
-          index.face,
-          index.local_face,
-          index.face_around,
-          index.point,
-          field_per_dim,
-          index.dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function actual_faces_index(index,i,j)
+    index.data.actual_faces[i+1,j+1]
 end
 
-function replace_dof_per_dim(index::Index,dof_per_dim)
-    Index(
-          index.face,
-          index.local_face,
-          index.face_around,
-          index.point,
-          index.field_per_dim,
-          dof_per_dim,
-          index.face_around_per_dim,
-          index.state,
-          index.dict,
-         )
+function face_around_index(index,a)
+    index.data.face_around[a]
 end
+
+function face_around_index(index)
+    index.data.face_around
+end
+
+function field_index(index,a)
+    index.data.field[a]
+end
+
+function dof_index(index,a)
+    index.data.dof[a]
+end
+
+const ANY_DIM = -1
+
+function constant_quantity(v)
+    GT.quantity(v) do index
+        expr = get_symbol!(index,v,"constant_quantity_value")
+        dim = ANY_DIM
+        (;expr,dim)
+    end
+end
+
+function face_quantity(data,dom::AbstractDomain)
+    dim = num_dims(dom)
+    p = zero(eltype(data))
+    quantity(p) do index
+        face_to_sface = inverse_faces(dom)
+        data_sym = get_symbol!(index,data,"face_to_value")
+        face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface")
+        face = dummy_face_index(index,dim)
+        expr = @term $data_sym[$face_to_sface_sym[$face]]
+        (;expr,dim)
+    end
+end
+
+function term(a::AbstractQuantity,index)
+    a.term(index)
+end
+
+function promote_dim(a)
+    a
+end
+
+function promote_dim(a,b)
+    if a == ANY_DIM
+        b
+    elseif b == ANY_DIM
+        a
+    else
+        a == b ? a : nothing
+    end
+end
+
+function promote_dim(a,args...)
+    dim = promote_dim(args...)
+    if dim === nothing
+        return nothing
+    end
+    promote_dim(a,dim)
+end
+
+#function constant_quantity(v,domain::AbstractDomain{<:PMesh})
+#    pmesh = GT.mesh(domain)
+#    term = map(pmesh.mesh_partition) do _
+#        index -> v
+#    end
+#    GT.quantity(term,v,domain)
+#end
+
+#function index(;
+#    face=nothing,
+#    local_face=nothing,
+#    face_around=nothing,
+#    point=nothing,
+#    field_per_dim =nothing,
+#    dof_per_dim=nothing,
+#    face_around_per_dim=nothing,
+#    state=gensym("state"),
+#    dict=IdDict{Any,Symbol}()
+#    )
+#    Index(
+#          face,
+#          local_face,
+#          face_around,
+#          point,
+#          field_per_dim,
+#          dof_per_dim,
+#          face_around_per_dim,
+#          state,
+#          dict,
+#         )
+#end
+
+#struct Index{A,B,D,E,F,G,H} <: AbstractType
+#    face::A
+#    local_face::B
+#    face_around::D
+#    point::E
+#    field_per_dim::F
+#    dof_per_dim::G
+#    face_around_per_dim::H
+#    state::Symbol #TODO remove
+#    dict::IdDict{Any,Symbol}
+#end
+
+
+#function storage(index::Index)
+#    (;( key=>val for (val,key) in index.dict )...)
+#end
+
+
+#function replace_face(index::Index,face)
+#    Index(
+#          face,
+#          index.local_face,
+#          index.face_around,
+#          index.point,
+#          index.field_per_dim,
+#          index.dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
+#
+#function replace_local_face(index::Index,local_face)
+#    Index(
+#          index.face,
+#          local_face,
+#          index.face_around,
+#          index.point,
+#          index.field_per_dim,
+#          index.dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
+#
+#function replace_face_around(index::Index,face_around)
+#    Index(
+#          index.face,
+#          index.local_face,
+#          face_around,
+#          index.point,
+#          index.field_per_dim,
+#          index.dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
+#
+#function replace_point(index::Index,point)
+#    Index(
+#          index.face,
+#          index.local_face,
+#          index.face_around,
+#          point,
+#          index.field_per_dim,
+#          index.dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
+#
+#function replace_field_per_dim(index::Index,field_per_dim)
+#    Index(
+#          index.face,
+#          index.local_face,
+#          index.face_around,
+#          index.point,
+#          field_per_dim,
+#          index.dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
+#
+#function replace_dof_per_dim(index::Index,dof_per_dim)
+#    Index(
+#          index.face,
+#          index.local_face,
+#          index.face_around,
+#          index.point,
+#          index.field_per_dim,
+#          dof_per_dim,
+#          index.face_around_per_dim,
+#          index.state,
+#          index.dict,
+#         )
+#end
 
 function return_prototype(f,args...)
     f(args...)
@@ -508,109 +646,188 @@ function call(f,args...)
     f(args...)
 end
 
-function call(g::AbstractQuantity,args::AbstractQuantity...)
-    fs = map(GT.term,args)
-    domain = args |> first |> GT.domain
-    #msg = "All quantities need to be defined on the same domain"
-    #@assert all(dom->dom==domain,map(GT.domain,args)) msg
-    # TODO check everything except reference/physical domain?
-    # Maybe check reference/physical domain only when evaluating functions?
-    prototype = GT.return_prototype(GT.prototype(g),(map(GT.prototype,args)...))
-    g_term = GT.term(g)
-    GT.quantity(prototype,domain) do index
-        f_exprs = map(f->f(index),fs)
-        g_expr = g_term(index)
-        # We use call since @rule is not able to
-        # identify function calls on variable slots
-        @term call($g_expr,$(f_exprs...))
-        #:($g_expr($(f_exprs...)))
+function call(g,q::AbstractQuantity)
+    p = GT.return_prototype(g,GT.prototype(q))
+    quantity(p) do index
+        g_sym = get_symbol!(index,g,"callee")
+        tq = term(q,index)
+        expr = :($g_sym($(tq.expr)))
+        (;expr,dim=tq.dim)
     end
 end
 
-function call(g::AbstractQuantity,args::AbstractQuantity{<:PMesh}...)
-    pg = partition(g)
-    pargs = map(partition,args)
-    q = map(pg,pargs...) do myg,myargs...
-        GT.call(myg,myargs...)
+function call(g,a::AbstractQuantity,b::AbstractQuantity)
+    p = return_prototype(g,prototype(a),prototype(b))
+    quantity(p) do index
+        g_sym = get_symbol!(index,g,"callee")
+        ta = term(a,index)
+        tb = term(b,index)
+        expr = :($g_sym($(ta.expr),$(tb.expr)))
+        dim = promote_dim(ta.dim,tb.dim)
+        if dim == nothing
+            dim = min(ta.dim,tb.dim)
+            dim2 = max(ta.dim,tb.dim)
+            dummy = dummy_face_index(index,dim2)
+            faces = actual_faces_index(index,dim,dim2)
+            axis_to_face_around = face_around_index(index)
+            #dom = target_domain(index)
+            #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
+            #if gluable
+            #    face = dummy_face(index,dim)
+            #    face_to_sface = get_symbol!(index,inverse_faces(dom))
+            #    sface_to_cell_around = get_symbol!(index,face_around(dom))
+            #    topo = topology(mesh(dom))
+            #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2))
+            #    expr = @term begin
+            #        sface = $face_to_sface[$face]
+            #        cell_around = $face_to_cells[$sface]
+
+
+            #        fun = $dummy -> $expr
+            #        fun()
+            #    end
+            if dummy === faces
+                expr = expr
+            elseif length(axis_to_face_around) == 0
+                expr = @term begin
+                    fun = $dummy -> $expr
+                    map(fun,$faces)
+                end
+            else
+                i = gensym("i-dummy")
+                exprs = map(axis_to_face_around) do face_around
+                    :(LinearAlgebra.I[$i,$face_around])
+                end
+                if length(exprs) > 1
+                    deltas = Expr(:call,:tuple,exprs...)
+                    mask = :(prod($deltas))
+                else
+                    mask = exprs[1]
+                end
+                expr = @term begin
+                    fun = ($i,$dummy) -> $expr*$mask
+                    map(fun,emumerate($faces))
+                end
+            end
+        end
+        (;expr,dim)
     end
-    domain = args |> first |> GT.domain
-    term = map(GT.term,q)
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    GT.quantity(term,prototype,domain)
 end
 
 function call(g,args::AbstractQuantity...)
-    domain = args |> first |> GT.domain
-    g_qty = GT.constant_quantity(g,domain)
-    call(g_qty,args...)
+    prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
+    quantity(p) do index
+        g_sym = get_symbol!(index,v,gensym("callee"))
+        ts = map(a->term(a,index),args)
+        dims = map(t->ts.dim,ts)
+        dim = promote_dim(dims...)
+        @assert dim !== nothing
+        exprs = map(t->ts.expr,ts)
+        # We use call since @rule is not able to
+        # identify function calls on variable slots
+        expr = @term call($g_sym,$(exprs...))
+        (;expr,dim)
+    end
 end
+
+#function call(g::AbstractQuantity,args::AbstractQuantity...)
+#    fs = map(GT.term,args)
+#    domains = union(domains(g),map(domains,args)...)
+#    #msg = "All quantities need to be defined on the same domain"
+#    #@assert all(dom->dom==domain,map(GT.domain,args)) msg
+#    # TODO check everything except reference/physical domain?
+#    # Maybe check reference/physical domain only when evaluating functions?
+#    prototype = GT.return_prototype(GT.prototype(g),(map(GT.prototype,args)...))
+#    g_term = GT.term(g)
+#    GT.quantity(prototype,domains) do indices,dict
+#        f_exprs = map(f->f(indices,dict),fs)
+#        g_expr = g_term(indices,dict)
+#        # We use call since @rule is not able to
+#        # identify function calls on variable slots
+#        @term call($g_expr,$(f_exprs...))
+#        #:($g_expr($(f_exprs...)))
+#    end
+#end
+
+#function call(g::AbstractQuantity,args::AbstractQuantity{<:PMesh}...)
+#    pg = partition(g)
+#    pargs = map(partition,args)
+#    q = map(pg,pargs...) do myg,myargs...
+#        GT.call(myg,myargs...)
+#    end
+#    domain = args |> first |> GT.domain
+#    term = map(GT.term,q)
+#    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+#    GT.quantity(term,prototype,domain)
+#end
+
+#function call(g,args::AbstractQuantity...)
+#    g_qty = GT.constant_quantity(g)
+#    call(g_qty,args...)
+#end
+
+#function (f::AbstractQuantity)(x::AbstractQuantity)
+#    domain = GT.domain(x)
+#    codomain = GT.domain(f)
+#    flag = physical_domain(domain) == physical_domain(codomain)
+#    if flag
+#        call(f,x)
+#    else
+#        align_and_call(f,x)
+#    end
+#end
 
 function (f::AbstractQuantity)(x::AbstractQuantity)
-    domain = GT.domain(x)
-    codomain = GT.domain(f)
-    flag = physical_domain(domain) == physical_domain(codomain)
-    if flag
-        call(f,x)
-    else
-        align_and_call(f,x)
-    end
+    call(call,f,x)
 end
 
-function align_and_call(f,x)
-    domain = GT.domain(x)
-    codomain = GT.domain(f)
-    glue = GT.domain_glue(domain,codomain)
-    align_and_call(f,x,glue)
-end
+#function align_and_call(f,x)
+#    domain = GT.domain(x)
+#    codomain = GT.domain(f)
+#    glue = GT.domain_glue(domain,codomain)
+#    align_and_call(f,x,glue)
+#end
+#
+#function align_and_call(f,x,glue::InteriorGlue)
+#    g = GT.align_field(f,GT.domain(glue))
+#    call(g,x)
+#end
+#
+#function align_and_call(f,x,glue::BoundaryGlue)
+#    g = GT.align_field(f,GT.domain(glue))
+#    call(g,x)
+#end
+#
+#function align_and_call(f,x,glue::CoboundaryGlue)
+#    g = GT.align_field(f,GT.domain(glue))
+#    call(g,x)
+#end
 
-function align_and_call(f,x,glue::InteriorGlue)
-    g = GT.align_field(f,GT.domain(glue))
-    call(g,x)
-end
+#function Base.getindex(q::AbstractQuantity,::typeof(+))
+#    face_around = 1
+#    term = GT.term(q)
+#    GT.quantity(GT.prototype(q),GT.domain(q)) do index
+#        index2 = GT.replace_face_around(index,face_around)
+#        term(index2)
+#    end
+#end
+#
+#function Base.getindex(q::AbstractQuantity,::typeof(-))
+#    face_around = 2
+#    term = GT.term(q)
+#    GT.quantity(GT.prototype(q),GT.domain(q)) do index
+#        index2 = GT.replace_face_around(index,face_around)
+#        term(index2)
+#    end
+#end
 
-function align_and_call(f,x,glue::BoundaryGlue)
-    g = GT.align_field(f,GT.domain(glue))
-    call(g,x)
-end
-
-function align_and_call(f,x,glue::CoboundaryGlue)
-    g = GT.align_field(f,GT.domain(glue))
-    call(g,x)
-end
-
-function Base.getindex(q::AbstractQuantity,::typeof(+))
-    face_around = 1
-    term = GT.term(q)
-    GT.quantity(GT.prototype(q),GT.domain(q)) do index
-        index2 = GT.replace_face_around(index,face_around)
-        term(index2)
-    end
-end
-
-function Base.getindex(q::AbstractQuantity,::typeof(-))
-    face_around = 2
-    term = GT.term(q)
-    GT.quantity(GT.prototype(q),GT.domain(q)) do index
-        index2 = GT.replace_face_around(index,face_around)
-        term(index2)
-    end
-end
-
-function analytical_field(f,dom::AbstractDomain)
-    constant_quantity(f,dom)
-end
-
-function face_constant_field_impl(data,face::Integer)
-    x->data[face]
+function analytical_field(f)
+    constant_quantity(f)
 end
 
 function face_constant_field(data,dom::AbstractDomain)
-    prototype = x->zero(eltype(data))
-    GT.quantity(prototype,dom) do index
-        face = index.face
-        data_sym = get!(index.dict,data,gensym("face_to_constant_value"))
-        @term face_constant_field_impl($data_sym,$face)
-    end
+    q = face_quantity(data,dom)
+    call(a->(x->a),q)
 end
 
 function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
@@ -618,24 +835,24 @@ function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
     domain_map(glue,domain,codomain)
 end
 
-function domain_map(domain::AbstractDomain{<:PMesh},codomain::AbstractDomain{<:PMesh})
-    q = map(GT.domain_map,partition(domain),partition(codomain))
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    term = map(GT.term,q)
-    GT.quantity(term,prototype,domain)
-end
+#function domain_map(domain::AbstractDomain{<:PMesh},codomain::AbstractDomain{<:PMesh})
+#    q = map(GT.domain_map,partition(domain),partition(codomain))
+#    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+#    term = map(GT.term,q)
+#    GT.quantity(term,prototype,domain)
+#end
 
 function domain_map(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
     domain = glue.domain
     prototype = identity
-    term = index -> :identity
+    term = indices,dict -> :identity
     GT.quantity(term,prototype,domain)
 end
 
 function domain_map(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
     domain = glue.domain
     prototype = identity
-    term = index -> :identity
+    term = indices,dict -> :identity
     GT.quantity(term,prototype,domain)
 end
 
@@ -754,22 +971,25 @@ function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
     T = eltype(GT.node_coordinates(mesh))
     x = zero(T)
     prototype = y->x
-    GT.quantity(prototype,domain) do index
+    GT.quantity(prototype,domain) do indices,dict
+        index = indices[domain]
         sface = index.face
         state = index.state
-        dict = index.dict
         sface_to_face_sym = get!(dict,sface_to_face,gensym("sface_to_face"))
         refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
         face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
         node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
         face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        @term begin
-            face_function(
-                $refid_to_funs_sym,
-                $face_to_refid_sym,
-                $face_to_nodes_sym,
-                $node_to_coords_sym,
-                $sface_to_face_sym[$sface])
+        if isa(sface,FaceList)
+        else
+            @term begin
+                face_function(
+                              $refid_to_funs_sym,
+                              $face_to_refid_sym,
+                              $face_to_nodes_sym,
+                              $node_to_coords_sym,
+                              $sface_to_face_sym[$sface])
+            end
         end
     end
 end
@@ -972,68 +1192,68 @@ function domain_map(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
     error("Case not yet implemented")
 end
 
-function align_field(a::AbstractQuantity,domain::AbstractDomain)
-    glue = GT.domain_glue(domain,GT.domain(a))
-    align_field(a,glue)
-end
-
-function align_field(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
-    q = map(GT.align_field,partition(a),partition(domain))
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    term = map(GT.term,q)
-    GT.quantity(term,prototype,domain)
-end
-
-function align_field(a::AbstractQuantity,glue::InteriorGlue)
-    domain = glue |> GT.domain
-    prototype = GT.prototype(a)
-    term_a = GT.term(a)
-    sface_to_tfaces, = GT.target_face(glue)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        ai = term_a(index2)
-        ai
-    end
-end
-
-function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
-    prototype = GT.prototype(a)
-    domain = glue |> GT.domain
-    term_a = GT.term(a)
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    GT.quantity(prototype,domain) do index
-        face_around = index.face_around
-        @assert face_around !== nothing
-        sface = index.face
-        dict = index.dict
-        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
-        index2 = replace_face(index,tface)
-        ai = term_a(index2)
-        ai
-    end
-end
-
-function align_field(a::AbstractQuantity,glue::BoundaryGlue)
-    prototype = GT.prototype(a)
-    domain = glue |> GT.domain
-    term_a = GT.term(a)
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    face_around = GT.face_around(glue.domain)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        dict = index.dict
-        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        index3 = replace_face_around(index2,face_around)
-        ai = term_a(index3)
-        ai
-    end
-end
+#function align_field(a::AbstractQuantity,domain::AbstractDomain)
+#    glue = GT.domain_glue(domain,GT.domain(a))
+#    align_field(a,glue)
+#end
+#
+#function align_field(a::AbstractQuantity{<:PMesh},domain::AbstractDomain{<:PMesh})
+#    q = map(GT.align_field,partition(a),partition(domain))
+#    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+#    term = map(GT.term,q)
+#    GT.quantity(term,prototype,domain)
+#end
+#
+#function align_field(a::AbstractQuantity,glue::InteriorGlue)
+#    domain = glue |> GT.domain
+#    prototype = GT.prototype(a)
+#    term_a = GT.term(a)
+#    sface_to_tfaces, = GT.target_face(glue)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        ai = term_a(index2)
+#        ai
+#    end
+#end
+#
+#function align_field(a::AbstractQuantity,glue::CoboundaryGlue)
+#    prototype = GT.prototype(a)
+#    domain = glue |> GT.domain
+#    term_a = GT.term(a)
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    GT.quantity(prototype,domain) do index
+#        face_around = index.face_around
+#        @assert face_around !== nothing
+#        sface = index.face
+#        dict = index.dict
+#        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+#        index2 = replace_face(index,tface)
+#        ai = term_a(index2)
+#        ai
+#    end
+#end
+#
+#function align_field(a::AbstractQuantity,glue::BoundaryGlue)
+#    prototype = GT.prototype(a)
+#    domain = glue |> GT.domain
+#    term_a = GT.term(a)
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    face_around = GT.face_around(glue.domain)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        dict = index.dict
+#        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        index3 = replace_face_around(index2,face_around)
+#        ai = term_a(index3)
+#        ai
+#    end
+#end
 
 function inverse_map_impl(f,x0)
     function pseudo_inverse_if_not_square(J)
@@ -1090,13 +1310,13 @@ function compose(a::AbstractQuantity,phi::AbstractQuantity)
     compose(a,phi,glue)
 end
 
-function compose(a::AbstractQuantity{<:PMesh},phi::AbstractQuantity{<:PMesh})
-    q = map(GT.compose,partition(a),partition(phi))
-    term = map(GT.term,q)
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    domain = GT.domain(phi)
-    GT.quantity(term,prototype,domain)
-end
+#function compose(a::AbstractQuantity{<:PMesh},phi::AbstractQuantity{<:PMesh})
+#    q = map(GT.compose,partition(a),partition(phi))
+#    term = map(GT.term,q)
+#    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+#    domain = GT.domain(phi)
+#    GT.quantity(term,prototype,domain)
+#end
 
 function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
     @assert GT.domain(a) == GT.codomain(glue)
@@ -1391,17 +1611,21 @@ end
 
 # Base
 
-function Base.getindex(a::AbstractQuantity,i::Integer...)
-    call(b->b[i...],a)
+for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint,:*,:/,:\,:^,:getindex)
+    @eval begin
+        function get_symbol!(index,val::typeof(Base.$op),name="";prefix=gensym)
+            $( Expr(:quote,op) )
+        end
+    end
 end
 
 for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
   @eval begin
-    (Base.$op)(a::AbstractQuantity) = call(Base.$op,a)
+      (Base.$op)(a::AbstractQuantity) = call(Base.$op,a)
   end
 end
 
-for op in (:+,:-,:*,:/,:\,:^)
+for op in (:+,:-,:*,:/,:\,:^,:getindex)
   @eval begin
       (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
       (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.constant_quantity(a,GT.domain(b)),b)
@@ -1413,6 +1637,9 @@ end
 
 for op in (:inv,:det,:norm,:tr)
   @eval begin
+      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+          $( Expr(:quote,op) )
+      end
     (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
   end
 end
@@ -1439,17 +1666,17 @@ function call_function_symbol(g,args::AbstractQuantity...)
     end
 end
 
-function call_function_symbol(g,args::AbstractQuantity{<:PMesh}...)
-    pargs = map(partition,args)
-
-    q = map(pargs...) do myargs...
-        call_function_symbol(g, myargs...)
-    end
-    domain = args |> first |> GT.domain
-    term = map(GT.term,q)
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    GT.quantity(term,prototype,domain)
-end
+#function call_function_symbol(g,args::AbstractQuantity{<:PMesh}...)
+#    pargs = map(partition,args)
+#
+#    q = map(pargs...) do myargs...
+#        call_function_symbol(g, myargs...)
+#    end
+#    domain = args |> first |> GT.domain
+#    term = map(GT.term,q)
+#    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
+#    GT.quantity(term,prototype,domain)
+#end
 
 for op in (:gradient,:jacobian,:hessian)
   @eval begin

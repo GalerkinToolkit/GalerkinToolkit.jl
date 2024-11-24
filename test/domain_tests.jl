@@ -16,10 +16,113 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 Ω = GT.interior(mesh)
 Ωref = GT.interior(mesh;is_reference_domain=true)
 
+D = GT.num_dims(mesh)
+Γref = GT.boundary(mesh;
+                 is_reference_domain=true,
+                 physical_names=["boundary_faces"])
+
+Γ = GT.physical_domain(Γref)
+
+Λref = GT.skeleton(mesh;
+                 is_reference_domain=true,
+                 physical_names=["interior_faces"])
+
+Λ = GT.physical_domain(Λref)
+
 @test Ω == Ω
 @test Ω != Ωref
 
-u = GT.analytical_field(sum,Ω)
+q1 = GT.face_quantity([ f for f in 1:GT.num_faces(Ω)],Ω)
+q2 = GT.face_quantity([ 10*f for f in 1:GT.num_faces(Ω)],Ω)
+q3 = GT.face_quantity([ 100*f for f in 1:GT.num_faces(Γ)],Γ)
+q4 = GT.face_quantity([ 1000*f for f in 1:GT.num_faces(Λ)],Λ)
+
+@test GT.is_boundary(Ω) == false
+@test GT.is_boundary(Γ) == true
+@test GT.is_boundary(Λ) == false
+
+q = q1 + q2
+index = GT.generate_index(D,D)
+t = GT.term(q,index)
+@test t.dim == D
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.dummy_face_index(index,D)) = 3
+    $(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 33
+
+q = q1 + q3
+index = GT.generate_index(D-1,D;on_boundary=GT.is_boundary(Γ))
+t = GT.term(q,index)
+@test t.dim == D-1
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.dummy_face_index(index,D)) = 3
+    $(GT.dummy_face_index(index,D-1)) = 2
+    $(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 203
+
+q = (q1 + q4)[GT.constant_quantity(1)]
+index = GT.generate_index(D-1,D;on_boundary=GT.is_boundary(Λ))
+t = GT.term(q,index)
+@test t.dim == D-1
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.dummy_face_index(index,D-1)) = 2
+    $(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 203
+xxs
+
+q = q1 + q4
+form_arity = 1
+index = GT.generate_index(D,form_arity;on_boundary=GT.is_boundary(Λ))
+t = GT.term(q,index)
+display(GT.topological_sort(t.expr,()))
+@test t.dim == D-1
+
+xxx
+
+
+
+
+
+u2 = GT.face_constant_field(facedata,Ω)
+indices = Dict(Ω=>GT.index(face=:face))
+dict = Dict{Any,Symbol}()
+expr = GT.term(u2)(indices,dict)
+storage = GT.storage(dict)
+expr = quote
+    $(GT.unpack_storage(dict,:storage))
+    face = $nfaces
+    $expr(0)
+end
+display(expr)
+@test eval(expr) == facedata[end]
+indices = Dict(Ω=>GT.index(face=GT.FaceList(:faces)))
+dict = Dict{Any,Symbol}()
+expr = GT.term(u2)(indices,dict)
+storage = GT.storage(dict)
+expr = quote
+    $(GT.unpack_storage(dict,:storage))
+    faces = (4,5,6)
+    $expr[2](0)
+end
+display(expr)
+@test eval(expr) == facedata[5]
+
+xxx
 
 ϕ = GT.domain_map(Ωref,Ω)
 
