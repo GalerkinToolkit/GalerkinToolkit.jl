@@ -6,6 +6,8 @@ import PartitionedArrays as pa
 using Test
 using WriteVTK
 using LinearAlgebra
+using StaticArrays
+using ForwardDiff
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
@@ -123,7 +125,85 @@ display(expr)
 r = eval(expr)
 @test r == 0
 
-xx
+u1 = GT.analytical_field(sum)
+u2 = GT.face_map(Ω)
+x1 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
+x2 = GT.point_quantity(fill(SVector{2,Float64}[[4,5],[6,7]],GT.num_faces(Ω)),Ω)
+
+q = u1(x2)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 13
+
+q = ForwardDiff.gradient(u1,x2)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [1.0, 1.0]
+
+q = u2(x1)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [0.75, 0.25]
+yyy
+
+
+q = ForwardDiff.jacobian(u2,x1)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [0.25 0.0; 0.0 0.25]
+xxx
+
+
+xxx
+
 
 
 

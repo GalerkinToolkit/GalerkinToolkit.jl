@@ -281,7 +281,7 @@ function inline_lambdas(expr)
         if ex.head !== :call
             return ex
         end
-        if ex.args[1] !== :call
+        if ex.args[1] !== :call && ex.args[1] != :(GalerkinToolkit.call)
             return ex
         end
         lambda = ex.args[2]

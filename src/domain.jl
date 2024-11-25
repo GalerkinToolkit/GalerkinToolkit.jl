@@ -439,6 +439,10 @@ function face_index(index,d)
     index.data.face[d+1]
 end
 
+function point_index(index)
+    index.data.point
+end
+
 function face_around_boundary(index,d,D)
     if d == num_dims(index) && (d+1 == D)
         index.data.domain.face_around
@@ -658,6 +662,10 @@ function call(f,args...)
     f(args...)
 end
 
+function get_symbol!(index,val::typeof(call),name="";prefix=index.data.prefix)
+    :(GalerkinToolkit.call)
+end
+
 function call(g,q::AbstractQuantity)
     p = GT.return_prototype(g,GT.prototype(q))
     quantity(p) do index
@@ -857,10 +865,160 @@ function face_constant_field(data,dom::AbstractDomain)
     call(a->(x->a),q)
 end
 
-function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
-    glue = GT.domain_glue(domain,codomain)
-    domain_map(glue,domain,codomain)
+function face_map(dom::AbstractDomain)
+    face_map(mesh(dom),num_dims(dom))
 end
+
+function face_map(mesh::AbstractMesh,d)
+    node_to_x = node_coordinates(mesh)
+    x0 = zero(eltype(node_to_x))
+    p = x -> x0
+    quantity(p) do index
+        node_to_coord = get_symbol!(index,node_to_x,"node_to_x")
+        drefid_to_refdface = GT.reference_faces(mesh,d)
+        drefid_to_dof_to_shape = get_symbol!(index,map(shape_functions,drefid_to_refdface),"refid_to_dof_to_shape")
+        dface_to_nodes = get_symbol!(index,face_nodes(mesh,d),"face_to_nodes")
+        dface_to_drefid = get_symbol!(index,face_reference_id(mesh,d),"face_to_refid")
+        dof = gensym("dummy_dof_geom")
+        x = gensym("dummy_x")
+        dface = face_index(index,d)
+        expr = @term begin
+            node = $dface_to_nodes[$dface][$dof]
+            coord = $node_to_coord[node]
+            drefid = $dface_to_drefid[$dface]
+            dof_to_shape = $drefid_to_dof_to_shape[drefid]
+            fun = $dof -> coord*$dof_to_shape[$dof]($x)
+            $x -> sum(fun,1:length($dof_to_shape))
+        end
+        (;expr,dim=d)
+    end
+end
+
+function point_quantity(data,dom::AbstractDomain;reference=Val(false))
+    dim = num_dims(dom)
+    p = zero(eltype(eltype(data)))
+    quantity(p) do index
+        face = face_index(index,dim)
+        point = point_index(index)
+        expr = if val_parameter(reference)
+            face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
+            rid_to_points = get_symbol!(index,data,"rid_to_points")
+            @term begin
+                rid = $face_to_rid[$face]
+                $rid_to_points[rid][$point]
+            end
+        else
+            face_to_sface = get_symbol!(index,inverse_faces(dom),"face_to_sface")
+            sface_to_points = get_symbol!(index,data,"sface_to_points")
+            @term begin
+                sface = $face_to_sface[$face]
+                $sface_to_points[sface][$point]
+            end
+        end
+        (;expr,dim)
+    end
+
+end
+
+#function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
+#    d = num_dims(domain)
+#    D = num_dims(codomain)
+#    topo = topology(mesh(domain))
+#    a, b = GT.face_incidence_ext(topo,d,D)
+#    dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
+#    dface_to_ldfaces = get_symbol!(index,b,"dface_to_ldfaces")
+#    Dface_to_ldface_to_perm = get_symbol!(index,GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+#    Dface_to_Drefid = get_symbol!(index,GT.face_reference_id(mesh,D),"Dface_to_Drefid")
+#    dface_to_drefid = get_symbol!(index,GT.face_reference_id(mesh,d),"dface_to_drefid")
+#    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    drefid_to_refdface = GT.reference_faces(mesh,d)
+#    Drefid_to_ldface_to_perm_to_coords = get_symbol!(index,map(face_node_coordinates,Drefid_to_refDface),"Drefid_to_ldface_to_perm_to_coords")
+#    drefid_to_dof_to_shape = get_symbol!(index,map(shape_functions,drefid_to_refdface),"drefid_to_dof_to_shape")
+#    dof = gensym("dummy_dof_geom")
+#    x = gensym("dummy_x")
+#    quantity(p) do index
+#        dface = face_index(index,d)
+#        dim = d
+#        expr = @term begin
+#            Dface = $dface_to_Dfaces[$dface][$Dface_around]
+#            ldface = $dface_to_ldfaces[$dface][$Dface_around]
+#            Drefid = $Dface_to_Drefid[Dface]
+#            perm = $Dface_to_ldface_to_perm[Dface][ldface]
+#            coeff = $Drefid_to_ldface_to_perm_to_coords[Drefid][ldface][perm][$dof]
+#            drefid = $dface_to_drefid[$dface]
+#            dof_to_shape = $drefid_to_dof_to_shape[drefid]
+#            fun = $dof -> coeff*$dof_to_shape[$dof]($x)
+#            $x -> sum(fun,1:length($dof_to_shape))
+#        end
+#        Dface_around_target = face_around_boundary(index,d,D)
+#        Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
+#        if d == D
+#            expr = expr
+#        elseif isa(Dface_around_target,Int)
+#            expr = substitute(expr,Dface_around=>Dface_around_actual)
+#        elseif isa(Dface_around_target,AbstractArray)
+#            face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
+#            actual = :($Dface_around_actual[$face_to_sface[$dface]])
+#            expr = substitute(expr,Dface_around=>actual)
+#        else
+#            expr = @term begin
+#                map($Dface_around -> $expr,$dface_to_Dfaces[$dface])
+#            end
+#        end
+#        (;expr,dim)
+#    end
+#end
+#
+#function face_node_coordinates(refDface,d)
+#    D = num_dims(refDface)
+#    if d == D
+#        [[node_coordinates(refDface)]]
+#    else
+#        boundary = refDface |> GT.geometry |> GT.boundary
+#        lface_to_nodes = GT.face_nodes(boundary,d)
+#        node_to_coords = GT.node_coordinates(boundary)
+#        lface_to_lrefid = GT.face_reference_id(boundary,d)
+#        lrefid_to_lrefface = GT.reference_faces(boundary,d)
+#        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+#        map(1:GT.num_faces(boundary,d)) do lface
+#            lrefid = lface_to_lrefid[lface]
+#            nodes = lface_to_nodes[lface]
+#            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+#            map(perm_to_ids) do ids
+#                coords = node_to_coords[nodes[ids]]
+#                coords
+#            end
+#        end
+#    end
+#end
+#
+#function face_incidence_ext(topo,d,D)
+#    dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
+#    Dface_to_ldface_to_dface = GT.face_incidence(topo,D,d)
+#    data = copy(dface_to_Dface_around_to_Dface.data)
+#    fill!(data,0)
+#    ptrs = dface_to_Dface_around_to_Dface.ptrs
+#    dface_to_Dface_around_to_ldface = JaggedArray(data,ptrs)
+#    ndfaces = length(Dface_to_ldface_to_dface)
+#    for dface in 1:ndfaces
+#        Dface_around_to_Dface = dface_to_Dface_around_to_Dface[dface]
+#        for (Dface_around, Dface) in enumerate(Dface_around_to_Dface)
+#            ldface_to_dface = Dface_to_ldface_to_dface[Dface]
+#            for (ldface2,dface2) in enumerate(ldface_to_dface)
+#                if dface == dface2
+#                    dface_to_Dface_around_to_ldface[dface][Dface_around] = ldface2
+#                    break
+#                end
+#            end
+#        end
+#    end
+#    dface_to_Dface_around_to_ldface
+#end
+
+#function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
+#    glue = GT.domain_glue(domain,codomain)
+#    domain_map(glue,domain,codomain)
+#end
 
 #function domain_map(domain::AbstractDomain{<:PMesh},codomain::AbstractDomain{<:PMesh})
 #    q = map(GT.domain_map,partition(domain),partition(codomain))
@@ -869,30 +1027,30 @@ end
 #    GT.quantity(term,prototype,domain)
 #end
 
-function domain_map(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
-    domain = glue.domain
-    prototype = identity
-    term = indices,dict -> :identity
-    GT.quantity(term,prototype,domain)
-end
+#function domain_map(glue::InteriorGlue,::ReferenceDomain,::ReferenceDomain)
+#    domain = glue.domain
+#    prototype = identity
+#    term = indices,dict -> :identity
+#    GT.quantity(term,prototype,domain)
+#end
+#
+#function domain_map(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
+#    domain = glue.domain
+#    prototype = identity
+#    term = indices,dict -> :identity
+#    GT.quantity(term,prototype,domain)
+#end
 
-function domain_map(glue::InteriorGlue,::PhysicalDomain,::PhysicalDomain)
-    domain = glue.domain
-    prototype = identity
-    term = indices,dict -> :identity
-    GT.quantity(term,prototype,domain)
-end
-
-function linear_combination(funs,coefs)
-    q -> begin
-        sum(1:length(coefs)) do i
-            x = coefs[i]
-            fun = funs[i]
-            coeff = fun(q)
-            coeff*x
-        end
-    end
-end
+#function linear_combination(funs,coefs)
+#    q -> begin
+#        sum(1:length(coefs)) do i
+#            x = coefs[i]
+#            fun = funs[i]
+#            coeff = fun(q)
+#            coeff*x
+#        end
+#    end
+#end
 
 #function linear_combination(funs,coefs,ids)
 #    q -> begin
@@ -906,12 +1064,12 @@ end
 #end
 
 # TODO a better name
-function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
-    fs = reference_value(rid_to_fs,face_to_rid,face)
-    dofs = face_to_dofs[face]
-    values = view(dofs_to_value,dofs)
-    linear_combination(fs,values)
-end
+#function face_function(rid_to_fs,face_to_rid,face_to_dofs,dofs_to_value,face)
+#    fs = reference_value(rid_to_fs,face_to_rid,face)
+#    dofs = face_to_dofs[face]
+#    values = view(dofs_to_value,dofs)
+#    linear_combination(fs,values)
+#end
 
 #function reference_point(rid_to_x,face_to_rid,face,point)
 #    reference_value(rid_to_x,face_to_rid,face)[point]
@@ -921,303 +1079,303 @@ end
 #    map((fs,xs)->map(x->map(f->f(x),fs),xs),rid_to_fs,rid_to_xs)
 #end
 
-function reference_tabulator(fs,xs)
-    f = fs[1]
-    z = zero(eltype(xs))
-    T = typeof(f(z))
-    nx = length(xs)
-    nf = length(fs)
-    A = Matrix{T}(undef,nf,nx)
-    for j in 1:nx
-        for i in 1:nf
-            A[i,j] = fs[i](xs[j])
-        end
-    end
-    A
-end
+#function reference_tabulator(fs,xs)
+#    f = fs[1]
+#    z = zero(eltype(xs))
+#    T = typeof(f(z))
+#    nx = length(xs)
+#    nf = length(fs)
+#    A = Matrix{T}(undef,nf,nx)
+#    for j in 1:nx
+#        for i in 1:nf
+#            A[i,j] = fs[i](xs[j])
+#        end
+#    end
+#    A
+#end
+#
+#function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+#    tab = reference_value(rid_to_tab,face_to_rid,face)
+#    dofs = face_to_dofs[face]
+#    values = view(dofs_to_value,dofs)
+#    n = length(values)
+#    sum(i->tab[i,point]*values[i],1:n)
+#end
+#
+#function jacobian_face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
+#    tab = reference_value(rid_to_tab,face_to_rid,face)
+#    dofs = face_to_dofs[face]
+#    values = view(dofs_to_value,dofs)
+#    n = length(values)
+#    sum(i-> values[i] * transpose(tab[i,point]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
+#end
+#
+#
+#function gradient_reference_tabulator(fs,xs)
+#    # TODO: generalize this function
+#    f = fs[1]
+#    z = zero(eltype(xs))
+#    T = typeof(ForwardDiff.gradient(f, z))
+#    nx = length(xs)
+#    nf = length(fs)
+#    A = Matrix{T}(undef,nf,nx)
+#    for j in 1:nx
+#        for i in 1:nf
+#            A[i,j] = ForwardDiff.gradient(fs[i], xs[j])
+#        end
+#    end
+#    A
+#end
+#
+#function face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
+#    # @assert face_to_rid[face] == face_to_rid2[sface]
+#    tab = reference_value(rid_to_tab,face_to_rid,face)
+#    tab[dof, point]
+#end
+#
+#function reference_value(rid_to_value,face_to_rid,face)
+#    rid = face_to_rid[face]
+#    value = rid_to_value[rid]
+#    value
+#end
 
-function face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
-    tab = reference_value(rid_to_tab,face_to_rid,face)
-    dofs = face_to_dofs[face]
-    values = view(dofs_to_value,dofs)
-    n = length(values)
-    sum(i->tab[i,point]*values[i],1:n)
-end
-
-function jacobian_face_function_value(rid_to_tab,face_to_rid,face_to_dofs,dofs_to_value,face,point)
-    tab = reference_value(rid_to_tab,face_to_rid,face)
-    dofs = face_to_dofs[face]
-    values = view(dofs_to_value,dofs)
-    n = length(values)
-    sum(i-> values[i] * transpose(tab[i,point]),1:n) # TODO: optimize it by precomputing the transpose or unrolling the loop
-end
-
-
-function gradient_reference_tabulator(fs,xs)
-    # TODO: generalize this function
-    f = fs[1]
-    z = zero(eltype(xs))
-    T = typeof(ForwardDiff.gradient(f, z))
-    nx = length(xs)
-    nf = length(fs)
-    A = Matrix{T}(undef,nf,nx)
-    for j in 1:nx
-        for i in 1:nf
-            A[i,j] = ForwardDiff.gradient(fs[i], xs[j])
-        end
-    end
-    A
-end
-
-function face_shape_function_value(rid_to_tab, face_to_rid, face, dof, face_to_rid2, sface, point)
-    # @assert face_to_rid[face] == face_to_rid2[sface]
-    tab = reference_value(rid_to_tab,face_to_rid,face)
-    tab[dof, point]
-end
-
-function reference_value(rid_to_value,face_to_rid,face)
-    rid = face_to_rid[face]
-    value = rid_to_value[rid]
-    value
-end
-
-function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
-    domain = glue.domain
-    mesh = domain |> GT.mesh
-    d = domain |> GT.face_dim
-    node_to_coords = GT.node_coordinates(mesh)
-    sface_to_face = domain |> GT.faces
-    face_to_nodes = GT.face_nodes(mesh,d)
-    face_to_refid = GT.face_reference_id(mesh,d)
-    if haskey(domain.cache,:refid_to_funs)
-        refid_to_funs = domain.cache.refid_to_funs
-    else
-        refid_to_refface = GT.reference_faces(mesh,d)
-        refid_to_funs = map(GT.shape_functions,refid_to_refface)
-    end
-    T = eltype(GT.node_coordinates(mesh))
-    x = zero(T)
-    prototype = y->x
-    GT.quantity(prototype,domain) do indices,dict
-        index = indices[domain]
-        sface = index.face
-        state = index.state
-        sface_to_face_sym = get!(dict,sface_to_face,gensym("sface_to_face"))
-        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
-        face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
-        node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
-        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        if isa(sface,FaceList)
-        else
-            @term begin
-                face_function(
-                              $refid_to_funs_sym,
-                              $face_to_refid_sym,
-                              $face_to_nodes_sym,
-                              $node_to_coords_sym,
-                              $sface_to_face_sym[$sface])
-            end
-        end
-    end
-end
-
-function domain_map(glue::InteriorGlue,::PhysicalDomain,::ReferenceDomain)
-    error("Physical to reference map not implemented yet")
-end
-
-function domain_map(glue::CoboundaryGlue,::PhysicalDomain,::PhysicalDomain)
-    error("Case not yet implemented")
-end
-
-function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
-    domain = glue.domain
-    codomain = glue |> GT.codomain
-    mesh = codomain |> GT.mesh
-    D = codomain |> GT.face_dim
-    Drefid_to_refDface = GT.reference_faces(mesh,D)
-    refDface = first(Drefid_to_refDface)
-    boundary = refDface |> GT.geometry |> GT.boundary
-    node_to_coords = GT.node_coordinates(boundary)
-    T = eltype(node_to_coords)
-    x = zero(T)
-    prototype = y -> x
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    tface_to_Dface = codomain |> GT.faces
-    d = domain |> GT.face_dim
-    topo = mesh |> GT.topology
-    Dface_to_lface_to_perm = GT.face_permutation_ids(topo,D,d)
-    Dface_to_Drefid = GT.face_reference_id(mesh,D)
-    Drefid_to_refDface = GT.reference_faces(mesh,D)
-    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
-        boundary = refDface |> GT.geometry |> GT.boundary
-        lface_to_nodes = GT.face_nodes(boundary,d)
-        node_to_coords = GT.node_coordinates(boundary)
-        lface_to_lrefid = GT.face_reference_id(boundary,d)
-        lrefid_to_lrefface = GT.reference_faces(boundary,d)
-        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-        map(1:GT.num_faces(boundary,d)) do lface
-            lrefid = lface_to_lrefid[lface]
-            nodes = lface_to_nodes[lface]
-            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
-            map(perm_to_ids) do ids
-                coords = node_to_coords[nodes[ids]]
-                coords
-            end
-        end
-    end
-    sface_to_dface = domain |> GT.faces
-    dface_to_drefid = GT.face_reference_id(mesh,d)
-    drefid_to_refdface = GT.reference_faces(mesh,d)
-    drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        dict = index.dict
-        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
-        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
-        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
-        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
-        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
-        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
-        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
-        face_around = index.face_around
-        @assert face_around !== nothing
-        @term begin
-            boundary_face_function(
-                $sface,
-                $sface_to_tfaces_sym,
-                $sface_to_lfaces_sym,
-                $tface_to_Dface_sym,
-                $sface_to_dface_sym,
-                $Dface_to_lface_to_perm_sym,
-                $Dface_to_Drefid_sym,
-                $dface_to_drefid_sym,
-                $Drefid_to_lface_to_perm_to_coords_sym,
-                $drefid_to_funs_sym,
-                $face_around,
-           )
-        end
-    end
-end
-
-function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::PhysicalDomain)
-    error("Case not yet implemented")
-end
-
-function domain_map(glue::CoboundaryGlue,::PhysicalDomain,::ReferenceDomain)
-    error("Case not yet implemented")
-end
-
-function domain_map(glue::BoundaryGlue,::PhysicalDomain,::PhysicalDomain)
-    error("Case not yet implemented")
-end
-
-function boundary_face_function(
-        sface,
-        sface_to_tfaces,
-        sface_to_lfaces,
-        tface_to_Dface,
-        sface_to_dface,
-        Dface_to_lface_to_perm,
-        Dface_to_Drefid,
-        dface_to_drefid,
-        Drefid_to_lface_to_perm_to_coords,
-        drefid_to_funs,
-        face_around,
-    )
-    tfaces = sface_to_tfaces[sface]
-    lfaces = sface_to_lfaces[sface]
-    tface = tfaces[face_around]
-    lface = lfaces[face_around]
-    Dface = tface_to_Dface[tface]
-    dface = sface_to_dface[sface]
-    perm = Dface_to_lface_to_perm[Dface][lface]
-    Drefid = Dface_to_Drefid[Dface]
-    drefid = dface_to_drefid[dface]
-    coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
-    funs = drefid_to_funs[drefid]
-    linear_combination(funs,coords)
-end
-
-function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
-    domain = glue.domain
-    codomain = glue |> GT.codomain
-    mesh = codomain |> GT.mesh
-    D = codomain |> GT.face_dim
-    Drefid_to_refDface = GT.reference_faces(mesh,D)
-    refDface = first(Drefid_to_refDface)
-    boundary = refDface |> GT.geometry |> GT.boundary
-    node_to_coords = GT.node_coordinates(boundary)
-    T = eltype(node_to_coords)
-    x = zero(T)
-    prototype = y -> x
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    tface_to_Dface = codomain |> GT.faces
-    d = domain |> GT.face_dim
-    topo = mesh |> GT.topology
-    Dface_to_lface_to_perm = GT.face_permutation_ids(topo,D,d)
-    Dface_to_Drefid = GT.face_reference_id(mesh,D)
-    Drefid_to_refDface = GT.reference_faces(mesh,D)
-    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
-        boundary = refDface |> GT.geometry |> GT.boundary
-        lface_to_nodes = GT.face_nodes(boundary,d)
-        node_to_coords = GT.node_coordinates(boundary)
-        lface_to_lrefid = GT.face_reference_id(boundary,d)
-        lrefid_to_lrefface = GT.reference_faces(boundary,d)
-        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-        map(1:GT.num_faces(boundary,d)) do lface
-            lrefid = lface_to_lrefid[lface]
-            nodes = lface_to_nodes[lface]
-            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
-            map(perm_to_ids) do ids
-                coords = node_to_coords[nodes[ids]]
-                coords
-            end
-        end
-    end
-    sface_to_dface = domain |> GT.faces
-    dface_to_drefid = GT.face_reference_id(mesh,d)
-    drefid_to_refdface = GT.reference_faces(mesh,d)
-    drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        dict = index.dict
-        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
-        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
-        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
-        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
-        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
-        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
-        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
-        face_around = 1
-        @term begin
-            boundary_face_function(
-                $sface,
-                $sface_to_tfaces_sym,
-                $sface_to_lfaces_sym,
-                $tface_to_Dface_sym,
-                $sface_to_dface_sym,
-                $Dface_to_lface_to_perm_sym,
-                $Dface_to_Drefid_sym,
-                $dface_to_drefid_sym,
-                $Drefid_to_lface_to_perm_to_coords_sym,
-                $drefid_to_funs_sym,
-                $face_around,
-           )
-        end
-    end
-end
-
-function domain_map(glue::BoundaryGlue,::ReferenceDomain,::PhysicalDomain)
-    error("Case not yet implemented")
-end
-
-function domain_map(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
-    error("Case not yet implemented")
-end
+#function domain_map(glue::InteriorGlue,::ReferenceDomain,::PhysicalDomain)
+#    domain = glue.domain
+#    mesh = domain |> GT.mesh
+#    d = domain |> GT.face_dim
+#    node_to_coords = GT.node_coordinates(mesh)
+#    sface_to_face = domain |> GT.faces
+#    face_to_nodes = GT.face_nodes(mesh,d)
+#    face_to_refid = GT.face_reference_id(mesh,d)
+#    if haskey(domain.cache,:refid_to_funs)
+#        refid_to_funs = domain.cache.refid_to_funs
+#    else
+#        refid_to_refface = GT.reference_faces(mesh,d)
+#        refid_to_funs = map(GT.shape_functions,refid_to_refface)
+#    end
+#    T = eltype(GT.node_coordinates(mesh))
+#    x = zero(T)
+#    prototype = y->x
+#    GT.quantity(prototype,domain) do indices,dict
+#        index = indices[domain]
+#        sface = index.face
+#        state = index.state
+#        sface_to_face_sym = get!(dict,sface_to_face,gensym("sface_to_face"))
+#        refid_to_funs_sym = get!(dict,refid_to_funs,gensym("refid_to_funs"))
+#        face_to_nodes_sym = get!(dict,face_to_nodes,gensym("face_to_nodes"))
+#        node_to_coords_sym = get!(dict,node_to_coords,gensym("node_to_coords"))
+#        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+#        if isa(sface,FaceList)
+#        else
+#            @term begin
+#                face_function(
+#                              $refid_to_funs_sym,
+#                              $face_to_refid_sym,
+#                              $face_to_nodes_sym,
+#                              $node_to_coords_sym,
+#                              $sface_to_face_sym[$sface])
+#            end
+#        end
+#    end
+#end
+#
+#function domain_map(glue::InteriorGlue,::PhysicalDomain,::ReferenceDomain)
+#    error("Physical to reference map not implemented yet")
+#end
+#
+#function domain_map(glue::CoboundaryGlue,::PhysicalDomain,::PhysicalDomain)
+#    error("Case not yet implemented")
+#end
+#
+#function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::ReferenceDomain)
+#    domain = glue.domain
+#    codomain = glue |> GT.codomain
+#    mesh = codomain |> GT.mesh
+#    D = codomain |> GT.face_dim
+#    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    refDface = first(Drefid_to_refDface)
+#    boundary = refDface |> GT.geometry |> GT.boundary
+#    node_to_coords = GT.node_coordinates(boundary)
+#    T = eltype(node_to_coords)
+#    x = zero(T)
+#    prototype = y -> x
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    tface_to_Dface = codomain |> GT.faces
+#    d = domain |> GT.face_dim
+#    topo = mesh |> GT.topology
+#    Dface_to_lface_to_perm = GT.face_permutation_ids(topo,D,d)
+#    Dface_to_Drefid = GT.face_reference_id(mesh,D)
+#    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+#        boundary = refDface |> GT.geometry |> GT.boundary
+#        lface_to_nodes = GT.face_nodes(boundary,d)
+#        node_to_coords = GT.node_coordinates(boundary)
+#        lface_to_lrefid = GT.face_reference_id(boundary,d)
+#        lrefid_to_lrefface = GT.reference_faces(boundary,d)
+#        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+#        map(1:GT.num_faces(boundary,d)) do lface
+#            lrefid = lface_to_lrefid[lface]
+#            nodes = lface_to_nodes[lface]
+#            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+#            map(perm_to_ids) do ids
+#                coords = node_to_coords[nodes[ids]]
+#                coords
+#            end
+#        end
+#    end
+#    sface_to_dface = domain |> GT.faces
+#    dface_to_drefid = GT.face_reference_id(mesh,d)
+#    drefid_to_refdface = GT.reference_faces(mesh,d)
+#    drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        dict = index.dict
+#        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
+#        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
+#        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
+#        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
+#        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
+#        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
+#        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
+#        face_around = index.face_around
+#        @assert face_around !== nothing
+#        @term begin
+#            boundary_face_function(
+#                $sface,
+#                $sface_to_tfaces_sym,
+#                $sface_to_lfaces_sym,
+#                $tface_to_Dface_sym,
+#                $sface_to_dface_sym,
+#                $Dface_to_lface_to_perm_sym,
+#                $Dface_to_Drefid_sym,
+#                $dface_to_drefid_sym,
+#                $Drefid_to_lface_to_perm_to_coords_sym,
+#                $drefid_to_funs_sym,
+#                $face_around,
+#           )
+#        end
+#    end
+#end
+#
+#function domain_map(glue::CoboundaryGlue,::ReferenceDomain,::PhysicalDomain)
+#    error("Case not yet implemented")
+#end
+#
+#function domain_map(glue::CoboundaryGlue,::PhysicalDomain,::ReferenceDomain)
+#    error("Case not yet implemented")
+#end
+#
+#function domain_map(glue::BoundaryGlue,::PhysicalDomain,::PhysicalDomain)
+#    error("Case not yet implemented")
+#end
+#
+#function boundary_face_function(
+#        sface,
+#        sface_to_tfaces,
+#        sface_to_lfaces,
+#        tface_to_Dface,
+#        sface_to_dface,
+#        Dface_to_lface_to_perm,
+#        Dface_to_Drefid,
+#        dface_to_drefid,
+#        Drefid_to_lface_to_perm_to_coords,
+#        drefid_to_funs,
+#        face_around,
+#    )
+#    tfaces = sface_to_tfaces[sface]
+#    lfaces = sface_to_lfaces[sface]
+#    tface = tfaces[face_around]
+#    lface = lfaces[face_around]
+#    Dface = tface_to_Dface[tface]
+#    dface = sface_to_dface[sface]
+#    perm = Dface_to_lface_to_perm[Dface][lface]
+#    Drefid = Dface_to_Drefid[Dface]
+#    drefid = dface_to_drefid[dface]
+#    coords = Drefid_to_lface_to_perm_to_coords[Drefid][lface][perm]
+#    funs = drefid_to_funs[drefid]
+#    linear_combination(funs,coords)
+#end
+#
+#function domain_map(glue::BoundaryGlue,::ReferenceDomain,::ReferenceDomain)
+#    domain = glue.domain
+#    codomain = glue |> GT.codomain
+#    mesh = codomain |> GT.mesh
+#    D = codomain |> GT.face_dim
+#    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    refDface = first(Drefid_to_refDface)
+#    boundary = refDface |> GT.geometry |> GT.boundary
+#    node_to_coords = GT.node_coordinates(boundary)
+#    T = eltype(node_to_coords)
+#    x = zero(T)
+#    prototype = y -> x
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    tface_to_Dface = codomain |> GT.faces
+#    d = domain |> GT.face_dim
+#    topo = mesh |> GT.topology
+#    Dface_to_lface_to_perm = GT.face_permutation_ids(topo,D,d)
+#    Dface_to_Drefid = GT.face_reference_id(mesh,D)
+#    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    Drefid_to_lface_to_perm_to_coords = map(Drefid_to_refDface) do refDface
+#        boundary = refDface |> GT.geometry |> GT.boundary
+#        lface_to_nodes = GT.face_nodes(boundary,d)
+#        node_to_coords = GT.node_coordinates(boundary)
+#        lface_to_lrefid = GT.face_reference_id(boundary,d)
+#        lrefid_to_lrefface = GT.reference_faces(boundary,d)
+#        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+#        map(1:GT.num_faces(boundary,d)) do lface
+#            lrefid = lface_to_lrefid[lface]
+#            nodes = lface_to_nodes[lface]
+#            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+#            map(perm_to_ids) do ids
+#                coords = node_to_coords[nodes[ids]]
+#                coords
+#            end
+#        end
+#    end
+#    sface_to_dface = domain |> GT.faces
+#    dface_to_drefid = GT.face_reference_id(mesh,d)
+#    drefid_to_refdface = GT.reference_faces(mesh,d)
+#    drefid_to_funs = map(GT.shape_functions,drefid_to_refdface)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        dict = index.dict
+#        sface_to_tfaces_sym = get!(dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_Dface_sym = get!(dict,tface_to_Dface,gensym("tface_to_Dface"))
+#        sface_to_dface_sym = get!(dict,sface_to_dface,gensym("sface_to_dface"))
+#        Dface_to_lface_to_perm_sym = get!(dict,Dface_to_lface_to_perm,gensym("Dface_to_lface_to_perm"))
+#        Dface_to_Drefid_sym = get!(dict,Dface_to_Drefid,gensym("Dface_to_Drefid"))
+#        dface_to_drefid_sym = get!(dict,dface_to_drefid,gensym("dface_to_drefid"))
+#        Drefid_to_lface_to_perm_to_coords_sym = get!(dict,Drefid_to_lface_to_perm_to_coords,gensym("Drefid_to_lface_to_perm_to_coords"))
+#        drefid_to_funs_sym = get!(dict,drefid_to_funs,gensym("drefid_to_funs"))
+#        face_around = 1
+#        @term begin
+#            boundary_face_function(
+#                $sface,
+#                $sface_to_tfaces_sym,
+#                $sface_to_lfaces_sym,
+#                $tface_to_Dface_sym,
+#                $sface_to_dface_sym,
+#                $Dface_to_lface_to_perm_sym,
+#                $Dface_to_Drefid_sym,
+#                $dface_to_drefid_sym,
+#                $Drefid_to_lface_to_perm_to_coords_sym,
+#                $drefid_to_funs_sym,
+#                $face_around,
+#           )
+#        end
+#    end
+#end
+#
+#function domain_map(glue::BoundaryGlue,::ReferenceDomain,::PhysicalDomain)
+#    error("Case not yet implemented")
+#end
+#
+#function domain_map(glue::BoundaryGlue,::PhysicalDomain,::ReferenceDomain)
+#    error("Case not yet implemented")
+#end
 
 #function align_field(a::AbstractQuantity,domain::AbstractDomain)
 #    glue = GT.domain_glue(domain,GT.domain(a))
@@ -1673,6 +1831,9 @@ end
 
 for op in (:dot,:cross)
   @eval begin
+      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+          $( Expr(:quote,op) )
+      end
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
       (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.constant_quantity(a),b)
       (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.constant_quantity(b))
@@ -1705,10 +1866,11 @@ end
 #    GT.quantity(term,prototype,domain)
 #end
 
-for op in (:gradient,:jacobian,:hessian)
+for op in (:(ForwardDiff.gradient),:(ForwardDiff.jacobian),:(ForwardDiff.hessian))
   @eval begin
-      (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,a,b)
-      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,GT.constant_quantity(a),b)
-      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call_function_symbol(ForwardDiff.$op,a,GT.constant_quantity(b))
+      function get_symbol!(index,val::typeof($op),name="";prefix=gensym)
+          $( Expr(:quote,op) )
+      end
+      ($op)(a::AbstractQuantity,b::AbstractQuantity) = call($op,a,b)
   end
 end
