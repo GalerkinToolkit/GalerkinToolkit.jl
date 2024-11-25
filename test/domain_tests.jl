@@ -126,7 +126,7 @@ r = eval(expr)
 @test r == 0
 
 u1 = GT.analytical_field(sum)
-u2 = GT.face_map(Ω)
+u2 = GT.face_map(mesh,D)
 x1 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
 x2 = GT.point_quantity(fill(SVector{2,Float64}[[4,5],[6,7]],GT.num_faces(Ω)),Ω)
 
@@ -180,8 +180,6 @@ end
 display(expr)
 r = eval(expr)
 @test r == [0.75, 0.25]
-yyy
-
 
 q = ForwardDiff.jacobian(u2,x1)
 index = GT.generate_index(Ω)
@@ -199,10 +197,101 @@ end
 display(expr)
 r = eval(expr)
 @test r == [0.25 0.0; 0.0 0.25]
+
+u3 = GT.inverse_face_map(mesh,D)
+q = u3(x1)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [2.0, 4.0]
+
+u4 = GT.inverse_face_map(mesh,D-1)
+q = u4(x1)
+index = GT.generate_index(Γ)
+faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+t = GT.term(q,index)
+@test t.dim == 1
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [3.0]
+
+u5 = u1∘GT.inverse_face_map(mesh,D)
+q = u5(x1)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+@test t.dim == 2
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 6.0
+
+u = GT.face_map(mesh,D-1,D)
+q = u(x1)
+index = GT.generate_index(Γ)
+faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+t = GT.term(q,index)
+@test t.dim == 1
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test [1.0, 0.0] == r
+
+u = GT.face_map(mesh,D-1,D)
+x3 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
+q = u[1](x3)
+index = GT.generate_index(Λ)
+faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
+t = GT.term(q,index)
+@test t.dim == 1
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    #$(GT.topological_sort(GT.simplify(t.expr),())[1])
+    $(GT.topological_sort(t.expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test [1.0, 0.0] == r
+
 xxx
 
 
-xxx
 
 
 

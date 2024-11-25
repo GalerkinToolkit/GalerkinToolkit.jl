@@ -865,10 +865,6 @@ function face_constant_field(data,dom::AbstractDomain)
     call(a->(x->a),q)
 end
 
-function face_map(dom::AbstractDomain)
-    face_map(mesh(dom),num_dims(dom))
-end
-
 function face_map(mesh::AbstractMesh,d)
     node_to_x = node_coordinates(mesh)
     x0 = zero(eltype(node_to_x))
@@ -920,6 +916,107 @@ function point_quantity(data,dom::AbstractDomain;reference=Val(false))
 
 end
 
+function face_map(mesh::AbstractMesh,d,D)
+    x0 = zero(SVector{D,Float64})
+    p = x -> x0
+    topo = topology(mesh)
+    a, b = GT.face_incidence_ext(topo,d,D)
+    perms = GT.face_permutation_ids(topo,D,d)
+        Drefid_to_refDface = GT.reference_faces(mesh,D)
+        drefid_to_refdface = GT.reference_faces(mesh,d)
+    coords = map(rfe->face_node_coordinates(rfe,d),Drefid_to_refDface)
+    funs = map(shape_functions,drefid_to_refdface)
+    ridsD = GT.face_reference_id(mesh,D)
+    ridsd = GT.face_reference_id(mesh,d)
+    quantity(p) do index
+        dface = face_index(index,d)
+        dim = d
+        dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
+        dface_to_ldfaces = get_symbol!(index,b,"dface_to_ldfaces")
+        Dface_to_ldface_to_perm = get_symbol!(index,perms,"Dface_to_ldface_to_perm")
+        Dface_to_Drefid = get_symbol!(index,ridsD,"Dface_to_Drefid")
+        dface_to_drefid = get_symbol!(index,ridsd,"dface_to_drefid")
+        Drefid_to_ldface_to_perm_to_coords = get_symbol!(index,coords,"Drefid_to_ldface_to_perm_to_coords")
+        drefid_to_dof_to_shape = get_symbol!(index,funs,"drefid_to_dof_to_shape")
+        dof = gensym("dummy_dof_geom")
+        x = gensym("dummy_x")
+        Dface_around = gensym("dummy_Dface_around")
+        expr = @term begin
+            Dface = $dface_to_Dfaces[$dface][$Dface_around]
+            ldface = $dface_to_ldfaces[$dface][$Dface_around]
+            Drefid = $Dface_to_Drefid[Dface]
+            perm = $Dface_to_ldface_to_perm[Dface][ldface]
+            coeff = $Drefid_to_ldface_to_perm_to_coords[Drefid][ldface][perm][$dof]
+            drefid = $dface_to_drefid[$dface]
+            dof_to_shape = $drefid_to_dof_to_shape[drefid]
+            fun = $dof -> coeff*$dof_to_shape[$dof]($x)
+            $x -> sum(fun,1:length($dof_to_shape))
+        end
+        Dface_around_target = face_around_boundary(index,d,D)
+        Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
+        if d == D
+            expr = expr
+        elseif isa(Dface_around_target,Int)
+            expr = substitute(expr,Dface_around=>Dface_around_actual)
+        elseif isa(Dface_around_target,AbstractArray)
+            face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
+            actual = :($Dface_around_actual[$face_to_sface[$dface]])
+            expr = substitute(expr,Dface_around=>actual)
+        else
+            expr = @term begin
+                map($Dface_around -> $expr,$dface_to_Dfaces[$dface])
+            end
+        end
+        (;expr,dim)
+    end
+end
+
+function face_node_coordinates(refDface,d)
+    D = num_dims(refDface)
+    if d == D
+        [[node_coordinates(refDface)]]
+    else
+        boundary = refDface |> GT.geometry |> GT.boundary
+        lface_to_nodes = GT.face_nodes(boundary,d)
+        node_to_coords = GT.node_coordinates(boundary)
+        lface_to_lrefid = GT.face_reference_id(boundary,d)
+        lrefid_to_lrefface = GT.reference_faces(boundary,d)
+        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+        map(1:GT.num_faces(boundary,d)) do lface
+            lrefid = lface_to_lrefid[lface]
+            nodes = lface_to_nodes[lface]
+            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+            map(perm_to_ids) do ids
+                coords = node_to_coords[nodes[ids]]
+                coords
+            end
+        end
+    end
+end
+
+function face_incidence_ext(topo,d,D)
+    dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
+    Dface_to_ldface_to_dface = GT.face_incidence(topo,D,d)
+    data = copy(dface_to_Dface_around_to_Dface.data)
+    fill!(data,0)
+    ptrs = dface_to_Dface_around_to_Dface.ptrs
+    dface_to_Dface_around_to_ldface = JaggedArray(data,ptrs)
+    ndfaces = num_faces(topo,d)
+    for dface in 1:ndfaces
+        Dface_around_to_Dface = dface_to_Dface_around_to_Dface[dface]
+        for (Dface_around, Dface) in enumerate(Dface_around_to_Dface)
+            ldface_to_dface = Dface_to_ldface_to_dface[Dface]
+            for (ldface2,dface2) in enumerate(ldface_to_dface)
+                if dface == dface2
+                    dface_to_Dface_around_to_ldface[dface][Dface_around] = ldface2
+                    break
+                end
+            end
+        end
+    end
+    dface_to_Dface_around_to_Dface,dface_to_Dface_around_to_ldface
+end
+
 #function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
 #    d = num_dims(domain)
 #    D = num_dims(codomain)
@@ -969,51 +1066,6 @@ end
 #    end
 #end
 #
-#function face_node_coordinates(refDface,d)
-#    D = num_dims(refDface)
-#    if d == D
-#        [[node_coordinates(refDface)]]
-#    else
-#        boundary = refDface |> GT.geometry |> GT.boundary
-#        lface_to_nodes = GT.face_nodes(boundary,d)
-#        node_to_coords = GT.node_coordinates(boundary)
-#        lface_to_lrefid = GT.face_reference_id(boundary,d)
-#        lrefid_to_lrefface = GT.reference_faces(boundary,d)
-#        lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-#        map(1:GT.num_faces(boundary,d)) do lface
-#            lrefid = lface_to_lrefid[lface]
-#            nodes = lface_to_nodes[lface]
-#            perm_to_ids = lrefid_to_perm_to_ids[lrefid]
-#            map(perm_to_ids) do ids
-#                coords = node_to_coords[nodes[ids]]
-#                coords
-#            end
-#        end
-#    end
-#end
-#
-#function face_incidence_ext(topo,d,D)
-#    dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
-#    Dface_to_ldface_to_dface = GT.face_incidence(topo,D,d)
-#    data = copy(dface_to_Dface_around_to_Dface.data)
-#    fill!(data,0)
-#    ptrs = dface_to_Dface_around_to_Dface.ptrs
-#    dface_to_Dface_around_to_ldface = JaggedArray(data,ptrs)
-#    ndfaces = length(Dface_to_ldface_to_dface)
-#    for dface in 1:ndfaces
-#        Dface_around_to_Dface = dface_to_Dface_around_to_Dface[dface]
-#        for (Dface_around, Dface) in enumerate(Dface_around_to_Dface)
-#            ldface_to_dface = Dface_to_ldface_to_dface[Dface]
-#            for (ldface2,dface2) in enumerate(ldface_to_dface)
-#                if dface == dface2
-#                    dface_to_Dface_around_to_ldface[dface][Dface_around] = ldface2
-#                    break
-#                end
-#            end
-#        end
-#    end
-#    dface_to_Dface_around_to_ldface
-#end
 
 #function domain_map(domain::AbstractDomain,codomain::AbstractDomain)
 #    glue = GT.domain_glue(domain,codomain)
@@ -1440,7 +1492,7 @@ end
 #    end
 #end
 
-function inverse_map_impl(f,x0)
+function inv_map(f,x0)
     function pseudo_inverse_if_not_square(J)
         m,n = size(J)
         if m != n
@@ -1468,32 +1520,55 @@ function inverse_map_impl(f,x0)
     end
 end
 
-function return_prototype(::typeof(inverse_map_impl),f,x0)
+function get_symbol!(index,val::typeof(inv_map),name="";prefix=index.data.prefix)
+    :(GalerkinToolkit.inv_map)
+end
+
+function return_prototype(::typeof(inv_map),f,x0)
     fx -> x0
 end
 
-function inverse_map(q::AbstractQuantity)
-    domain = q |> GT.domain
-    D = domain |> GT.num_dims
-    x0 = zero(SVector{D,Float64})
+#function inverse_map(q::AbstractQuantity)
+#    domain = q |> GT.domain
+#    D = domain |> GT.num_dims
+#    x0 = zero(SVector{D,Float64})
+#    x = constant_quantity(x0)
+#    args = (q,x)
+#    prototype = GT.return_prototype(inv_map,(map(GT.prototype,args)...))
+#    fs = map(GT.term,args)
+#    GT.quantity(prototype,domain) do index
+#        f_exprs = map(f->f(index),fs)
+#        @term inv_map($(f_exprs[1]),$(f_exprs[2]))
+#    end
+#end
+
+function inverse_face_map(dom::AbstractDomain)
+    inverse_face_map(mesh(dom),num_dims(dom))
+end
+
+function inverse_face_map(mesh::AbstractMesh,d)
+    x0 = zero(SVector{val_parameter(d),Float64})
     x = constant_quantity(x0)
-    args = (q,x)
-    prototype = GT.return_prototype(inverse_map_impl,(map(GT.prototype,args)...))
-    fs = map(GT.term,args)
-    GT.quantity(prototype,domain) do index
-        f_exprs = map(f->f(index),fs)
-        @term inverse_map_impl($(f_exprs[1]),$(f_exprs[2]))
-    end
+    phi = face_map(mesh,d)
+    call(inv_map,phi,x)
 end
 
 function Base.:∘(a::AbstractQuantity,phi::AbstractQuantity)
-    compose(a,phi)
+    call(∘,a,phi)
 end
 
-function compose(a::AbstractQuantity,phi::AbstractQuantity)
-    glue = GT.domain_glue(GT.domain(phi),GT.domain(a))
-    compose(a,phi,glue)
+function get_symbol!(index,val::typeof(Base.:∘),name="";prefix=index.data.prefix)
+    :(Base.:∘)
 end
+
+#function Base.:∘(a::AbstractQuantity,phi::AbstractQuantity)
+#    compose(a,phi)
+#end
+#
+#function compose(a::AbstractQuantity,phi::AbstractQuantity)
+#    glue = GT.domain_glue(GT.domain(phi),GT.domain(a))
+#    compose(a,phi,glue)
+#end
 
 #function compose(a::AbstractQuantity{<:PMesh},phi::AbstractQuantity{<:PMesh})
 #    q = map(GT.compose,partition(a),partition(phi))
@@ -1503,273 +1578,273 @@ end
 #    GT.quantity(term,prototype,domain)
 #end
 
-function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
-    @assert GT.domain(a) == GT.codomain(glue)
-    g = GT.prototype(a)
-    f = GT.prototype(phi)
-    prototype = x-> g(f(x))
-    domain = phi |> GT.domain
-    term_a = GT.term(a)
-    term_phi = GT.term(phi)
-    sface_to_tfaces, = GT.target_face(glue)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        ai = term_a(index2)
-        phii = term_phi(index)
-        @term $ai∘$phii
-    end
+#function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::InteriorGlue)
+#    @assert GT.domain(a) == GT.codomain(glue)
+#    g = GT.prototype(a)
+#    f = GT.prototype(phi)
+#    prototype = x-> g(f(x))
+#    domain = phi |> GT.domain
+#    term_a = GT.term(a)
+#    term_phi = GT.term(phi)
+#    sface_to_tfaces, = GT.target_face(glue)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        ai = term_a(index2)
+#        phii = term_phi(index)
+#        @term $ai∘$phii
+#    end
+#
+#end
+#
+#function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
+#    @assert GT.domain(a) == GT.codomain(glue)
+#    g = GT.prototype(a)
+#    f = GT.prototype(phi)
+#    prototype = x-> g(f(x))
+#    domain = phi |> GT.domain
+#    term_a = GT.term(a)
+#    term_phi = GT.term(phi)
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    face_around = GT.face_around(glue.domain)
+#    GT.quantity(prototype,domain) do index
+#        face_around = index.face_around
+#        @assert face_around !== nothing
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+#        index2 = replace_face(index,tface)
+#        ai = term_a(index2)
+#        phii = term_phi(index)
+#        @term $ai∘$phii
+#    end
+#end
+#
+#function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::BoundaryGlue)
+#    @assert GT.domain(a) == GT.codomain(glue)
+#    g = GT.prototype(a)
+#    f = GT.prototype(phi)
+#    prototype = x-> g(f(x))
+#    domain = phi |> GT.domain
+#    term_a = GT.term(a)
+#    term_phi = GT.term(phi)
+#    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
+#    face_around = GT.face_around(glue.domain)
+#    GT.quantity(prototype,domain) do index
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        index3 = replace_face_around(index2,face_around)
+#        ai = term_a(index3)
+#        phii = term_phi(index)
+#        @term $ai∘$phii
+#    end
+#end
 
-end
-
-function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::CoboundaryGlue)
-    @assert GT.domain(a) == GT.codomain(glue)
-    g = GT.prototype(a)
-    f = GT.prototype(phi)
-    prototype = x-> g(f(x))
-    domain = phi |> GT.domain
-    term_a = GT.term(a)
-    term_phi = GT.term(phi)
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    face_around = GT.face_around(glue.domain)
-    GT.quantity(prototype,domain) do index
-        face_around = index.face_around
-        @assert face_around !== nothing
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
-        index2 = replace_face(index,tface)
-        ai = term_a(index2)
-        phii = term_phi(index)
-        @term $ai∘$phii
-    end
-end
-
-function compose(a::AbstractQuantity,phi::AbstractQuantity,glue::BoundaryGlue)
-    @assert GT.domain(a) == GT.codomain(glue)
-    g = GT.prototype(a)
-    f = GT.prototype(phi)
-    prototype = x-> g(f(x))
-    domain = phi |> GT.domain
-    term_a = GT.term(a)
-    term_phi = GT.term(phi)
-    sface_to_tfaces, sface_to_lfaces, = glue |> GT.target_face
-    face_around = GT.face_around(glue.domain)
-    GT.quantity(prototype,domain) do index
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        index3 = replace_face_around(index2,face_around)
-        ai = term_a(index3)
-        phii = term_phi(index)
-        @term $ai∘$phii
-    end
-end
-
-function unit_normal(domain::AbstractDomain)
-    error("not implemented yet")
-end
-
-function unit_normal(domain::AbstractDomain,codomain::AbstractDomain)
-    glue = GT.domain_glue(domain,codomain)
-    unit_normal(domain,codomain,glue)
-end
-
-# TODO think about this name
-function boundary_unit_normal(φ_fun,ϕ_fun,n)
-    q -> begin
-        p = φ_fun(q)
-        J = ForwardDiff.jacobian(ϕ_fun,p)
-        Jt = transpose(J)
-        pinvJt = transpose(inv(Jt*J)*Jt)
-        v = pinvJt*n
-        m = sqrt(inner(v,v))
-        if m < eps()
-            return zero(v)
-        else
-            return v/m
-        end
-    end
-end
-
-function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
-    Γref = domain
-    Ω = codomain
-    Ωref = GT.reference_domain(Ω)
-    D = GT.num_dims(Ω)
-    mesh = GT.mesh(Ω)
-    φ = domain_map(Γref,Ωref)
-    ϕ = GT.domain_map(Ωref,Ω)
-    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
-    tface_to_face = GT.faces(Ωref)
-    face_to_ctype = GT.face_reference_id(mesh,D)
-    ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_lface_to_n= map(ctype_to_refface) do refface
-        boundary = refface |> GT.geometry |> GT.boundary
-        boundary |> GT.outwards_normals # TODO also rename?
-    end
-    ϕ_term = GT.term(ϕ)
-    φ_term = GT.term(φ)
-    prototype = GT.prototype(φ)
-    GT.quantity(prototype,Γref) do index
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
-        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
-        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        ϕ_fun = ϕ_term(index2)
-        φ_fun = φ_term(index)
-        @term begin
-            lface = $sface_to_lfaces_sym[$sface][1]
-            face = $tface_to_face_sym[$tface]
-            ctype = $face_to_ctype_sym[face]
-            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
-            n = lface_to_n[lface]
-            boundary_unit_normal($φ_fun,$ϕ_fun,n)
-        end
-    end
-end
-
-# TODO a lot of code duplication
-function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
-    Γ = domain
-    Γref = GT.physical_domain(Γ)
-    Ω = codomain
-    Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
-    D = GT.num_dims(Ω)
-    mesh = GT.mesh(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
-    ϕinv = GT.inverse_map(ϕ)
-    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
-    tface_to_face = GT.faces(Ωref)
-    face_to_ctype = GT.face_reference_id(mesh,D)
-    ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_lface_to_n= map(ctype_to_refface) do refface
-        boundary = refface |> GT.geometry |> GT.boundary
-        boundary |> GT.outwards_normals # TODO also rename?
-    end
-    ϕinv_term = GT.term(ϕinv)
-    ϕ_term = GT.term(ϕ)
-    prototype = GT.prototype(ϕ)
-    GT.quantity(prototype,Γref) do index
-        sface = index.face
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
-        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
-        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
-        tface = @term $sface_to_tfaces_sym[$sface][1]
-        index2 = replace_face(index,tface)
-        ϕinv_fun = ϕinv_term(index2)
-        ϕ_fun = ϕ_term(index2)
-        @term begin
-            lface = $sface_to_lfaces_sym[$sface][1]
-            face = $tface_to_face_sym[$tface]
-            ctype = $face_to_ctype_sym[face]
-            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
-            n = lface_to_n[lface]
-            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
-        end
-    end
-end
-
-# TODO a lot of code duplication
-function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
-    Γref = domain
-    Ω = codomain
-    Ωref = GT.reference_domain(Ω)
-    D = GT.num_dims(Ω)
-    mesh = GT.mesh(Ω)
-    φ = domain_map(Γref,Ωref)
-    ϕ = GT.domain_map(Ωref,Ω)
-    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
-    tface_to_face = GT.faces(Ωref)
-    face_to_ctype = GT.face_reference_id(mesh,D)
-    ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_lface_to_n= map(ctype_to_refface) do refface
-        boundary = refface |> GT.geometry |> GT.boundary
-        boundary |> GT.outwards_normals # TODO also rename?
-    end
-    ϕ_term = GT.term(ϕ)
-    φ_term = GT.term(φ)
-    prototype = GT.prototype(φ)
-    GT.quantity(prototype,Γref) do index
-        sface = index.face
-        face_around = index.face_around
-        @assert face_around !== nothing
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
-        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
-        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
-        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
-        index2 = replace_face(index,tface)
-        index3 = replace_face_around(index2,nothing)
-        ϕ_fun = ϕ_term(index3)
-        φ_fun = φ_term(index)
-        @term begin
-            lface = $sface_to_lfaces_sym[$sface][$face_around]
-            face = $tface_to_face_sym[$tface]
-            ctype = $face_to_ctype_sym[face]
-            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
-            n = lface_to_n[lface]
-            boundary_unit_normal($φ_fun,$ϕ_fun,n)
-        end
-    end
-end
-
-function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
-    Γ = domain
-    Γref = GT.physical_domain(Γ)
-    Ω = codomain
-    Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
-    D = GT.num_dims(Ω)
-    mesh = GT.mesh(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
-    ϕinv = GT.inverse_map(ϕ)
-    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
-    tface_to_face = GT.faces(Ωref)
-    face_to_ctype = GT.face_reference_id(mesh,D)
-    ctype_to_refface = GT.reference_faces(mesh,D)
-    ctype_to_lface_to_n= map(ctype_to_refface) do refface
-        boundary = refface |> GT.geometry |> GT.boundary
-        boundary |> GT.outwards_normals # TODO also rename?
-    end
-    ϕinv_term = GT.term(ϕinv)
-    ϕ_term = GT.term(ϕ)
-    prototype = GT.prototype(ϕ)
-    GT.quantity(prototype,Γref) do index
-        sface = index.face
-        face_around = index.face_around
-        @assert face_around !== nothing
-        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
-        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
-        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
-        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
-        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
-        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
-        index2 = replace_face(index,tface)
-        index3 = replace_face_around(index2,nothing)
-        ϕinv_fun = ϕinv_term(index3)
-        ϕ_fun = ϕ_term(index3)
-        @term begin
-            lface = $sface_to_lfaces_sym[$sface][$face_around]
-            face = $tface_to_face_sym[$tface]
-            ctype = $face_to_ctype_sym[face]
-            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
-            n = lface_to_n[lface]
-            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
-        end
-    end
-end
+#function unit_normal(domain::AbstractDomain)
+#    error("not implemented yet")
+#end
+#
+#function unit_normal(domain::AbstractDomain,codomain::AbstractDomain)
+#    glue = GT.domain_glue(domain,codomain)
+#    unit_normal(domain,codomain,glue)
+#end
+#
+## TODO think about this name
+#function boundary_unit_normal(φ_fun,ϕ_fun,n)
+#    q -> begin
+#        p = φ_fun(q)
+#        J = ForwardDiff.jacobian(ϕ_fun,p)
+#        Jt = transpose(J)
+#        pinvJt = transpose(inv(Jt*J)*Jt)
+#        v = pinvJt*n
+#        m = sqrt(inner(v,v))
+#        if m < eps()
+#            return zero(v)
+#        else
+#            return v/m
+#        end
+#    end
+#end
+#
+#function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
+#    Γref = domain
+#    Ω = codomain
+#    Ωref = GT.reference_domain(Ω)
+#    D = GT.num_dims(Ω)
+#    mesh = GT.mesh(Ω)
+#    φ = domain_map(Γref,Ωref)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
+#    tface_to_face = GT.faces(Ωref)
+#    face_to_ctype = GT.face_reference_id(mesh,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    ϕ_term = GT.term(ϕ)
+#    φ_term = GT.term(φ)
+#    prototype = GT.prototype(φ)
+#    GT.quantity(prototype,Γref) do index
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+#        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+#        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        ϕ_fun = ϕ_term(index2)
+#        φ_fun = φ_term(index)
+#        @term begin
+#            lface = $sface_to_lfaces_sym[$sface][1]
+#            face = $tface_to_face_sym[$tface]
+#            ctype = $face_to_ctype_sym[face]
+#            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+#            n = lface_to_n[lface]
+#            boundary_unit_normal($φ_fun,$ϕ_fun,n)
+#        end
+#    end
+#end
+#
+## TODO a lot of code duplication
+#function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
+#    Γ = domain
+#    Γref = GT.physical_domain(Γ)
+#    Ω = codomain
+#    Ωref = GT.reference_domain(Ω)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    D = GT.num_dims(Ω)
+#    mesh = GT.mesh(Ω)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    ϕinv = GT.inverse_map(ϕ)
+#    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
+#    tface_to_face = GT.faces(Ωref)
+#    face_to_ctype = GT.face_reference_id(mesh,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    ϕinv_term = GT.term(ϕinv)
+#    ϕ_term = GT.term(ϕ)
+#    prototype = GT.prototype(ϕ)
+#    GT.quantity(prototype,Γref) do index
+#        sface = index.face
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+#        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+#        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+#        tface = @term $sface_to_tfaces_sym[$sface][1]
+#        index2 = replace_face(index,tface)
+#        ϕinv_fun = ϕinv_term(index2)
+#        ϕ_fun = ϕ_term(index2)
+#        @term begin
+#            lface = $sface_to_lfaces_sym[$sface][1]
+#            face = $tface_to_face_sym[$tface]
+#            ctype = $face_to_ctype_sym[face]
+#            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+#            n = lface_to_n[lface]
+#            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
+#        end
+#    end
+#end
+#
+## TODO a lot of code duplication
+#function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
+#    Γref = domain
+#    Ω = codomain
+#    Ωref = GT.reference_domain(Ω)
+#    D = GT.num_dims(Ω)
+#    mesh = GT.mesh(Ω)
+#    φ = domain_map(Γref,Ωref)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
+#    tface_to_face = GT.faces(Ωref)
+#    face_to_ctype = GT.face_reference_id(mesh,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    ϕ_term = GT.term(ϕ)
+#    φ_term = GT.term(φ)
+#    prototype = GT.prototype(φ)
+#    GT.quantity(prototype,Γref) do index
+#        sface = index.face
+#        face_around = index.face_around
+#        @assert face_around !== nothing
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+#        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+#        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+#        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+#        index2 = replace_face(index,tface)
+#        index3 = replace_face_around(index2,nothing)
+#        ϕ_fun = ϕ_term(index3)
+#        φ_fun = φ_term(index)
+#        @term begin
+#            lface = $sface_to_lfaces_sym[$sface][$face_around]
+#            face = $tface_to_face_sym[$tface]
+#            ctype = $face_to_ctype_sym[face]
+#            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+#            n = lface_to_n[lface]
+#            boundary_unit_normal($φ_fun,$ϕ_fun,n)
+#        end
+#    end
+#end
+#
+#function unit_normal(domain::PhysicalDomain,codomain::PhysicalDomain,glue::CoboundaryGlue)
+#    Γ = domain
+#    Γref = GT.physical_domain(Γ)
+#    Ω = codomain
+#    Ωref = GT.reference_domain(Ω)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    D = GT.num_dims(Ω)
+#    mesh = GT.mesh(Ω)
+#    ϕ = GT.domain_map(Ωref,Ω)
+#    ϕinv = GT.inverse_map(ϕ)
+#    sface_to_tfaces, sface_to_lfaces, = GT.target_face(glue)
+#    tface_to_face = GT.faces(Ωref)
+#    face_to_ctype = GT.face_reference_id(mesh,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    ϕinv_term = GT.term(ϕinv)
+#    ϕ_term = GT.term(ϕ)
+#    prototype = GT.prototype(ϕ)
+#    GT.quantity(prototype,Γref) do index
+#        sface = index.face
+#        face_around = index.face_around
+#        @assert face_around !== nothing
+#        sface_to_tfaces_sym = get!(index.dict,sface_to_tfaces,gensym("sface_to_tfaces"))
+#        sface_to_lfaces_sym = get!(index.dict,sface_to_lfaces,gensym("sface_to_lfaces"))
+#        tface_to_face_sym = get!(index.dict,tface_to_face,gensym("tface_to_face"))
+#        face_to_ctype_sym = get!(index.dict,face_to_ctype,gensym("face_to_ctype"))
+#        ctype_to_lface_to_n_sym = get!(index.dict,ctype_to_lface_to_n,gensym("ctype_to_lface_to_n"))
+#        tface = @term $sface_to_tfaces_sym[$sface][$face_around]
+#        index2 = replace_face(index,tface)
+#        index3 = replace_face_around(index2,nothing)
+#        ϕinv_fun = ϕinv_term(index3)
+#        ϕ_fun = ϕ_term(index3)
+#        @term begin
+#            lface = $sface_to_lfaces_sym[$sface][$face_around]
+#            face = $tface_to_face_sym[$tface]
+#            ctype = $face_to_ctype_sym[face]
+#            lface_to_n = $ctype_to_lface_to_n_sym[ctype]
+#            n = lface_to_n[lface]
+#            boundary_unit_normal($ϕinv_fun,$ϕ_fun,n)
+#        end
+#    end
+#end
 
 function piecewiese_field(fields::AbstractQuantity...)
     PiecewiseField(fields)
