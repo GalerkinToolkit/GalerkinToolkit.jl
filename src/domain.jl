@@ -380,15 +380,17 @@ struct Quantity{A,B} <: AbstractQuantity
 end
 
 function index(;
+    domain = nothing,
     dummy_face=nothing,
     actual_faces=nothing,
     point=nothing,
     field=nothing,
     dof=nothing,
     face_around=nothing,
+    prefix = gensym,
     dict=IdDict{Any,Symbol}(),
     )
-    data = (;dummy_face,actual_faces,point,field,dof,face_around,dict)
+    data = (;domain,dummy_face,actual_faces,point,field,dof,face_around,dict,prefix)
     Index(data)
 end
 
@@ -396,23 +398,28 @@ struct Index{A} <: GT.AbstractType
     data::A
 end
 
-function generate_index(d,D,form_arity=0;
+function generate_index(dom::AbstractDomain,form_arity=0;
     prefix=gensym,
-    on_boundary = false,
     field=[prefix("field-in-axis-$i") for i in 1:form_arity],
     face_around = [prefix("face-around-in-axis-$a") for a in 1:form_arity],
     )
+    d = num_dims(dom)
+    D = num_dims(mesh(dom))
     dummy_face = [ prefix("$d-face-dummy") for d in 0:D ]
     actual_faces = [ prefix("$j-faces-in-$i-face") for i in 0:D, j in 0:D ]
     point = prefix("point")
     dof = [prefix("dof-in-axis-$i") for i in 1:form_arity]
     dummy_face[d+1] = prefix("$d-face")
     actual_faces[d+1,d+1] = dummy_face[d+1]
-    if on_boundary
-        dummy_face[(d+1)+1] = prefix("$D-face")
-        actual_faces[d+1,(d+1)+1] = dummy_face[(d+1)+1]
-    end
-    index(;dummy_face,actual_faces,point,field,dof,face_around)
+    index(;domain=dom,dummy_face,actual_faces,point,field,dof,face_around,prefix)
+end
+
+function num_dims(index::Index)
+    num_dims(index.data.domain)
+end
+
+function mesh(index::Index)
+    index.data.domain.mesh
 end
 
 function index_storage(index)
@@ -427,7 +434,7 @@ function unpack_index_storage(index,state)
     expr
 end
 
-function get_symbol!(index,val,name="";prefix=gensym)
+function get_symbol!(index,val,name="";prefix=index.data.prefix)
     get!(index.data.dict,val,prefix(name))
 end
 
@@ -435,9 +442,17 @@ function dummy_face_index(index,d)
     index.data.dummy_face[d+1]
 end
 
-function actual_faces_index(index,i,j)
-    index.data.actual_faces[i+1,j+1]
+function face_around_boundary(index,d,D)
+    if d == num_dims(index) && (d+1 == D)
+        index.data.domain.face_around
+    else
+        nothing
+    end
 end
+
+#function actual_faces_index(index,i,j)
+#    index.data.actual_faces[i+1,j+1]
+#end
 
 function face_around_index(index,a)
     index.data.face_around[a]
@@ -642,6 +657,10 @@ function return_prototype(f,args...)
     f(args...)
 end
 
+function return_prototype(::typeof(getindex),a,b)
+    zero(eltype(a))
+end
+
 function call(f,args...)
     f(args...)
 end
@@ -668,7 +687,10 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
             dim = min(ta.dim,tb.dim)
             dim2 = max(ta.dim,tb.dim)
             dummy = dummy_face_index(index,dim2)
-            faces = actual_faces_index(index,dim,dim2)
+            face = dummy_face_index(index,dim)
+            #faces = actual_faces_index(index,dim,dim2)
+            topo = topology(mesh(index))
+            face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2),"face_to_cells")
             axis_to_face_around = face_around_index(index)
             #dom = target_domain(index)
             #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
@@ -686,12 +708,21 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
             #        fun = $dummy -> $expr
             #        fun()
             #    end
-            if dummy === faces
-                expr = expr
+            cells = @term $face_to_cells[$face]
+            cell_around = face_around_boundary(index,dim,dim2)
+            cell_around_sym = get_symbol!(index,cell_around,"cell_around")
+            c = :(GalerkinToolkit.call)
+            if isa(cell_around,Int)
+                expr = @term $c($dummy -> $expr,$cells[$cell_around_sym])
+            elseif isa(cell_around,AbstractArray)
+                face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
+                expr = @term $c($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
+            elseif cell_around !== nothing
+                error()
             elseif length(axis_to_face_around) == 0
                 expr = @term begin
                     fun = $dummy -> $expr
-                    map(fun,$faces)
+                    map(fun,$cells)
                 end
             else
                 i = gensym("i-dummy")
@@ -705,8 +736,8 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
                     mask = exprs[1]
                 end
                 expr = @term begin
-                    fun = ($i,$dummy) -> $expr*$mask
-                    map(fun,emumerate($faces))
+                    fun = (($i,$dummy),) -> $expr*$mask
+                    map(fun,enumerate($cells))
                 end
             end
         end
@@ -1291,7 +1322,7 @@ function inverse_map(q::AbstractQuantity)
     domain = q |> GT.domain
     D = domain |> GT.num_dims
     x0 = zero(SVector{D,Float64})
-    x = constant_quantity(x0,domain)
+    x = constant_quantity(x0)
     args = (q,x)
     prototype = GT.return_prototype(inverse_map_impl,(map(GT.prototype,args)...))
     fs = map(GT.term,args)
@@ -1628,8 +1659,8 @@ end
 for op in (:+,:-,:*,:/,:\,:^,:getindex)
   @eval begin
       (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
-      (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.constant_quantity(a,GT.domain(b)),b)
-      (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.constant_quantity(b,domain(a)))
+      (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.constant_quantity(a),b)
+      (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.constant_quantity(b))
   end
 end
 
@@ -1647,8 +1678,8 @@ end
 for op in (:dot,:cross)
   @eval begin
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
-      (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.constant_quantity(a,GT.domain(b)),b)
-      (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.constant_quantity(b,domain(a)))
+      (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.constant_quantity(a),b)
+      (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.constant_quantity(b))
   end
 end
 
@@ -1681,7 +1712,7 @@ end
 for op in (:gradient,:jacobian,:hessian)
   @eval begin
       (ForwardDiff.$op)(a::AbstractQuantity,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,a,b)
-      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,GT.constant_quantity(a,GT.domain(b)),b)
-      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call_function_symbol(ForwardDiff.$op,a,GT.constant_quantity(b,domain(a)))
+      (ForwardDiff.$op)(a::Number,b::AbstractQuantity) = call_function_symbol(ForwardDiff.$op,GT.constant_quantity(a),b)
+      (ForwardDiff.$op)(a::AbstractQuantity,b::Number) = call_function_symbol(ForwardDiff.$op,a,GT.constant_quantity(b))
   end
 end
