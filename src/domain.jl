@@ -381,8 +381,7 @@ end
 
 function index(;
     domain = nothing,
-    dummy_face=nothing,
-    actual_faces=nothing,
+    face=nothing,
     point=nothing,
     field=nothing,
     dof=nothing,
@@ -390,7 +389,7 @@ function index(;
     prefix = gensym,
     dict=IdDict{Any,Symbol}(),
     )
-    data = (;domain,dummy_face,actual_faces,point,field,dof,face_around,dict,prefix)
+    data = (;domain,face,point,field,dof,face_around,dict,prefix)
     Index(data)
 end
 
@@ -405,13 +404,11 @@ function generate_index(dom::AbstractDomain,form_arity=0;
     )
     d = num_dims(dom)
     D = num_dims(mesh(dom))
-    dummy_face = [ prefix("$d-face-dummy") for d in 0:D ]
-    actual_faces = [ prefix("$j-faces-in-$i-face") for i in 0:D, j in 0:D ]
+    face = [ prefix("$d-face-dummy") for d in 0:D ]
     point = prefix("point")
     dof = [prefix("dof-in-axis-$i") for i in 1:form_arity]
-    dummy_face[d+1] = prefix("$d-face")
-    actual_faces[d+1,d+1] = dummy_face[d+1]
-    index(;domain=dom,dummy_face,actual_faces,point,field,dof,face_around,prefix)
+    face[d+1] = prefix("$d-face")
+    index(;domain=dom,face,point,field,dof,face_around,prefix)
 end
 
 function num_dims(index::Index)
@@ -438,8 +435,8 @@ function get_symbol!(index,val,name="";prefix=index.data.prefix)
     get!(index.data.dict,val,prefix(name))
 end
 
-function dummy_face_index(index,d)
-    index.data.dummy_face[d+1]
+function face_index(index,d)
+    index.data.face[d+1]
 end
 
 function face_around_boundary(index,d,D)
@@ -449,10 +446,6 @@ function face_around_boundary(index,d,D)
         nothing
     end
 end
-
-#function actual_faces_index(index,i,j)
-#    index.data.actual_faces[i+1,j+1]
-#end
 
 function face_around_index(index,a)
     index.data.face_around[a]
@@ -487,7 +480,7 @@ function face_quantity(data,dom::AbstractDomain)
         face_to_sface = inverse_faces(dom)
         data_sym = get_symbol!(index,data,"face_to_value")
         face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface")
-        face = dummy_face_index(index,dim)
+        face = face_index(index,dim)
         expr = @term $data_sym[$face_to_sface_sym[$face]]
         (;expr,dim)
     end
@@ -686,8 +679,8 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
         if dim == nothing
             dim = min(ta.dim,tb.dim)
             dim2 = max(ta.dim,tb.dim)
-            dummy = dummy_face_index(index,dim2)
-            face = dummy_face_index(index,dim)
+            dummy = face_index(index,dim2)
+            face = face_index(index,dim)
             #faces = actual_faces_index(index,dim,dim2)
             topo = topology(mesh(index))
             face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2),"face_to_cells")
@@ -695,7 +688,7 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
             #dom = target_domain(index)
             #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
             #if gluable
-            #    face = dummy_face(index,dim)
+            #    face = face(index,dim)
             #    face_to_sface = get_symbol!(index,inverse_faces(dom))
             #    sface_to_cell_around = get_symbol!(index,face_around(dom))
             #    topo = topology(mesh(dom))
