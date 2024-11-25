@@ -81,7 +81,7 @@ storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[2]
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
 end
 display(expr)
 r = eval(expr)
@@ -98,7 +98,8 @@ expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[2]
     $(GT.face_around_index(index,1)) = 2
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
 end
 display(expr)
 r = eval(expr)
@@ -115,7 +116,8 @@ expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[2]
     $(GT.face_around_index(index,1)) = 1
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    #$(GT.topological_sort(t.expr,())[1])
 end
 display(expr)
 r = eval(expr)

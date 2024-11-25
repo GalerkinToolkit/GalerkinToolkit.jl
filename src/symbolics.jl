@@ -69,6 +69,8 @@ macro term(expr)
             transform_default(expr)
         elseif  expr.head === :tuple
             transform_tuple(expr)
+        elseif  expr.head === :.
+            transform_dot(expr)
         else
             error("Expr with head=$(expr.head) not supported in macro @term")
         end
@@ -103,6 +105,9 @@ macro term(expr)
         quote
             Expr(:tuple,$(args...))
         end
+    end
+    function transform_dot(expr::Expr)
+        expr
     end
     function transform_default(expr::Expr)
         head = expr.head
@@ -182,41 +187,75 @@ function topological_sort(expr,deps)
     expr_L
 end
 
+#const gradient = ForwardDiff.gradient
+#const jacobian = ForwardDiff.jacobian
+#const hessian = ForwardDiff.hessian
+#function simplify(expr::Expr)
+#    # r_invmap needs to be processed before r_tabulator
+#    # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
+#    r_invmap = @slots a b c phi @rule call( a ∘ inverse_map_impl(phi,b) , call(phi,c) ) --> call(a,c)
+#
+#    # $(\nabla (f\circ\varphi^{-1}))(\varphi(x))$ -> $(J(\varphi(x)))^{-T} (\nabla f)(x)  $
+#    # matrix inversion and jacobian may introduce floating point error
+#    r_invmap_gradient = @slots a b c phi @rule gradient(a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(jacobian(phi, c))' * gradient(a, c)
+#
+#    # we assume to have the same type of reference face (b[e] == h[i])
+#    r_tabulator = @slots a b c d e f g h i @rule call(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
+#    r_jacobian_tabulator = @slots a b c d e f g h i @rule jacobian(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> jacobian_face_function_value(map(gradient_reference_tabulator,a,f),b,c,d,e,g)
+#    
+#
+#    r_shape_gradient_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule gradient(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
+#        face_shape_function_value(map(gradient_reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
+#
+#    r_shape_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule call(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
+#        face_shape_function_value(map(reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
+#
+#    
+#    rules = [
+#             r_invmap_gradient,
+#             r_invmap,
+#             r_tabulator,
+#             r_jacobian_tabulator,
+#             r_shape_tabulator,
+#             r_shape_gradient_tabulator,
+#            ]
+#
+#    expr2 = nothing
+#    for rule in rules
+#        expr2 = rule(expr)
+#        if expr2 !== nothing
+#            break
+#        end
+#    end
+#    if expr2 === nothing
+#        args = map(simplify,expr.args)
+#        Expr(expr.head,args...)
+#    else
+#        simplify(expr2)
+#    end
+#end
+
 function simplify(expr)
     expr
 end
 
-const gradient = ForwardDiff.gradient
-const jacobian = ForwardDiff.jacobian
-const hessian = ForwardDiff.hessian
 function simplify(expr::Expr)
-    # r_invmap needs to be processed before r_tabulator
-    # We use call since @rule is not able to identify function calls on variable slots (phi in this case)
-    r_invmap = @slots a b c phi @rule call( a ∘ inverse_map_impl(phi,b) , call(phi,c) ) --> call(a,c)
+    expr = rewrite(expr)
+    expr = inline_lambdas(expr)
+end
 
-    # $(\nabla (f\circ\varphi^{-1}))(\varphi(x))$ -> $(J(\varphi(x)))^{-T} (\nabla f)(x)  $
-    # matrix inversion and jacobian may introduce floating point error
-    r_invmap_gradient = @slots a b c phi @rule gradient(a ∘ inverse_map_impl(phi,b), call(phi,c))  -->  inv(jacobian(phi, c))' * gradient(a, c)
+function rewrite(expr)
+    expr
+end
 
-    # we assume to have the same type of reference face (b[e] == h[i])
-    r_tabulator = @slots a b c d e f g h i @rule call(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> face_function_value(map(reference_tabulator,a,f),b,c,d,e,g)
-    r_jacobian_tabulator = @slots a b c d e f g h i @rule jacobian(face_function(a,b,c,d,e),reference_value(f,h,i)[g]) --> jacobian_face_function_value(map(gradient_reference_tabulator,a,f),b,c,d,e,g)
-    
-
-    r_shape_gradient_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule gradient(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
-        face_shape_function_value(map(gradient_reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
-
-    r_shape_tabulator = @slots rid_to_fs face_to_rid face dof rid_to_coords face_to_rid2 sface point @rule call(face_shape_function(rid_to_fs,face_to_rid,face,dof), reference_value(rid_to_coords, face_to_rid2, sface)[point]) --> 
-        face_shape_function_value(map(reference_tabulator, rid_to_fs, rid_to_coords), face_to_rid, face, dof, face_to_rid2, sface, point)
-
-    
+function rewrite(expr::Expr)
+    #r_map_getindex_enumerate = @slots f r i @rule getindex(map(f,enumerate(r)),i) --> call(f,(i,r[i]))
+    r_map_getindex_1 = @slots f r i @rule getindex(map(f,r),i) --> call(f,r[i])
+    r_map_getindex_2 = @slots f r s i @rule getindex(map(f,r,s),i) --> call(f,r[i],s[i])
     rules = [
-             r_invmap_gradient,
-             r_invmap,
-             r_tabulator,
-             r_jacobian_tabulator,
-             r_shape_tabulator,
-             r_shape_gradient_tabulator,
+             #r_map_getindex_enumerate,
+             r_map_getindex_1,
+             r_map_getindex_2,
             ]
 
     expr2 = nothing
@@ -227,11 +266,54 @@ function simplify(expr::Expr)
         end
     end
     if expr2 === nothing
-        args = map(simplify,expr.args)
+        args = map(rewrite,expr.args)
         Expr(expr.head,args...)
     else
-        simplify(expr2)
+        rewrite(expr2)
     end
 end
 
+function inline_lambdas(expr)
+    MacroTools.postwalk(expr) do ex
+        if !isa(ex,Expr)
+            return ex
+        end
+        if ex.head !== :call
+            return ex
+        end
+        if ex.args[1] !== :call
+            return ex
+        end
+        lambda = ex.args[2]
+        if !isa(lambda,Expr)
+            return ex
+        end
+        if lambda.head !== :(->)
+            return ex
+        end
+        signature, body = lambda.args
+        if isa(signature,Symbol)
+            x = ex.args[3]
+            return substitute(body,signature=>x)
+        end
+        if !isa(signature,Expr)
+            return ex
+        end
+        if signature.head === :tuple
+            actual_x = ex.args[3:end]
+            dummy_x = signature.args
+            for i in 1:length(dummy_x)
+                if isa(dummy_x[i],Symbol)
+                    body = substitute(body,dummy_x[i]=>actual_x[i])
+                end
+            end
+            return body
+        end
+        ex
+    end
+end
 
+function substitute(expr,old_new)
+    old,new = old_new
+    MacroTools.postwalk(ex -> ex === old ? new : ex ,expr)
+end

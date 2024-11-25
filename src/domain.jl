@@ -478,8 +478,8 @@ function face_quantity(data,dom::AbstractDomain)
     p = zero(eltype(data))
     quantity(p) do index
         face_to_sface = inverse_faces(dom)
-        data_sym = get_symbol!(index,data,"face_to_value")
-        face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface")
+        data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
+        face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
         face = face_index(index,dim)
         expr = @term $data_sym[$face_to_sface_sym[$face]]
         (;expr,dim)
@@ -704,12 +704,15 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
             cells = @term $face_to_cells[$face]
             cell_around = face_around_boundary(index,dim,dim2)
             cell_around_sym = get_symbol!(index,cell_around,"cell_around")
-            c = :(GalerkinToolkit.call)
             if isa(cell_around,Int)
-                expr = @term $c($dummy -> $expr,$cells[$cell_around_sym])
+                #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym])
+                actual = :($cells[$cell_around_sym])
+                expr = substitute(expr,dummy=>actual)
             elseif isa(cell_around,AbstractArray)
                 face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
-                expr = @term $c($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
+                actual = :($cells[$cell_around_sym[$face_to_sface[$face]]])
+                expr = substitute(expr,dummy=>actual)
+                #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
             elseif cell_around !== nothing
                 error()
             elseif length(axis_to_face_around) == 0
@@ -729,8 +732,8 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
                     mask = exprs[1]
                 end
                 expr = @term begin
-                    fun = (($i,$dummy),) -> $expr*$mask
-                    map(fun,enumerate($cells))
+                    fun = ($i,$dummy) -> $expr*$mask
+                    map(fun,1:length($cells),$cells)
                 end
             end
         end

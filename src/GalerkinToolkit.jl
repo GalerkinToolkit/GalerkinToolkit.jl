@@ -14,6 +14,7 @@ using Combinatorics
 using SparseArrays
 using Metis
 using Metatheory
+import MacroTools
 import PartitionedSolvers as PS
 
 include("mesh.jl")
