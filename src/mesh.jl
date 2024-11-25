@@ -307,7 +307,7 @@ num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
 abstract type AbstractLagrangeMeshFace <: AbstractMeshFace end
 
-struct GenericLagrangeMeshFace{A,B,C} <: AbstractLagrangeMeshFace
+AutoHashEquals.@auto_hash_equals struct GenericLagrangeMeshFace{A,B,C} <: AbstractLagrangeMeshFace
     geometry::A
     order_per_dir::B
     space::Symbol
