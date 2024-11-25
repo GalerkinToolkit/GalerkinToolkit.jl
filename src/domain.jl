@@ -361,7 +361,8 @@ end
 abstract type AbstractQuantity <: GT.AbstractType end
 #mesh(a::AbstractQuantity) = a.mesh
 term(a::AbstractQuantity) = a.term
-prototype(a::AbstractQuantity) = a.prototype
+#prototype(a::AbstractQuantity) = a.prototype
+prototype(a) = a.prototype
 #domain(a::AbstractQuantity) = a.domain
 #function PartitionedArrays.partition(a::AbstractQuantity)
 #    prototype = a |> GT.prototype
@@ -370,13 +371,12 @@ prototype(a::AbstractQuantity) = a.prototype
 #    end
 #end
 
-function quantity(term,prototype)
-    Quantity(term,prototype)
+function quantity(term)
+    Quantity(term)
 end
 
-struct Quantity{A,B} <: AbstractQuantity
+struct Quantity{A} <: AbstractQuantity
     term::A
-    prototype::B
 end
 
 function index(;
@@ -470,23 +470,23 @@ end
 const ANY_DIM = -1
 
 function constant_quantity(v)
-    GT.quantity(v) do index
+    GT.quantity() do index
         expr = get_symbol!(index,v,"constant_quantity_value")
         dim = ANY_DIM
-        (;expr,dim)
+        (;expr,dim,prototype=v)
     end
 end
 
 function face_quantity(data,dom::AbstractDomain)
     dim = num_dims(dom)
-    p = zero(eltype(data))
-    quantity(p) do index
+    quantity() do index
+        p = zero(eltype(data))
         face_to_sface = inverse_faces(dom)
         data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
         face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
         face = face_index(index,dim)
         expr = @term $data_sym[$face_to_sface_sym[$face]]
-        (;expr,dim)
+        (;expr,dim,prototype=p)
     end
 end
 
@@ -658,6 +658,14 @@ function return_prototype(::typeof(getindex),a,b)
     zero(eltype(a))
 end
 
+function return_prototype(::typeof(getindex),a,b::Integer)
+    if length(a) != 0
+        first(a)
+    else
+        zero(eltype(a))
+    end
+end
+
 function call(f,args...)
     f(args...)
 end
@@ -667,23 +675,24 @@ function get_symbol!(index,val::typeof(call),name="";prefix=index.data.prefix)
 end
 
 function call(g,q::AbstractQuantity)
-    p = GT.return_prototype(g,GT.prototype(q))
-    quantity(p) do index
+    quantity() do index
         g_sym = get_symbol!(index,g,"callee")
         tq = term(q,index)
+        p = GT.return_prototype(g,prototype(tq))
         expr = :($g_sym($(tq.expr)))
-        (;expr,dim=tq.dim)
+        (;expr,dim=tq.dim,prototype=p)
     end
 end
 
 function call(g,a::AbstractQuantity,b::AbstractQuantity)
-    p = return_prototype(g,prototype(a),prototype(b))
-    quantity(p) do index
+    quantity() do index
         g_sym = get_symbol!(index,g,"callee")
         ta = term(a,index)
         tb = term(b,index)
+        p = return_prototype(g,prototype(ta),prototype(tb))
         expr = :($g_sym($(ta.expr),$(tb.expr)))
         dim = promote_dim(ta.dim,tb.dim)
+        p2 = p
         if dim == nothing
             dim = min(ta.dim,tb.dim)
             dim2 = max(ta.dim,tb.dim)
@@ -716,11 +725,13 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
                 #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym])
                 actual = :($cells[$cell_around_sym])
                 expr = substitute(expr,dummy=>actual)
+                p2 = p
             elseif isa(cell_around,AbstractArray)
                 face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
                 actual = :($cells[$cell_around_sym[$face_to_sface[$face]]])
                 expr = substitute(expr,dummy=>actual)
                 #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
+                p2 = p
             elseif cell_around !== nothing
                 error()
             elseif length(axis_to_face_around) == 0
@@ -728,6 +739,7 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
                     fun = $dummy -> $expr
                     map(fun,$cells)
                 end
+                p2 = [p,]
             else
                 i = gensym("i-dummy")
                 exprs = map(axis_to_face_around) do face_around
@@ -743,17 +755,18 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
                     fun = ($i,$dummy) -> $expr*$mask
                     map(fun,1:length($cells),$cells)
                 end
+                p2 = [p,]
             end
         end
-        (;expr,dim)
+        (;expr,dim,prototype=p2)
     end
 end
 
 function call(g,args::AbstractQuantity...)
-    prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
-    quantity(p) do index
+    quantity() do index
         g_sym = get_symbol!(index,v,gensym("callee"))
         ts = map(a->term(a,index),args)
+        p = GT.return_prototype(g,(map(GT.prototype,ts)...))
         dims = map(t->ts.dim,ts)
         dim = promote_dim(dims...)
         @assert dim !== nothing
@@ -761,7 +774,7 @@ function call(g,args::AbstractQuantity...)
         # We use call since @rule is not able to
         # identify function calls on variable slots
         expr = @term call($g_sym,$(exprs...))
-        (;expr,dim)
+        (;expr,dim,prototype=p)
     end
 end
 
@@ -869,7 +882,7 @@ function face_map(mesh::AbstractMesh,d)
     node_to_x = node_coordinates(mesh)
     x0 = zero(eltype(node_to_x))
     p = x -> x0
-    quantity(p) do index
+    quantity() do index
         node_to_coord = get_symbol!(index,node_to_x,"node_to_x")
         drefid_to_refdface = GT.reference_faces(mesh,d)
         drefid_to_dof_to_shape = get_symbol!(index,map(shape_functions,drefid_to_refdface),"refid_to_dof_to_shape")
@@ -886,18 +899,19 @@ function face_map(mesh::AbstractMesh,d)
             fun = $dof -> coord*$dof_to_shape[$dof]($x)
             $x -> sum(fun,1:length($dof_to_shape))
         end
-        (;expr,dim=d)
+        (;expr,dim=d,prototype=p)
     end
 end
 
 function point_quantity(data,dom::AbstractDomain;reference=Val(false))
     dim = num_dims(dom)
     p = zero(eltype(eltype(data)))
-    quantity(p) do index
+    quantity() do index
         face = face_index(index,dim)
         point = point_index(index)
         expr = if val_parameter(reference)
             face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
+            display(face_to_rid)
             rid_to_points = get_symbol!(index,data,"rid_to_points")
             @term begin
                 rid = $face_to_rid[$face]
@@ -911,7 +925,7 @@ function point_quantity(data,dom::AbstractDomain;reference=Val(false))
                 $sface_to_points[sface][$point]
             end
         end
-        (;expr,dim)
+        (;expr,dim,prototype=p)
     end
 
 end
@@ -928,7 +942,7 @@ function face_map(mesh::AbstractMesh,d,D)
     funs = map(shape_functions,drefid_to_refdface)
     ridsD = GT.face_reference_id(mesh,D)
     ridsd = GT.face_reference_id(mesh,d)
-    quantity(p) do index
+    quantity() do index
         dface = face_index(index,d)
         dim = d
         dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
@@ -956,18 +970,22 @@ function face_map(mesh::AbstractMesh,d,D)
         Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
         if d == D
             expr = expr
+            p2 = p
         elseif isa(Dface_around_target,Int)
             expr = substitute(expr,Dface_around=>Dface_around_actual)
+            p2 = p
         elseif isa(Dface_around_target,AbstractArray)
             face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
             actual = :($Dface_around_actual[$face_to_sface[$dface]])
             expr = substitute(expr,Dface_around=>actual)
+            p2 = [p]
         else
             expr = @term begin
-                map($Dface_around -> $expr,$dface_to_Dfaces[$dface])
+                map($Dface_around -> $expr,1:length($dface_to_Dfaces[$dface]))
             end
+            p2 = [p]
         end
-        (;expr,dim)
+        (;expr,dim,prototype=p2)
     end
 end
 
@@ -1918,16 +1936,16 @@ end
 # ForwardDiff
 
 
-function call_function_symbol(g,args::AbstractQuantity...)
-    fs = map(GT.term,args)
-    domain = args |> first |> GT.domain
-    prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
-    g_expr = nameof(g)
-    GT.quantity(prototype,domain) do index
-        f_exprs = map(f->f(index),fs)
-        :($g_expr($(f_exprs...)))
-    end
-end
+#function call_function_symbol(g,args::AbstractQuantity...)
+#    fs = map(GT.term,args)
+#    domain = args |> first |> GT.domain
+#    prototype = GT.return_prototype(g,(map(GT.prototype,args)...))
+#    g_expr = nameof(g)
+#    GT.quantity(prototype,domain) do index
+#        f_exprs = map(f->f(index),fs)
+#        :($g_expr($(f_exprs...)))
+#    end
+#end
 
 #function call_function_symbol(g,args::AbstractQuantity{<:PMesh}...)
 #    pargs = map(partition,args)

@@ -14,6 +14,9 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 domain = (0,1,0,1)
 cells = (4,4)
 mesh = GT.cartesian_mesh(domain,cells)
+
+D = GT.num_dims(mesh)
+fs = GT.reference_faces(mesh,D-1)
 GT.label_interior_faces!(mesh;physical_name="interior_faces")
 GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
@@ -272,7 +275,7 @@ r = eval(expr)
 
 u = GT.face_map(mesh,D-1,D)
 x3 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
-q = u[1](x3)
+q = u[2](x3)
 index = GT.generate_index(Λ)
 faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
 t = GT.term(q,index)
