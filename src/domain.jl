@@ -420,6 +420,10 @@ function mesh(index::Index)
     index.data.domain.mesh
 end
 
+function form_arity(index::Index)
+    length(face_around_index(index))
+end
+
 function index_storage(index)
     (;( key=>val for (val,key) in index.data.dict )...)
 end
@@ -1956,9 +1960,7 @@ for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
 end
 
 function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
-    quantity() do index
-        user_getindex_term(term(a,index),term(b,index))
-    end
+    call(getindex,a,b)
 end
 
 function Base.getindex(a::AbstractQuantity,b::Number)

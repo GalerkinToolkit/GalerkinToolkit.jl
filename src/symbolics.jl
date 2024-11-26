@@ -296,26 +296,56 @@ function expression(a::SkeletonTerm)
     end
 end
 
-user_getindex_term(args...) = UserGetindexTerm(args...)
-
-function user_getindex_term(a::SkeletonTerm,array_index)
-    boundary_term(a.dim_in,a.dim_out,a.term,array_index)
+function binary_call_term(::typeof(getindex),a::SkeletonTerm,b::ConstantTerm)
+    if form_arity(index(a)) == 0
+        t = a.term
+    elseif form_arity(index(a)) == 1
+        face_around = face_around_index(index(a))[1]
+        c = expr_term(ANY_DIM,face_around,0,index(a))
+        mask = call(==,c,b)
+        t = mask*a.term
+    elseif form_arity(index(a)) == 2
+        face_around_1, face_around_2 = face_around_index(index(a))
+        c1 = expr_term(ANY_DIM,face_around_1,0,index(a))
+        c2 = expr_term(ANY_DIM,face_around_2,0,index(a))
+        mask1 = call(==,c1,b)
+        mask2 = call(==,c2,b)
+        t = (mask1*mask2)*a.term
+    else
+        error("case not implemented, but possible to implement it")
+    end
+    boundary_term(a.dim_in,a.dim_out,t,b)
 end
 
-struct UserGetindexTerm{A,B} <: AbstractTerm
-    parent::A
-    array_index::B
+expr_term(args...) = ExprTerm(args...)
+
+struct ExprTerm{A,B,C,D} <: AbstractTerm
+    dim::A
+    expr::B
+    prototype::C
+    index::D
 end
 
-num_dims(a::UserGetindexTerm) = num_dims(a.parent)
+#user_getindex_term(args...) = UserGetindexTerm(args...)
+#
+#function user_getindex_term(a::SkeletonTerm,array_index)
+#    boundary_term(a.dim_in,a.dim_out,a.term,array_index)
+#end
 
-function expression(a::UserGetindexTerm)
-    expr = expression(a.parent)
-    i = expression(a.array_index)
-    :($expr[$i])
-end
-
-AbstractTrees.children(a::UserGetindexTerm) = (a.parent,a.array_index)
+#struct UserGetindexTerm{A,B} <: AbstractTerm
+#    parent::A
+#    array_index::B
+#end
+#
+#num_dims(a::UserGetindexTerm) = num_dims(a.parent)
+#
+#function expression(a::UserGetindexTerm)
+#    expr = expression(a.parent)
+#    i = expression(a.array_index)
+#    :($expr[$i])
+#end
+#
+#AbstractTrees.children(a::UserGetindexTerm) = (a.parent,a.array_index)
 
 reference_point_term(args...) = ReferencePointTerm(args...)
 
