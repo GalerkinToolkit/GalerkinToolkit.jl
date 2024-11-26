@@ -228,6 +228,7 @@ function inverse_faces(domain::AbstractDomain{<:PMesh})
     map(GT.inverse_faces,partition(domain))
 end
 
+# TODO glues not needed anymore.
 abstract type AbstractDomainGlue{A} <: GT.AbstractType end
 #mesh(a::AbstractDomainGlue) = a.mesh
 #domain(a::AbstractDomainGlue) = a.domain
@@ -443,9 +444,12 @@ function point_index(index)
     index.data.point
 end
 
-function face_around_boundary(index,d,D)
+function face_around_term(index,d,D)
+    if index.data.domain.face_around === nothing
+        return nothing
+    end
     if d == num_dims(index) && (d+1 == D)
-        index.data.domain.face_around
+        constant_term(index.data.domain.face_around,index)
     else
         nothing
     end
@@ -467,26 +471,36 @@ function dof_index(index,a)
     index.data.dof[a]
 end
 
-const ANY_DIM = -1
-
 function constant_quantity(v)
-    GT.quantity() do index
-        expr = get_symbol!(index,v,"constant_quantity_value")
-        dim = ANY_DIM
-        (;expr,dim,prototype=v)
+    quantity() do index
+        constant_term(v,index)
+        #expr = get_symbol!(index,v,"constant_quantity_value")
+        #dim = ANY_DIM
+        #(;expr,dim,prototype=v)
     end
 end
 
-function face_quantity(data,dom::AbstractDomain)
+function face_quantity(data,dom::AbstractDomain;reference=Val(false))
     dim = num_dims(dom)
     quantity() do index
-        p = zero(eltype(data))
-        face_to_sface = inverse_faces(dom)
-        data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
-        face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
         face = face_index(index,dim)
-        expr = @term $data_sym[$face_to_sface_sym[$face]]
-        (;expr,dim,prototype=p)
+        p = zero(eltype(data))
+        if val_parameter(reference)
+            reference_face_term(dim,rid_to_value,index)
+            #face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
+            #rid_to_value = get_symbol!(index,data,"rid_to_value")
+            #expr = @term $rid_to_value[$face_to_refid[$face]]
+
+        else
+            sface_to_value = data
+            face_to_sface = inverse_faces(dom)
+            physical_face_term(dim,sface_to_value,face_to_sface,index)
+            #face_to_sface = inverse_faces(dom)
+            #data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
+            #face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
+            #expr = @term $data_sym[$face_to_sface_sym[$face]]
+        end
+        #(;expr,dim,prototype=p)
     end
 end
 
@@ -676,105 +690,123 @@ end
 
 function call(g,q::AbstractQuantity)
     quantity() do index
-        g_sym = get_symbol!(index,g,"callee")
-        tq = term(q,index)
-        p = GT.return_prototype(g,prototype(tq))
-        expr = :($g_sym($(tq.expr)))
-        (;expr,dim=tq.dim,prototype=p)
+        unary_call_term(g,term(q,index))
+        #g_sym = get_symbol!(index,g,"callee")
+        #tq = term(q,index)
+        #p = GT.return_prototype(g,prototype(tq))
+        #expr = :($g_sym($(tq.expr)))
+        #(;expr,dim=tq.dim,prototype=p)
     end
 end
 
 function call(g,a::AbstractQuantity,b::AbstractQuantity)
     quantity() do index
-        g_sym = get_symbol!(index,g,"callee")
         ta = term(a,index)
         tb = term(b,index)
-        p = return_prototype(g,prototype(ta),prototype(tb))
-        expr = :($g_sym($(ta.expr),$(tb.expr)))
-        dim = promote_dim(ta.dim,tb.dim)
-        p2 = p
-        if dim == nothing
-            dim = min(ta.dim,tb.dim)
-            dim2 = max(ta.dim,tb.dim)
-            dummy = face_index(index,dim2)
-            face = face_index(index,dim)
-            #faces = actual_faces_index(index,dim,dim2)
-            topo = topology(mesh(index))
-            face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2),"face_to_cells")
-            axis_to_face_around = face_around_index(index)
-            #dom = target_domain(index)
-            #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
-            #if gluable
-            #    face = face(index,dim)
-            #    face_to_sface = get_symbol!(index,inverse_faces(dom))
-            #    sface_to_cell_around = get_symbol!(index,face_around(dom))
-            #    topo = topology(mesh(dom))
-            #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2))
-            #    expr = @term begin
-            #        sface = $face_to_sface[$face]
-            #        cell_around = $face_to_cells[$sface]
-
-
-            #        fun = $dummy -> $expr
-            #        fun()
-            #    end
-            cells = @term $face_to_cells[$face]
-            cell_around = face_around_boundary(index,dim,dim2)
-            cell_around_sym = get_symbol!(index,cell_around,"cell_around")
-            if isa(cell_around,Int)
-                #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym])
-                actual = :($cells[$cell_around_sym])
-                expr = substitute(expr,dummy=>actual)
-                p2 = p
-            elseif isa(cell_around,AbstractArray)
-                face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
-                actual = :($cells[$cell_around_sym[$face_to_sface[$face]]])
-                expr = substitute(expr,dummy=>actual)
-                #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
-                p2 = p
-            elseif cell_around !== nothing
-                error()
-            elseif length(axis_to_face_around) == 0
-                expr = @term begin
-                    fun = $dummy -> $expr
-                    map(fun,$cells)
-                end
-                p2 = [p,]
-            else
-                i = gensym("i-dummy")
-                exprs = map(axis_to_face_around) do face_around
-                    :(LinearAlgebra.I[$i,$face_around])
-                end
-                if length(exprs) > 1
-                    deltas = Expr(:call,:tuple,exprs...)
-                    mask = :(prod($deltas))
-                else
-                    mask = exprs[1]
-                end
-                expr = @term begin
-                    fun = ($i,$dummy) -> $expr*$mask
-                    map(fun,1:length($cells),$cells)
-                end
-                p2 = [p,]
-            end
+        dim = promote_dim(num_dims(ta),num_dims(tb))
+        t = binary_call_term(g,term(a,index),term(b,index))
+        if dim !== nothing
+            return t
         end
-        (;expr,dim,prototype=p2)
+        dim = min(num_dims(ta),num_dims(tb))
+        dim2 = max(num_dims(ta),num_dims(tb))
+        cell_around = face_around_term(index,dim,dim2)
+        if cell_around !== nothing
+           boundary_term(dim,dim2,t,cell_around)
+        else
+            cell_around = gensym("cell_around")
+            skeleton_term(dim,dim2,t,cell_around)
+        end
+        #g_sym = get_symbol!(index,g,"callee")
+        #ta = term(a,index)
+        #tb = term(b,index)
+        #p = return_prototype(g,prototype(ta),prototype(tb))
+        #expr = :($g_sym($(ta.expr),$(tb.expr)))
+        #dim = promote_dim(ta.dim,tb.dim)
+        #p2 = p
+        #if dim == nothing
+        #    dim = min(ta.dim,tb.dim)
+        #    dim2 = max(ta.dim,tb.dim)
+        #    dummy = face_index(index,dim2)
+        #    face = face_index(index,dim)
+        #    #faces = actual_faces_index(index,dim,dim2)
+        #    topo = topology(mesh(index))
+        #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2),"face_to_cells")
+        #    axis_to_face_around = face_around_index(index)
+        #    #dom = target_domain(index)
+        #    #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
+        #    #if gluable
+        #    #    face = face(index,dim)
+        #    #    face_to_sface = get_symbol!(index,inverse_faces(dom))
+        #    #    sface_to_cell_around = get_symbol!(index,face_around(dom))
+        #    #    topo = topology(mesh(dom))
+        #    #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2))
+        #    #    expr = @term begin
+        #    #        sface = $face_to_sface[$face]
+        #    #        cell_around = $face_to_cells[$sface]
+
+
+        #    #        fun = $dummy -> $expr
+        #    #        fun()
+        #    #    end
+        #    cells = @term $face_to_cells[$face]
+        #    cell_around = face_around_term(index,dim,dim2)
+        #    cell_around_sym = get_symbol!(index,cell_around,"cell_around")
+        #    if isa(cell_around,Int)
+        #        #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym])
+        #        actual = :($cells[$cell_around_sym])
+        #        expr = substitute(expr,dummy=>actual)
+        #        p2 = p
+        #    elseif isa(cell_around,AbstractArray)
+        #        face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
+        #        actual = :($cells[$cell_around_sym[$face_to_sface[$face]]])
+        #        expr = substitute(expr,dummy=>actual)
+        #        #expr = @term GalerkinToolkit.call($dummy -> $expr,$cells[$cell_around_sym[$face_to_sface[$face]]])
+        #        p2 = p
+        #    elseif cell_around !== nothing
+        #        error()
+        #    elseif length(axis_to_face_around) == 0
+        #        expr = @term begin
+        #            fun = $dummy -> $expr
+        #            map(fun,$cells)
+        #        end
+        #        p2 = [p,]
+        #    else
+        #        i = gensym("i-dummy")
+        #        exprs = map(axis_to_face_around) do face_around
+        #            :(LinearAlgebra.I[$i,$face_around])
+        #        end
+        #        if length(exprs) > 1
+        #            deltas = Expr(:call,:tuple,exprs...)
+        #            mask = :(prod($deltas))
+        #        else
+        #            mask = exprs[1]
+        #        end
+        #        expr = @term begin
+        #            fun = ($i,$dummy) -> $expr*$mask
+        #            map(fun,1:length($cells),$cells)
+        #        end
+        #        p2 = [p,]
+        #    end
+        #end
+        #(;expr,dim,prototype=p2)
     end
 end
 
 function call(g,args::AbstractQuantity...)
     quantity() do index
-        g_sym = get_symbol!(index,v,gensym("callee"))
-        ts = map(a->term(a,index),args)
-        p = GT.return_prototype(g,(map(GT.prototype,ts)...))
-        dims = map(t->ts.dim,ts)
-        dim = promote_dim(dims...)
-        @assert dim !== nothing
-        exprs = map(t->ts.expr,ts)
-        # We use call since @rule is not able to
-        # identify function calls on variable slots
-        expr = @term call($g_sym,$(exprs...))
-        (;expr,dim,prototype=p)
+        multivar_call_term(g,map(a->term(a,index),args))
+        #g_sym = get_symbol!(index,v,gensym("callee"))
+        #ts = map(a->term(a,index),args)
+        #p = GT.return_prototype(g,(map(GT.prototype,ts)...))
+        #dims = map(t->ts.dim,ts)
+        #dim = promote_dim(dims...)
+        #@assert dim !== nothing
+        #exprs = map(t->ts.expr,ts)
+        ## We use call since @rule is not able to
+        ## identify function calls on variable slots
+        #expr = @term call($g_sym,$(exprs...))
+        #(;expr,dim,prototype=p)
     end
 end
 
@@ -911,7 +943,6 @@ function point_quantity(data,dom::AbstractDomain;reference=Val(false))
         point = point_index(index)
         expr = if val_parameter(reference)
             face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
-            display(face_to_rid)
             rid_to_points = get_symbol!(index,data,"rid_to_points")
             @term begin
                 rid = $face_to_rid[$face]
@@ -927,7 +958,6 @@ function point_quantity(data,dom::AbstractDomain;reference=Val(false))
         end
         (;expr,dim,prototype=p)
     end
-
 end
 
 function face_map(mesh::AbstractMesh,d,D)
@@ -966,7 +996,7 @@ function face_map(mesh::AbstractMesh,d,D)
             fun = $dof -> coeff*$dof_to_shape[$dof]($x)
             $x -> sum(fun,1:length($dof_to_shape))
         end
-        Dface_around_target = face_around_boundary(index,d,D)
+        Dface_around_target = face_around_term(index,d,D)
         Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
         if d == D
             expr = expr
@@ -1065,7 +1095,7 @@ end
 #            fun = $dof -> coeff*$dof_to_shape[$dof]($x)
 #            $x -> sum(fun,1:length($dof_to_shape))
 #        end
-#        Dface_around_target = face_around_boundary(index,d,D)
+#        Dface_around_target = face_around_term(index,d,D)
 #        Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
 #        if d == D
 #            expr = expr
@@ -1671,22 +1701,44 @@ end
 #    unit_normal(domain,codomain,glue)
 #end
 #
-## TODO think about this name
-#function boundary_unit_normal(φ_fun,ϕ_fun,n)
-#    q -> begin
-#        p = φ_fun(q)
-#        J = ForwardDiff.jacobian(ϕ_fun,p)
-#        Jt = transpose(J)
-#        pinvJt = transpose(inv(Jt*J)*Jt)
-#        v = pinvJt*n
-#        m = sqrt(inner(v,v))
-#        if m < eps()
-#            return zero(v)
-#        else
-#            return v/m
-#        end
-#    end
-#end
+function map_unit_normal(φ_fun,ϕ_fun,n)
+    q -> begin
+        p = φ_fun(q)
+        J = ForwardDiff.jacobian(ϕ_fun,p)
+        Jt = transpose(J)
+        pinvJt = transpose(inv(Jt*J)*Jt)
+        v = pinvJt*n
+        m = sqrt(inner(v,v))
+        if m < eps()
+            return zero(v)
+        else
+            return v/m
+        end
+    end
+end
+
+
+function unit_normal(mesh::AbstractMesh)
+    D = num_dims(mesh)
+    d = D-1
+    phiD = face_map(mesh,D)
+    phidD = face_map(mesh,d,D)
+    ctype_to_refface = GT.reference_faces(mesh,D)
+    ctype_to_lface_to_n= map(ctype_to_refface) do refface
+        boundary = refface |> GT.geometry |> GT.boundary
+        boundary |> GT.outwards_normals # TODO also rename?
+    end
+    quantity() do index
+        t_phiD = term(phiD,index)
+        t_phidD = term(phidD,index)
+        (;expr,dim,prototype=p)
+    end
+
+    call(map_unit_normal,phidD,phiD)
+end
+
+
+
 #
 #function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
 #    Γref = domain
@@ -1903,7 +1955,17 @@ for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
   end
 end
 
-for op in (:+,:-,:*,:/,:\,:^,:getindex)
+function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
+    quantity() do index
+        user_getindex_term(term(a,index),term(b,index))
+    end
+end
+
+function Base.getindex(a::AbstractQuantity,b::Number)
+    Base.getindex(a,constant_quantity(b))
+end
+
+for op in (:+,:-,:*,:/,:\,:^)
   @eval begin
       (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
       (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.constant_quantity(a),b)

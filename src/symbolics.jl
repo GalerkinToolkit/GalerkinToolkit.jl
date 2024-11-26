@@ -1,4 +1,3 @@
-
 #macro term(expr)
 #    transform(a) = a # :($(Expr(:quote,a)))
 #    function transform(expr::Expr)
@@ -117,6 +116,273 @@ macro term(expr)
     findvars!(expr)
     transform(expr) |> esc
 end
+
+# This is the highest-level IR in our multi-level IR
+abstract type AbstractTerm <: GT.AbstractType end
+
+index(t::AbstractTerm) = t.index
+
+constant_term(args...) = ConstantTerm(args...)
+
+struct ConstantTerm{A,B} <: AbstractTerm
+    value::A
+    index::B
+end
+
+AbstractTrees.children(a::ConstantTerm) = (a.value,)
+
+function expression(a::ConstantTerm)
+    get_symbol!(index(a),a.value,"constant_quantity_value")
+end
+
+const ANY_DIM = -1
+
+num_dims(a::ConstantTerm) = ANY_DIM
+
+reference_face_term(args...) = ReferenceFaceTerm(args...)
+
+struct ReferenceFaceTerm{A,B,C} <: AbstractTerm
+    dim::A
+    rid_to_value::B
+    index::C
+end
+
+physical_face_term(args...) = PhysicalFaceTerm(args...)
+
+struct PhysicalFaceTerm{A,B,C,D} <: AbstractTerm
+    dim::A
+    sface_to_value::B
+    face_to_sface::C
+    index::D
+end
+
+AbstractTrees.children(a::PhysicalFaceTerm) =
+(
+ "dim = $(a.dim)",
+ "sface_to_value = $(summary(a.sface_to_value))",
+ "face_to_sface = $(summary(a.face_to_sface))"
+)
+
+function expression(a::PhysicalFaceTerm)
+    face = face_index(a.index,a.dim)
+    sface_to_value = get_symbol!(a.index,a.sface_to_value,"sface_to_value_$(a.dim)d")
+    face_to_sface = get_symbol!(a.index,a.face_to_sface,"face_to_sface_$(a.dim)d")
+    @term $sface_to_value[$face_to_sface[$face]]
+end
+
+function prototype(a::PhysicalFaceTerm)
+    zero(eltype(a.sface_to_value))
+end
+
+function num_dims(a::PhysicalFaceTerm)
+    a.dim
+end
+
+unary_call_term(args...) = UnaryCallTerm(args...)
+
+struct UnaryCallTerm{A,B} <: AbstractTerm
+    callee::A
+    arg::B
+end
+
+binary_call_term(args...) = BinaryCallTerm(args...)
+
+struct BinaryCallTerm{A,B,C} <: AbstractTerm
+    callee::A
+    arg1::B
+    arg2::C
+end
+
+AbstractTrees.children(a::BinaryCallTerm) = (a.callee,a.arg1,a.arg2)
+
+index(a::BinaryCallTerm) = index(a.arg1)
+
+function expression(a::BinaryCallTerm)
+    expr1 = expression(a.arg1)
+    expr2 = expression(a.arg2)
+    g = get_symbol!(index,a.callee,"callee")
+    :($g($expr1,$expr2))
+end
+
+function prototype(a::BinaryCallTerm)
+    return_prototype(a.callee,prototype(a.arg1),prototype(a.arg2))
+end
+
+function num_dims(a::BinaryCallTerm)
+    min(num_dims(a.arg1),num_dims(a.arg2))
+end
+
+multivar_call_term(args...) = MultivarCallTerm(args...)
+
+struct MultiVarCallTerm{A,B} <: AbstractTerm
+    callee::A
+    args::B
+end
+
+boundary_term(args...) = BoundaryTerm(args...)
+
+struct BoundaryTerm{A,B,C,D} <: AbstractTerm
+    dim_in::A
+    dim_out::B
+    term::C
+    face_around::D
+end
+
+AbstractTrees.children(a::BoundaryTerm) = ("dim_in = $(a.dim_in)","dim_out = $(a.dim_out)",a.term,a.face_around)
+
+num_dims(a::BoundaryTerm) = a.dim_in
+
+index(a::BoundaryTerm) = index(a.term)
+
+function expression(a::BoundaryTerm)
+    expr = expression(a.term)
+    topo = topology(mesh(index(a)))
+    dim = a.dim_in
+    dim2 = a.dim_out
+    face_to_cells = get_symbol!(index(a),face_incidence(topo,dim,dim2),"face_to_cells")
+    cell_around = expression(a.face_around)
+    face = face_index(index(a),dim)
+    actual = :($face_to_cells[$face][$cell_around])
+    dummy = face_index(index(a),dim2)
+    substitute(expr,dummy=>actual)
+end
+
+skeleton_term(args...) = SkeletonTerm(args...)
+
+struct SkeletonTerm{A,B,C,D} <: AbstractTerm
+    dim_in::A
+    dim_out::B
+    term::C
+    face_around::D # Dummy
+end
+
+AbstractTrees.children(a::SkeletonTerm) = ("dim_in = $(a.dim_in)","dim_out = $(a.dim_out)",a.term)
+
+index(a::SkeletonTerm) = index(a.term)
+
+num_dims(a::SkeletonTerm) = a.dim_in
+
+function expression(a::SkeletonTerm)
+    expr = expression(a.term)
+    topo = topology(mesh(index(a)))
+    dim = a.dim_in
+    dim2 = a.dim_out
+    face_to_cells = get_symbol!(index(a),face_incidence(topo,dim,dim2),"face_to_cells")
+    cell_dummy = face_index(index(a),dim2)
+    cell_around = a.face_around
+    face = face_index(index(a),dim)
+    cells = :($face_to_cells[$face])
+    cell_actuall = :($face_to_cells[$face][$cell_around])
+    expr = substitute(expr,cell_dummy=>cell_actuall)
+    axis_to_face_around = face_around_index(index(a))
+    if length(axis_to_face_around) == 0
+        return @term begin
+            fun = $cell_around -> $expr
+            map(fun,1:length($cells))
+        end
+    end
+    exprs = map(axis_to_face_around) do face_around
+        :(LinearAlgebra.I[$i,$face_around])
+    end
+    if length(exprs) > 1
+        deltas = Expr(:call,:tuple,exprs...)
+        mask = :(prod($deltas))
+    else
+        mask = exprs[1]
+    end
+    @term begin
+        fun = $cell_around -> $expr*$mask
+        map(fun,1:length($cells))
+    end
+end
+
+user_getindex_term(args...) = UserGetindexTerm(args...)
+
+function user_getindex_term(a::SkeletonTerm,array_index)
+    boundary_term(a.dim_in,a.dim_out,a.term,array_index)
+end
+
+struct UserGetindexTerm{A,B} <: AbstractTerm
+    parent::A
+    array_index::B
+end
+
+num_dims(a::UserGetindexTerm) = num_dims(a.parent)
+
+function expression(a::UserGetindexTerm)
+    expr = expression(a.parent)
+    i = expression(a.array_index)
+    :($expr[$i])
+end
+
+AbstractTrees.children(a::UserGetindexTerm) = (a.parent,a.array_index)
+
+reference_point_term(args...) = ReferencePointTerm(args...)
+
+struct ReferencePointTerm{A,B,C} <: AbstractTerm
+    dim::A
+    rid_to_point_to_value::B
+    index::C
+end
+
+physical_point_term(args...) = PhysicalPointTerm(args...)
+
+struct PhysicalPointTerm{A,B,C,D} <: AbstractTerm
+    dim::A
+    sface_to_point_to_value::B
+    face_to_sface::C
+    index::D
+end
+
+physical_map_term(args...) = PhysicalMapTerm(args...)
+
+struct PhysicalMapTerm{A,B} <: AbstractTerm
+    dim::A
+    index::B
+end
+
+reference_map_term(args...) = ReferenceMapTerm(args...)
+
+struct ReferenceMapTerm{A,B,C} <: AbstractTerm
+    dim_in::A
+    dim_out::B
+    index::C
+end
+
+inverse_map_term(args...) = InverseMapTerm(args...)
+
+struct InverseMapTerm{A} <: AbstractTerm
+    direct_map::A
+end
+
+reference_shape_function_term(args...) = ReferenceShapeFunctionTerm(args...)
+
+struct ReferenceShapeFunctionTerm{A,B,C,D,E} <: AbstractTerm
+    caller::A
+    dim::B
+    rid_to_dof_to_f::C
+    dof::D
+    point::E
+end
+
+discrete_function_term(args...) = DiscreteFunctionTerm(args...)
+
+struct DiscreteFunctionTerm{A,B,C,D,E,F,G} <: AbstractTerm
+    caller::A
+    dim::B
+    coefficients::C
+    functions::D
+    dof::E
+    ndofs::F
+    point::G
+end
+
+
+
+
+
+
+
 
 function topological_sort(expr,deps)
     temporary = gensym()
@@ -238,11 +504,11 @@ end
 function simplify(expr)
     expr
 end
-
-function simplify(expr::Expr)
-    expr = rewrite(expr)
-    expr = inline_lambdas(expr)
-end
+#
+#function simplify(expr::Expr)
+#    expr = rewrite(expr)
+#    expr = inline_lambdas(expr)
+#end
 
 function rewrite(expr)
     expr

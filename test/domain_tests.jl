@@ -8,6 +8,7 @@ using WriteVTK
 using LinearAlgebra
 using StaticArrays
 using ForwardDiff
+using AbstractTrees
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
@@ -50,13 +51,16 @@ q4 = GT.face_quantity([ 1000*f for f in 1:GT.num_faces(Λ)],Λ)
 
 q = q1 + q2
 index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
 t = GT.term(q,index)
-@test t.dim == D
+print_tree(t)
+expr = GT.expression(t)
+@test GT.num_dims(t) == D
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = 3
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.topological_sort(expr,())[1])
 end
 display(expr)
 r = eval(expr)
@@ -66,12 +70,14 @@ q = q1 + q3
 index = GT.generate_index(Γ)
 faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
 t = GT.term(q,index)
-@test t.dim == D-1
+print_tree(t)
+expr = GT.expression(t)
+@test GT.num_dims(t) == D-1
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[2]
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(expr,())[1])
 end
 display(expr)
 r = eval(expr)
@@ -81,22 +87,27 @@ q = (q1 + q4)[2]
 index = GT.generate_index(Λ)
 faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
 t = GT.term(q,index)
-@test t.dim == D-1
+print_tree(t)
+@test GT.num_dims(t) == D-1
+expr = GT.expression(t)
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[2]
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+    $(GT.topological_sort(GT.simplify(expr),())[1])
 end
 display(expr)
 r = eval(expr)
 @test r == 2002
+xxx
 
 q = (q1 + q4)[2]
 form_arity = 1
 index = GT.generate_index(Λ,form_arity)
 faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
 t = GT.term(q,index)
+print_tree(t)
+xxx
 @test t.dim == D-1
 storage = GT.index_storage(index)
 expr = quote
@@ -109,6 +120,7 @@ end
 display(expr)
 r = eval(expr)
 @test r == 2002
+xxxx
 
 q = (q1 + q4)[2]
 form_arity = 1
