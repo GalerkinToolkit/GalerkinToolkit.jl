@@ -372,7 +372,7 @@ function sum_contribution_impl(qty,measure,facemask)
     point = :point
     index = GT.index(;face,point)
     expr_qty = term_qty(index) |> simplify
-    expr_npoints = term_npoints(index) |> simplify
+    expr_npoints = term(npoints,index) |> expression |> simplify
     # TODO merge statements
     s_qty = GT.topological_sort(expr_qty,(face,point))
     s_npoints = GT.topological_sort(expr_npoints,(face,))

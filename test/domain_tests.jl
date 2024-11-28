@@ -171,8 +171,6 @@ faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
 t = GT.term(q,index)
 print_tree(t)
 expr = GT.expression(t)
-dump(expr)
-xxx
 @test GT.free_dims(t) == [D]
 storage = GT.index_storage(index)
 expr = quote
@@ -185,6 +183,77 @@ end
 display(expr)
 r = eval(expr)
 @test r == [5,5]
+
+g_to_v = sum.(GT.node_coordinates(mesh))
+u2 = GT.quantity() do index
+    g_to_value = GT.get_symbol!(index,g_to_v,"g_to_value")
+    face_to_dof_to_g = GT.get_symbol!(index,GT.face_nodes(mesh,D),"face_to_dof_to_g")
+    face = GT.face_index(index,D)
+    expr = :($g_to_value[$face_to_dof_to_g[$face][$dof]])
+    p = zero(eltype(g_to_v))
+    coeffs = GT.expr_term([D],expr,p,index)
+    funs = GT.term(s2,index)
+    expr = :(length($face_to_dof_to_g[$face]))
+    ndofs = GT.expr_term([D],expr,0,index)
+    GT.discrete_function_term(coeffs,funs,dof,ndofs)
+end
+
+q = ForwardDiff.gradient(u2,x2)
+
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [8.25, 8.25]
+
+u2 = GT.physical_map(mesh,D)
+
+q = u2(x2)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [0.75, 0.25]
+
+q = ForwardDiff.jacobian(u2,x2)
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == [0.25 0.0; 0.0 0.25]
 
 xxxx
 

@@ -443,76 +443,6 @@ end
 
 
 
-physical_map_term(args...) = PhysicalMapTerm(args...)
-
-function inv_map(f,x0)
-    function pseudo_inverse_if_not_square(J)
-        m,n = size(J)
-        if m != n
-            pinv(J)
-        else
-            inv(J)
-        end
-    end
-    function invf(fx)
-        x = x0
-        tol = 1.0e-12
-        J = nothing
-        niters = 100
-        for _ in 1:niters
-            J = ForwardDiff.jacobian(f,x)
-            Jinv = pseudo_inverse_if_not_square(J)
-            dx = Jinv*(fx-f(x))
-            x += dx
-            if norm(dx) < tol
-                return x
-            end
-        end
-        error("Max iterations reached")
-        x
-    end
-end
-
-function return_prototype(::typeof(inv_map),f,x0)
-    fx -> x0
-end
-
-function get_symbol!(index,val::typeof(inv_map),name="";prefix=index.data.prefix)
-    :(GalerkinToolkit.inv_map)
-end
-
-const ComposedWithInverseTerm{A,B,C} = BinaryCallTerm{typeof(∘),A,BinaryCallTerm{typeof(inv_map),B,C}}
-
-const FunctionCallTerm{A,B} = BinaryCallTerm{typeof(call),A,B}
-
-function binary_call_term(::typeof(call),a::ComposedWithInverseTerm,b::FunctionCallTerm)
-    phi1 = a.arg2.arg1
-    phi2 = a.arg1
-    if phi1 != phi2
-        return BinaryCallTerm(call,a,b)
-    end
-    phi = phi1
-    f = a.arg1
-    x = b.arg2
-    call(f,x)
-end
-
-const GradientOrJacobian = Union{typeof(ForwardDiff.gradient),typeof(ForwardDiff.jacobian)}
-
-function binary_call_term(d::GradientOrJacobian,a::ComposedWithInverseTerm,b::FunctionCallTerm)
-    phi1 = a.arg2.arg1
-    phi2 = a.arg1
-    if phi1 != phi2
-        return BinaryCallTerm(d,a,b)
-    end
-    phi = phi1
-    f = a.arg1
-    x = b.arg2
-    J = call(ForwardDiff.jacobian,phi)
-    Jt = call(transpose,J)
-    gradf = call(d,f,x)
-    call(\,Jt,gradf)
-end
 
 #struct PhysicalMapTerm{A,B} <: AbstractTerm
 #    dim::A
@@ -600,7 +530,7 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::ReferencePointTerm)
         end
     end
     ridb_rida_tab = get_symbol!(index(a),tab,"tabulator")
-    a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_point_to_value_$(a.dim)d")
+    a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
     a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
     b_rid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
     b_face_to_rid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
@@ -618,9 +548,286 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::ReferencePointTerm)
     expr_term(dims,expr,p,index)
 end
 
-
-
 discrete_function_term(args...) = DiscreteFunctionTerm(args...)
+
+struct DiscreteFunctionTerm{A,B,C,D} <: AbstractTerm
+    coefficients::A
+    functions::B
+    dof::C
+    ndofs::D
+end
+
+AbstractTrees.children(a::DiscreteFunctionTerm) =
+(
+ a.coefficients,
+ a.functions,
+ a.dof,
+ a.ndofs,
+)
+
+function free_dims(a::DiscreteFunctionTerm)
+    union(free_dims(a.coefficients),free_dims(a.functions),free_dims(a.ndofs))
+end
+
+function expression(a::DiscreteFunctionTerm)
+    s = expression(a.functions)
+    c = expression(a.coefficients)
+    dof = a.dof
+    ndofs = expression(a.ndofs)
+    @term begin
+        x -> begin
+            g = $dof -> $c*$s(x)
+            n = $ndofs
+            sum(g,1:n)
+        end
+    end
+end
+
+function prototype(a::DiscreteFunctionTerm)
+    s = prototype(a.functions)
+    c = prototype(a.coefficients)
+    x -> c*s(x) + c*s(x)
+end
+
+index(a::DiscreteFunctionTerm) = index(a.functions)
+
+const LinearOperators = Union{typeof(call),typeof(ForwardDiff.gradient),typeof(ForwardDiff.jacobian)}
+
+function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::ReferencePointTerm)
+    s = expression(call(f,a.functions,b))
+    c = expression(a.coefficients)
+    ndofs = expression(a.ndofs)
+    dof = a.dof
+    expr = @term begin
+        fun = $dof -> $c*$s
+        sum(fun,1:$ndofs)
+    end
+    dims = union(free_dims(a),free_dims(b))
+    px = prototype(b)
+    pf = prototype(a)
+    p = pf(px)
+    expr_term(dims,expr,p,index(a))
+end
+
+physical_map_term(args...) = PhysicalMapTerm(args...)
+
+struct PhysicalMapTerm{d,A} <: AbstractTerm
+    dim::Val{d}
+    index::A
+end
+
+free_dims(a::PhysicalMapTerm) = [val_parameter(a.dim)]
+
+function Base.:(==)(a::PhysicalMapTerm,b::PhysicalMapTerm)
+    a.dim == b.dim
+end
+
+function discrete_function_term(a::PhysicalMapTerm)
+    dof = gensym("dummy-physical-dof")
+    d = val_parameter(a.dim)
+    face_to_rid = face_reference_id(mesh(index(a)),d)
+    rid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+    functions = reference_shape_function_term(d,rid_to_dof_to_fun,face_to_rid,dof,index(a))
+    g_to_v = node_coordinates(mesh(index(a)))
+    g_to_value = get_symbol!(index(a),g_to_v,"g_to_value")
+    face_to_dof_to_g = get_symbol!(index(a),face_nodes(mesh(index(a)),d),"face_to_dof_to_g")
+    face = GT.face_index(index(a),d)
+    expr = :($g_to_value[$face_to_dof_to_g[$face][$dof]])
+    p = zero(eltype(g_to_v))
+    coeffs = GT.expr_term([d],expr,p,index(a))
+    expr = :(length($face_to_dof_to_g[$face]))
+    ndofs = expr_term([d],expr,0,index(a))
+    discrete_function_term(coeffs,functions,dof,ndofs)
+end
+
+function binary_call_term(f::typeof(call),a::PhysicalMapTerm,b::ReferencePointTerm)
+    a2 = discrete_function_term(a)
+    call(f,a2,b)
+end
+
+function binary_call_term(f::typeof(ForwardDiff.jacobian),a0::PhysicalMapTerm,b::ReferencePointTerm)
+    a = discrete_function_term(a0)
+    s = expression(call(ForwardDiff.gradient,a.functions,b))
+    c = expression(a.coefficients)
+    ndofs = expression(a.ndofs)
+    dof = a.dof
+    expr = @term begin
+        fun = $dof -> $c*transpose($s)
+        sum(fun,1:$ndofs)
+    end
+    dims = union(free_dims(a),free_dims(b))
+    px = prototype(b)
+    pf = prototype(a)
+    p = pf(px)
+    expr_term(dims,expr,p,index(a))
+end
+
+function inv_map(f,x0)
+    function pseudo_inverse_if_not_square(J)
+        m,n = size(J)
+        if m != n
+            pinv(J)
+        else
+            inv(J)
+        end
+    end
+    function invf(fx)
+        x = x0
+        tol = 1.0e-12
+        J = nothing
+        niters = 100
+        for _ in 1:niters
+            J = ForwardDiff.jacobian(f,x)
+            Jinv = pseudo_inverse_if_not_square(J)
+            dx = Jinv*(fx-f(x))
+            x += dx
+            if norm(dx) < tol
+                return x
+            end
+        end
+        error("Max iterations reached")
+        x
+    end
+end
+
+function return_prototype(::typeof(inv_map),f,x0)
+    fx -> x0
+end
+
+function get_symbol!(index,val::typeof(inv_map),name="";prefix=index.data.prefix)
+    :(GalerkinToolkit.inv_map)
+end
+
+const ComposedWithInverseTerm{A,B,C} = BinaryCallTerm{typeof(∘),A,BinaryCallTerm{typeof(inv_map),B,C}}
+
+const FunctionCallTerm{A,B} = BinaryCallTerm{typeof(call),A,B}
+
+function binary_call_term(::typeof(call),a::ComposedWithInverseTerm,b::FunctionCallTerm)
+    f = a.arg1
+    x = b.arg2
+    phi1 = a.arg2.arg1
+    phi2 = a.arg1
+    if phi1 != phi2
+        return binary_call_term_physical_maps(call,a,b,phi1,phi2)
+    end
+    phi = phi1
+    call(f,x)
+end
+
+function binary_call_term(d::typeof(ForwardDiff.gradient),a::ComposedWithInverseTerm,b::FunctionCallTerm)
+    phi1 = a.arg2.arg1
+    phi2 = a.arg1
+    if phi1 != phi2
+        return binary_call_term_physical_maps(d,a,b,phi1,phi2)
+    end
+    phi = phi1
+    f = a.arg1
+    x = b.arg2
+    J = call(ForwardDiff.jacobian,phi,x)
+    Jt = call(transpose,J)
+    gradf = call(d,f,x)
+    call(\,Jt,gradf)
+end
+
+function binary_call_term_physical_maps(op,a,b,phi1,phi2)
+    return BinaryCallTerm(op,a,b)
+end
+
+function binary_call_term_physical_maps(::typeof(call),a,b,phi1::PhysicalMapTerm,phi2::PhysicalFaceTerm)
+    @assert phi1.dim != phi2.dim
+    phi = reference_map_term(phi2.dim,phi1.dim)
+    f = a.arg1
+    x = b.arg2
+    f(phi(x))
+end
+
+function binary_call_term_physical_maps(::typeof(ForwardDiff.gradient),a,b,phi1::PhysicalMapTerm,phi2::PhysicalFaceTerm)
+    @assert phi1.dim != phi2.dim
+    phi = reference_map_term(phi2.dim,phi1.dim)
+    f = a.arg1
+    x = b.arg2
+    J = call(ForwardDiff.jacobian,phi1,phi(x))
+    Jt = call(transpose,J)
+    gradf = call(d,f,phi(x))
+    call(\,Jt,gradf)
+end
+
+struct ReferenceMapTerm{d,D,A} <: AbstractTerm
+    dim::Val{d}
+    dim_around::Val{D}
+    index::A
+end
+
+free_dims(a::ReferenceMapTerm) = val_parameter.([a.dim,a.dim_around])
+
+function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
+    a2 = discrete_function_term(a)
+    call(f,a2,b)
+end
+
+function discrete_function_term(a::ReferenceFaceTerm)
+    dof = gensym("dummy-reference-dof")
+    d = val_parameter(a.dim)
+    dface_to_drid = face_reference_id(mesh(index(a)),d)
+    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+    functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
+    dface = face_index(index(a),d)
+    expr = :(length(drid_to_dof_to_fun[dface_to_drid[dface]]))
+    ndofs = expr_term([d],expr,0,index(a))
+    Dface = face_index(index(a),D)
+    topo = topology(mesh(index(a)))
+    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+    dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
+    dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
+    Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+    Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
+    Drid_to_refDface = reference_faces(mesh(index(a)),D)
+    Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
+    Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
+    expr = @term begin
+        Drid = $Dface_to_Drid[$Dface]
+        Dfaces = $dface_to_Dfaces[$dface]
+        Dface_around = indexin($Dface,Dfaces)
+        ldface = $dface_to_ldfaces[Dface_around]
+        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+        $Drid_to_ldface_perm_dof_to_x[Drid][ldface][perm][$dof]
+    end
+    p = Drid_to_ldface_perm_dof_to_x_data |> eltype |> eltype |> eltype |> eltype
+    coeffs = expr_term([d,D],expr,p,index)
+    discrete_function_term(coeffs,functions,dof,ndofs)
+end
+
+function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{::typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
+    phi = discrete_function_term(b.arg1)
+    Drid_to_ldface_to_perm_to_phi
+    x = b.arg2
+    drid_Drid_ldface_perm_to_dof_and_point = map(x.rid_to_point_to_value) do point_to_x
+        map(a.rid_to_dof_to_value,Drid_to_ldface_to_perm_to_phi) do dof_to_f,ldface_to_perm_to_phi
+            map(ldface_to_perm_to_phi) do perm_to_phi
+                map(perm_to_phi) do phi
+                    f.(dof_to_f,permutedims(phi.(point_to_x)))
+                end
+            end
+        end
+    end
+    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),tab,"tabulator")
+    a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
+    a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
+    drid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
+    dface_to_drid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
+    face_a = face_index(index(a),a.dim)
+    face_b = face_index(index(b),b.dim)
+    dof = a.dof
+    point = point_index(index(b))
+    expr = @term begin
+        $drid_Drid_ldface_perm_to_dof_and_point[drif][Drid][ldface][perm][dof,point]
+    end
+    dims = union(free_dims(a),free_dims(b))
+    p = prototype(a)(prototype(b))
+    expr_term(dims,expr,p,index)
+end
+
+#discrete_function_term(args...) = DiscreteFunctionTerm(args...)
 
 #struct DiscreteFunctionTerm{A,B} <: AbstractTerm
 #    coefficients::A
@@ -672,7 +879,7 @@ function topological_sort(expr,deps)
         expr_n_new = Expr(expr_n.head,args_var...)
         expr_n_new, j
     end
-    function setup_expr_call_or_ref(expr_n)
+    function setup_expr_call(expr_n)
         args = expr_n.args[2:end]
         r = map(visit,args)
         args_var = map(first,r)
@@ -699,8 +906,8 @@ function topological_sort(expr,deps)
         marks[id_n] = temporary
         var = gensym()
         if isa(expr_n,Expr)
-            if expr_n.head === :call || expr_n.head === :ref
-                expr_n_new, j = setup_expr_call_or_ref(expr_n)
+            if expr_n.head === :call # || expr_n.head === :ref
+                expr_n_new, j = setup_expr_call(expr_n)
             elseif expr_n.head === :(->)
                 expr_n_new, j = setup_expr_lambda(expr_n)
             else
