@@ -490,19 +490,20 @@ function face_quantity(data,dom::AbstractDomain;reference=Val(false))
         face = face_index(index,dim)
         p = zero(eltype(data))
         if val_parameter(reference)
-            reference_face_term(dim,rid_to_value,index)
-            #face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
-            #rid_to_value = get_symbol!(index,data,"rid_to_value")
-            #expr = @term $rid_to_value[$face_to_refid[$face]]
-
+            #reference_face_term(dim,rid_to_value,index)
+            face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
+            rid_to_value = get_symbol!(index,data,"rid_to_value")
+            expr = @term $rid_to_value[$face_to_refid[$face]]
+            expr_term([dim],expr,p,index)
         else
-            sface_to_value = data
-            face_to_sface = inverse_faces(dom)
-            physical_face_term(dim,sface_to_value,face_to_sface,index)
+            #sface_to_value = data
             #face_to_sface = inverse_faces(dom)
-            #data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
-            #face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
-            #expr = @term $data_sym[$face_to_sface_sym[$face]]
+            #physical_face_term(dim,sface_to_value,face_to_sface,index)
+            face_to_sface = inverse_faces(dom)
+            data_sym = get_symbol!(index,data,"face_to_value_$(dim)d")
+            face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface_$(dim)d")
+            expr = @term $data_sym[$face_to_sface_sym[$face]]
+            expr_term([dim],expr,p,index)
         end
         #(;expr,dim,prototype=p)
     end
@@ -512,27 +513,27 @@ function term(a::AbstractQuantity,index)
     a.term(index)
 end
 
-function promote_dim(a)
-    a
-end
-
-function promote_dim(a,b)
-    if a == ANY_DIM
-        b
-    elseif b == ANY_DIM
-        a
-    else
-        a == b ? a : nothing
-    end
-end
-
-function promote_dim(a,args...)
-    dim = promote_dim(args...)
-    if dim === nothing
-        return nothing
-    end
-    promote_dim(a,dim)
-end
+#function promote_dim(a)
+#    a
+#end
+#
+#function promote_dim(a,b)
+#    if a == ANY_DIM
+#        b
+#    elseif b == ANY_DIM
+#        a
+#    else
+#        a == b ? a : nothing
+#    end
+#end
+#
+#function promote_dim(a,args...)
+#    dim = promote_dim(args...)
+#    if dim === nothing
+#        return nothing
+#    end
+#    promote_dim(a,dim)
+#end
 
 #function constant_quantity(v,domain::AbstractDomain{<:PMesh})
 #    pmesh = GT.mesh(domain)
@@ -707,16 +708,17 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
     quantity() do index
         ta = term(a,index)
         tb = term(b,index)
-        dim = promote_dim(num_dims(ta),num_dims(tb))
+        dims = union(free_dims(ta),free_dims(tb))
         t = binary_call_term(g,term(a,index),term(b,index))
-        if dim !== nothing
+        if length(dims) <= 1
             return t
         end
-        dim = min(num_dims(ta),num_dims(tb))
-        dim2 = max(num_dims(ta),num_dims(tb))
+        @assert length(dims) == 2
+        dim = minimum(dims)
+        dim2 = maximum(dims)
         cell_around = face_around_term(index,dim,dim2)
         if cell_around !== nothing
-           boundary_term(dim,dim2,t,cell_around)
+            boundary_term(dim,dim2,t,cell_around)
         else
             cell_around = gensym("cell_around")
             skeleton_term(dim,dim2,t,cell_around)
@@ -919,64 +921,106 @@ function face_map(mesh::AbstractMesh,d)
     x0 = zero(eltype(node_to_x))
     p = x -> x0
     quantity() do index
-        node_to_coord = get_symbol!(index,node_to_x,"node_to_x")
         drefid_to_refdface = GT.reference_faces(mesh,d)
-        drefid_to_dof_to_shape = get_symbol!(index,map(shape_functions,drefid_to_refdface),"refid_to_dof_to_shape")
-        dface_to_nodes = get_symbol!(index,face_nodes(mesh,d),"face_to_nodes")
-        dface_to_drefid = get_symbol!(index,face_reference_id(mesh,d),"face_to_refid")
-        dof = gensym("dummy_dof_geom")
-        x = gensym("dummy_x")
-        dface = face_index(index,d)
-        expr = @term begin
-            node = $dface_to_nodes[$dface][$dof]
-            coord = $node_to_coord[node]
-            drefid = $dface_to_drefid[$dface]
-            dof_to_shape = $drefid_to_dof_to_shape[drefid]
-            fun = $dof -> coord*$dof_to_shape[$dof]($x)
-            $x -> sum(fun,1:length($dof_to_shape))
-        end
-        (;expr,dim=d,prototype=p)
+        dface_to_drefid = face_reference_id(mesh,d)
+        caller = value
+        dof = gensym("geom_dof_dummy")
+        funs = reference_shape_function_term(d,drefid_to_refdface,dface_to_drefid,caller,dof,index)
+        coeffs = face_dof_term(d,node_to_coord,dface_to_nodes,dof,index)
+        ndofs = reference_face_term(d,drefid_to_ndofs,dface_to_drefid,index)
+        discrete_function_term(coeff,funs,ndofs)
+        #node_to_coord = get_symbol!(index,node_to_x,"node_to_x")
+        #drefid_to_refdface = GT.reference_faces(mesh,d)
+        #drefid_to_dof_to_shape = get_symbol!(index,map(shape_functions,drefid_to_refdface),"refid_to_dof_to_shape")
+        #dface_to_nodes = get_symbol!(index,face_nodes(mesh,d),"face_to_nodes")
+        #dface_to_drefid = get_symbol!(index,face_reference_id(mesh,d),"face_to_refid")
+        #dof = gensym("dummy_dof_geom")
+        #x = gensym("dummy_x")
+        #dface = face_index(index,d)
+        #expr = @term begin
+        #    node = $dface_to_nodes[$dface][$dof]
+        #    coord = $node_to_coord[node]
+        #    drefid = $dface_to_drefid[$dface]
+        #    dof_to_shape = $drefid_to_dof_to_shape[drefid]
+        #    fun = $dof -> coord*$dof_to_shape[$dof]($x)
+        #    $x -> sum(fun,1:length($dof_to_shape))
+        #end
+        #(;expr,dim=d,prototype=p)
     end
 end
 
-function point_quantity(data,dom::AbstractDomain;reference=Val(false))
+function point_quantity(data,dom::AbstractDomain;
+    reference=Val(false),
+    face_reference_id = face_reference_id(mesh(dom),num_dims(dom)),
+    )
     dim = num_dims(dom)
-    p = zero(eltype(eltype(data)))
+    #p = zero(eltype(eltype(data)))
     quantity() do index
-        face = face_index(index,dim)
-        point = point_index(index)
-        expr = if val_parameter(reference)
-            face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
-            rid_to_points = get_symbol!(index,data,"rid_to_points")
-            @term begin
-                rid = $face_to_rid[$face]
-                $rid_to_points[rid][$point]
-            end
+        if val_parameter(reference)
+            reference_point_term(dim,data,face_reference_id,index)
         else
-            face_to_sface = get_symbol!(index,inverse_faces(dom),"face_to_sface")
-            sface_to_points = get_symbol!(index,data,"sface_to_points")
-            @term begin
-                sface = $face_to_sface[$face]
-                $sface_to_points[sface][$point]
-            end
+            physical_point_term(dim,data,inverse_faces(dom),index)
         end
-        (;expr,dim,prototype=p)
+        #face = face_index(index,dim)
+        #point = point_index(index)
+        #expr = if val_parameter(reference)
+        #    face_to_rid = get_symbol!(index,face_reference_id(mesh(dom),dim),"face_to_rid")
+        #    rid_to_points = get_symbol!(index,data,"rid_to_points")
+        #    @term begin
+        #        rid = $face_to_rid[$face]
+        #        $rid_to_points[rid][$point]
+        #    end
+        #else
+        #    face_to_sface = get_symbol!(index,inverse_faces(dom),"face_to_sface")
+        #    sface_to_points = get_symbol!(index,data,"sface_to_points")
+        #    @term begin
+        #        sface = $face_to_sface[$face]
+        #        $sface_to_points[sface][$point]
+        #    end
+        #end
+        #(;expr,dim,prototype=p)
+    end
+end
+
+function shape_function_quantity(data,dom::AbstractDomain;
+    reference=Val(false),
+    face_reference_id = face_reference_id(mesh(dom),num_dims(dom)),
+    dof = gensym("dummy-dof")
+    )
+    dim = num_dims(dom)
+    #p = zero(eltype(eltype(data)))
+    quantity() do index
+        if val_parameter(reference)
+            reference_shape_function_term(dim,data,face_reference_id,dof,index)
+        else
+            error("Not implemented, but possible to implement it.")
+        end
     end
 end
 
 function face_map(mesh::AbstractMesh,d,D)
-    x0 = zero(SVector{D,Float64})
-    p = x -> x0
-    topo = topology(mesh)
-    a, b = GT.face_incidence_ext(topo,d,D)
-    perms = GT.face_permutation_ids(topo,D,d)
-        Drefid_to_refDface = GT.reference_faces(mesh,D)
-        drefid_to_refdface = GT.reference_faces(mesh,d)
-    coords = map(rfe->face_node_coordinates(rfe,d),Drefid_to_refDface)
-    funs = map(shape_functions,drefid_to_refdface)
-    ridsD = GT.face_reference_id(mesh,D)
-    ridsd = GT.face_reference_id(mesh,d)
+    #x0 = zero(SVector{D,Float64})
+    #p = x -> x0
+    #topo = topology(mesh)
+    #a, b = GT.face_incidence_ext(topo,d,D)
+    #perms = GT.face_permutation_ids(topo,D,d)
+    #    Drefid_to_refDface = GT.reference_faces(mesh,D)
+    #    drefid_to_refdface = GT.reference_faces(mesh,d)
+    #coords = map(rfe->face_node_coordinates(rfe,d),Drefid_to_refDface)
+    #funs = map(shape_functions,drefid_to_refdface)
+    #ridsD = GT.face_reference_id(mesh,D)
+    #ridsd = GT.face_reference_id(mesh,d)
     quantity() do index
+        drefid_to_refdface = GT.reference_faces(mesh,d)
+        dface_to_drefid = face_reference_id(mesh,d)
+        caller = value
+        dof = gensym("geom_dof_dummy")
+        funs = reference_shape_function_term(d,drefid_to_refdface,dface_to_drefid,caller,dof,index)
+        coeffs = reference_dof_term()
+
+
+
+
         dface = face_index(index,d)
         dim = d
         dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
@@ -1543,42 +1587,6 @@ end
 #        ai
 #    end
 #end
-
-function inv_map(f,x0)
-    function pseudo_inverse_if_not_square(J)
-        m,n = size(J)
-        if m != n
-            pinv(J)
-        else
-            inv(J)
-        end
-    end
-    function invf(fx)
-        x = x0
-        tol = 1.0e-12
-        J = nothing
-        niters = 100
-        for _ in 1:niters
-            J = ForwardDiff.jacobian(f,x)
-            Jinv = pseudo_inverse_if_not_square(J)
-            dx = Jinv*(fx-f(x))
-            x += dx
-            if norm(dx) < tol
-                return x
-            end
-        end
-        error("Max iterations reached")
-        x
-    end
-end
-
-function get_symbol!(index,val::typeof(inv_map),name="";prefix=index.data.prefix)
-    :(GalerkinToolkit.inv_map)
-end
-
-function return_prototype(::typeof(inv_map),f,x0)
-    fx -> x0
-end
 
 #function inverse_map(q::AbstractQuantity)
 #    domain = q |> GT.domain
