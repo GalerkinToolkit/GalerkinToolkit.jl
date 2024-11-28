@@ -593,7 +593,10 @@ index(a::DiscreteFunctionTerm) = index(a.functions)
 
 const LinearOperators = Union{typeof(call),typeof(ForwardDiff.gradient),typeof(ForwardDiff.jacobian)}
 
-function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::ReferencePointTerm)
+function expression(c::BinaryCallTerm{<:LinearOperators,<:DiscreteFunctionTerm,<:ReferencePointTerm})
+    f = c.callee
+    a = c.arg1
+    b = c.arg2
     s = expression(call(f,a.functions,b))
     c = expression(a.coefficients)
     ndofs = expression(a.ndofs)
@@ -602,12 +605,25 @@ function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::Referenc
         fun = $dof -> $c*$s
         sum(fun,1:$ndofs)
     end
-    dims = union(free_dims(a),free_dims(b))
-    px = prototype(b)
-    pf = prototype(a)
-    p = pf(px)
-    expr_term(dims,expr,p,index(a))
 end
+
+#function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::ReferencePointTerm)
+#    s = expression(call(f,a.functions,b))
+#    c = expression(a.coefficients)
+#    ndofs = expression(a.ndofs)
+#    dof = a.dof
+#    expr = @term begin
+#        fun = $dof -> $c*$s
+#        sum(fun,1:$ndofs)
+#    end
+#    dims = union(free_dims(a),free_dims(b))
+#    px = prototype(b)
+#    pf = prototype(a)
+#    p = pf(px)
+#    expr_term(dims,expr,p,index(a))
+#end
+
+discrete_function_call_term(args...) = DiscreteFunctionCallTerm(args...)
 
 physical_map_term(args...) = PhysicalMapTerm(args...)
 
@@ -640,13 +656,40 @@ function discrete_function_term(a::PhysicalMapTerm)
     discrete_function_term(coeffs,functions,dof,ndofs)
 end
 
-function binary_call_term(f::typeof(call),a::PhysicalMapTerm,b::ReferencePointTerm)
-    a2 = discrete_function_term(a)
-    call(f,a2,b)
+#function binary_call_term(f::typeof(call),a::PhysicalMapTerm,b::ReferencePointTerm)
+#    a2 = discrete_function_term(a)
+#    call(f,a2,b)
+#end
+#
+#function binary_call_term(f::typeof(ForwardDiff.jacobian),a0::PhysicalMapTerm,b::ReferencePointTerm)
+#    a = discrete_function_term(a0)
+#    s = expression(call(ForwardDiff.gradient,a.functions,b))
+#    c = expression(a.coefficients)
+#    ndofs = expression(a.ndofs)
+#    dof = a.dof
+#    expr = @term begin
+#        fun = $dof -> $c*transpose($s)
+#        sum(fun,1:$ndofs)
+#    end
+#    dims = union(free_dims(a),free_dims(b))
+#    px = prototype(b)
+#    pf = prototype(a)
+#    p = pf(px)
+#    expr_term(dims,expr,p,index(a))
+#end
+
+function expression(c::BinaryCallTerm{typeof(call),<:PhysicalMapTerm,<:ReferencePointTerm})
+    f = c.callee
+    a = discrete_function_term(c.arg1)
+    b = c.arg2
+    fab = call(f,a,b)
+    expression(fab)
 end
 
-function binary_call_term(f::typeof(ForwardDiff.jacobian),a0::PhysicalMapTerm,b::ReferencePointTerm)
-    a = discrete_function_term(a0)
+function expression(c::BinaryCallTerm{typeof(ForwardDiff.jacobian),<:PhysicalMapTerm,<:ReferencePointTerm})
+    f = c.callee
+    a = discrete_function_term(c.arg1)
+    b = c.arg2
     s = expression(call(ForwardDiff.gradient,a.functions,b))
     c = expression(a.coefficients)
     ndofs = expression(a.ndofs)
@@ -655,11 +698,6 @@ function binary_call_term(f::typeof(ForwardDiff.jacobian),a0::PhysicalMapTerm,b:
         fun = $dof -> $c*transpose($s)
         sum(fun,1:$ndofs)
     end
-    dims = union(free_dims(a),free_dims(b))
-    px = prototype(b)
-    pf = prototype(a)
-    p = pf(px)
-    expr_term(dims,expr,p,index(a))
 end
 
 function inv_map(f,x0)
@@ -706,12 +744,11 @@ function binary_call_term(::typeof(call),a::ComposedWithInverseTerm,b::FunctionC
     f = a.arg1
     x = b.arg2
     phi1 = a.arg2.arg1
-    phi2 = a.arg1
+    phi2 = b.arg1
     if phi1 != phi2
         return binary_call_term_physical_maps(call,a,b,phi1,phi2)
     end
-    phi = phi1
-    call(f,x)
+    f(x)
 end
 
 function binary_call_term(d::typeof(ForwardDiff.gradient),a::ComposedWithInverseTerm,b::FunctionCallTerm)
@@ -733,17 +770,17 @@ function binary_call_term_physical_maps(op,a,b,phi1,phi2)
     return BinaryCallTerm(op,a,b)
 end
 
-function binary_call_term_physical_maps(::typeof(call),a,b,phi1::PhysicalMapTerm,phi2::PhysicalFaceTerm)
+function binary_call_term_physical_maps(::typeof(call),a,b,phi1::PhysicalMapTerm,phi2::PhysicalMapTerm)
     @assert phi1.dim != phi2.dim
-    phi = reference_map_term(phi2.dim,phi1.dim)
+    phi = reference_map_term(phi2.dim,phi1.dim,index(a))
     f = a.arg1
     x = b.arg2
     f(phi(x))
 end
 
-function binary_call_term_physical_maps(::typeof(ForwardDiff.gradient),a,b,phi1::PhysicalMapTerm,phi2::PhysicalFaceTerm)
+function binary_call_term_physical_maps(::typeof(ForwardDiff.gradient),a,b,phi1::PhysicalMapTerm,phi2::PhysicalMapTerm)
     @assert phi1.dim != phi2.dim
-    phi = reference_map_term(phi2.dim,phi1.dim)
+    phi = reference_map_term(phi2.dim,phi1.dim,index(a))
     f = a.arg1
     x = b.arg2
     J = call(ForwardDiff.jacobian,phi1,phi(x))
@@ -751,6 +788,8 @@ function binary_call_term_physical_maps(::typeof(ForwardDiff.gradient),a,b,phi1:
     gradf = call(d,f,phi(x))
     call(\,Jt,gradf)
 end
+
+reference_map_term(args...) = ReferenceMapTerm(args...)
 
 struct ReferenceMapTerm{d,D,A} <: AbstractTerm
     dim::Val{d}
@@ -760,71 +799,98 @@ end
 
 free_dims(a::ReferenceMapTerm) = val_parameter.([a.dim,a.dim_around])
 
-function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
-    a2 = discrete_function_term(a)
-    call(f,a2,b)
-end
+prototype(a::ReferenceMapTerm) = x-> zero(SVector{val_parameter(a.dim_around),Float64})
 
-function discrete_function_term(a::ReferenceFaceTerm)
-    dof = gensym("dummy-reference-dof")
-    d = val_parameter(a.dim)
-    dface_to_drid = face_reference_id(mesh(index(a)),d)
-    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
-    functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
-    dface = face_index(index(a),d)
-    expr = :(length(drid_to_dof_to_fun[dface_to_drid[dface]]))
-    ndofs = expr_term([d],expr,0,index(a))
-    Dface = face_index(index(a),D)
-    topo = topology(mesh(index(a)))
+# Maybe we don't need the commented functions since the ReferenceMapTerm will be "always" tabulated
+#function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
+#    a2 = discrete_function_term(a)
+#    call(f,a2,b)
+#end
+
+#function discrete_function_term(a::ReferenceMapTerm)
+#    dof = gensym("dummy-reference-dof")
+#    d = val_parameter(a.dim)
+#    dface_to_drid = face_reference_id(mesh(index(a)),d)
+#    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+#    functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
+#    dface = face_index(index(a),d)
+#    expr = :(length(drid_to_dof_to_fun[dface_to_drid[dface]]))
+#    ndofs = expr_term([d],expr,0,index(a))
+#    Dface = face_index(index(a),D)
+#    topo = topology(mesh(index(a)))
+#    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+#    dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
+#    dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
+#    Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+#    Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
+#    Drid_to_refDface = reference_faces(mesh(index(a)),D)
+#    Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
+#    Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
+#    expr = @term begin
+#        Drid = $Dface_to_Drid[$Dface]
+#        Dfaces = $dface_to_Dfaces[$dface]
+#        Dface_around = indexin($Dface,Dfaces)
+#        ldface = $dface_to_ldfaces[Dface_around]
+#        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+#        $Drid_to_ldface_perm_dof_to_x[Drid][ldface][perm][$dof]
+#    end
+#    p = Drid_to_ldface_perm_dof_to_x_data |> eltype |> eltype |> eltype |> eltype
+#    coeffs = expr_term([d,D],expr,p,index)
+#    discrete_function_term(coeffs,functions,dof,ndofs)
+#end
+
+function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
+    phi = b.arg1
+    x = b.arg2
+    d = val_parameter(phi.dim)
+    D = val_parameter(phi.dim_around)
+    m = mesh(index(a))
+    topo = topology(m)
+    drid_to_refdface = reference_faces(m,d)
+    Drid_to_refDface = reference_faces(m,D)
+    # NB the TODOs below can be solved by introducing two extra nesting levels
+    # TODO this assumes the same reffes for mesh and quadrature
+    drid_Drid_ldface_perm_to_dof_and_point_data = map(x.rid_to_point_to_value,drid_to_refdface) do point_to_x,refdface
+        # TODO this assumes the same reffes for mesh and interpolation
+        map(a.rid_to_dof_to_value,Drid_to_refDface) do dof_to_f,refDface
+            ldface_perm_varphi = reference_map(refdface,refDface)
+            map(ldface_perm_varphi) do perm_varphi
+                map(perm_varphi) do varphi
+                    point_to_q = varphi.(point_to_x)
+                    f.(dof_to_f,permutedims(point_to_q))
+                end
+            end
+        end
+    end
+    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
+    Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
+    Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
     dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
     dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
     dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
     Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
     Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
-    Drid_to_refDface = reference_faces(mesh(index(a)),D)
-    Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
-    Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
-    expr = @term begin
-        Drid = $Dface_to_Drid[$Dface]
-        Dfaces = $dface_to_Dfaces[$dface]
-        Dface_around = indexin($Dface,Dfaces)
-        ldface = $dface_to_ldfaces[Dface_around]
-        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
-        $Drid_to_ldface_perm_dof_to_x[Drid][ldface][perm][$dof]
-    end
-    p = Drid_to_ldface_perm_dof_to_x_data |> eltype |> eltype |> eltype |> eltype
-    coeffs = expr_term([d,D],expr,p,index)
-    discrete_function_term(coeffs,functions,dof,ndofs)
-end
-
-function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{::typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
-    phi = discrete_function_term(b.arg1)
-    Drid_to_ldface_to_perm_to_phi
-    x = b.arg2
-    drid_Drid_ldface_perm_to_dof_and_point = map(x.rid_to_point_to_value) do point_to_x
-        map(a.rid_to_dof_to_value,Drid_to_ldface_to_perm_to_phi) do dof_to_f,ldface_to_perm_to_phi
-            map(ldface_to_perm_to_phi) do perm_to_phi
-                map(perm_to_phi) do phi
-                    f.(dof_to_f,permutedims(phi.(point_to_x)))
-                end
-            end
-        end
-    end
-    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),tab,"tabulator")
-    a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
-    a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
-    drid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
-    dface_to_drid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
-    face_a = face_index(index(a),a.dim)
-    face_b = face_index(index(b),b.dim)
+    dface_to_drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),d),"dface_to_drid")
+    dface = face_index(index(a),d)
+    Dface = face_index(index(b),D)
     dof = a.dof
     point = point_index(index(b))
     expr = @term begin
-        $drid_Drid_ldface_perm_to_dof_and_point[drif][Drid][ldface][perm][dof,point]
+        drid = $dface_to_drid[$dface]
+        Drid = $Dface_to_Drid[$Dface]
+        Dfaces = $dface_to_Dfaces[$dface]
+        Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
+        ldface = $dface_to_ldfaces[Dface_around]
+        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+        $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]
     end
     dims = union(free_dims(a),free_dims(b))
-    p = prototype(a)(prototype(b))
-    expr_term(dims,expr,p,index)
+    p = f(prototype(a),prototype(b))
+    expr_term(dims,expr,p,index(a))
+end
+
+function find_face_adound(face,faces)
+    findfirst(i->i==face,faces)
 end
 
 #discrete_function_term(args...) = DiscreteFunctionTerm(args...)

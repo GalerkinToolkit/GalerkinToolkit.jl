@@ -1029,74 +1029,74 @@ function reference_map(mesh::AbstractMesh,d,D)
     end
 end
 
-function face_map(mesh::AbstractMesh,d,D)
-    #x0 = zero(SVector{D,Float64})
-    #p = x -> x0
-    #topo = topology(mesh)
-    #a, b = GT.face_incidence_ext(topo,d,D)
-    #perms = GT.face_permutation_ids(topo,D,d)
-    #    Drefid_to_refDface = GT.reference_faces(mesh,D)
-    #    drefid_to_refdface = GT.reference_faces(mesh,d)
-    #coords = map(rfe->face_node_coordinates(rfe,d),Drefid_to_refDface)
-    #funs = map(shape_functions,drefid_to_refdface)
-    #ridsD = GT.face_reference_id(mesh,D)
-    #ridsd = GT.face_reference_id(mesh,d)
-    quantity() do index
-        drefid_to_refdface = GT.reference_faces(mesh,d)
-        dface_to_drefid = face_reference_id(mesh,d)
-        caller = value
-        dof = gensym("geom_dof_dummy")
-        funs = reference_shape_function_term(d,drefid_to_refdface,dface_to_drefid,caller,dof,index)
-        coeffs = reference_dof_term()
-
-
-
-
-        dface = face_index(index,d)
-        dim = d
-        dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
-        dface_to_ldfaces = get_symbol!(index,b,"dface_to_ldfaces")
-        Dface_to_ldface_to_perm = get_symbol!(index,perms,"Dface_to_ldface_to_perm")
-        Dface_to_Drefid = get_symbol!(index,ridsD,"Dface_to_Drefid")
-        dface_to_drefid = get_symbol!(index,ridsd,"dface_to_drefid")
-        Drefid_to_ldface_to_perm_to_coords = get_symbol!(index,coords,"Drefid_to_ldface_to_perm_to_coords")
-        drefid_to_dof_to_shape = get_symbol!(index,funs,"drefid_to_dof_to_shape")
-        dof = gensym("dummy_dof_geom")
-        x = gensym("dummy_x")
-        Dface_around = gensym("dummy_Dface_around")
-        expr = @term begin
-            Dface = $dface_to_Dfaces[$dface][$Dface_around]
-            ldface = $dface_to_ldfaces[$dface][$Dface_around]
-            Drefid = $Dface_to_Drefid[Dface]
-            perm = $Dface_to_ldface_to_perm[Dface][ldface]
-            coeff = $Drefid_to_ldface_to_perm_to_coords[Drefid][ldface][perm][$dof]
-            drefid = $dface_to_drefid[$dface]
-            dof_to_shape = $drefid_to_dof_to_shape[drefid]
-            fun = $dof -> coeff*$dof_to_shape[$dof]($x)
-            $x -> sum(fun,1:length($dof_to_shape))
-        end
-        Dface_around_target = face_around_term(index,d,D)
-        Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
-        if d == D
-            expr = expr
-            p2 = p
-        elseif isa(Dface_around_target,Int)
-            expr = substitute(expr,Dface_around=>Dface_around_actual)
-            p2 = p
-        elseif isa(Dface_around_target,AbstractArray)
-            face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
-            actual = :($Dface_around_actual[$face_to_sface[$dface]])
-            expr = substitute(expr,Dface_around=>actual)
-            p2 = [p]
-        else
-            expr = @term begin
-                map($Dface_around -> $expr,1:length($dface_to_Dfaces[$dface]))
-            end
-            p2 = [p]
-        end
-        (;expr,dim,prototype=p2)
-    end
-end
+#function face_map(mesh::AbstractMesh,d,D)
+#    #x0 = zero(SVector{D,Float64})
+#    #p = x -> x0
+#    #topo = topology(mesh)
+#    #a, b = GT.face_incidence_ext(topo,d,D)
+#    #perms = GT.face_permutation_ids(topo,D,d)
+#    #    Drefid_to_refDface = GT.reference_faces(mesh,D)
+#    #    drefid_to_refdface = GT.reference_faces(mesh,d)
+#    #coords = map(rfe->face_node_coordinates(rfe,d),Drefid_to_refDface)
+#    #funs = map(shape_functions,drefid_to_refdface)
+#    #ridsD = GT.face_reference_id(mesh,D)
+#    #ridsd = GT.face_reference_id(mesh,d)
+#    quantity() do index
+#        drefid_to_refdface = GT.reference_faces(mesh,d)
+#        dface_to_drefid = face_reference_id(mesh,d)
+#        caller = value
+#        dof = gensym("geom_dof_dummy")
+#        funs = reference_shape_function_term(d,drefid_to_refdface,dface_to_drefid,caller,dof,index)
+#        coeffs = reference_dof_term()
+#
+#
+#
+#
+#        dface = face_index(index,d)
+#        dim = d
+#        dface_to_Dfaces = get_symbol!(index,a,"dface_to_Dfaces")
+#        dface_to_ldfaces = get_symbol!(index,b,"dface_to_ldfaces")
+#        Dface_to_ldface_to_perm = get_symbol!(index,perms,"Dface_to_ldface_to_perm")
+#        Dface_to_Drefid = get_symbol!(index,ridsD,"Dface_to_Drefid")
+#        dface_to_drefid = get_symbol!(index,ridsd,"dface_to_drefid")
+#        Drefid_to_ldface_to_perm_to_coords = get_symbol!(index,coords,"Drefid_to_ldface_to_perm_to_coords")
+#        drefid_to_dof_to_shape = get_symbol!(index,funs,"drefid_to_dof_to_shape")
+#        dof = gensym("dummy_dof_geom")
+#        x = gensym("dummy_x")
+#        Dface_around = gensym("dummy_Dface_around")
+#        expr = @term begin
+#            Dface = $dface_to_Dfaces[$dface][$Dface_around]
+#            ldface = $dface_to_ldfaces[$dface][$Dface_around]
+#            Drefid = $Dface_to_Drefid[Dface]
+#            perm = $Dface_to_ldface_to_perm[Dface][ldface]
+#            coeff = $Drefid_to_ldface_to_perm_to_coords[Drefid][ldface][perm][$dof]
+#            drefid = $dface_to_drefid[$dface]
+#            dof_to_shape = $drefid_to_dof_to_shape[drefid]
+#            fun = $dof -> coeff*$dof_to_shape[$dof]($x)
+#            $x -> sum(fun,1:length($dof_to_shape))
+#        end
+#        Dface_around_target = face_around_term(index,d,D)
+#        Dface_around_actual = get_symbol!(index,Dface_around_target,"Dface_around")
+#        if d == D
+#            expr = expr
+#            p2 = p
+#        elseif isa(Dface_around_target,Int)
+#            expr = substitute(expr,Dface_around=>Dface_around_actual)
+#            p2 = p
+#        elseif isa(Dface_around_target,AbstractArray)
+#            face_to_sface = get_symbol!(inverse_faces(domain(index)),"face_to_sface")
+#            actual = :($Dface_around_actual[$face_to_sface[$dface]])
+#            expr = substitute(expr,Dface_around=>actual)
+#            p2 = [p]
+#        else
+#            expr = @term begin
+#                map($Dface_around -> $expr,1:length($dface_to_Dfaces[$dface]))
+#            end
+#            p2 = [p]
+#        end
+#        (;expr,dim,prototype=p2)
+#    end
+#end
 
 function face_node_coordinates(refDface,d)
     D = num_dims(refDface)
@@ -1117,6 +1117,27 @@ function face_node_coordinates(refDface,d)
                 coords = node_to_coords[nodes[ids]]
                 coords
             end
+        end
+    end
+end
+
+function reference_map(refdface::AbstractMeshFace,refDface::AbstractMeshFace)
+    d = num_dims(refdface)
+    dof_to_f = shape_functions(refdface)
+    boundary = refDface |> GT.geometry |> GT.boundary
+    lface_to_nodes = GT.face_nodes(boundary,d)
+    node_to_coords = GT.node_coordinates(boundary)
+    lface_to_lrefid = GT.face_reference_id(boundary,d)
+    lrefid_to_lrefface = GT.reference_faces(boundary,d)
+    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+    map(1:GT.num_faces(boundary,d)) do lface
+        lrefid = lface_to_lrefid[lface]
+        nodes = lface_to_nodes[lface]
+        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+        map(perm_to_ids) do ids
+            dof_to_coeff = node_to_coords[nodes[ids]]
+            ndofs = length(dof_to_coeff)
+            x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs)
         end
     end
 end

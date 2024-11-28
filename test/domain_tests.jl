@@ -255,6 +255,51 @@ display(expr)
 r = eval(expr)
 @test r == [0.25 0.0; 0.0 0.25]
 
+u2 = GT.physical_map(mesh,D)
+u2inv = GT.inverse_physical_map(mesh,D)
+q = (s2∘u2inv)(u2(x2))
+index = GT.generate_index(Ω)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 10
+
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Γ;reference=true)
+u1 = GT.physical_map(mesh,D-1)
+u2inv = GT.inverse_physical_map(mesh,D)
+q = (s2∘u2inv)(u1(x1))
+index = GT.generate_index(Γ)
+faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $dof = 5
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 10
+
+xxxx
+
+
 xxxx
 
 
