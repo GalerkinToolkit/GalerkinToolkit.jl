@@ -880,7 +880,7 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
         Drid = $Dface_to_Drid[$Dface]
         Dfaces = $dface_to_Dfaces[$dface]
         Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
-        ldface = $dface_to_ldfaces[Dface_around]
+        ldface = $dface_to_ldfaces[$dface][Dface_around]
         perm = $Dface_to_ldface_to_perm[$Dface][ldface]
         $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]
     end

@@ -295,7 +295,7 @@ expr = quote
 end
 display(expr)
 r = eval(expr)
-@test r == 10
+@test r == 5
 
 xxxx
 
