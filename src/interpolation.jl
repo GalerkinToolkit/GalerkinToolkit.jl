@@ -1634,11 +1634,9 @@ struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     shape::H
 end
 
-function node_coordinates(a::LagrangeSpace)
-    T = Float64
-    D = num_ambient_dims(a.domain)
+function face_nodes(a::LagrangeSpace)
     major = :component
-    shape = (D,)
+    shape = SCALAR_SHAPE
     dirichlet_boundary = nothing
     V = LagrangeSpace(
                       a.domain,
@@ -1649,18 +1647,59 @@ function node_coordinates(a::LagrangeSpace)
                       major,
                       shape
                      )
-    u = zero_field(T,V)
-    x = analytical_field(identity,a.domain)
-    interpolate!(x,u)
-    dof_to_v = free_values(u)
-    ndofs = length(dof_to_v)
-    nnodes = div(ndofs,D)
-    node_to_x = zeros(SVector{D,T},nnodes)
-    for node in 1:nnodes
-        dofs = ntuple(i->i+(node-1)*D,Val{D}())
-        vs = map(dof->dof_to_v[dof],dofs)
-        x = SVector{D,T}(vs)
-        node_to_x[node] = x
+    face_dofs(V)
+end
+
+function node_coordinates(a::LagrangeSpace)
+    major = :component
+    shape = SCALAR_SHAPE
+    dirichlet_boundary = nothing
+    V = LagrangeSpace(
+                      a.domain,
+                      a.order,
+                      a.conformity,
+                      dirichlet_boundary,
+                      a.space,
+                      major,
+                      shape
+                     )
+    vrid_to_reffe = reference_fes(V)
+    vface_to_vrid = face_reference_id(V)
+    domain = a.domain
+    mesh = GT.mesh(domain)
+    d = num_dims(domain)
+    mrid_to_refface = reference_faces(mesh,d)
+    mface_to_mrid = face_reference_id(mesh,d)
+    vface_to_mface = faces(domain)
+    nvfaces = length(vface_to_vrid)
+    vface_to_nodes = face_dofs(V)
+    nnodes = length(free_dofs(V))
+    mnode_to_x = node_coordinates(mesh)
+    T = eltype(mnode_to_x)
+    z = zero(T)
+    node_to_x = zeros(T,nnodes)
+    mface_to_mnodes = face_nodes(mesh,d)
+    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
+        map(mrid_to_refface) do refface
+            tabulator(refface)(value,node_coordinates(reffe))
+        end
+    end
+    for vface in 1:nvfaces
+        vrid = vface_to_vrid[vface]
+        mface = vface_to_mface[vface]
+        mrid = mface_to_mrid[mface]
+        tab = vrid_mrid_tabulator[vrid][mrid]
+        mnodes = mface_to_mnodes[mface]
+        nlnodes,nlmnodes = size(tab)
+        nodes = vface_to_nodes[vface]
+        for lnode in 1:nlnodes
+            x = z
+            for lmnode in 1:nlmnodes
+                x += tab[lnode,lmnode]*mnode_to_x[mnodes[lmnode]]
+            end
+            node = nodes[lnode]
+            node_to_x[node] = x
+        end
     end
     node_to_x
 end
