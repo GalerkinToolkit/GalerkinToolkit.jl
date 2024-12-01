@@ -22,7 +22,7 @@ end
 
 suite = BenchmarkGroup()
 suite["poisson"] = BenchmarkGroup(["Poisson", "handwritten"])
-suite["poisson"]["n=200"] = @benchmarkable handwritten_poisson(200)
+suite["poisson"]["n=150"] = @benchmarkable handwritten_poisson(150)
 
 tune!(suite)
 
