@@ -41,7 +41,7 @@ jobs:
             ${{ runner.os }}-
       - name: Run benchmark
         run: |
-          cd performance_tests/
+          cd GalerkinToolkitExamples/benchmarks/
           julia --project --color=yes -e '
             using Pkg;
             Pkg.instantiate();
