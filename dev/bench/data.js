@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733082338974,
+  "lastUpdate": 1733090463428,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -58,6 +58,32 @@ window.BENCHMARK_DATA = {
             "value": 15012113152,
             "unit": "ns",
             "extra": "gctime=1241967732\nmemory=12825369344\nallocs=309749069\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "committer": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "id": "3f1546f904df417deef4673fbb738820bf08eb0f",
+          "message": "Add benchmarking suite for the handwritten poisson example",
+          "timestamp": "2024-11-29T17:27:25Z",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/pull/147/commits/3f1546f904df417deef4673fbb738820bf08eb0f"
+        },
+        "date": 1733090461889,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 7345564655,
+            "unit": "ns",
+            "extra": "gctime=448727698\nmemory=7481652776\nallocs=169412438\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
