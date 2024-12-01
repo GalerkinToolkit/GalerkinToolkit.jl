@@ -20,13 +20,12 @@ function handwritten_poisson(n)
 	Poisson.main(params)
 end
 
-
 suite = BenchmarkGroup()
-suite["poisson"] = BenchmarkGroup(["tag1", "tag2"])
-suite["poisson"][2] = @benchmarkable handwritten_poisson(2)
-suite["poisson"][3] = @benchmarkable handwritten_poisson(3)
+suite["poisson"] = BenchmarkGroup(["Poisson", "handwritten"])
+suite["poisson"]["n=200"] = @benchmarkable handwritten_poisson(200)
 
 tune!(suite)
+
 results = run(suite, verbose = true)
 
 BenchmarkTools.save("output.json", median(results))
