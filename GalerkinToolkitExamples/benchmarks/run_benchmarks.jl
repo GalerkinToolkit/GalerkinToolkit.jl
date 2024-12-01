@@ -7,7 +7,7 @@ using GalerkinToolkitExamples: Poisson
 
 
 function handwritten_poisson(n)
-	mesh = GT.cartesian_mesh((0,2,0,2),(n,n))
+	mesh = GT.cartesian_mesh((0,2,0,2,0,2),(n,n,n))
 
 	params = Dict{Symbol,Any}()
 	params[:implementation] = :hand_written
@@ -22,7 +22,7 @@ end
 
 suite = BenchmarkGroup()
 suite["poisson"] = BenchmarkGroup(["Poisson", "handwritten"])
-suite["poisson"]["n=150"] = @benchmarkable handwritten_poisson(150)
+suite["poisson"]["n=150"] = @benchmarkable handwritten_poisson(10)
 
 tune!(suite)
 
