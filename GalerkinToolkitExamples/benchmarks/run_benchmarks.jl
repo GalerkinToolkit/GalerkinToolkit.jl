@@ -7,6 +7,11 @@ using GalerkinToolkitExamples: Poisson
 
 
 function handwritten_poisson(n)
+	"""
+	Runs the hand-written Poisson example code, for a 3D
+	mesh of dimensions n x n x n.
+	"""
+
 	mesh = GT.cartesian_mesh((0,2,0,2,0,2), (n,n,n))
 
 	params = Dict{Symbol,Any}()
@@ -20,14 +25,17 @@ function handwritten_poisson(n)
 	Poisson.main(params)
 end
 
+
+# Build a benchmark suite for the Poisson example
 suite = BenchmarkGroup()
 suite["poisson-hand"] = BenchmarkGroup(["Poisson", "handwritten"])
 suite["poisson-hand"]["n=10"] = @benchmarkable handwritten_poisson(10)
 
+# Run all benchmarks
 tune!(suite)
-
 results = run(suite, verbose = true)
 
+# Save benchmark results for tracking and visualization
 BenchmarkTools.save("output.json", median(results))
 
 end # module
