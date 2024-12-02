@@ -28,7 +28,7 @@ end
 
 # Build a benchmark suite for the Poisson example
 suite = BenchmarkGroup()
-suite["poisson-hand"] = BenchmarkGroup(["Poisson", "handwritten"])
+suite["poisson-hand"] = BenchmarkGroup(["Poisson", "handwritten", "3D"])
 suite["poisson-hand"]["n=10"] = @benchmarkable handwritten_poisson(10)
 
 # Run all benchmarks
