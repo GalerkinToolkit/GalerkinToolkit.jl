@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733095119162,
+  "lastUpdate": 1733133446744,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -104,6 +104,32 @@ window.BENCHMARK_DATA = {
             "value": 7382264639,
             "unit": "ns",
             "extra": "gctime=431093011\nmemory=7481652776\nallocs=169412438\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "committer": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "id": "2184063fca7b236b7cdd7c2e5985161cdb616dcd",
+          "message": "Add benchmarking suite with trackable performance",
+          "timestamp": "2024-12-01T23:18:47Z",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/pull/147/commits/2184063fca7b236b7cdd7c2e5985161cdb616dcd"
+        },
+        "date": 1733133446229,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 7377491585,
+            "unit": "ns",
+            "extra": "gctime=462473805\nmemory=7481653080\nallocs=169412439\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
