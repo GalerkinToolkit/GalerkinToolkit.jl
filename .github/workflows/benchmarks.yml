@@ -45,7 +45,6 @@ jobs:
             using Pkg
             Pkg.develop(path=".")
             include("GalerkinToolkitExamples/benchmarks/run_benchmarks.jl")'
-
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
