@@ -85,7 +85,6 @@ jobs:
           ls benchmarks/bench
           echo "---"
           ls gh-pages/dev
-          cd gh-pages/dev
           cp -r benchmarks/bench gh-pages/dev/
           cd gh-pages
           git status
