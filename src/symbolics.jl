@@ -131,7 +131,7 @@ function call(f,args::AbstractTerm...)
     elseif length(args) == 2
         binary_call_term(f,args...)
     else
-        multivar_call_term(f,args...)
+        multivar_call_term(f,args)
     end
 end
 
@@ -242,10 +242,28 @@ free_dims(a::BinaryCallTerm) = union(free_dims(a.arg1),free_dims(a.arg2))
 
 multivar_call_term(args...) = MultivarCallTerm(args...)
 
-struct MultiVarCallTerm{A,B} <: AbstractTerm
+struct MultivarCallTerm{A,B} <: AbstractTerm
     callee::A
     args::B
 end
+
+AbstractTrees.children(a::MultivarCallTerm) = (a.callee,a.args...)
+
+index(a::MultivarCallTerm) = index(a.args[1])
+
+function expression(a::MultivarCallTerm)
+    exprs = map(expression,a.args)
+    g = get_symbol!(index(a),a.callee,"callee")
+    :($g($(exprs...)))
+end
+
+function prototype(a::MultivarCallTerm)
+    ps = map(prototype,a.args)
+    return_prototype(a.callee,ps...)
+end
+
+free_dims(a::MultivarCallTerm) = union(map(free_dims,a.args)...)
+
 
 boundary_term(args...) = BoundaryTerm(args...)
 
@@ -593,7 +611,7 @@ index(a::DiscreteFunctionTerm) = index(a.functions)
 
 const LinearOperators = Union{typeof(call),typeof(ForwardDiff.gradient),typeof(ForwardDiff.jacobian)}
 
-function expression(c::BinaryCallTerm{<:LinearOperators,<:DiscreteFunctionTerm,<:ReferencePointTerm})
+function expression(c::BinaryCallTerm{<:LinearOperators,<:DiscreteFunctionTerm,<:Any})
     f = c.callee
     a = c.arg1
     b = c.arg2
@@ -678,7 +696,7 @@ end
 #    expr_term(dims,expr,p,index(a))
 #end
 
-function expression(c::BinaryCallTerm{typeof(call),<:PhysicalMapTerm,<:ReferencePointTerm})
+function expression(c::BinaryCallTerm{typeof(call),<:PhysicalMapTerm,<:Any})
     f = c.callee
     a = discrete_function_term(c.arg1)
     b = c.arg2
@@ -686,7 +704,7 @@ function expression(c::BinaryCallTerm{typeof(call),<:PhysicalMapTerm,<:Reference
     expression(fab)
 end
 
-function expression(c::BinaryCallTerm{typeof(ForwardDiff.jacobian),<:PhysicalMapTerm,<:ReferencePointTerm})
+function expression(c::BinaryCallTerm{typeof(ForwardDiff.jacobian),<:PhysicalMapTerm,<:Any})
     f = c.callee
     a = discrete_function_term(c.arg1)
     b = c.arg2
@@ -891,6 +909,43 @@ end
 
 function find_face_adound(face,faces)
     findfirst(i->i==face,faces)
+end
+
+unit_normal_term(args...) = UnitNormalTerm(args...)
+
+struct UnitNormalTerm{A} <: AbstractTerm
+    outwards_normals::A
+end
+
+free_dims(a::UnitNormalTerm) = free_dims(a.outwards_normals)
+prototype(a::UnitNormalTerm) = prototype(a.outwards_normals)
+index(a::UnitNormalTerm) = index(a.outwards_normals)
+
+function expression(c::BinaryCallTerm{typeof(call),<:UnitNormalTerm,<:Any})
+    f = c.callee
+    D = num_dims(mesh(index(c)))
+    a = c.arg1
+    x = c.arg2
+    phiD = physical_map_term(Val{D}(),index(c))
+    J = call(ForwardDiff.jacobian,phiD,x)
+    n = call(map_unit_normal,J,a.outwards_normals)
+    expression(n)
+end
+
+function map_unit_normal(J,n)
+    Jt = transpose(J)
+    pinvJt = transpose(inv(Jt*J)*Jt)
+    v = pinvJt*n
+    m = sqrt(inner(v,v))
+    if m < eps()
+        return zero(v)
+    else
+        return v/m
+    end
+end
+
+function get_symbol!(index,val::typeof(map_unit_normal),name="";prefix=index.data.prefix)
+    :(GalerkinToolkit.map_unit_normal)
 end
 
 #discrete_function_term(args...) = DiscreteFunctionTerm(args...)

@@ -297,383 +297,444 @@ display(expr)
 r = eval(expr)
 @test r == 5
 
-xxxx
-
-
-xxxx
-
-
-xxx
-u1 = GT.analytical_field(sum)
-u2 = GT.face_map(mesh,D)
-x1 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
-x2 = GT.point_quantity(fill(SVector{2,Float64}[[4,5],[6,7]],GT.num_faces(Ω)),Ω)
-
-q = u1(x2)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-print_tree(t)
-@test GT.num_dims(t) == D
-expr = GT.expression(t)
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == 13
-
-q = u1(x1)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-print_tree(t)
-@test GT.num_dims(t) == D
-expr = GT.expression(t)
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == [1.0, 1.0]
-
-q = ForwardDiff.gradient(u1,x2)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-print_tree(t)
-@test GT.num_dims(t) == D
-expr = GT.expression(t)
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == [1.0, 1.0]
-
-xxxx
-
-q = u2(x1)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-@test t.dim == 2
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == [0.75, 0.25]
-
-q = ForwardDiff.jacobian(u2,x1)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-@test t.dim == 2
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == [0.25 0.0; 0.0 0.25]
-
-u3 = GT.inverse_face_map(mesh,D)
-q = u3(x1)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-@test t.dim == 2
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == [2.0, 4.0]
-
-u4 = GT.inverse_face_map(mesh,D-1)
-q = u4(x1)
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Γ;reference=true)
+phi = GT.physical_map(mesh,D-1)
+phiD = GT.physical_map(mesh,D)
+phiDinv = GT.inverse_physical_map(mesh,D)
+q = (phiD∘phiDinv)(phi(x1))
 index = GT.generate_index(Γ)
 faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
 t = GT.term(q,index)
-@test t.dim == 1
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[3]
+    $dof = 5
     $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(expr,())[1])
 end
 display(expr)
 r = eval(expr)
-@test r == [3.0]
+@test [0.5, 0.0] == r
 
-u5 = u1∘GT.inverse_face_map(mesh,D)
-q = u5(x1)
-index = GT.generate_index(Ω)
-faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
-t = GT.term(q,index)
-@test t.dim == 2
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D)) = $faces[3]
-    $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == 6.0
-
-u = GT.face_map(mesh,D-1,D)
-q = u(x1)
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Γ;reference=true)
+phi = GT.physical_map(mesh,D-1)
+n1 = GT.unit_normal(mesh,D-1)
+q = n1(phi(x1))
 index = GT.generate_index(Γ)
 faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
 t = GT.term(q,index)
-@test t.dim == 1
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[3]
+    $dof = 5
     $(GT.point_index(index)) = 2
-    $(GT.topological_sort(GT.simplify(t.expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(expr,())[1])
 end
 display(expr)
 r = eval(expr)
-@test [1.0, 0.0] == r
+@test r == [0.0, -1.0]
 
-u = GT.face_map(mesh,D-1,D)
-x3 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
-q = u[2](x3)
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
+phi = GT.physical_map(mesh,D-1)
+n1 = GT.unit_normal(mesh,D-1)
+q = n1(phi(x1))[1]
 index = GT.generate_index(Λ)
 faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
 t = GT.term(q,index)
-@test t.dim == 1
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
 storage = GT.index_storage(index)
 expr = quote
     $(GT.unpack_index_storage(index,:storage))
     $(GT.face_index(index,D-1)) = $faces[3]
+    $dof = 5
     $(GT.point_index(index)) = 2
-    #$(GT.topological_sort(GT.simplify(t.expr),())[1])
-    $(GT.topological_sort(t.expr,())[1])
+    $(GT.topological_sort(expr,())[1])
 end
 display(expr)
 r = eval(expr)
-@test [1.0, 0.0] == r
-
-xxx
+@test r == [0.0, 1.0]
 
 
-
-
-
-
-
-
-u2 = GT.face_constant_field(facedata,Ω)
-indices = Dict(Ω=>GT.index(face=:face))
-dict = Dict{Any,Symbol}()
-expr = GT.term(u2)(indices,dict)
-storage = GT.storage(dict)
-expr = quote
-    $(GT.unpack_storage(dict,:storage))
-    face = $nfaces
-    $expr(0)
-end
-display(expr)
-@test eval(expr) == facedata[end]
-indices = Dict(Ω=>GT.index(face=GT.FaceList(:faces)))
-dict = Dict{Any,Symbol}()
-expr = GT.term(u2)(indices,dict)
-storage = GT.storage(dict)
-expr = quote
-    $(GT.unpack_storage(dict,:storage))
-    faces = (4,5,6)
-    $expr[2](0)
-end
-display(expr)
-@test eval(expr) == facedata[5]
-
-xxx
-
-ϕ = GT.domain_map(Ωref,Ω)
-
-ϕinv = GT.inverse_map(ϕ)
-
-uref = u∘ϕ
-u2 = uref∘ϕinv
-
-vtk_grid(joinpath(outdir,"omega"),Ω,;plot_params=(;refinement=4)) do plt
-    GT.plot!(plt,u;label="u")
-    GT.plot!(plt,u2;label="u2")
-end
-
-vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=4)) do plt
-    GT.plot!(plt,uref;label="u")
-end
-
-D = GT.num_dims(mesh)
-Γref = GT.boundary(mesh;
-                 is_reference_domain=true,
-                 physical_names=["boundary_faces"])
-
-ϕ = GT.domain_map(Γref,Ωref)
-g = uref∘ϕ
-@test GT.domain(g) === GT.domain(ϕ)
-@test GT.domain(g) === Γref
-Γ = GT.physical_domain(Γref)
-
-n = GT.unit_normal(Γref,Ω)
-n2 = GT.unit_normal(Γ,Ω)
-#h = GT.face_diameter_field(Γ)
-
-vtk_grid(joinpath(outdir,"gamma_ref"),Γref) do plt
-    GT.plot!(plt,g;label="u")
-    GT.plot!(plt,n;label="n")
-    GT.plot!(plt,q->n2(ϕ(q));label="n2") # TODO
-    # GT.plot!(plt,h;label="h") TODO
-    GT.plot!(plt;label="u2") do q
-        x = ϕ(q)
-        uref(x)
-    end
-end
-
-vtk_grid(joinpath(outdir,"gamma"),Γ) do plt
-    GT.plot!(plt,u;label="u")
-    GT.plot!(plt,n;label="n")
-    GT.plot!(plt,n2;label="n2")
-    # TODO
-    #GT.plot!(plt,h;label="h")
-end
-
-Λref = GT.skeleton(mesh;
-                 is_reference_domain=true,
-                 physical_names=["interior_faces"])
-
-ϕ = GT.domain_map(Λref,Ωref)
-
-Λ = GT.physical_domain(Λref)
-
-# TODO
-n = GT.unit_normal(Λref,Ω)
-n2 = GT.unit_normal(Λ,Ω)
-#h = GT.face_diameter_field(Λ)
-
-jump(u) = u[+] - u[-]
-
-vtk_grid(joinpath(outdir,"lambda_ref"),Λref) do plt
-    GT.plot!(plt,n[+];label="n1")
-    GT.plot!(plt,n[-];label="n2")
-    GT.plot!(plt;label="jump_u2") do q
-        jump((uref∘ϕ)(q))
-    end
-    #GT.plot!(plt,h;label="h")
-    GT.plot!(plt;label="jump_u") do q
-        jump(uref(ϕ(q)))
-    end
-end
-
-jump2(u) = q -> jump(u(q))
-
-vtk_grid(joinpath(outdir,"lambda"),Λ) do plt
-    GT.plot!(plt,n2[+];label="n1")
-    GT.plot!(plt,n2[-];label="n2")
-    GT.plot!(plt;label="jump_u") do q
-        jump(u(q))
-    end
-    GT.plot!(plt,jump2(u);label="jump_u2")
-    #GT.plot!(plt,h;label="h")
-end
-
-# Parallel
-
-domain = (0,1,0,1)
-cells_per_dir = (4,4)
-parts_per_dir = (2,2)
-np = prod(parts_per_dir)
-parts = pa.DebugArray(LinearIndices((np,)))
-# TODO make this strategy the default one
-partition_strategy = GT.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
-mesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
-
-GT.physical_faces(mesh,1)
-GT.node_coordinates(mesh)
-GT.face_nodes(mesh,2)
-GT.face_nodes(mesh)
-GT.periodic_nodes(mesh)
-GT.outwards_normals(mesh)
-
-
-# TODO
-#GT.label_interior_faces!(mesh;physical_name="interior_faces")
-# TODO There is a bug when using a ghost layer
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
-
-Ω = GT.interior(mesh)
-Ωref = GT.interior(mesh;is_reference_domain=true)
-
-@test Ω == Ω
-@test Ω != Ωref
-
-u = GT.analytical_field(x->sum(x),Ω)
-ϕ = GT.domain_map(Ωref,Ω)
-uref = u∘ϕ
-
-pa.partition(Ω)
-
-GT.faces(Ω)
-
-vtk_grid(joinpath(outdir,"p_omega"),Ω;plot_params=(;refinement=4)) do plt
-    GT.plot!(plt,u;label="u")
-    GT.plot!(plt,q->u(q);label="u2")
-end
-
-D = GT.num_dims(mesh)
-Γref = GT.boundary(mesh;
-                 is_reference_domain=true,
-                 physical_names=["boundary_faces"])
-
-ϕ = GT.domain_map(Γref,Ωref)
-g = uref∘ϕ
-
-vtk_grid(joinpath(outdir,"p_gamma_ref"),Γref) do plt
-    GT.plot!(plt,g;label="u")
-    GT.plot!(plt;label="u2") do q
-        x = ϕ(q)
-        uref(x)
-    end
-end
+#u1 = GT.analytical_field(sum)
+#u2 = GT.face_map(mesh,D)
+#x1 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
+#x2 = GT.point_quantity(fill(SVector{2,Float64}[[4,5],[6,7]],GT.num_faces(Ω)),Ω)
+#
+#q = u1(x2)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#print_tree(t)
+#@test GT.num_dims(t) == D
+#expr = GT.expression(t)
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == 13
+#
+#q = u1(x1)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#print_tree(t)
+#@test GT.num_dims(t) == D
+#expr = GT.expression(t)
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [1.0, 1.0]
+#
+#q = ForwardDiff.gradient(u1,x2)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#print_tree(t)
+#@test GT.num_dims(t) == D
+#expr = GT.expression(t)
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [1.0, 1.0]
+#
+#xxxx
+#
+#q = u2(x1)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 2
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [0.75, 0.25]
+#
+#q = ForwardDiff.jacobian(u2,x1)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 2
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [0.25 0.0; 0.0 0.25]
+#
+#u3 = GT.inverse_face_map(mesh,D)
+#q = u3(x1)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 2
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [2.0, 4.0]
+#
+#u4 = GT.inverse_face_map(mesh,D-1)
+#q = u4(x1)
+#index = GT.generate_index(Γ)
+#faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 1
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D-1)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == [3.0]
+#
+#u5 = u1∘GT.inverse_face_map(mesh,D)
+#q = u5(x1)
+#index = GT.generate_index(Ω)
+#faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 2
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == 6.0
+#
+#u = GT.face_map(mesh,D-1,D)
+#q = u(x1)
+#index = GT.generate_index(Γ)
+#faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 1
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D-1)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    $(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test [1.0, 0.0] == r
+#
+#u = GT.face_map(mesh,D-1,D)
+#x3 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
+#q = u[2](x3)
+#index = GT.generate_index(Λ)
+#faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
+#t = GT.term(q,index)
+#@test t.dim == 1
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D-1)) = $faces[3]
+#    $(GT.point_index(index)) = 2
+#    #$(GT.topological_sort(GT.simplify(t.expr),())[1])
+#    $(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test [1.0, 0.0] == r
+#
+#xxx
+#
+#
+#
+#
+#
+#
+#
+#
+#u2 = GT.face_constant_field(facedata,Ω)
+#indices = Dict(Ω=>GT.index(face=:face))
+#dict = Dict{Any,Symbol}()
+#expr = GT.term(u2)(indices,dict)
+#storage = GT.storage(dict)
+#expr = quote
+#    $(GT.unpack_storage(dict,:storage))
+#    face = $nfaces
+#    $expr(0)
+#end
+#display(expr)
+#@test eval(expr) == facedata[end]
+#indices = Dict(Ω=>GT.index(face=GT.FaceList(:faces)))
+#dict = Dict{Any,Symbol}()
+#expr = GT.term(u2)(indices,dict)
+#storage = GT.storage(dict)
+#expr = quote
+#    $(GT.unpack_storage(dict,:storage))
+#    faces = (4,5,6)
+#    $expr[2](0)
+#end
+#display(expr)
+#@test eval(expr) == facedata[5]
+#
+#xxx
+#
+#ϕ = GT.domain_map(Ωref,Ω)
+#
+#ϕinv = GT.inverse_map(ϕ)
+#
+#uref = u∘ϕ
+#u2 = uref∘ϕinv
+#
+#vtk_grid(joinpath(outdir,"omega"),Ω,;plot_params=(;refinement=4)) do plt
+#    GT.plot!(plt,u;label="u")
+#    GT.plot!(plt,u2;label="u2")
+#end
+#
+#vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=4)) do plt
+#    GT.plot!(plt,uref;label="u")
+#end
+#
+#D = GT.num_dims(mesh)
+#Γref = GT.boundary(mesh;
+#                 is_reference_domain=true,
+#                 physical_names=["boundary_faces"])
+#
+#ϕ = GT.domain_map(Γref,Ωref)
+#g = uref∘ϕ
+#@test GT.domain(g) === GT.domain(ϕ)
+#@test GT.domain(g) === Γref
+#Γ = GT.physical_domain(Γref)
+#
+#n = GT.unit_normal(Γref,Ω)
+#n2 = GT.unit_normal(Γ,Ω)
+##h = GT.face_diameter_field(Γ)
+#
+#vtk_grid(joinpath(outdir,"gamma_ref"),Γref) do plt
+#    GT.plot!(plt,g;label="u")
+#    GT.plot!(plt,n;label="n")
+#    GT.plot!(plt,q->n2(ϕ(q));label="n2") # TODO
+#    # GT.plot!(plt,h;label="h") TODO
+#    GT.plot!(plt;label="u2") do q
+#        x = ϕ(q)
+#        uref(x)
+#    end
+#end
+#
+#vtk_grid(joinpath(outdir,"gamma"),Γ) do plt
+#    GT.plot!(plt,u;label="u")
+#    GT.plot!(plt,n;label="n")
+#    GT.plot!(plt,n2;label="n2")
+#    # TODO
+#    #GT.plot!(plt,h;label="h")
+#end
+#
+#Λref = GT.skeleton(mesh;
+#                 is_reference_domain=true,
+#                 physical_names=["interior_faces"])
+#
+#ϕ = GT.domain_map(Λref,Ωref)
+#
+#Λ = GT.physical_domain(Λref)
+#
+## TODO
+#n = GT.unit_normal(Λref,Ω)
+#n2 = GT.unit_normal(Λ,Ω)
+##h = GT.face_diameter_field(Λ)
+#
+#jump(u) = u[+] - u[-]
+#
+#vtk_grid(joinpath(outdir,"lambda_ref"),Λref) do plt
+#    GT.plot!(plt,n[+];label="n1")
+#    GT.plot!(plt,n[-];label="n2")
+#    GT.plot!(plt;label="jump_u2") do q
+#        jump((uref∘ϕ)(q))
+#    end
+#    #GT.plot!(plt,h;label="h")
+#    GT.plot!(plt;label="jump_u") do q
+#        jump(uref(ϕ(q)))
+#    end
+#end
+#
+#jump2(u) = q -> jump(u(q))
+#
+#vtk_grid(joinpath(outdir,"lambda"),Λ) do plt
+#    GT.plot!(plt,n2[+];label="n1")
+#    GT.plot!(plt,n2[-];label="n2")
+#    GT.plot!(plt;label="jump_u") do q
+#        jump(u(q))
+#    end
+#    GT.plot!(plt,jump2(u);label="jump_u2")
+#    #GT.plot!(plt,h;label="h")
+#end
+#
+## Parallel
+#
+#domain = (0,1,0,1)
+#cells_per_dir = (4,4)
+#parts_per_dir = (2,2)
+#np = prod(parts_per_dir)
+#parts = pa.DebugArray(LinearIndices((np,)))
+## TODO make this strategy the default one
+#partition_strategy = GT.partition_strategy(graph_nodes=:cells,graph_edges=:nodes,ghost_layers=0)
+#mesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts,partition_strategy)
+#
+#GT.physical_faces(mesh,1)
+#GT.node_coordinates(mesh)
+#GT.face_nodes(mesh,2)
+#GT.face_nodes(mesh)
+#GT.periodic_nodes(mesh)
+#GT.outwards_normals(mesh)
+#
+#
+## TODO
+##GT.label_interior_faces!(mesh;physical_name="interior_faces")
+## TODO There is a bug when using a ghost layer
+#GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+#
+#Ω = GT.interior(mesh)
+#Ωref = GT.interior(mesh;is_reference_domain=true)
+#
+#@test Ω == Ω
+#@test Ω != Ωref
+#
+#u = GT.analytical_field(x->sum(x),Ω)
+#ϕ = GT.domain_map(Ωref,Ω)
+#uref = u∘ϕ
+#
+#pa.partition(Ω)
+#
+#GT.faces(Ω)
+#
+#vtk_grid(joinpath(outdir,"p_omega"),Ω;plot_params=(;refinement=4)) do plt
+#    GT.plot!(plt,u;label="u")
+#    GT.plot!(plt,q->u(q);label="u2")
+#end
+#
+#D = GT.num_dims(mesh)
+#Γref = GT.boundary(mesh;
+#                 is_reference_domain=true,
+#                 physical_names=["boundary_faces"])
+#
+#ϕ = GT.domain_map(Γref,Ωref)
+#g = uref∘ϕ
+#
+#vtk_grid(joinpath(outdir,"p_gamma_ref"),Γref) do plt
+#    GT.plot!(plt,g;label="u")
+#    GT.plot!(plt;label="u2") do q
+#        x = ϕ(q)
+#        uref(x)
+#    end
+#end
 
 end # module

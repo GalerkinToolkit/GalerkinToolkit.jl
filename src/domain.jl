@@ -1791,28 +1791,97 @@ end
 #    unit_normal(domain,codomain,glue)
 #end
 #
-function map_unit_normal(φ_fun,ϕ_fun,n)
-    q -> begin
-        p = φ_fun(q)
-        J = ForwardDiff.jacobian(ϕ_fun,p)
-        Jt = transpose(J)
-        pinvJt = transpose(inv(Jt*J)*Jt)
-        v = pinvJt*n
-        m = sqrt(inner(v,v))
-        if m < eps()
-            return zero(v)
-        else
-            return v/m
-        end
-    end
-end
+
+#function map_unit_normal(φ_fun,ϕ_fun,n)
+#    q -> begin
+#        p = φ_fun(q)
+#        J = ForwardDiff.jacobian(ϕ_fun,p)
+#        Jt = transpose(J)
+#        pinvJt = transpose(inv(Jt*J)*Jt)
+#        v = pinvJt*n
+#        m = sqrt(inner(v,v))
+#        if m < eps()
+#            return zero(v)
+#        else
+#            return v/m
+#        end
+#    end
+#end
+
+#function unit_normal(mesh::AbstractMesh,d)
+#    D = num_dims(mesh)
+#    @assert d == D-1
+#    phiD = physical_map(mesh,D)
+#    phidinv = inverse_physical_map(mesh,d)
+#    phidD = reference_map(mesh,d,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    topo = topology(mesh)
+#    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+#    n = quantity() do index
+#        dface = face_index(index,d)
+#        Dface = face_index(index,D)
+#        Dface_to_Drid = get_symbol!(index,face_reference_id(mesh,D),"Dface_to_Drid")
+#        dface_to_Dfaces = get_symbol!(index,dface_to_Dfaces_data,"dface_to_Dfaces")
+#        dface_to_ldfaces = get_symbol!(index,dface_to_ldfaces_data,"dface_to_ldfaces")
+#        Drid_to_lface_to_n = get_symbol!(index,Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
+#        expr = @term begin
+#            Drid = $Dface_to_Drid[$Dface]
+#            Dfaces = $dface_to_Dfaces[$dface]
+#            Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
+#            ldface = $dface_to_ldfaces[$dface][Dface_around]
+#            Drid_to_lface_to_n[Drif][ldface]
+#        end
+#        p = Drid_to_lface_to_n_data |> eltype |> eltype |> zero
+#        expr_term([d,D],expr,p,index)
+#    end
+#    #x -> call(map_unit_normal,(phidD∘phidinv)(x),phiD(x),n)
+#    x -> call(map_unit_normal,phiD(x),n)
+#end
+
+
+#function unit_normal(mesh::AbstractMesh,d)
+#    D = num_dims(mesh)
+#    @assert d == D-1
+#    phiD = physical_map(mesh,D)
+#    phidinv = inverse_physical_map(mesh,d)
+#    phidD = reference_map(mesh,d,D)
+#    ctype_to_refface = GT.reference_faces(mesh,D)
+#    Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
+#        boundary = refface |> GT.geometry |> GT.boundary
+#        boundary |> GT.outwards_normals # TODO also rename?
+#    end
+#    topo = topology(mesh)
+#    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+#    n = quantity() do index
+#        dface = face_index(index,d)
+#        Dface = face_index(index,D)
+#        Dface_to_Drid = get_symbol!(index,face_reference_id(mesh,D),"Dface_to_Drid")
+#        dface_to_Dfaces = get_symbol!(index,dface_to_Dfaces_data,"dface_to_Dfaces")
+#        dface_to_ldfaces = get_symbol!(index,dface_to_ldfaces_data,"dface_to_ldfaces")
+#        Drid_to_lface_to_n = get_symbol!(index,Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
+#        expr = @term begin
+#            Drid = $Dface_to_Drid[$Dface]
+#            Dfaces = $dface_to_Dfaces[$dface]
+#            Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
+#            ldface = $dface_to_ldfaces[$dface][Dface_around]
+#            Drid_to_lface_to_n[Drif][ldface]
+#        end
+#        p = Drid_to_lface_to_n_data |> eltype |> eltype |> zero
+#        expr_term([d,D],expr,p,index)
+#    end
+#    #x -> call(map_unit_normal,(phidD∘phidinv)(x),phiD(x),n)
+#    x -> call(map_unit_normal,phiD(x),n)
+#end
+
 
 function unit_normal(mesh::AbstractMesh,d)
     D = num_dims(mesh)
     @assert d == D-1
-    phiD = physical_map(mesh,D)
-    phidinv = inverse_physical_map(mesh,d)
-    phidD = reference_map(mesh,d,D)
+    phiDinv = inverse_physical_map(mesh,D)
     ctype_to_refface = GT.reference_faces(mesh,D)
     Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
         boundary = refface |> GT.geometry |> GT.boundary
@@ -1820,25 +1889,62 @@ function unit_normal(mesh::AbstractMesh,d)
     end
     topo = topology(mesh)
     dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
-    n = quantity() do index
+    quantity() do index
         dface = face_index(index,d)
         Dface = face_index(index,D)
-        Dface_to_rid = get_symbol!(a.index,face_reference_id(mesh,D),"Dface_to_Drid")
-        dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
-        dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
-        Drid_to_lface_to_n = get_symbol!(index(a),Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
+        Dface_to_Drid = get_symbol!(index,face_reference_id(mesh,D),"Dface_to_Drid")
+        dface_to_Dfaces = get_symbol!(index,dface_to_Dfaces_data,"dface_to_Dfaces")
+        dface_to_ldfaces = get_symbol!(index,dface_to_ldfaces_data,"dface_to_ldfaces")
+        Drid_to_lface_to_n = get_symbol!(index,Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
         expr = @term begin
             Drid = $Dface_to_Drid[$Dface]
             Dfaces = $dface_to_Dfaces[$dface]
             Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
             ldface = $dface_to_ldfaces[$dface][Dface_around]
-            Drid_to_lface_to_n[Drif][ldface]
+            $Drid_to_lface_to_n[Drid][ldface]
         end
         p = Drid_to_lface_to_n_data |> eltype |> eltype |> zero
-        expr_term([d,D],expr,p,index)
+        n = expr_term([d,D],expr,p,index)
+        n_ref = unit_normal_term(n)
+        ϕinv_fun = term(phiDinv,index)
+        n_phys = binary_call_term(∘,n_ref,ϕinv_fun)
+        n_phys
     end
-    call(map_unit_normal,phidD∘phidinv,phiD,n)
+    #phiD = physical_map(mesh,D)
+    #phiDinv = inverse_physical_map(mesh,D)
+    #ctype_to_refface = GT.reference_faces(mesh,D)
+    #Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
+    #    boundary = refface |> GT.geometry |> GT.boundary
+    #    boundary |> GT.outwards_normals # TODO also rename?
+    #end
+    #topo = topology(mesh)
+    #dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+    #quantity() do index
+    #    dface = face_index(index,d)
+    #    Dface = face_index(index,D)
+    #    Dface_to_Drid = get_symbol!(index,face_reference_id(mesh,D),"Dface_to_Drid")
+    #    dface_to_Dfaces = get_symbol!(index,dface_to_Dfaces_data,"dface_to_Dfaces")
+    #    dface_to_ldfaces = get_symbol!(index,dface_to_ldfaces_data,"dface_to_ldfaces")
+    #    Drid_to_lface_to_n = get_symbol!(index,Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
+    #    expr = @term begin
+    #        Drid = $Dface_to_Drid[$Dface]
+    #        Dfaces = $dface_to_Dfaces[$dface]
+    #        Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
+    #        ldface = $dface_to_ldfaces[$dface][Dface_around]
+    #        Drid_to_lface_to_n[Drif][ldface]
+    #    end
+    #    p = Drid_to_lface_to_n_data |> eltype |> eltype |> zero
+    #    n = expr_term([d,D],expr,p,index)
+    #    ϕ_fun = term(phiD,index)
+    #    
+
+    #    ϕinv_fun = term(phiDinv,index)
+    #    n_ref = binary_call_term(map_unit_normal,ϕ_fun,n)
+    #    n_phys = binary_call_term(∘,n_ref,ϕinv_fun)
+    #    n_phys
+    #end
 end
+
 
 #
 #function unit_normal(domain::ReferenceDomain,codomain::PhysicalDomain,glue::BoundaryGlue)
