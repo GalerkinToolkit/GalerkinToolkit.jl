@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733159535931,
+  "lastUpdate": 1733159980270,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -312,6 +312,32 @@ window.BENCHMARK_DATA = {
             "value": 7478226849,
             "unit": "ns",
             "extra": "gctime=441231417\nmemory=7481653080\nallocs=169412439\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "committer": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "id": "2c3a0de2036f694f7125d58ac22bffde8532ae3f",
+          "message": "Use dedicated branch for benchmark results",
+          "timestamp": "2024-12-02T11:07:49Z",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/pull/151/commits/2c3a0de2036f694f7125d58ac22bffde8532ae3f"
+        },
+        "date": 1733159979992,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 7339816394,
+            "unit": "ns",
+            "extra": "gctime=440326031\nmemory=7481652776\nallocs=169412438\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
