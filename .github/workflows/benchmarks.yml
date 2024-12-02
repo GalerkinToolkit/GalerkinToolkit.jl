@@ -79,6 +79,9 @@ jobs:
           path: benchmarks
       - name: Copy benchmark results to gh-pages
         run: |
+          echo "---"
           ls
+          echo "---"
           ls benchmarks/
+          echo "---"
           ls gh-pages/
