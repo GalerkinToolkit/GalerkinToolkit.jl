@@ -377,20 +377,18 @@ function default_space(geom)
     end
 end
 
-function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,real_type)
-    D = length(order_per_dir)
-    Tv = real_type
+function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,::Type{Tv}) where Tv
     if length(monomial_exponents) == 0
-        return  
+        return SVector{length(order_per_dir),Tv}[]
     end
     node_coordinates = map(monomial_exponents) do exponent
         map(exponent,order_per_dir) do e,order
             if order != 0
-                real_type(e/order)
+               Tv(e/order)
             else
-                real_type(e)
+               Tv(e)
             end
-        end |> SVector{D,Tv}
+        end |> SVector{length(order_per_dir),Tv}
     end
 end
 
@@ -404,13 +402,12 @@ function monomial_exponents_from_space(space,args...)
     end
 end
 
-function monomial_exponents_from_filter(f,order_per_dir,int_type)
-    Ti = int_type
+function monomial_exponents_from_filter(f,order_per_dir,::Type{Ti}) where Ti
     terms_per_dir = Tuple(map(d->d+1,order_per_dir))
     D = length(terms_per_dir)
     cis = CartesianIndices(terms_per_dir)
-    m = count(ci->f(SVector{D,Ti}(Tuple(ci) .- 1),order_per_dir),cis)
-    result = zeros(SVector{D,int_type},m)
+    m = count(ci->f(SVector{length(terms_per_dir),Ti}(Tuple(ci) .- 1),order_per_dir),cis)
+    result = zeros(SVector{D,Ti},m)
     li = 0
     for ci in cis
         t = SVector{D,Ti}(Tuple(ci) .- 1)
