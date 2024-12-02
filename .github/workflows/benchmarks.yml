@@ -86,7 +86,12 @@ jobs:
           echo "---"
           ls gh-pages/dev
           cd gh-pages/dev
+          cp -r benchmarks/bench gh-pages/dev/
+          cd gh-pages
           git status
           git branch
-          cp -r ../benchmarks/bench .
+          git add -A
           git status
+          git commit -m 'Copy benchmark results to documentation on gh-pages'
+          git status
+          git push
