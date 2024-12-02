@@ -61,6 +61,7 @@ jobs:
           comment-on-alert: true
           fail-on-alert: true
 
+  copybenchmarks:
     name: Copy benchmark results to gh-pages
     runs-on: ubuntu-latest
     permissions:
