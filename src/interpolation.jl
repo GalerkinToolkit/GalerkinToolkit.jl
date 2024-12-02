@@ -307,6 +307,10 @@ end
 
 abstract type AbstractSpace <: GT.AbstractType end
 
+function space_cache(;kwargs...)
+    (;kwargs...)
+end
+
 Base.iterate(m::AbstractSpace) = iterate(components(m))
 Base.iterate(m::AbstractSpace,state) = iterate(components(m),state)
 Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
@@ -844,6 +848,9 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
 end
 
 function face_dofs(space::AbstractSpace)
+    if space.cache !== nothing
+        return space.cache.face_dofs
+    end
     state = generate_dof_ids(space)
     state.cell_to_dofs # TODO rename face_dofs ?
 end
@@ -1518,13 +1525,32 @@ end
 # This space is not suitable for assembling problems in general, as there might be gaps in the dofs
 
 function iso_parametric_space(dom::ReferenceDomain;
-        dirichlet_boundary=nothing)
-    IsoParametricSpace(dom,dirichlet_boundary)
+        dirichlet_boundary=nothing,
+        cache=nothing)
+    IsoParametricSpace(dom,dirichlet_boundary,cache) |> setup_space
 end
 
-struct IsoParametricSpace{A,B} <: AbstractSpace
+struct IsoParametricSpace{A,B,C} <: AbstractSpace
     domain::A
     dirichlet_boundary::B
+    cache::C
+end
+
+function setup_space(V::IsoParametricSpace)
+    if V.cache !== nothing
+        return V
+    end
+    face_dofs = GT.face_dofs(V)
+    cache = space_cache(;face_dofs)
+    replace_cache(V,cache)
+end
+
+function replace_cache(V::IsoParametricSpace,cache)
+    GT.iso_parametric_space(
+        V.domain;
+        V.dirichlet_boundary,
+        cache
+    )
 end
 
 function free_and_dirichlet_nodes(V::IsoParametricSpace)
@@ -1555,6 +1581,9 @@ function dirichlet_dof_location(V::IsoParametricSpace)
 end
 
 function face_dofs(V::IsoParametricSpace)
+    if V.cache !== nothing
+        return V.cache.face_dofs
+    end
     face_dofs(V,V.dirichlet_boundary)
 end
 
@@ -1609,7 +1638,9 @@ function lagrange_space(domain,order;
     dirichlet_boundary=nothing,
     space=nothing,
     major=:component,
-    shape=SCALAR_SHAPE)
+    shape=SCALAR_SHAPE,
+    cache=nothing,
+    )
 
     @assert conformity in (:default,:L2)
 
@@ -1620,11 +1651,34 @@ function lagrange_space(domain,order;
                   dirichlet_boundary,
                   space,
                   major,
-                  shape)
+                  shape,
+                  cache) |> setup_space
 
 end
 
-struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
+function setup_space(space::AbstractSpace)
+    if space.cache !== nothing
+        return space
+    end
+    face_dofs = GT.face_dofs(space)
+    cache = space_cache(;face_dofs)
+    replace_cache(space,cache)
+end
+
+function replace_cache(space::AbstractSpace,cache)
+    GT.lagrange_space(
+        space.domain,
+        space.order;
+        space.conformity,
+        space.dirichlet_boundary,
+        space.space,
+        space.major,
+        space.shape,
+        cache
+    )
+end
+
+struct LagrangeSpace{A,B,C,F,G,H,I} <: AbstractSpace
     domain::A
     order::B
     conformity::Symbol
@@ -1632,12 +1686,14 @@ struct LagrangeSpace{A,B,C,F,G,H} <: AbstractSpace
     space::F # TODO rename this one?
     major::G
     shape::H
+    cache::I
 end
 
 function face_nodes(a::LagrangeSpace)
     major = :component
     shape = SCALAR_SHAPE
     dirichlet_boundary = nothing
+    cache = nothing
     V = LagrangeSpace(
                       a.domain,
                       a.order,
@@ -1645,7 +1701,8 @@ function face_nodes(a::LagrangeSpace)
                       dirichlet_boundary,
                       a.space,
                       major,
-                      shape
+                      shape,
+                      cache,
                      )
     face_dofs(V)
 end
@@ -1654,6 +1711,7 @@ function node_coordinates(a::LagrangeSpace)
     major = :component
     shape = SCALAR_SHAPE
     dirichlet_boundary = nothing
+    cache = nothing
     V = LagrangeSpace(
                       a.domain,
                       a.order,
@@ -1661,7 +1719,8 @@ function node_coordinates(a::LagrangeSpace)
                       dirichlet_boundary,
                       a.space,
                       major,
-                      shape
+                      shape,
+                      cache,
                      )
     vrid_to_reffe = reference_fes(V)
     vface_to_vrid = face_reference_id(V)
@@ -1723,6 +1782,7 @@ function free_and_dirichlet_dof_node(space::LagrangeSpace)
     major = :component
     shape = SCALAR_SHAPE
     dirichlet_boundary = nothing
+    cache = nothing
     V = LagrangeSpace(
                       space.domain,
                       space.order,
@@ -1730,7 +1790,8 @@ function free_and_dirichlet_dof_node(space::LagrangeSpace)
                       dirichlet_boundary,
                       space.space,
                       major,
-                      shape
+                      shape,
+                      cache,
                      )
     face_to_nodes = GT.face_dofs(V)
     face_to_dofs = GT.face_dofs(space)
