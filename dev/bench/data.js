@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733133446744,
+  "lastUpdate": 1733137915413,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -130,6 +130,36 @@ window.BENCHMARK_DATA = {
             "value": 7377491585,
             "unit": "ns",
             "extra": "gctime=462473805\nmemory=7481653080\nallocs=169412439\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c6fa31e81f5e8261051880138dd3d1e36b3e0914",
+          "message": "Merge pull request #147 from GalerkinToolkit/add_performance_regression_CI\n\nAdd benchmarking suite with trackable performance",
+          "timestamp": "2024-12-02T12:07:42+01:00",
+          "tree_id": "11a19dcf2ee79b7e3e67e03497810401d122f09b",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/c6fa31e81f5e8261051880138dd3d1e36b3e0914"
+        },
+        "date": 1733137914932,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 7387737735,
+            "unit": "ns",
+            "extra": "gctime=444656693\nmemory=7481652776\nallocs=169412438\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
