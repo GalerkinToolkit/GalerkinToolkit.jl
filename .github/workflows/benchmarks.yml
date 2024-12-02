@@ -63,6 +63,7 @@ jobs:
 
   copybenchmarks:
     name: Copy benchmark results to gh-pages
+    needs: benchmark
     runs-on: ubuntu-latest
     permissions:
       contents: write
