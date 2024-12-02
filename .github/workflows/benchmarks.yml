@@ -79,20 +79,10 @@ jobs:
           path: benchmarks
       - name: Copy benchmark results to gh-pages
         run: |
-          echo "---"
-          ls
-          echo "---"
-          ls benchmarks/bench
-          echo "---"
-          ls gh-pages/dev
           cp -r benchmarks/bench gh-pages/dev/
           cd gh-pages
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git status
-          git branch
           git add -A
-          git status
           git commit -m 'Copy benchmark results to documentation on gh-pages'
-          git status
           git push
