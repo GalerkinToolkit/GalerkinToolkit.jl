@@ -60,3 +60,12 @@ jobs:
           alert-threshold: '200%'
           comment-on-alert: true
           fail-on-alert: true
+      - name: Copy benchmark results to docs
+        run: |
+          git status
+          git checkout gh-pages
+          git status
+          git checkout benchmarks -- bench
+          git status
+          ls bench
+          cat bench/*.js
