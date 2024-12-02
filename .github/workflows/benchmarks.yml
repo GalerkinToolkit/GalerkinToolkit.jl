@@ -60,6 +60,15 @@ jobs:
           alert-threshold: '200%'
           comment-on-alert: true
           fail-on-alert: true
+
+    name: Copy benchmark results to gh-pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages      
       - name: Copy benchmark results to docs
         run: |
           git status
