@@ -68,11 +68,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: gh-pages      
       - name: Copy benchmark results to docs
         run: |
           git status
+          git fetch
           git checkout gh-pages
           git status
           git checkout benchmarks -- bench
