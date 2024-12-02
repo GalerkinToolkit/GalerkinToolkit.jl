@@ -87,6 +87,8 @@ jobs:
           ls gh-pages/dev
           cp -r benchmarks/bench gh-pages/dev/
           cd gh-pages
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git status
           git branch
           git add -A
