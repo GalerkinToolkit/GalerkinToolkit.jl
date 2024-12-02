@@ -67,14 +67,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Copy benchmark results to docs
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+      - name: Checkout benchmarks branch
+        uses: actions/checkout@4
+        with:
+          ref: benchmarks
+          path: benchmarks
+      - name: Copy benchmark results to gh-pages
         run: |
-          git fetch origin gh-pages benchmarks
-          git checkout gh-pages
-          git status
-          git branch
-          git checkout benchmarks -- bench
-          git status
-          ls bench
-          cat bench/*.js
+          ls
+          ls benchmarks/
+          ls gh-pages/
