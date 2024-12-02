@@ -1,9 +1,10 @@
 name: Performance Regression Tests
+
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -12,6 +13,7 @@ permissions:
 jobs:
   benchmark:
     name: Run julia benchmark example
+
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
