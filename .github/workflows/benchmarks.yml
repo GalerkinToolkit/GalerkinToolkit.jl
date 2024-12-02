@@ -73,7 +73,7 @@ jobs:
           ref: gh-pages
           path: gh-pages
       - name: Checkout benchmarks branch
-        uses: actions/checkout@4
+        uses: actions/checkout@v4
         with:
           ref: benchmarks
           path: benchmarks
