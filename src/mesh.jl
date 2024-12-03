@@ -1072,6 +1072,21 @@ function vertex_permutations(geom::AbstractFaceGeometry)
     vertex_permutations_from_face_geometry(geom)
 end
 
+function compute_volume(vertex_coords,TJ,A)
+    vol = zero(eltype(TJ))
+    for iq in 1:size(A,1)
+        J = zero(TJ)
+        for fun_node in 1:size(A,2)
+            vertex = fun_node # TODO we are assuming that the vertices and nodes match
+            g = A[iq,fun_node]
+            x = vertex_coords[vertex]
+            J += g*x'
+        end
+        vol += abs(det(J))
+    end
+    vol
+end
+
 ## Admissible if the following map is admissible
 # phi_i(x) = sum_i x_perm[i] * fun_i(x)
 # This map sends vertex i to vertex perm[i]
@@ -1107,27 +1122,13 @@ function vertex_permutations_from_face_geometry(geo)
     Tx = eltype(vertex_coords)
     TJ = typeof(zero(Tx)*zero(Tx)')
     A = tabulator(ref_face)(ForwardDiff.gradient,q)
-    function compute_volume(vertex_coords)
-        vol = zero(eltype(TJ))
-        for iq in 1:size(A,1)
-            J = zero(TJ)
-            for fun_node in 1:size(A,2)
-                vertex = fun_node # TODO we are assuming that the vertices and nodes match
-                g = A[iq,fun_node]
-                x = vertex_coords[vertex]
-                J += g*x'
-            end
-            vol += abs(det(J))
-        end
-        vol
-    end
-    refvol = compute_volume(vertex_coords)
+    refvol = compute_volume(vertex_coords,TJ,A)
     perm_vertex_coords = similar(vertex_coords)
     for permutation in permutations
         for (j,cj) in enumerate(permutation)
           perm_vertex_coords[j] = vertex_coords[cj]
         end
-        vol2 = compute_volume(perm_vertex_coords)
+        vol2 = compute_volume(perm_vertex_coords,TJ,A)
         if (refvol + vol2) ≈ (2*refvol)
             push!(admissible_permutations,permutation)
         end
