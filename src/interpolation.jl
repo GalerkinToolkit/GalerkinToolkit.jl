@@ -1656,7 +1656,18 @@ function lagrange_space(domain,order;
 
 end
 
-function setup_space(space::AbstractSpace)
+struct LagrangeSpace{A,B,C,F,G,H,I} <: AbstractSpace
+    domain::A
+    order::B
+    conformity::Symbol
+    dirichlet_boundary::C
+    space::F # TODO rename this one?
+    major::G
+    shape::H
+    cache::I
+end
+
+function setup_space(space::LagrangeSpace)
     if space.cache !== nothing
         return space
     end
@@ -1665,7 +1676,7 @@ function setup_space(space::AbstractSpace)
     replace_cache(space,cache)
 end
 
-function replace_cache(space::AbstractSpace,cache)
+function replace_cache(space::LagrangeSpace,cache)
     GT.lagrange_space(
         space.domain,
         space.order;
@@ -1676,17 +1687,6 @@ function replace_cache(space::AbstractSpace,cache)
         space.shape,
         cache
     )
-end
-
-struct LagrangeSpace{A,B,C,F,G,H,I} <: AbstractSpace
-    domain::A
-    order::B
-    conformity::Symbol
-    dirichlet_boundary::C
-    space::F # TODO rename this one?
-    major::G
-    shape::H
-    cache::I
 end
 
 function face_nodes(a::LagrangeSpace)
