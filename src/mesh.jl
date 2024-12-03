@@ -1385,7 +1385,7 @@ function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
                     dfaces = vertex_to_dfaces[vertex]
                     for dface1 in dfaces
                         vertices1 = dface_to_vertices[dface1]
-                        if same_valid_ids(collect(vertices),collect(vertices1))
+                        if same_valid_ids(vertices,vertices1)
                             dface2 = dface1
                             break
                         end
@@ -1519,7 +1519,7 @@ function intersection!(a,b,na,nb)
   end
 end
 
-function find_eq(v::T, b::Vector{T}) where T
+function find_eq(v::T, b::AbstractVector{T}) where T
     for vs in b
         if v == vs
             return true
@@ -1528,7 +1528,7 @@ function find_eq(v::T, b::Vector{T}) where T
     return false
 end
 
-function is_subset(a::Vector{T}, b::Vector{T}) where T
+function is_subset(a::AbstractVector{T}, b::AbstractVector{T}) where T
     for i in 1:length(a)
         v = a[i]
         if v == convert(T, INVALID_ID)
@@ -1541,7 +1541,7 @@ function is_subset(a::Vector{T}, b::Vector{T}) where T
     return true
 end
 
-function same_valid_ids(a::Vector{T}, b::Vector{T}) where T
+function same_valid_ids(a::AbstractVector{T}, b::AbstractVector{T}) where T
     if !is_subset(a, b)
         return false
     end
@@ -1898,7 +1898,7 @@ function generate_face_boundary(
                 dfaces = vertex_to_dfaces[vertex]
                 for dface1 in dfaces
                     vertices1 = dface_to_vertices[dface1]
-                    if same_valid_ids(collect(vertices),collect(vertices1))
+                    if same_valid_ids(vertices,vertices1)
                         dface2 = dface1
                         break
                     end
@@ -1933,7 +1933,7 @@ function generate_face_boundary(
                     ldface2 = Int32(INVALID_ID)
                     for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
                         vertices1 = view(lvertex1_to_vertex1,lvertices1)
-                        if same_valid_ids(collect(vertices),collect(vertices1))
+                        if same_valid_ids(vertices,vertices1)
                             ldface2 = ldface1
                             break
                         end
