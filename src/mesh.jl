@@ -1384,7 +1384,7 @@ function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
                     dfaces = vertex_to_dfaces[vertex]
                     for dface1 in dfaces
                         vertices1 = dface_to_vertices[dface1]
-                        if same_valid_ids(vertices,vertices1)
+                        if same_valid_ids(collect(vertices),collect(vertices1))
                             dface2 = dface1
                             break
                         end
@@ -1518,31 +1518,36 @@ function intersection!(a,b,na,nb)
   end
 end
 
-function same_valid_ids(a,b)
-  function is_subset(a,b)
-    for i in 1:length(a)
-      v = a[i]
-      if v == INVALID_ID
-        continue
-      end
-      c = find_eq(v,b)
-      if c == false; return false; end
-    end
-    return true
-  end
-  function find_eq(v,b)
+function find_eq(v::T, b::Vector{T}) where T
     for vs in b
-      if v == vs
-        return true
-      end
+        if v == vs
+            return true
+        end
     end
     return false
-  end
-  c = is_subset(a,b)
-  if c == false; return false; end
-  c = is_subset(b,a)
-  if c == false; return false; end
-  return true
+end
+
+function is_subset(a::Vector{T}, b::Vector{T}) where T
+    for i in 1:length(a)
+        v = a[i]
+        if v == convert(T, INVALID_ID)
+            continue
+        end
+        if !find_eq(v, b)
+            return false
+        end
+    end
+    return true
+end
+
+function same_valid_ids(a::Vector{T}, b::Vector{T}) where T
+    if !is_subset(a, b)
+        return false
+    end
+    if !is_subset(b, a)
+        return false
+    end
+    return true
 end
 
 ## TODO AbstractFaceTopology <: AbstractMeshTopology
@@ -1892,7 +1897,7 @@ function generate_face_boundary(
                 dfaces = vertex_to_dfaces[vertex]
                 for dface1 in dfaces
                     vertices1 = dface_to_vertices[dface1]
-                    if same_valid_ids(vertices,vertices1)
+                    if same_valid_ids(collect(vertices),collect(vertices1))
                         dface2 = dface1
                         break
                     end
@@ -1927,7 +1932,7 @@ function generate_face_boundary(
                     ldface2 = Int32(INVALID_ID)
                     for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
                         vertices1 = view(lvertex1_to_vertex1,lvertices1)
-                        if same_valid_ids(vertices,vertices1)
+                        if same_valid_ids(collect(vertices),collect(vertices1))
                             ldface2 = ldface1
                             break
                         end
