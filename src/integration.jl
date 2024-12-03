@@ -185,9 +185,7 @@ end
 function coordinates(measure::Measure{<:PMesh})
     q = map(GT.coordinates,partition(measure))
     term = map(GT.term,q)
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    domain = measure.domain
-    GT.quantity(term,prototype,domain)
+    GT.quantity(term) 
 end
 
 function coordinates(measure::Measure,domain::ReferenceDomain)
@@ -198,24 +196,14 @@ function coordinates(measure::Measure,domain::ReferenceDomain)
     refid_to_quad = reference_quadratures(measure)
     refid_to_coords = map(GT.coordinates,refid_to_quad)
     prototype = first(GT.coordinates(first(refid_to_quad)))
-    GT.quantity(prototype,domain) do index
-        domface = index.face
-        point = index.point
-        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
-        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_coords_sym = get!(index.dict,refid_to_coords,gensym("refid_to_coords"))
-        @term begin
-            face = $domface_to_face_sym[$domface]
-            coords = reference_value($refid_to_coords_sym,$face_to_refid_sym,face)
-            coords[$point]
-        end
-    end
+
+    point_quantity(refid_to_coords,domain;reference=true)
 end
 
 function coordinates(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
+    ϕ = GT.physical_map(mesh(Ω),face_dim(Ω))
     x = GT.coordinates(measure,Ωref)
     ϕ(x)
 end
@@ -241,17 +229,18 @@ function weights(measure::Measure,domain::ReferenceDomain)
     refid_to_quad = reference_quadratures(measure)
     refid_to_ws = map(GT.weights,refid_to_quad)
     prototype = first(GT.weights(first(refid_to_quad)))
-    GT.quantity(prototype,domain) do index
-        domface = index.face
-        point = index.point
-        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
-        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_ws_sym = get!(index.dict,refid_to_ws,gensym("refid_to_ws"))
-        @term begin
+    GT.quantity() do index
+        domface = face_index(index,d)
+        point = point_index(index)
+        domface_to_face_sym = get_symbol!(index,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get_symbol!(index,face_to_refid,gensym("face_to_refid"))
+        refid_to_ws_sym = get_symbol!(index,refid_to_ws,gensym("refid_to_ws"))
+        expr = @term begin
             face = $domface_to_face_sym[$domface]
-            ws = reference_value($refid_to_ws_sym,$face_to_refid_sym,face)
+            ws = $refid_to_ws_sym[$face_to_refid_sym[face]]
             ws[$point]
         end
+        expr_term(d,expr,prototype,index)
     end
 end
 
@@ -262,7 +251,7 @@ end
 function weights(measure::Measure,domain::PhysicalDomain)
     Ω = domain
     Ωref = GT.reference_domain(Ω)
-    ϕ = GT.domain_map(Ωref,Ω)
+    ϕ = GT.physical_map(mesh(Ω),face_dim(Ω))
     w = GT.weights(measure,Ωref)
     x = GT.coordinates(measure,Ωref)
     J = ForwardDiff.jacobian(ϕ,x)
@@ -280,15 +269,16 @@ function num_points(measure::Measure)
     refid_to_quad = reference_quadratures(measure)
     refid_to_ws = map(GT.weights,refid_to_quad)
     index -> begin
-        domface = index.face
-        domface_to_face_sym = get!(index.dict,domface_to_face,gensym("domface_to_face"))
-        face_to_refid_sym = get!(index.dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_ws_sym = get!(index.dict,refid_to_ws,gensym("refid_to_ws"))
-        @term begin
+        domface = face_index(index, d)
+        domface_to_face_sym = get_symbol!(index,domface_to_face,gensym("domface_to_face"))
+        face_to_refid_sym = get_symbol!(index,face_to_refid,gensym("face_to_refid"))
+        refid_to_ws_sym = get_symbol!(index,refid_to_ws,gensym("refid_to_ws"))
+        expr = @term begin
             face = $domface_to_face_sym[$domface]
-            ws = reference_value($refid_to_ws_sym,$face_to_refid_sym,face)
+            ws = $refid_to_ws_sym[$face_to_refid_sym[face]]
             length(ws)
         end
+        expr_term(d,expr,0,index)
     end
 end
 
@@ -319,9 +309,7 @@ function integrate(f,measure::Measure{<:PMesh})
     fx = f(x)
     q = map(GT.integrate_impl,partition(fx),partition(measure))
     term = map(GT.term,q)
-    prototype = map(GT.prototype,q) |> PartitionedArrays.getany
-    domain = measure |> GT.domain
-    contrib = GT.quantity(term,prototype,domain)
+    contrib = GT.quantity(term)
     integral((measure=>contrib,))
 end
 
@@ -366,20 +354,22 @@ end
 function sum_contribution_impl(qty,measure,facemask)
     # TODO some code duplication with face_contribution_impl
     # Yes, but this allocates less memory
-    term_qty = GT.term(qty)
-    term_npoints = GT.num_points(measure)
-    face = :face
-    point = :point
-    index = GT.index(;face,point)
-    expr_qty = term_qty(index) |> simplify
-    expr_npoints = term(npoints,index) |> expression |> simplify
+    term_npoints = GT.num_points(measure) # TODO: term?
+    dom = domain(measure)
+    d = GT.num_dims(dom)
+    index = GT.generate_index(dom)
+    t = term(qty, index)
+    face = face_index(index,d)
+    point = point_index(index)
+    expr_qty = t |> expression |> simplify
+    expr_npoints = term_npoints(index) |> expression |> simplify
     # TODO merge statements
     s_qty = GT.topological_sort(expr_qty,(face,point))
     s_npoints = GT.topological_sort(expr_npoints,(face,))
     expr = quote
         function loop(z,facemask,storage)
             s = zero(z)
-            $(unpack_storage(index.dict,:storage))
+            $(unpack_index_storage(index,:storage))
             $(s_qty[1])
             $(s_npoints[1])
             nfaces = length(facemask)
@@ -397,8 +387,8 @@ function sum_contribution_impl(qty,measure,facemask)
         end
     end
     loop = eval(expr)
-    storage = GT.storage(index)
-    z = zero(GT.prototype(qty))
+    storage = GT.index_storage(index)
+    z = zero(GT.prototype(t))
     s = invokelatest(loop,z,facemask,storage)
     s
 end
@@ -421,19 +411,22 @@ function face_contribution(measure,qty)
 end
 
 function face_contribution_impl(qty,measure,facemask)
-    term_qty = GT.term(qty)
     term_npoints = GT.num_points(measure)
-    face = :face
-    point = :point
-    index = GT.index(;face,point)
-    expr_qty = term_qty(index) |> simplify
-    expr_npoints = term_npoints(index) |> simplify
+    dom = domain(measure)
+    d = GT.num_dims(dom)
+    index = GT.generate_index(dom)
+    t = term(qty, index)
+    face = face_index(index,d)
+    point = point_index(index)
+
+    expr_qty = t |> expression |> simplify
+    expr_npoints = term_npoints(index) |> expression |> simplify
     # TODO merge statements
     s_qty = GT.topological_sort(expr_qty,(face,point))
     s_npoints = GT.topological_sort(expr_npoints,(face,))
     expr = quote
         function loop!(facevals,facemask,storage)
-            $(unpack_storage(index.dict,:storage))
+            $(unpack_index_storage(index,:storage))
             $(s_qty[1])
             $(s_npoints[1])
             nfaces = length(facemask)
@@ -454,8 +447,8 @@ function face_contribution_impl(qty,measure,facemask)
         end
     end
     loop! = eval(expr)
-    storage = GT.storage(index)
-    z = zero(GT.prototype(qty))
+    storage = GT.index_storage(index)
+    z = zero(GT.prototype(t))
     nfaces = length(facemask)
     facevals = fill(z,nfaces)
     invokelatest(loop!,facevals,facemask,storage)
@@ -465,7 +458,7 @@ end
 function face_diameter(Ω)
     dΩ = GT.measure(Ω,1)
     d = GT.num_dims(Ω)
-    u = GT.analytical_field(x->1,Ω)
+    u = GT.analytical_field(x->1)
     int = ∫(u,dΩ)
     r = face_contribution(int,Ω)
     r .= r .^ (1/d)

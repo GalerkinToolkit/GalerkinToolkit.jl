@@ -948,7 +948,14 @@ function physical_map(mesh::AbstractMesh,d)
     end
 end
 
-function inverse_physical_map(mesh::AbstractMesh,d)
+function physical_map(mesh::AbstractDomain{<:PMesh},d)
+    quantity() do index
+        dval = Val(val_parameter(d))
+        map(x -> GT.physical_map_term(dval, index),partition(mesh))
+    end
+end
+
+function inverse_physical_map(mesh::PMesh,d)
     x0 = zero(SVector{val_parameter(d),Float64})
     x = constant_quantity(x0)
     phi = physical_map(mesh,d)
