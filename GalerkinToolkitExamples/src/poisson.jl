@@ -297,7 +297,7 @@ function main_hand_written(params)
     T = Float64
     Tgrad = SVector{D,T}
     Tx = Tgrad
-    TJ = SMatrix{D,D,T}
+    TJ = typeof(zero(Tx)*transpose(zero(Tx)))
 
     @timeit timer "cache_quantities" begin
         rid_to_cache = map(rid_to_reffe,rid_to_refface,rid_to_refquad) do reffe,refface,refquad
