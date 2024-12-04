@@ -167,7 +167,7 @@ end
 
 free_dims(a::ConstantTerm) = Int[]
 
-prototype(t::ConstantTerm) = a.value
+prototype(t::ConstantTerm) = t.value
 
 reference_face_term(args...) = ReferenceFaceTerm(args...)
 

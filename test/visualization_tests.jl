@@ -30,7 +30,7 @@ for s in  (false,true)
     fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),strokecolor=:black)
     display(fig)
 
-    for mesh2 in (mesh,pmesh)
+    for mesh2 in (mesh,)#pmesh)
 
         plt = GT.plot(mesh2)
         vtk_grid("mesh",plt) |> close
@@ -40,7 +40,7 @@ for s in  (false,true)
         vtk_grid("shrink",plt) |> close
 
         Ω = GT.interior(mesh2)
-        u = GT.analytical_field(sum,Ω)
+        u = GT.analytical_field(sum)
 
         plt = GT.plot(Ω)
         GT.plot!(plt,u;label="u")
@@ -72,8 +72,8 @@ for s in  (false,true)
 
 
     Ω = GT.interior(mesh)
-    u = GT.analytical_field(sum,Ω)
-    v = GT.analytical_field(identity,Ω)
+    u = GT.analytical_field(sum)
+    v = GT.analytical_field(identity)
     plt = GT.plot(Ω)
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,v;label="v")
