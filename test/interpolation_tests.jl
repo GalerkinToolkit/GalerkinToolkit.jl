@@ -105,6 +105,8 @@ D = GT.num_dims(mesh)
 
 V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 v = GT.zero_field(Float64,V)
 v2 = GT.zero_field(Float64,V)
 
@@ -134,10 +136,12 @@ GT.interpolate_dirichlet!(uref,y,1)
 
 order = 3
 V = GT.lagrange_space(Ωref,order)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 w = GT.zero_field(Float64,V)
 w2 = GT.zero_field(Float64,V)
@@ -176,7 +180,8 @@ GT.interpolate_dirichlet!(uref,uh)
 #@test el2 < tol
 
 V = GT.lagrange_space(Γdiri,order)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 Γ1 = GT.boundary(mesh;physical_names=["1-face-1"])
 Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
@@ -193,7 +198,7 @@ udiri = GT.piecewiese_field(u1,u2,u3)
 order = 1
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
-GT.face_dofs(V)
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 V |> GT.dirichlet_dof_location
 
@@ -202,9 +207,12 @@ GT.interpolate_dirichlet!(udiri,uh2)
 
 order = 1
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,conformity=:L2)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,conformity=:L2)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=40)) do plt
@@ -221,16 +229,21 @@ end
 Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
 
 V = GT.lagrange_space(Γ,order;conformity=:L2)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 V = GT.lagrange_space(Γ,order-1;conformity=:L2)
 GT.reference_fes(V) # TODO why 2 reference fes?
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
 
 
 order = 3
 m = GT.analytical_field(x->SVector(false,true),Γ)
 V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 uh = GT.rand_field(Float64,V)
 
 vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
@@ -247,7 +260,9 @@ m1 = GT.analytical_field(x->SVector(false,true),Γ1)
 m2 = GT.analytical_field(x->SVector(true,false),Γ2)
 m = GT.piecewiese_field(m1,m2)
 V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 uh = GT.rand_field(Float64,V)
 vtk_grid(joinpath(outdir,"Vvec2"),Ω;plot_params=(;refinement=10)) do plt
     GT.plot!(plt,uh;label="uh")
@@ -257,7 +272,9 @@ end
 
 order = 0
 V = GT.lagrange_space(Ω,order,space=:P,dirichlet_boundary=GT.last_dof())
-GT.face_dofs(V)
+
+@test V.cache.face_dofs == GT.face_dofs(V)
+
 uh = GT.rand_field(Float64,V)
 
 vtk_grid(joinpath(outdir,"Vpdisc"),Ω;plot_params=(;refinement=10)) do plt
