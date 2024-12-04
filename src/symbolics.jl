@@ -147,17 +147,22 @@ for op in (:+,:-,:*,:/,:\,:^)
   end
 end
 
-constant_term(args...) = ConstantTerm(args...)
+constant_term(args...;compile_constant=false) = ConstantTerm(args...,compile_constant)
 
-struct ConstantTerm{A,B} <: AbstractTerm
+struct ConstantTerm{A,B,C} <: AbstractTerm
     value::A
     index::B
+    compile_constant::C
 end
 
 AbstractTrees.children(a::ConstantTerm) = (a.value,)
 
 function expression(a::ConstantTerm)
-    get_symbol!(index(a),a.value,"constant_quantity_value")
+    if a.compile_constant
+        :($(a.value))
+    else
+        get_symbol!(index(a),a.value,"constant_quantity_value")
+    end
 end
 
 free_dims(a::ConstantTerm) = Int[]

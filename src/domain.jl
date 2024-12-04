@@ -461,7 +461,7 @@ function face_around_term(index,d,D)
         return nothing
     end
     if d == num_dims(index) && (d+1 == D)
-        constant_term(index.data.domain.face_around,index)
+        constant_term(index.data.domain.face_around,index;compile_constant=true)
     else
         nothing
     end
@@ -487,9 +487,9 @@ function dof_index(index,a)
     index.data.dof[a]
 end
 
-function constant_quantity(v)
+function constant_quantity(v;kwargs...)
     quantity() do index
-        constant_term(v,index)
+        constant_term(v,index;kwargs...)
         #expr = get_symbol!(index,v,"constant_quantity_value")
         #dim = ANY_DIM
         #(;expr,dim,prototype=v)
@@ -2190,7 +2190,7 @@ function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
 end
 
 function Base.getindex(a::AbstractQuantity,b::Number)
-    Base.getindex(a,constant_quantity(b))
+    Base.getindex(a,constant_quantity(b;compile_constant=true))
 end
 
 for op in (:+,:-,:*,:/,:\,:^)
