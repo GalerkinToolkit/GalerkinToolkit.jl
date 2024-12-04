@@ -205,12 +205,35 @@ reference_face_term(args...) = ReferenceFaceTerm(args...)
 #    zero(eltype(a.sface_to_value))
 #end
 
-#unary_call_term(args...) = UnaryCallTerm(args...)
-#
-#struct UnaryCallTerm{A,B} <: AbstractTerm
-#    callee::A
-#    arg::B
-#end
+unary_call_term(args...) = UnaryCallTerm(args...)
+
+struct UnaryCallTerm{A,B} <: AbstractTerm
+   callee::A
+   arg::B
+end
+
+AbstractTrees.children(a::UnaryCallTerm) = (a.callee,a.arg)
+
+index(a::UnaryCallTerm) = index(a.arg)
+function prototype(a::UnaryCallTerm)
+    return_prototype(a.callee,prototype(a.arg))
+end
+
+free_dims(a::UnaryCallTerm) = free_dims(a.arg)
+
+
+function expression(c::UnaryCallTerm)
+    f = c.callee
+    a = c.arg
+    arg = expression(a)
+    # ndofs = expression(a.ndofs)
+    # dof = a.dof
+    expr = @term begin
+        $f($arg)
+        # fun = $dof -> $c*$s
+        # sum(fun,1:$ndofs)
+    end
+end
 
 binary_call_term(args...) = BinaryCallTerm(args...)
 
@@ -779,6 +802,10 @@ struct PhysicalMapTerm{A,B} <: AbstractTerm
 end
 
 free_dims(a::PhysicalMapTerm) = [a.dim]
+
+
+prototype(a::PhysicalMapTerm) = x-> zero(SVector{val_parameter(a.dim),Float64})
+
 
 function Base.:(==)(a::PhysicalMapTerm,b::PhysicalMapTerm)
     a.dim == b.dim
