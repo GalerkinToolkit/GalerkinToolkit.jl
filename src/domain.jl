@@ -1049,7 +1049,8 @@ function form_argument(axis,field,data,dom::AbstractDomain;
         else
             error("Not implemented, but possible to implement it.")
         end
-        form_argument_term(axis,field,s)
+        evaluated = false
+        form_argument_term(axis,field,s,evaluated)
     end
 end
 

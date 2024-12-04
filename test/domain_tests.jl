@@ -101,25 +101,23 @@ display(expr)
 r = eval(expr)
 @test r == 2002
 
-q = (q1 + q4)[2]
-form_arity = 1
-index = GT.generate_index(Λ,form_arity)
-faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
-t = GT.term(q,index)
-print_tree(t)
-@test GT.free_dims(t) == [D-1]
-expr = GT.expression(t)
-storage = GT.index_storage(index)
-expr = quote
-    $(GT.unpack_index_storage(index,:storage))
-    $(GT.face_index(index,D-1)) = $faces[2]
-    $(GT.face_around_index(index,1)) = 2
-    $(GT.topological_sort(GT.simplify(expr),())[1])
-    #$(GT.topological_sort(t.expr,())[1])
-end
-display(expr)
-r = eval(expr)
-@test r == 2002
+#q = (q1 + q4)[2]
+#index = GT.generate_index(Λ)
+#faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
+#t = GT.term(q,index)
+#print_tree(t)
+#@test GT.free_dims(t) == [D-1]
+#expr = GT.expression(t)
+#storage = GT.index_storage(index)
+#expr = quote
+#    $(GT.unpack_index_storage(index,:storage))
+#    $(GT.face_index(index,D-1)) = $faces[2]
+#    $(GT.topological_sort(GT.simplify(expr),())[1])
+#    #$(GT.topological_sort(t.expr,())[1])
+#end
+#display(expr)
+#r = eval(expr)
+#@test r == 2002
 
 #q = (q1 + q4)[2]
 #form_arity = 1
@@ -363,6 +361,63 @@ end
 display(expr)
 r = eval(expr)
 @test r == [0.0, 1.0]
+
+rid_to_dof_to_s = [[x -> dof*sum(x) for dof in 1:5]]
+form_arity = 1
+axis = 1
+field = 1
+s2 = GT.form_argument(axis,field,rid_to_dof_to_s,Ω;reference=true)
+x2 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
+q = s2(x2)
+index = GT.generate_index(Ω,form_arity)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.dof_index(index,axis)) = 5
+    $(GT.field_index(index,axis)) = 1
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 10
+
+rid_to_dof_to_s = [[x -> dof*sum(x) for dof in 1:5]]
+form_arity = 1
+axis = 1
+field = 1
+s2 = GT.form_argument(axis,field,rid_to_dof_to_s,Ω;reference=true)
+x2 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)
+q = s2(x2)
+index = GT.generate_index(Ω,form_arity)
+faces = GT.get_symbol!(index,GT.faces(Ω),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D)) = $faces[3]
+    $(GT.dof_index(index,axis)) = 5
+    $(GT.field_index(index,axis)) = 2
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 0
+
+xxx
+
+
+
 
 
 #u1 = GT.analytical_field(sum)

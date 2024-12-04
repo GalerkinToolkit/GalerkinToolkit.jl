@@ -546,8 +546,53 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::ReferencePointTerm)
             f.(dof_to_f,permutedims(point_to_x))
         end
     end
-    ridb_rida_tab = get_symbol!(index(a),tab,"tabulator")
-    a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
+    tabulator_term(f,tab,a,b)
+    #ridb_rida_tab = get_symbol!(index(a),tab,"tabulator")
+    ##a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
+    #a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
+    #b_rid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
+    #b_face_to_rid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
+    #face_a = face_index(index(a),a.dim)
+    #face_b = face_index(index(b),b.dim)
+    #dof = a.dof
+    #point = point_index(index(b))
+    #expr = @term begin
+    #    rid_a = $a_face_to_rid[$face_a]
+    #    rid_b = $b_face_to_rid[$face_b]
+    #    $ridb_rida_tab[rid_b][rid_a][$dof,$point]
+    #end
+    #dims = union(free_dims(a),free_dims(b))
+    #p = prototype(a)(prototype(b))
+    #expr_term(dims,expr,p,index)
+end
+
+tabulator_term(args...) = TabulatorTerm(args...)
+
+struct TabulatorTerm{A,B,C,D} <: AbstractTerm
+    callee::A
+    ridb_rida_tabulator::B
+    arg1::C
+    arg2::D
+end
+
+AbstractTrees.children(a::TabulatorTerm) =
+(
+ a.callee,
+ a.arg1,
+ a.arg2,
+)
+
+free_dims(t::TabulatorTerm) = union(free_dims(t.arg1),free_dims(t.arg2))
+
+index(t::TabulatorTerm) = index(t.arg1)
+
+prototype(a::TabulatorTerm) = a.ridb_rida_tabulator |> eltype |> eltype |> zero
+
+function expression(t::TabulatorTerm)
+    a = t.arg1
+    b = t.arg2
+    ridb_rida_tab = get_symbol!(index(a),t.ridb_rida_tabulator,"tabulator")
+    #a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
     a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
     b_rid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
     b_face_to_rid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
@@ -560,15 +605,15 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::ReferencePointTerm)
         rid_b = $b_face_to_rid[$face_b]
         $ridb_rida_tab[rid_b][rid_a][$dof,$point]
     end
-    dims = union(free_dims(a),free_dims(b))
-    p = prototype(a)(prototype(b))
-    expr_term(dims,expr,p,index)
 end
 
-struct FormArgumentTerm{A,B,C} <: AbstractTerm
+form_argument_term(args...) = FormArgumentTerm(args...)
+
+struct FormArgumentTerm{A,B,C,D} <: AbstractTerm
     axis::A
     field::B
     functions::C
+    evaluated::D
 end
 
 AbstractTrees.children(a::FormArgumentTerm) =
@@ -578,7 +623,51 @@ AbstractTrees.children(a::FormArgumentTerm) =
  a.functions
 )
 
+index(a::FormArgumentTerm) = index(a.functions)
+
 free_dims(a::FormArgumentTerm) = free_dims(a.functions)
+
+prototype(a::FormArgumentTerm) = prototype(a.functions)
+
+function expression(c::FormArgumentTerm)
+    @assert c.evaluated
+    @assert isa(c.functions,TabulatorTerm)
+    field = field_index(index(c),c.axis)
+    dof = dof_index(index(c),c.axis)
+    t = c.functions
+    a = t.arg1
+    b = t.arg2
+    ridb_rida_tab = get_symbol!(index(a),t.ridb_rida_tabulator,"tabulator")
+    #a_rid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"rid_to_dof_to_value_$(a.dim)d")
+    a_face_to_rid = get_symbol!(a.index,a.face_to_rid,"face_to_rid_$(a.dim)d")
+    b_rid_to_point_to_value = get_symbol!(b.index,b.rid_to_point_to_value,"rid_to_point_to_value_$(b.dim)d")
+    b_face_to_rid = get_symbol!(b.index,b.face_to_rid,"face_to_rid_$(b.dim)d")
+    face_a = face_index(index(a),a.dim)
+    face_b = face_index(index(b),b.dim)
+    dof = a.dof
+    point = point_index(index(b))
+    # TODO if field is a integer instead of a symbol we can return a much more optimized expression
+    expr = @term begin
+        rid_a = $a_face_to_rid[$face_a]
+        rid_b = $b_face_to_rid[$face_b]
+        tab = $ridb_rida_tab[rid_b][rid_a]
+        field_bool = $(c.field) == $field
+        GalerkinToolkit.getindex_if(field_bool,tab,$dof,$point)
+    end
+end
+
+function getindex_if(b,a,i...;otherwise=zero(eltype(a)))
+    if b
+        a[i...]
+    else
+        otherwise
+    end
+end
+
+function binary_call_term(f,a::FormArgumentTerm,b::ReferencePointTerm)
+    t = binary_call_term(f,a.functions,b)
+    form_argument_term(a.axis,a.field,t,true)
+end
 
 discrete_function_term(args...) = DiscreteFunctionTerm(args...)
 
