@@ -290,18 +290,19 @@ function expression(a::BoundaryTerm)
     face = face_index(index(a),dim)
     actual = :($face_to_cells[$face][$cell_around])
     dummy = face_index(index(a),dim2)
-    substitute(expr,dummy=>actual)
+    expr = substitute(expr,dummy=>actual)
+    dummy = face_around_dummy_index(index(a),dim,dim2)
+    substitute(expr,dummy=>cell_around)
 end
 
 free_dims(a::BoundaryTerm) = setdiff(free_dims(a.term),[a.dim_around])
 
 skeleton_term(args...) = SkeletonTerm(args...)
 
-struct SkeletonTerm{A,B,C,D} <: AbstractTerm
+struct SkeletonTerm{A,B,C} <: AbstractTerm
     dim::A
     dim_around::B
     term::C
-    face_around::D # Dummy
 end
 
 AbstractTrees.children(a::SkeletonTerm) = ("dim = $(a.dim)","dim_around = $(a.dim_around)",a.term)
@@ -317,7 +318,7 @@ function expression(a::SkeletonTerm)
     dim2 = a.dim_around
     face_to_cells = get_symbol!(index(a),face_incidence(topo,dim,dim2),"face_to_cells")
     cell_dummy = face_index(index(a),dim2)
-    cell_around = a.face_around
+    cell_around = face_around_dummy_index(index(a),dim,dim2)
     face = face_index(index(a),dim)
     cells = :($face_to_cells[$face])
     cell_actuall = :($face_to_cells[$face][$cell_around])
@@ -349,24 +350,26 @@ function expression(a::SkeletonTerm)
 end
 
 function binary_call_term(::typeof(getindex),a::SkeletonTerm,b::ConstantTerm)
-    if form_arity(index(a)) == 0
-        t = a.term
-    elseif form_arity(index(a)) == 1
-        face_around = face_around_index(index(a))[1]
-        c = expr_term(Int[],face_around,0,index(a))
-        mask = call(==,c,b)
-        t = mask*a.term
-    elseif form_arity(index(a)) == 2
-        face_around_1, face_around_2 = face_around_index(index(a))
-        c1 = expr_term(Int[],face_around_1,0,index(a))
-        c2 = expr_term(Int[],face_around_2,0,index(a))
-        mask1 = call(==,c1,b)
-        mask2 = call(==,c2,b)
-        t = (mask1*mask2)*a.term
-    else
-        error("case not implemented, but possible to implement it")
-    end
+    t = a.term
     boundary_term(a.dim,a.dim_around,t,b)
+    #if form_arity(index(a)) == 0
+    #    t = a.term
+    #elseif form_arity(index(a)) == 1
+    #    face_around = face_around_index(index(a))[1]
+    #    c = expr_term(Int[],face_around,0,index(a))
+    #    mask = call(==,c,b)
+    #    t = mask*a.term
+    #elseif form_arity(index(a)) == 2
+    #    face_around_1, face_around_2 = face_around_index(index(a))
+    #    c1 = expr_term(Int[],face_around_1,0,index(a))
+    #    c2 = expr_term(Int[],face_around_2,0,index(a))
+    #    mask1 = call(==,c1,b)
+    #    mask2 = call(==,c2,b)
+    #    t = (mask1*mask2)*a.term
+    #else
+    #    error("case not implemented, but possible to implement it")
+    #end
+    #boundary_term(a.dim,a.dim_around,t,b)
 end
 
 expr_term(args...) = ExprTerm(args...)
@@ -647,12 +650,29 @@ function expression(c::FormArgumentTerm)
     dof = a.dof
     point = point_index(index(b))
     # TODO if field is a integer instead of a symbol we can return a much more optimized expression
-    expr = @term begin
-        rid_a = $a_face_to_rid[$face_a]
-        rid_b = $b_face_to_rid[$face_b]
-        tab = $ridb_rida_tab[rid_b][rid_a]
-        field_bool = $(c.field) == $field
-        GalerkinToolkit.getindex_if(field_bool,tab,$dof,$point)
+    # Idem for face_around
+    D = a.dim
+    d = target_dim(index(a))
+    if d == D || is_boundary(domain(index(a)))
+        expr = @term begin
+            rid_a = $a_face_to_rid[$face_a]
+            rid_b = $b_face_to_rid[$face_b]
+            tab = $ridb_rida_tab[rid_b][rid_a]
+            field_bool = $(c.field) == $field
+            GalerkinToolkit.getindex_if(field_bool,tab,$dof,$point)
+        end
+    else
+        face_around = face_around_index(index(a),c.axis)
+        face_around_dummy = face_around_dummy_index(index(a),d,D)
+        expr = @term begin
+            rid_a = $a_face_to_rid[$face_a]
+            rid_b = $b_face_to_rid[$face_b]
+            tab = $ridb_rida_tab[rid_b][rid_a]
+            field_bool = $(c.field) == $field
+            geom_bool = $face_around == $face_around_dummy
+            bool = field_bool & geom_bool
+            GalerkinToolkit.getindex_if(bool,tab,$dof,$point)
+        end
     end
 end
 
@@ -1003,12 +1023,12 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
     Dface = face_index(index(b),D)
     dof = a.dof
     point = point_index(index(b))
+    Dface_around = face_around_dummy_index(index(a),d,D)
     expr = @term begin
         drid = $dface_to_drid[$dface]
         Drid = $Dface_to_Drid[$Dface]
         Dfaces = $dface_to_Dfaces[$dface]
-        Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
-        ldface = $dface_to_ldfaces[$dface][Dface_around]
+        ldface = $dface_to_ldfaces[$dface][$Dface_around]
         perm = $Dface_to_ldface_to_perm[$Dface][ldface]
         $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]
     end
@@ -1017,9 +1037,9 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
     expr_term(dims,expr,p,index(a))
 end
 
-function find_face_adound(face,faces)
-    findfirst(i->i==face,faces)
-end
+#function find_face_adound(face,faces)
+#    findfirst(i->i==face,faces)
+#end
 
 unit_normal_term(args...) = UnitNormalTerm(args...)
 

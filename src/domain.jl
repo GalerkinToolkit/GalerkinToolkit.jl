@@ -387,10 +387,11 @@ function index(;
     field=nothing,
     dof=nothing,
     face_around=nothing,
+    face_around_dummy=nothing,
     prefix = gensym,
     dict=IdDict{Any,Symbol}(),
     )
-    data = (;domain,face,point,field,dof,face_around,dict,prefix)
+    data = (;domain,face,point,field,dof,face_around,face_around_dummy,dict,prefix)
     Index(data)
 end
 
@@ -409,8 +410,11 @@ function generate_index(dom::AbstractDomain,form_arity=0;
     point = prefix("point")
     dof = [prefix("dof-in-axis-$i") for i in 1:form_arity]
     face[d+1] = prefix("$d-face")
-    index(;domain=dom,face,point,field,dof,face_around,prefix)
+    face_around_dummy = [ prefix("$(d_around)face-around-$(d)face-dummy") for d in 0:D, d_around in 0:D ] 
+    index(;domain=dom,face,point,field,dof,face_around,face_around_dummy,prefix)
 end
+
+domain(index::Index) = index.data.domain
 
 function num_dims(index::Index)
     num_dims(index.data.domain)
@@ -419,6 +423,8 @@ end
 function mesh(index::Index)
     index.data.domain.mesh
 end
+
+target_dim(index::Index) = num_dims(index.data.domain)
 
 function form_arity(index::Index)
     length(face_around_index(index))
@@ -467,6 +473,10 @@ end
 
 function face_around_index(index)
     index.data.face_around
+end
+
+function face_around_dummy_index(index,d,D)
+    index.data.face_around_dummy[d,D]
 end
 
 function field_index(index,a)
@@ -745,8 +755,7 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
         if cell_around !== nothing
             boundary_term(dim,dim2,t,cell_around)
         else
-            cell_around = gensym("cell_around")
-            skeleton_term(dim,dim2,t,cell_around)
+            skeleton_term(dim,dim2,t)
         end
         #g_sym = get_symbol!(index,g,"callee")
         #ta = term(a,index)
@@ -1061,8 +1070,7 @@ function reference_map(mesh::AbstractMesh,d,D)
         if cell_around !== nothing
             boundary_term(d,D,t,cell_around)
         else
-            cell_around = gensym("cell_around")
-            skeleton_term(d,D,t,cell_around)
+            skeleton_term(d,D,t)
         end
     end
 end
@@ -1911,11 +1919,11 @@ function unit_normal(mesh::AbstractMesh,d)
         dface_to_Dfaces = get_symbol!(index,dface_to_Dfaces_data,"dface_to_Dfaces")
         dface_to_ldfaces = get_symbol!(index,dface_to_ldfaces_data,"dface_to_ldfaces")
         Drid_to_lface_to_n = get_symbol!(index,Drid_to_lface_to_n_data,"Drid_to_lface_to_n")
+        Dface_around = face_around_dummy_index(index,d,D)
         expr = @term begin
             Drid = $Dface_to_Drid[$Dface]
             Dfaces = $dface_to_Dfaces[$dface]
-            Dface_around = GalerkinToolkit.find_face_adound($Dface,Dfaces)
-            ldface = $dface_to_ldfaces[$dface][Dface_around]
+            ldface = $dface_to_ldfaces[$dface][$Dface_around]
             $Drid_to_lface_to_n[Drid][ldface]
         end
         p = Drid_to_lface_to_n_data |> eltype |> eltype |> zero
