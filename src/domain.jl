@@ -963,7 +963,7 @@ function physical_map(mesh::AbstractDomain{<:PMesh},d)
     end
 end
 
-function inverse_physical_map(mesh::PMesh,d)
+function inverse_physical_map(mesh::AbstractMesh,d)
     x0 = zero(SVector{val_parameter(d),Float64})
     x = constant_quantity(x0)
     phi = physical_map(mesh,d)
