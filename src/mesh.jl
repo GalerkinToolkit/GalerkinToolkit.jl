@@ -1519,7 +1519,7 @@ function intersection!(a,b,na,nb)
   end
 end
 
-function find_eq(v::T, b::AbstractVector{T}) where T
+function find_eq(v,b)
     for vs in b
         if v == vs
             return true
@@ -1528,24 +1528,24 @@ function find_eq(v::T, b::AbstractVector{T}) where T
     return false
 end
 
-function is_subset(a::AbstractVector{T}, b::AbstractVector{T}) where T
+function is_subset(a,b)
     for i in 1:length(a)
         v = a[i]
-        if v == convert(T, INVALID_ID)
+        if v == INVALID_ID
             continue
         end
-        if !find_eq(v, b)
+        if !find_eq(v,b)
             return false
         end
     end
     return true
 end
 
-function same_valid_ids(a::AbstractVector{T}, b::AbstractVector{T}) where T
-    if !is_subset(a, b)
+function same_valid_ids(a,b)
+    if !is_subset(a,b)
         return false
     end
-    if !is_subset(b, a)
+    if !is_subset(b,a)
         return false
     end
     return true
