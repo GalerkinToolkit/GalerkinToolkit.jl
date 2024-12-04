@@ -322,26 +322,30 @@ function expression(a::SkeletonTerm)
     cells = :($face_to_cells[$face])
     cell_actuall = :($face_to_cells[$face][$cell_around])
     expr = substitute(expr,cell_dummy=>cell_actuall)
-    axis_to_face_around = face_around_index(index(a))
-    if length(axis_to_face_around) == 0
-        return @term begin
-            fun = $cell_around -> $expr
-            map(fun,1:length($cells))
-        end
-    end
-    exprs = map(axis_to_face_around) do face_around
-        :(LinearAlgebra.I[$i,$face_around])
-    end
-    if length(exprs) > 1
-        deltas = Expr(:call,:tuple,exprs...)
-        mask = :(prod($deltas))
-    else
-        mask = exprs[1]
-    end
     @term begin
-        fun = $cell_around -> $expr*$mask
+        fun = $cell_around -> $expr
         map(fun,1:length($cells))
     end
+    #axis_to_face_around = face_around_index(index(a))
+    #if length(axis_to_face_around) == 0
+    #    return @term begin
+    #        fun = $cell_around -> $expr
+    #        map(fun,1:length($cells))
+    #    end
+    #end
+    #exprs = map(axis_to_face_around) do face_around
+    #    :(LinearAlgebra.I[$i,$face_around])
+    #end
+    #if length(exprs) > 1
+    #    deltas = Expr(:call,:tuple,exprs...)
+    #    mask = :(prod($deltas))
+    #else
+    #    mask = exprs[1]
+    #end
+    #@term begin
+    #    fun = $cell_around -> $expr*$mask
+    #    map(fun,1:length($cells))
+    #end
 end
 
 function binary_call_term(::typeof(getindex),a::SkeletonTerm,b::ConstantTerm)
@@ -457,11 +461,6 @@ function prototype(a::PhysicalPointTerm)
     zero(eltype(eltype(a.sface_to_point_to_value)))
 end
 
-
-
-
-
-
 #struct PhysicalMapTerm{A,B} <: AbstractTerm
 #    dim::A
 #    index::B
@@ -566,6 +565,21 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::ReferencePointTerm)
     expr_term(dims,expr,p,index)
 end
 
+struct FormArgumentTerm{A,B,C} <: AbstractTerm
+    axis::A
+    field::B
+    functions::C
+end
+
+AbstractTrees.children(a::FormArgumentTerm) =
+(
+ "axis = $(a.axis)",
+ "field = $(a.field)",
+ a.functions
+)
+
+free_dims(a::FormArgumentTerm) = free_dims(a.functions)
+
 discrete_function_term(args...) = DiscreteFunctionTerm(args...)
 
 struct DiscreteFunctionTerm{A,B,C,D} <: AbstractTerm
@@ -645,12 +659,12 @@ discrete_function_call_term(args...) = DiscreteFunctionCallTerm(args...)
 
 physical_map_term(args...) = PhysicalMapTerm(args...)
 
-struct PhysicalMapTerm{d,A} <: AbstractTerm
-    dim::Val{d}
-    index::A
+struct PhysicalMapTerm{A,B} <: AbstractTerm
+    dim::A
+    index::B
 end
 
-free_dims(a::PhysicalMapTerm) = [val_parameter(a.dim)]
+free_dims(a::PhysicalMapTerm) = [a.dim]
 
 function Base.:(==)(a::PhysicalMapTerm,b::PhysicalMapTerm)
     a.dim == b.dim
@@ -658,7 +672,7 @@ end
 
 function discrete_function_term(a::PhysicalMapTerm)
     dof = gensym("dummy-physical-dof")
-    d = val_parameter(a.dim)
+    d = a.dim
     face_to_rid = face_reference_id(mesh(index(a)),d)
     rid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
     functions = reference_shape_function_term(d,rid_to_dof_to_fun,face_to_rid,dof,index(a))
@@ -809,15 +823,22 @@ end
 
 reference_map_term(args...) = ReferenceMapTerm(args...)
 
-struct ReferenceMapTerm{d,D,A} <: AbstractTerm
-    dim::Val{d}
-    dim_around::Val{D}
-    index::A
+struct ReferenceMapTerm{A,B,C} <: AbstractTerm
+    dim::A
+    dim_around::B
+    index::C
 end
 
-free_dims(a::ReferenceMapTerm) = val_parameter.([a.dim,a.dim_around])
+AbstractTrees.children(a::ReferenceMapTerm) =
+(
+ "dim = $(a.dim)",
+ "dim_around = $(a.dim_around)",
+)
 
-prototype(a::ReferenceMapTerm) = x-> zero(SVector{val_parameter(a.dim_around),Float64})
+
+free_dims(a::ReferenceMapTerm) = ([a.dim,a.dim_around])
+
+prototype(a::ReferenceMapTerm) = x-> zero(SVector{a.dim_around,Float64})
 
 # Maybe we don't need the commented functions since the ReferenceMapTerm will be "always" tabulated
 #function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
@@ -860,8 +881,8 @@ prototype(a::ReferenceMapTerm) = x-> zero(SVector{val_parameter(a.dim_around),Fl
 function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
     phi = b.arg1
     x = b.arg2
-    d = val_parameter(phi.dim)
-    D = val_parameter(phi.dim_around)
+    d = phi.dim
+    D = phi.dim_around
     m = mesh(index(a))
     topo = topology(m)
     drid_to_refdface = reference_faces(m,d)
@@ -926,7 +947,7 @@ function expression(c::BinaryCallTerm{typeof(call),<:UnitNormalTerm,<:Any})
     D = num_dims(mesh(index(c)))
     a = c.arg1
     x = c.arg2
-    phiD = physical_map_term(Val{D}(),index(c))
+    phiD = physical_map_term(D,index(c))
     J = call(ForwardDiff.jacobian,phiD,x)
     n = call(map_unit_normal,J,a.outwards_normals)
     expression(n)

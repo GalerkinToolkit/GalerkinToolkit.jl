@@ -943,8 +943,7 @@ end
 
 function physical_map(mesh::AbstractMesh,d)
     quantity() do index
-        dval = Val(val_parameter(d))
-        physical_map_term(dval,index)
+        physical_map_term(d,index)
     end
 end
 
@@ -1024,7 +1023,7 @@ end
 function shape_function_quantity(data,dom::AbstractDomain;
     reference=Val(false),
     face_reference_id = face_reference_id(mesh(dom),num_dims(dom)),
-    dof = gensym("dummy-dof")
+    dof = gensym("dummy-dof"),
     )
     dim = num_dims(dom)
     #p = zero(eltype(eltype(data)))
@@ -1037,11 +1036,26 @@ function shape_function_quantity(data,dom::AbstractDomain;
     end
 end
 
+function form_argument(axis,field,data,dom::AbstractDomain;
+        reference=Val(false),
+        face_reference_id = face_reference_id(mesh(dom),num_dims(dom)),
+    )
+
+    dim = num_dims(dom)
+    quantity() do index
+        dof = dof_index(index,axis)
+        s = if val_parameter(reference)
+            reference_shape_function_term(dim,data,face_reference_id,dof,index)
+        else
+            error("Not implemented, but possible to implement it.")
+        end
+        form_argument_term(axis,field,s)
+    end
+end
+
 function reference_map(mesh::AbstractMesh,d,D)
     quantity() do index
-        dval = Val(val_parameter(d))
-        Dval = Val(val_parameter(D))
-        t = reference_map_term(dval,Dval,index)
+        t = reference_map_term(d,D,index)
         cell_around = face_around_term(index,d,D)
         if cell_around !== nothing
             boundary_term(d,D,t,cell_around)
