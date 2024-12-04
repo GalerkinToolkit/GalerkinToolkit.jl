@@ -608,12 +608,12 @@ function Makie.plot!(sc::Arrows{<:Tuple{<:GT.PPlot,<:Any}})
     error("Not implemented")
 end
 
-function Makie.plot!(sc::Arrows{<:Tuple{<:GT.AbstractQuantity}})
-    q = sc[1]
+function Makie.plot!(sc::Arrows{<:Tuple{<:GT.AbstractDomain,<:GT.AbstractQuantity}})
+    dom = sc[1]
+    q = sc[2]
     valid_attributes = Makie.shared_attributes(sc, Arrows)
     color = valid_attributes[:color]
-    args = Makie.lift(q,color) do q,color
-        dom = GT.domain(q)
+    args = Makie.lift(dom,q,color) do dom,q,color
         plt = GT.plot(dom)
         label_q = string(gensym())
         GT.plot!(plt,q;label=label_q)

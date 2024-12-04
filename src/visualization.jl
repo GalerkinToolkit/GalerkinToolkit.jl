@@ -424,7 +424,7 @@ function plot_impl!(plt,term,label)
     d = target_dim(index)
     face_to_nodes = GT.get_symbol!(index,vglue.face_fine_nodes,"face_to_nodes")
     t = term(index)
-    T = prototype(t)
+    T = typeof(prototype(t))
     data = zeros(T,nnodes)
     expr1 = expression(t) |> simplify
     face = face_index(index,d)
@@ -433,9 +433,9 @@ function plot_impl!(plt,term,label)
     v = GT.topological_sort(expr1,deps)
     expr = quote
         (data,state) -> begin
-            $(unpack_index_storage(dict,:state))
+            $(unpack_index_storage(index,:state))
             $(v[1])
-            for $face in 1:length(face_to_nodes)
+            for $face in 1:length($face_to_nodes)
                 nodes = $face_to_nodes[$face]
                 $(v[2])
                 for $point in 1:length(nodes)

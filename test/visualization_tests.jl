@@ -80,7 +80,7 @@ for s in  (false,true)
     fig = Makie.plot(plt,color=GT.NodeData("u"))
     Makie.plot!(plt,color=nothing,strokecolor=:black,warp_by_vector=GT.NodeData("v"),warp_scale=0.1)
     Makie.arrows!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
-    Makie.arrows!(v;lengthscale=0.1,color=u)
+    Makie.arrows!(Ω,v;lengthscale=0.1,color=u)
     display(fig)
 
     fig = Makie.plot(Ω;color=u)
