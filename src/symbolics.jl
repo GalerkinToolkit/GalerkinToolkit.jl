@@ -662,7 +662,10 @@ prototype(a::FormArgumentTerm) = prototype(a.functions)
 
 function expression(c::FormArgumentTerm)
     @assert c.evaluated
-    @assert isa(c.functions,TabulatorTerm)
+    form_argument_expression(c,c.functions)
+end
+
+function form_argument_expression(c,::TabulatorTerm)
     field = field_index(index(c),c.axis)
     dof = dof_index(index(c),c.axis)
     t = c.functions
@@ -1042,7 +1045,73 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
             end
         end
     end
-    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
+    face_tabulator_term(f,drid_Drid_ldface_perm_to_dof_and_point_data,a,b)
+    #drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
+    #Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
+    #Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
+    #dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+    #dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
+    #dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
+    #Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+    #Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
+    #dface_to_drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),d),"dface_to_drid")
+    #dface = face_index(index(a),d)
+    #Dface = face_index(index(b),D)
+    #dof = a.dof
+    #point = point_index(index(b))
+    #Dface_around = face_around_dummy_index(index(a),d,D)
+    #expr = @term begin
+    #    drid = $dface_to_drid[$dface]
+    #    Drid = $Dface_to_Drid[$Dface]
+    #    Dfaces = $dface_to_Dfaces[$dface]
+    #    ldface = $dface_to_ldfaces[$dface][$Dface_around]
+    #    perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+    #    $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]
+    #end
+    #dims = union(free_dims(a),free_dims(b))
+    #p = f(prototype(a),prototype(b))
+    #expr_term(dims,expr,p,index(a))
+end
+
+function binary_call_term(f,a::FormArgumentTerm,b::BinaryCallTerm{typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
+    t = binary_call_term(f,a.functions,b)
+    form_argument_term(a.axis,a.field,t,true)
+end
+
+face_tabulator_term(args...) = FaceTabulatorTerm(args...)
+
+struct FaceTabulatorTerm{A,B,C,D} <: AbstractTerm
+    callee::A
+    drid_Drid_ldface_perm_to_dof_and_point_data::B
+    arg1::C
+    arg2::D
+end
+
+AbstractTrees.children(a::FaceTabulatorTerm) =
+(
+ a.callee,
+ a.arg1,
+ a.arg2,
+)
+
+free_dims(t::FaceTabulatorTerm) = union(free_dims(t.arg1),free_dims(t.arg2))
+
+index(t::FaceTabulatorTerm) = index(t.arg1)
+
+prototype(a::FaceTabulatorTerm) = a.drid_Drid_ldface_perm_to_dof_and_point_data |> eltype |> eltype |> eltype |> eltype |> zero
+
+function expression(t::FaceTabulatorTerm)
+    a = t.arg1
+    b = t.arg2
+    phi = b.arg1
+    x = b.arg2
+    d = phi.dim
+    D = phi.dim_around
+    m = mesh(index(a))
+    topo = topology(m)
+    drid_to_refdface = reference_faces(m,d)
+    Drid_to_refDface = reference_faces(m,D)
+    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),t.drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
     Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
     Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
     dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
@@ -1056,7 +1125,7 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
     dof = a.dof
     point = point_index(index(b))
     Dface_around = face_around_dummy_index(index(a),d,D)
-    expr = @term begin
+    @term begin
         drid = $dface_to_drid[$dface]
         Drid = $Dface_to_Drid[$Dface]
         Dfaces = $dface_to_Dfaces[$dface]
@@ -1064,10 +1133,67 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
         perm = $Dface_to_ldface_to_perm[$Dface][ldface]
         $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]
     end
-    dims = union(free_dims(a),free_dims(b))
-    p = f(prototype(a),prototype(b))
-    expr_term(dims,expr,p,index(a))
 end
+
+function form_argument_expression(c,::FaceTabulatorTerm)
+    field = field_index(index(c),c.axis)
+    dof = dof_index(index(c),c.axis)
+    t = c.functions
+    a = t.arg1
+    b = t.arg2
+    phi = b.arg1
+    x = b.arg2
+    d = phi.dim
+    D = phi.dim_around
+    m = mesh(index(a))
+    topo = topology(m)
+    drid_to_refdface = reference_faces(m,d)
+    Drid_to_refDface = reference_faces(m,D)
+    drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),t.drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
+    Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
+    Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
+    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+    dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
+    dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
+    Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+    Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
+    dface_to_drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),d),"dface_to_drid")
+    dface = face_index(index(a),d)
+    Dface = face_index(index(b),D)
+    dof = a.dof
+    point = point_index(index(b))
+    Dface_around = face_around_dummy_index(index(a),d,D)
+    D = a.dim
+    d = target_dim(index(a))
+    if is_boundary(domain(index(a)))
+        expr = @term begin
+            drid = $dface_to_drid[$dface]
+            Drid = $Dface_to_Drid[$Dface]
+            Dfaces = $dface_to_Dfaces[$dface]
+            ldface = $dface_to_ldfaces[$dface][$Dface_around]
+            perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+            tab = $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm]
+            field_bool = $(c.field) == $field
+            GalerkinToolkit.getindex_if(field_bool,tab,$dof,$point)
+        end
+    else
+        face_around = face_around_index(index(a),c.axis)
+        face_around_dummy = face_around_dummy_index(index(a),d,D)
+        expr = @term begin
+            drid = $dface_to_drid[$dface]
+            Drid = $Dface_to_Drid[$Dface]
+            Dfaces = $dface_to_Dfaces[$dface]
+            ldface = $dface_to_ldfaces[$dface][$Dface_around]
+            perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+            tab = $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm]
+            field_bool = $(c.field) == $field
+            geom_bool = $face_around == $face_around_dummy
+            bool = field_bool & geom_bool
+            GalerkinToolkit.getindex_if(bool,tab,$dof,$point)
+        end
+    end
+end
+
 
 #function find_face_adound(face,faces)
 #    findfirst(i->i==face,faces)

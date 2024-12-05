@@ -494,6 +494,95 @@ display(expr)
 r = eval(expr)
 @test r == 0
 
+rid_to_dof_to_s = [[x -> dof*sum(x) for dof in 1:5]]
+form_arity = 1
+axis = 1
+field = 1
+s2 = GT.form_argument(axis,field,rid_to_dof_to_s,Ω;reference=true)
+phiDinv = GT.inverse_physical_map(mesh,D)
+phid = GT.physical_map(mesh,D-1)
+r2 = s2 ∘ phiDinv
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Γ;reference=true)
+q = r2(phid(x1))
+index = GT.generate_index(Γ,form_arity)
+faces = GT.get_symbol!(index,GT.faces(Γ),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.dof_index(index,axis)) = 5
+    $(GT.field_index(index,axis)) = 1
+    $(GT.point_index(index)) = 2
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 5
+
+rid_to_dof_to_s = [[x -> dof*sum(x) for dof in 1:5]]
+form_arity = 1
+axis = 1
+field = 1
+s2 = GT.form_argument(axis,field,rid_to_dof_to_s,Ω;reference=true)
+phiDinv = GT.inverse_physical_map(mesh,D)
+phid = GT.physical_map(mesh,D-1)
+r2 = s2 ∘ phiDinv
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
+q = r2(phid(x1))[1]
+index = GT.generate_index(Λ,form_arity)
+faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.dof_index(index,axis)) = 5
+    $(GT.field_index(index,axis)) = 1
+    $(GT.point_index(index)) = 2
+    $(GT.face_around_index(index,axis)) = 1
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 10
+
+rid_to_dof_to_s = [[x -> dof*sum(x) for dof in 1:5]]
+form_arity = 1
+axis = 1
+field = 1
+s2 = GT.form_argument(axis,field,rid_to_dof_to_s,Ω;reference=true)
+phiDinv = GT.inverse_physical_map(mesh,D)
+phid = GT.physical_map(mesh,D-1)
+r2 = s2 ∘ phiDinv
+x1 = GT.point_quantity([SVector{1,Float64}[[0],[1]]],Λ;reference=true)
+q = r2(phid(x1))[2]
+index = GT.generate_index(Λ,form_arity)
+faces = GT.get_symbol!(index,GT.faces(Λ),"faces")
+t = GT.term(q,index)
+print_tree(t)
+expr = GT.expression(t)
+@test GT.free_dims(t) == [D-1]
+storage = GT.index_storage(index)
+expr = quote
+    $(GT.unpack_index_storage(index,:storage))
+    $(GT.face_index(index,D-1)) = $faces[3]
+    $(GT.dof_index(index,axis)) = 5
+    $(GT.field_index(index,axis)) = 1
+    $(GT.point_index(index)) = 2
+    $(GT.face_around_index(index,axis)) = 1
+    $(GT.topological_sort(expr,())[1])
+end
+display(expr)
+r = eval(expr)
+@test r == 0
+
 
 #u1 = GT.analytical_field(sum)
 #u2 = GT.face_map(mesh,D)
