@@ -836,6 +836,10 @@ function discrete_function_term(a::PhysicalMapTerm)
     discrete_function_term(coeffs,functions,dof,ndofs)
 end
 
+function expression(a::PhysicalMapTerm)
+    expression(discrete_function_term(a))
+end
+
 #function binary_call_term(f::typeof(call),a::PhysicalMapTerm,b::ReferencePointTerm)
 #    a2 = discrete_function_term(a)
 #    call(f,a2,b)
