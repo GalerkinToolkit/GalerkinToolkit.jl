@@ -992,9 +992,17 @@ free_dims(a::ReferenceMapTerm) = ([a.dim,a.dim_around])
 
 prototype(a::ReferenceMapTerm) = x-> zero(SVector{a.dim_around,Float64})
 
-function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
-    a2 = discrete_function_term(a)
-    call(f,a2,b)
+#function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
+#    a2 = discrete_function_term(a)
+#    call(f,a2,b)
+#end
+
+function expression(c::BinaryCallTerm{typeof(call),<:ReferenceMapTerm,<:Any})
+    f = c.callee
+    a = discrete_function_term(c.arg1)
+    b = c.arg2
+    fab = call(f,a,b)
+    expression(fab)
 end
 
 function discrete_function_term(a::ReferenceMapTerm)
