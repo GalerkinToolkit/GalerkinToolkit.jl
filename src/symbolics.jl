@@ -325,6 +325,8 @@ end
 
 free_dims(a::BoundaryTerm) = setdiff(free_dims(a.term),[a.dim_around])
 
+prototype(a::BoundaryTerm) = prototype(a.term)
+
 skeleton_term(args...) = SkeletonTerm(args...)
 
 struct SkeletonTerm{A,B,C} <: AbstractTerm
@@ -336,6 +338,8 @@ end
 AbstractTrees.children(a::SkeletonTerm) = ("dim = $(a.dim)","dim_around = $(a.dim_around)",a.term)
 
 index(a::SkeletonTerm) = index(a.term)
+
+prototype(a::SkeletonTerm) = [prototype(a.term),prototype(a.term)]
 
 free_dims(a::SkeletonTerm) = setdiff(free_dims(a.term),[a.dim_around])
 
@@ -984,43 +988,45 @@ free_dims(a::ReferenceMapTerm) = ([a.dim,a.dim_around])
 
 prototype(a::ReferenceMapTerm) = x-> zero(SVector{a.dim_around,Float64})
 
-# Maybe we don't need the commented functions since the ReferenceMapTerm will be "always" tabulated
-#function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
-#    a2 = discrete_function_term(a)
-#    call(f,a2,b)
-#end
+function binary_call_term(f::typeof(call),a::ReferenceMapTerm,b::ReferencePointTerm)
+    a2 = discrete_function_term(a)
+    call(f,a2,b)
+end
 
-#function discrete_function_term(a::ReferenceMapTerm)
-#    dof = gensym("dummy-reference-dof")
-#    d = val_parameter(a.dim)
-#    dface_to_drid = face_reference_id(mesh(index(a)),d)
-#    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
-#    functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
-#    dface = face_index(index(a),d)
-#    expr = :(length(drid_to_dof_to_fun[dface_to_drid[dface]]))
-#    ndofs = expr_term([d],expr,0,index(a))
-#    Dface = face_index(index(a),D)
-#    topo = topology(mesh(index(a)))
-#    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
-#    dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
-#    dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
-#    Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
-#    Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
-#    Drid_to_refDface = reference_faces(mesh(index(a)),D)
-#    Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
-#    Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
-#    expr = @term begin
-#        Drid = $Dface_to_Drid[$Dface]
-#        Dfaces = $dface_to_Dfaces[$dface]
-#        Dface_around = indexin($Dface,Dfaces)
-#        ldface = $dface_to_ldfaces[Dface_around]
-#        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
-#        $Drid_to_ldface_perm_dof_to_x[Drid][ldface][perm][$dof]
-#    end
-#    p = Drid_to_ldface_perm_dof_to_x_data |> eltype |> eltype |> eltype |> eltype
-#    coeffs = expr_term([d,D],expr,p,index)
-#    discrete_function_term(coeffs,functions,dof,ndofs)
-#end
+function discrete_function_term(a::ReferenceMapTerm)
+    dof = gensym("dummy-reference-dof")
+    d = a.dim
+    D = a.dim_around
+    dface_to_drid = face_reference_id(mesh(index(a)),d)
+    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+    functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
+    dface_to_drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),d),"dface_to_drid")
+    dface = face_index(index(a),d)
+    drid_to_ndofs = get_symbol!(index(a),map(length,drid_to_dof_to_fun),"drid_to_ndofs")
+    expr = :($drid_to_ndofs[$dface_to_drid[$dface]])
+    ndofs = expr_term([d],expr,0,index(a))
+    Dface = face_index(index(a),D)
+    topo = topology(mesh(index(a)))
+    dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
+    dface_to_Dfaces = get_symbol!(index(a),dface_to_Dfaces_data,"dface_to_Dfaces")
+    dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
+    Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
+    Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
+    Drid_to_refDface = reference_faces(mesh(index(a)),D)
+    Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
+    Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
+    Dface_around = face_around_dummy_index(index(a),d,D)
+    expr = @term begin
+        drid = $dface_to_drid[$dface]
+        Drid = $Dface_to_Drid[$Dface]
+        ldface = $dface_to_ldfaces[$dface][$Dface_around]
+        perm = $Dface_to_ldface_to_perm[$Dface][ldface]
+        $Drid_to_ldface_perm_dof_to_x[Drid][ldface][perm][$dof]
+    end
+    p = Drid_to_ldface_perm_dof_to_x_data |> eltype |> eltype |> eltype |> eltype |> zero
+    coeffs = expr_term([d,D],expr,p,index)
+    discrete_function_term(coeffs,functions,dof,ndofs)
+end
 
 function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{typeof(call),<:ReferenceMapTerm,<:ReferencePointTerm})
     phi = b.arg1
@@ -1128,7 +1134,6 @@ function expression(t::FaceTabulatorTerm)
     @term begin
         drid = $dface_to_drid[$dface]
         Drid = $Dface_to_Drid[$Dface]
-        Dfaces = $dface_to_Dfaces[$dface]
         ldface = $dface_to_ldfaces[$dface][$Dface_around]
         perm = $Dface_to_ldface_to_perm[$Dface][ldface]
         $drid_Drid_ldface_perm_to_dof_and_point[drid][Drid][ldface][perm][$dof,$point]

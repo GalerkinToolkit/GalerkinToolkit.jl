@@ -476,7 +476,7 @@ function face_around_index(index)
 end
 
 function face_around_dummy_index(index,d,D)
-    index.data.face_around_dummy[d,D]
+    index.data.face_around_dummy[d+1,D+1]
 end
 
 function field_index(index,a)
@@ -1073,12 +1073,12 @@ end
 function reference_map(mesh::AbstractMesh,d,D)
     quantity() do index
         t = reference_map_term(d,D,index)
-        cell_around = face_around_term(index,d,D)
-        if cell_around !== nothing
-            boundary_term(d,D,t,cell_around)
-        else
-            skeleton_term(d,D,t)
-        end
+        #cell_around = face_around_term(index,d,D)
+        #if cell_around !== nothing
+        #    boundary_term(d,D,t,cell_around)
+        #else
+        #    skeleton_term(d,D,t)
+        #end
     end
 end
 
