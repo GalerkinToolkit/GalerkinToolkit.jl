@@ -45,7 +45,7 @@ D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
 Ωref = GT.interior(mesh;is_reference_domain=true)
 ϕ = GT.physical_map(mesh,D)
-u = GT.analytical_field(x->sum(x))
+u = GT.analytical_field(x->sum(x),Ω)
 
 degree = 2
 dΩref = GT.measure(Ωref,degree)
@@ -73,7 +73,7 @@ end
 
 @test sum(int) ≈ 8
 
-u = GT.analytical_field(x->1)
+u = GT.analytical_field(x->1,Ω)
 int = ∫(u,dΩ)
 @test sum(int) ≈ 4
 
@@ -99,7 +99,7 @@ int = ∫(dΓref) do p
 end
 @test sum(int) ≈ 4
 
-uref = GT.analytical_field(x->1)
+uref = GT.analytical_field(x->1,Γ)
 int = ∫(dΓref) do p
     p
     q = β(p)

@@ -941,13 +941,37 @@ end
 #    end
 #end
 
-function analytical_field(f)
-    constant_quantity(f)
+# A quantity representing a field on a domain
+abstract type AbstractField <: AbstractQuantity end
+
+struct Field{A,B} <: AbstractField
+    quantity::A
+    domain::B
+end
+
+domain(a::AbstractField) = a.domain
+
+function term(f::AbstractField,i)
+    term(f.quantity,i)
+end
+
+function term(f::AbstractField)
+    term(f.quantity)
+end
+
+function analytical_field(f,dom::AbstractDomain)
+    D = num_dims(dom)
+    q = quantity() do index
+        expr = get_symbol!(index,f,"analytical_field")
+        expr_term([D],expr,f,index)
+    end
+    Field(q,dom)
 end
 
 function face_constant_field(data,dom::AbstractDomain)
     q = face_quantity(data,dom)
-    call(a->(x->a),q)
+    q2 = call(a->(x->a),q)
+    Field(q2,dom)
 end
 
 function physical_map(mesh::AbstractMesh,d)

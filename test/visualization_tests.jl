@@ -40,7 +40,7 @@ for s in  (false,true)
         vtk_grid("shrink",plt) |> close
 
         Ω = GT.interior(mesh2)
-        u = GT.analytical_field(sum)
+        u = GT.analytical_field(sum,Ω)
 
         plt = GT.plot(Ω)
         GT.plot!(plt,u;label="u")
@@ -72,15 +72,15 @@ for s in  (false,true)
 
 
     Ω = GT.interior(mesh)
-    u = GT.analytical_field(sum)
-    v = GT.analytical_field(identity)
+    u = GT.analytical_field(sum,Ω)
+    v = GT.analytical_field(identity,Ω)
     plt = GT.plot(Ω)
     GT.plot!(plt,u;label="u")
     GT.plot!(plt,v;label="v")
     fig = Makie.plot(plt,color=GT.NodeData("u"))
     Makie.plot!(plt,color=nothing,strokecolor=:black,warp_by_vector=GT.NodeData("v"),warp_scale=0.1)
     Makie.arrows!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
-    Makie.arrows!(Ω,v;lengthscale=0.1,color=u)
+    Makie.arrows!(v;lengthscale=0.1,color=u)
     display(fig)
 
     fig = Makie.plot(Ω;color=u)

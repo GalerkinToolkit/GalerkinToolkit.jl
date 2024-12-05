@@ -109,7 +109,7 @@ V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 v = GT.zero_field(Float64,V)
 v2 = GT.zero_field(Float64,V)
 
-u = GT.analytical_field(x->sum(x))
+u = GT.analytical_field(x->sum(x),Ω)
 uref = u∘ϕ
 
 GT.interpolate!(uref,v)
@@ -183,9 +183,9 @@ GT.face_dofs(V)
 Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
 Γ3 = GT.boundary(mesh;physical_names=["0-face-1"])
 
-u1 = GT.analytical_field(x->1.0)
-u2 = GT.analytical_field(x->2.0)
-u3 = GT.analytical_field(x->3.0)
+u1 = GT.analytical_field(x->1.0,Ω)
+u2 = GT.analytical_field(x->2.0,Ω)
+u3 = GT.analytical_field(x->3.0,Ω)
 
 # TODO better names than piecewiese_field and piecewiese_domain?
 udiri = GT.piecewiese_field(u1,u2,u3)
@@ -229,7 +229,7 @@ GT.face_dofs(V)
 
 
 order = 3
-m = GT.analytical_field(x->SVector(false,true))
+m = GT.analytical_field(x->SVector(false,true),Γ)
 V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
 GT.face_dofs(V)
 uh = GT.rand_field(Float64,V)
@@ -244,8 +244,8 @@ end
 Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
 
 order = 3
-m1 = GT.analytical_field(x->SVector(false,true))
-m2 = GT.analytical_field(x->SVector(true,false))
+m1 = GT.analytical_field(x->SVector(false,true),Γ1)
+m2 = GT.analytical_field(x->SVector(true,false),Γ2)
 m = GT.piecewiese_field(m1,m2)
 V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
 GT.face_dofs(V)
