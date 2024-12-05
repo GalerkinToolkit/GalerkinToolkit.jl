@@ -583,7 +583,6 @@ display(expr)
 r = eval(expr)
 @test r == 0
 
-
 #u1 = GT.analytical_field(sum,Ω)
 #u2 = GT.face_map(mesh,D)
 #x1 = GT.point_quantity([SVector{2,Float64}[[0,0],[1,1]]],Ω;reference=true)

@@ -174,42 +174,37 @@ end
 function assemble_vector_count(integral,state)
     (;space,vector_strategy,setup) = state
     contributions = GT.contributions(integral)
-    num_fields = GT.num_fields(space)
-    fields = ntuple(identity,num_fields)
-    glues = map(contributions) do measure_and_contribution
+    nfields = GT.num_fields(space)
+    field_to_domain = map(field->domain(space,field),1:nfields)
+    field_to_sDface_to_dofs = map(field->face_dofs(space,field),1:nfields)
+    field_to_Dface_to_sDface = map(faces,field_to_domain)
+    field_to_D = map(num_dims,field_to_domain)
+    counter = vector_strategy.counter(setup)
+    for measure_and_contribution in contributions
         measure, = measure_and_contribution
         domain = GT.domain(measure)
-        map(fields) do field
-            GT.domain_glue(domain,GT.domain(space,field);strict=false)
-        end
-    end
-    counter = vector_strategy.counter(setup)
-    function loop(glue::Nothing,field)
-    end
-    function loop(glue,field)
-        sface_to_faces, = target_face(glue)
-        face_to_dofs = face_dofs(space,field)
-        nsfaces = length(sface_to_faces)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
         for sface in 1:nsfaces
-            faces = sface_to_faces[sface]
-            for face in faces
-                if face == 0
-                    continue
-                end
-                dofs = face_to_dofs[face]
-                ndofs = length(dofs)
-                for idof in 1:ndofs
-                    dof = dofs[idof]
-                    counter = vector_strategy.count(counter,setup,dof,field)
+            face = sface_to_face[sface]
+            for field in 1:nfields
+                Dface_to_sDface = field_to_Dface_to_sDface[field]
+                D = field_to_D[field]
+                face_to_Dfaces = face_incidence(topo,d,D)
+                sDface_to_dofs = field_to_sDface_to_dofs[field]
+                Dfaces = face_to_Dfaces[face]
+                for Dface in Dfaces
+                    sDface = Dface_to_sDface[Dface]
+                    dofs = sDface_to_dofs[sDface]
+                    for dof in dofs
+                        counter = vector_strategy.count(counter,setup,dof,field)
+                    end
                 end
             end
         end
     end
-    for (domain_and_contribution,field_to_glue) in zip(contributions,glues)
-        domain, _ = domain_and_contribution
-        map(loop,field_to_glue,fields)
-    end
-    (;counter,glues,fields,state...)
+    (;counter,state...)
 end
 
 function assemble_vector_allocate(state)
@@ -219,7 +214,78 @@ function assemble_vector_allocate(state)
 end
 
 function assemble_vector_fill!(integral,state)
-    (;space,glues,fields,vector_strategy,alloc,setup) = state
+    (;space,vector_strategy,alloc,setup) = state
+    contributions = GT.contributions(integral)
+    nfields = GT.num_fields(space)
+    field_to_domain = map(field->domain(space,field),1:nfields)
+    field_to_sDface_to_dofs = map(field->face_dofs(space,field),1:nfields)
+    field_to_Dface_to_sDface = map(faces,field_to_domain)
+    field_to_D = map(num_dims,field_to_domain)
+    counter = vector_strategy.counter(setup)
+    for measure_and_contribution in contributions
+        measure,contribution = measure_and_contribution
+        domain = GT.domain(measure)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        form_arity = 1
+        index = GT.generate_index(domain,form_arity)
+        t = GT.term(contribution,index)
+        term_npoints = GT.num_points(measure)
+        expr_qty = t |> expression |> simplify
+        expr_npoints = term_npoints(index) |> expression |> simplify
+        face = face_index(index,d)
+        point = point_index(index)
+        axis = 1
+        idof = dof_index(index,axis)
+        Dface_around = face_around_index(index,axis)
+        field = field_index(index,axis)
+        s_qty = GT.topological_sort(expr_qty,(face,field,Dface_around,point,idof))
+        s_npoints = GT.topological_sort(expr_npoints,(face,))
+        expr = quote
+            (args,storage) -> begin
+                $(unpack_index_storage(index,:storage))
+                $(s_qty[1])
+                $(s_npoints[1])
+                ve = zeros(T,maxidof)
+                for sface in 1:nsfaces
+                    face = sface_to_face[sface]
+                    $(s_qty[2])
+                    npoints = $(s_npoints[2])
+                    for field in 1:nfields
+                        $(s_qty[3])
+                        for (Dface_around,Dface) in enumerate(Dfaces)
+                            $(s_qty[4])
+                            Dface_to_sDface = field_to_Dface_to_sDface[field]
+                            D = field_to_D[field]
+                            face_to_Dfaces = face_incidence(topo,d,D)
+                            sDface_to_dofs = field_to_sDface_to_dofs[field]
+                            Dfaces = face_to_Dfaces[face]
+                            fill!(ve,zero(T))
+                            for point in 1:npoints
+                                $(s_qty[5])
+                                sDface = Dface_to_sDface[Dface]
+                                dofs = sDface_to_dofs[sDface]
+                                for (idof,dof) in enumerate(dofs)
+                                    ve[idof] += $(s_qty[6])
+                                end
+                            end
+                            for (idof,dof) in enumerate(dofs)
+                                ve[idof]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    loop! = eval(expr)
+
+
+
+
+
+
     contributions = GT.contributions(integral)
     num_fields = GT.num_fields(space)
     counter = vector_strategy.counter(setup)
