@@ -180,6 +180,97 @@ function main_automatic(params)
     results
 end
 
+function main_hand_written_new(params)
+    results = Dict{Symbol,Any}()
+    state0 = (;results,params)
+    @timeit timer "setup" state1 = setup(state0)
+    @timeit timer "assemble_system" state2 = assemble_system(state1)
+    @timeit timer "solve_system" state3 = solve_system(state2)
+    @timeit timer "integrate_error_norms" integrate_error_norms(state3)
+    @timeit timer "export_results" export_results(state3)
+    display(timer)
+    results
+end
+
+function setup(state0)
+    state1 = setup_domains(state0)
+    state2 = setup_integration(state1)
+    state3 = setup_interpolation(state3)
+    state4 = setup_dirichlet(state3)
+end
+
+function assemble_system(state0)
+    state1 = assemble_allocate(state)
+    state2 = assemble_fill(state1)
+    state3 = assemble_compress(state2)
+end
+
+function solve_system(state0)
+end
+
+function integrate_error_norms(state0)
+end
+
+function export_results(state0)
+end
+
+function setup_domains(state)
+    (;params,) = state
+    mesh = params[:mesh]
+    Ω = GT.interior(mesh,physical_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;physical_names=params[:dirichlet_tags])
+    domains = (;Ω,Γd)
+    (;domains,state...)
+end
+
+function setup_integration(state)
+    integration_degree = params[:integration_degree]
+    dΩ = GT.measure(Ω,integration_degree)
+    rid_to_cache_dΩ = map(rid_to_refface,rid_to_refquad) do refface,refquad
+            x = GT.coordinates(refquad)
+            weights = GT.weights(refquad)
+            ref_vals = GT.tabulator(refface)(GT.value,x)
+            ref_grads = GT.tabulator(refface)(ForwardDiff.gradient,x)
+    end
+    face_to_rid_dΩ = face_reference_id(dΩ)
+    Dface_to_nodes = face_nodes(mesh,D)
+    nodes_to_coords = node_coordinates(mesh)
+    workspace = (;rid_to_cache_dΩ,face_to_rid_dΩ,Dface_to_nodes,node_to_coords)
+    measures = (;dΩ,)
+    integration = (;measures,workspace)
+    (;integration,state...)
+end
+
+function setup_interpolation(state)
+    (;domains,integration) = state
+    (;Ω,Γd) = domains
+    interpolation_degree = params[:interpolation_degree]
+    V = GT.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
+    rid_to_cache_dΩ = integration.workspace.rid_to_cache_dΩ
+    rid_to_cache_V = map(rid_to_reffe,rid_to_cache_dΩ) do reffe,cache
+            ndofs = GT.num_dofs(reffe)
+            A = zeros(T,ndofs,ndofs)
+            b = zeros(T,ndofs)
+            u = zeros(T,ndofs)
+            ref_vals = GT.tabulator(reffe)(GT.value,x)
+            ref_grads = GT.tabulator(reffe)(ForwardDiff.gradient,x)
+    end
+    face_to_rid_V = face_reference_id(V)
+    uh = GT.zero_field(Float64,V)
+    x_free = GT.free_values(uh)
+    x_diri = GT.dirichlet_values(uh)
+    face_to_dofs_V = face_dofs(V)
+    interpolation = (;uh,spaces=(;V),workspace=(;rid_to_cache_V,face_to_rid_V,face_to_dofs_V,x_free,x_diri))
+    (;interpolation,state...)
+end
+
+function setup_dirichlet(state)
+    vnode_to_coord = GT.node_coordinates(V)
+    diri_dof_to_vnode = GT.dirichlet_dof_node(V)
+    x_diri .= u.(vnode_to_coord[diri_dof_to_vnode])
+end
+
+
 function main_hand_written(params)
 
     @assert params[:discretization_method] == :continuous_galerkin
