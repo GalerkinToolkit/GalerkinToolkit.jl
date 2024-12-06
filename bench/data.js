@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733508920449,
+  "lastUpdate": 1733511116142,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -554,6 +554,36 @@ window.BENCHMARK_DATA = {
             "value": 6770519959,
             "unit": "ns",
             "extra": "gctime=374615160\nmemory=6950898672\nallocs=151795139\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "91e8e024ad99eae8b14c926b0b711925a7ad2380",
+          "message": "Merge pull request #157 from GalerkinToolkit/fix_space\n\nCaching more in AbstractFESpace",
+          "timestamp": "2024-12-06T19:47:43+01:00",
+          "tree_id": "774a66137b39d0d3aea7301e2957bc4987813b4c",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/91e8e024ad99eae8b14c926b0b711925a7ad2380"
+        },
+        "date": 1733511115664,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 6661504282,
+            "unit": "ns",
+            "extra": "gctime=404423172\nmemory=6863959696\nallocs=149464392\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
