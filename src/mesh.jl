@@ -377,20 +377,18 @@ function default_space(geom)
     end
 end
 
-function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,real_type)
-    D = length(order_per_dir)
-    Tv = real_type
+function node_coordinates_from_monomials_exponents(monomial_exponents,order_per_dir,::Type{Tv}) where Tv
     if length(monomial_exponents) == 0
-        return  
+        return SVector{length(order_per_dir),Tv}[]
     end
     node_coordinates = map(monomial_exponents) do exponent
         map(exponent,order_per_dir) do e,order
             if order != 0
-                real_type(e/order)
+               Tv(e/order)
             else
-                real_type(e)
+               Tv(e)
             end
-        end |> SVector{D,Tv}
+        end |> SVector{length(order_per_dir),Tv}
     end
 end
 
@@ -404,13 +402,12 @@ function monomial_exponents_from_space(space,args...)
     end
 end
 
-function monomial_exponents_from_filter(f,order_per_dir,int_type)
-    Ti = int_type
+function monomial_exponents_from_filter(f,order_per_dir,::Type{Ti}) where Ti
     terms_per_dir = Tuple(map(d->d+1,order_per_dir))
     D = length(terms_per_dir)
     cis = CartesianIndices(terms_per_dir)
-    m = count(ci->f(SVector{D,Ti}(Tuple(ci) .- 1),order_per_dir),cis)
-    result = zeros(SVector{D,int_type},m)
+    m = count(ci->f(SVector{length(terms_per_dir),Ti}(Tuple(ci) .- 1),order_per_dir),cis)
+    result = zeros(SVector{D,Ti},m)
     li = 0
     for ci in cis
         t = SVector{D,Ti}(Tuple(ci) .- 1)
@@ -1075,6 +1072,21 @@ function vertex_permutations(geom::AbstractFaceGeometry)
     vertex_permutations_from_face_geometry(geom)
 end
 
+function compute_volume(vertex_coords,TJ,A)
+    vol = zero(eltype(TJ))
+    for iq in 1:size(A,1)
+        J = zero(TJ)
+        for fun_node in 1:size(A,2)
+            vertex = fun_node # TODO we are assuming that the vertices and nodes match
+            g = A[iq,fun_node]
+            x = vertex_coords[vertex]
+            J += g*x'
+        end
+        vol += abs(det(J))
+    end
+    vol
+end
+
 ## Admissible if the following map is admissible
 # phi_i(x) = sum_i x_perm[i] * fun_i(x)
 # This map sends vertex i to vertex perm[i]
@@ -1110,27 +1122,13 @@ function vertex_permutations_from_face_geometry(geo)
     Tx = eltype(vertex_coords)
     TJ = typeof(zero(Tx)*zero(Tx)')
     A = tabulator(ref_face)(ForwardDiff.gradient,q)
-    function compute_volume(vertex_coords)
-        vol = zero(eltype(TJ))
-        for iq in 1:size(A,1)
-            J = zero(TJ)
-            for fun_node in 1:size(A,2)
-                vertex = fun_node # TODO we are assuming that the vertices and nodes match
-                g = A[iq,fun_node]
-                x = vertex_coords[vertex]
-                J += g*x'
-            end
-            vol += abs(det(J))
-        end
-        vol
-    end
-    refvol = compute_volume(vertex_coords)
+    refvol = compute_volume(vertex_coords,TJ,A)
     perm_vertex_coords = similar(vertex_coords)
     for permutation in permutations
         for (j,cj) in enumerate(permutation)
           perm_vertex_coords[j] = vertex_coords[cj]
         end
-        vol2 = compute_volume(perm_vertex_coords)
+        vol2 = compute_volume(perm_vertex_coords,TJ,A)
         if (refvol + vol2) ≈ (2*refvol)
             push!(admissible_permutations,permutation)
         end
@@ -1521,31 +1519,36 @@ function intersection!(a,b,na,nb)
   end
 end
 
-function same_valid_ids(a,b)
-  function is_subset(a,b)
-    for i in 1:length(a)
-      v = a[i]
-      if v == INVALID_ID
-        continue
-      end
-      c = find_eq(v,b)
-      if c == false; return false; end
-    end
-    return true
-  end
-  function find_eq(v,b)
+function find_eq(v,b)
     for vs in b
-      if v == vs
-        return true
-      end
+        if v == vs
+            return true
+        end
     end
     return false
-  end
-  c = is_subset(a,b)
-  if c == false; return false; end
-  c = is_subset(b,a)
-  if c == false; return false; end
-  return true
+end
+
+function is_subset(a,b)
+    for i in 1:length(a)
+        v = a[i]
+        if v == INVALID_ID
+            continue
+        end
+        if !find_eq(v,b)
+            return false
+        end
+    end
+    return true
+end
+
+function same_valid_ids(a,b)
+    if !is_subset(a,b)
+        return false
+    end
+    if !is_subset(b,a)
+        return false
+    end
+    return true
 end
 
 ## TODO AbstractFaceTopology <: AbstractMeshTopology
