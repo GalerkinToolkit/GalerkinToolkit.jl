@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733507990876,
+  "lastUpdate": 1733508920449,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -524,6 +524,36 @@ window.BENCHMARK_DATA = {
             "value": 7035971708,
             "unit": "ns",
             "extra": "gctime=380616366\nmemory=6950898976\nallocs=151795140\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "raar1@users.noreply.github.com",
+            "name": "Robin Richardson",
+            "username": "raar1"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1d530f86e93fec88b0571f2cf1b3b6a02bf44d16",
+          "message": "Merge pull request #158 from GalerkinToolkit/no_run_CI_on_PR_close\n\nTry to trigger performance tests only on push to main",
+          "timestamp": "2024-12-06T19:04:11+01:00",
+          "tree_id": "60b8ec475c243bdc29ef18244bc1e69866b84f7c",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/1d530f86e93fec88b0571f2cf1b3b6a02bf44d16"
+        },
+        "date": 1733508919021,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 6770519959,
+            "unit": "ns",
+            "extra": "gctime=374615160\nmemory=6950898672\nallocs=151795139\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
