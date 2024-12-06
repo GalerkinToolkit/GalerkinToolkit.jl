@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733496598160,
+  "lastUpdate": 1733507068748,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -468,6 +468,32 @@ window.BENCHMARK_DATA = {
             "value": 7085052471,
             "unit": "ns",
             "extra": "gctime=450241515\nmemory=6950898672\nallocs=151795139\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "committer": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "id": "c34838e9cd7dc5782e161a5980ef7311649ac06e",
+          "message": "Try to trigger performance tests only on push to main",
+          "timestamp": "2024-12-06T14:46:09Z",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/pull/156/commits/c34838e9cd7dc5782e161a5980ef7311649ac06e"
+        },
+        "date": 1733507067925,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 6732075811,
+            "unit": "ns",
+            "extra": "gctime=384785532\nmemory=6950898976\nallocs=151795140\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
