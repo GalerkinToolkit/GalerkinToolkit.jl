@@ -307,6 +307,18 @@ end
 
 abstract type AbstractSpace <: GT.AbstractType end
 
+function setup_space(space::AbstractSpace)
+    if space.cache !== nothing
+        return space
+    end
+    state = generate_dof_ids(space)
+    face_dofs = state.cell_to_dofs
+    free_and_dirichlet_dofs = state.free_and_dirichlet_dofs
+    dirichlet_dof_location = state.dirichlet_dof_location
+    cache = space_cache(;face_dofs,free_and_dirichlet_dofs,dirichlet_dof_location)
+    replace_cache(space,cache)
+end
+
 function space_cache(;kwargs...)
     (;kwargs...)
 end
@@ -861,11 +873,17 @@ function face_dofs(space::AbstractSpace,field)
 end
 
 function free_and_dirichlet_dofs(V::AbstractSpace)
+    if V.cache !== nothing
+        return V.cache.free_and_dirichlet_dofs
+    end
     state = generate_dof_ids(V)
     state.free_and_dirichlet_dofs
 end
 
 function dirichlet_dof_location(V::AbstractSpace)
+    if V.cache !== nothing
+        return V.cache.dirichlet_dof_location
+    end
     state = generate_dof_ids(V)
     state.dirichlet_dof_location
 end
@@ -1667,14 +1685,14 @@ struct LagrangeSpace{A,B,C,F,G,H,I} <: AbstractSpace
     cache::I
 end
 
-function setup_space(space::LagrangeSpace)
-    if space.cache !== nothing
-        return space
-    end
-    face_dofs = GT.face_dofs(space)
-    cache = space_cache(;face_dofs)
-    replace_cache(space,cache)
-end
+#function setup_space(space::LagrangeSpace)
+#    if space.cache !== nothing
+#        return space
+#    end
+#    face_dofs = GT.face_dofs(space)
+#    cache = space_cache(;face_dofs)
+#    replace_cache(space,cache)
+#end
 
 function replace_cache(space::LagrangeSpace,cache)
     GT.lagrange_space(
