@@ -1554,14 +1554,14 @@ struct IsoParametricSpace{A,B,C} <: AbstractSpace
     cache::C
 end
 
-#function setup_space(V::IsoParametricSpace)
-#    if V.cache !== nothing
-#        return V
-#    end
-#    face_dofs = GT.face_dofs(V)
-#    cache = space_cache(;face_dofs)
-#    replace_cache(V,cache)
-#end
+function setup_space(V::IsoParametricSpace)
+    if V.cache !== nothing
+        return V
+    end
+    face_dofs = GT.face_dofs(V)
+    cache = space_cache(;face_dofs)
+    replace_cache(V,cache)
+end
 
 function replace_cache(V::IsoParametricSpace,cache)
     GT.iso_parametric_space(
