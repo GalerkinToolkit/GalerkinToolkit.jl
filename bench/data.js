@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733324351092,
+  "lastUpdate": 1733496598160,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -442,6 +442,32 @@ window.BENCHMARK_DATA = {
             "value": 6952948824,
             "unit": "ns",
             "extra": "gctime=409754894\nmemory=6950898976\nallocs=151795140\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "committer": {
+            "name": "GalerkinToolkit",
+            "username": "GalerkinToolkit"
+          },
+          "id": "22055a8858db91ca2b4ed69712962656355f5838",
+          "message": "Make sure the CI is triggered also on closing of the PR (for merge)",
+          "timestamp": "2024-12-06T14:02:37Z",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/pull/155/commits/22055a8858db91ca2b4ed69712962656355f5838"
+        },
+        "date": 1733496597883,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 7085052471,
+            "unit": "ns",
+            "extra": "gctime=450241515\nmemory=6950898672\nallocs=151795139\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
