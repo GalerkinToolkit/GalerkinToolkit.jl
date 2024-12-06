@@ -937,7 +937,7 @@ end
 
 function binary_call_term(d::typeof(ForwardDiff.gradient),a::ComposedWithInverseTerm,b::FunctionCallTerm)
     phi1 = a.arg2.arg1
-    phi2 = a.arg1
+    phi2 = b.arg1
     if phi1 != phi2
         return binary_call_term_physical_maps(d,a,b,phi1,phi2)
     end
