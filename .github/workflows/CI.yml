@@ -112,7 +112,7 @@ jobs:
 
   benchmark:
     name: Run performance regression tests
-    if: github.event.pull_request.merged == true
+    if: github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -164,7 +164,7 @@ jobs:
 
   copybenchmarks:
     name: Copy benchmark results to gh-pages
-    if: github.event.pull_request.merged == true
+    if: github.ref == 'refs/heads/main'
     needs: [benchmark, docs]
     runs-on: ubuntu-latest
     permissions:
