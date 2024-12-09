@@ -1235,7 +1235,7 @@ end
 function form_argument(a::CartesianProductSpace,axis)
     fields = ntuple(identity,GT.num_fields(a))
     map(fields) do field
-        GT.form_argument(a,dim,field)
+        GT.form_argument(component(a,field),axis,field)
     end
 end
 

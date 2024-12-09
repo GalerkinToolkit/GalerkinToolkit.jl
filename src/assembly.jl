@@ -108,8 +108,8 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
 end
 
 function assemble_vector(f,space,::Type{T};kwargs...) where T
-    dim = 1
-    dv = GT.shape_functions(space,dim)
+    axis = 1
+    dv = GT.form_argument(space,axis)
     integral = f(dv)
     assemble_vector(integral,space,T;kwargs...)
 end
@@ -152,7 +152,7 @@ end
 
 function assemble_vector!(f,space,b,cache)
     dim = 1
-    dv = GT.shape_functions(space,dim)
+    dv = GT.form_argument(space,dim)
     integral = f(dv)
     assemble_vector!(integral,b,cache)
 end
@@ -186,6 +186,7 @@ function assemble_vector_count(integral,state)
         sface_to_face = faces(domain)
         topo = topology(mesh(domain))
         d = num_dims(domain)
+        nsfaces = length(sface_to_face)
         for sface in 1:nsfaces
             face = sface_to_face[sface]
             for field in 1:nfields
@@ -213,6 +214,16 @@ function assemble_vector_allocate(state)
     (;alloc,state...)
 end
 
+function max_local_dofs(space,field)
+    rid_to_reffe = reference_fes(component(space,field))
+    map(num_dofs,rid_to_reffe) |> maximum
+end
+
+function max_local_dofs(space)
+    nfields = num_fields(space)
+    map(field->max_local_dofs(space,field),1:nfields) |> maximum
+end
+
 function assemble_vector_fill!(integral,state)
     (;space,vector_strategy,alloc,setup) = state
     contributions = GT.contributions(integral)
@@ -222,6 +233,8 @@ function assemble_vector_fill!(integral,state)
     field_to_Dface_to_sDface = map(faces,field_to_domain)
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
+    T = vector_strategy.scalar_type(setup)
+    b = zeros(T,max_local_dofs(space))
     for measure_and_contribution in contributions
         measure,contribution = measure_and_contribution
         domain = GT.domain(measure)
@@ -243,100 +256,37 @@ function assemble_vector_fill!(integral,state)
         s_qty = GT.topological_sort(expr_qty,(face,field,Dface_around,point,idof))
         s_npoints = GT.topological_sort(expr_npoints,(face,))
         expr = quote
-            (args,storage) -> begin
+            (counter,args,storage) -> begin
                 $(unpack_index_storage(index,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
-                ve = zeros(T,maxidof)
+                b = args.b
+                nsfaces = length(args.sface_to_face)
                 for sface in 1:nsfaces
-                    face = sface_to_face[sface]
+                    $face = args.sface_to_face[sface]
                     $(s_qty[2])
                     npoints = $(s_npoints[2])
-                    for field in 1:nfields
+                    for $field in 1:args.nfields
                         $(s_qty[3])
-                        for (Dface_around,Dface) in enumerate(Dfaces)
+                        Dface_to_sDface = args.field_to_Dface_to_sDface[$field]
+                        D = args.field_to_D[$field]
+                        face_to_Dfaces = face_incidence(args.topo,args.d,D)
+                        sDface_to_dofs = args.field_to_sDface_to_dofs[$field]
+                        Dfaces = face_to_Dfaces[$face]
+                        for ($Dface_around,Dface) in enumerate(Dfaces)
                             $(s_qty[4])
-                            Dface_to_sDface = field_to_Dface_to_sDface[field]
-                            D = field_to_D[field]
-                            face_to_Dfaces = face_incidence(topo,d,D)
-                            sDface_to_dofs = field_to_sDface_to_dofs[field]
-                            Dfaces = face_to_Dfaces[face]
-                            fill!(ve,zero(T))
-                            for point in 1:npoints
+                            fill!(b,zero(eltype(b)))
+                            sDface = Dface_to_sDface[Dface]
+                            dofs = sDface_to_dofs[sDface]
+                            for $point in 1:npoints
                                 $(s_qty[5])
-                                sDface = Dface_to_sDface[Dface]
-                                dofs = sDface_to_dofs[sDface]
-                                for (idof,dof) in enumerate(dofs)
-                                    ve[idof] += $(s_qty[6])
+                                for ($idof,dof) in enumerate(dofs)
+                                    b[$idof] += $(s_qty[6])
                                 end
                             end
-                            for (idof,dof) in enumerate(dofs)
-                                ve[idof]
+                            for ($idof,dof) in enumerate(dofs)
+                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field)
                             end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    loop! = eval(expr)
-
-
-
-
-
-
-    contributions = GT.contributions(integral)
-    num_fields = GT.num_fields(space)
-    counter = vector_strategy.counter(setup)
-    function loop(glue::Nothing,field,measure,contribution)
-    end
-    function loop(glue,field,measure,contribution)
-        sface_to_faces,_,sface_to_faces_around = target_face(glue)
-        face_to_dofs = face_dofs(space,field)
-        term_qty = GT.term(contribution)
-        term_npoints = GT.num_points(measure)
-        sface = :sface
-        point = :point
-        idof = :idof
-        face_around = :face_around
-        field_per_dim = (field,)
-        dof_per_dim = (idof,)
-        face_around_per_dim = (face_around,)
-        index = GT.index(;face=sface,point,field_per_dim,dof_per_dim,face_around_per_dim)
-        expr_qty = term_qty(index) |> simplify
-        expr_npoints = term_npoints(index) |> simplify
-        # TODO merge statements
-        s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
-        s_npoints = GT.topological_sort(expr_npoints,(sface,))
-        expr = quote
-            function loop!(counter,args,storage)
-                (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup) = args
-                $(unpack_storage(index.dict,:storage))
-                $(s_qty[1])
-                $(s_npoints[1])
-                nsfaces = length(sface_to_faces)
-                z = zero(vector_strategy.scalar_type(setup))
-                for $sface in 1:nsfaces
-                    $(s_qty[2])
-                    npoints = $(s_npoints[2])
-                    faces = sface_to_faces[sface]
-                    faces_around = sface_to_faces_around[sface]
-                    for ($face_around,face) in zip(faces_around,faces)
-                        if face == 0
-                            continue
-                        end
-                        $(s_qty[3])
-                        dofs = face_to_dofs[face]
-                        ndofs = length(dofs)
-                        for $idof in 1:ndofs
-                            $(s_qty[4])
-                            v = z
-                            for $point in 1:npoints
-                                v += $(s_qty[5])
-                            end
-                            dof = dofs[$idof]
-                            counter = vector_strategy.set!(alloc,counter,setup,v,dof,field)
                         end
                     end
                 end
@@ -344,16 +294,9 @@ function assemble_vector_fill!(integral,state)
             end
         end
         loop! = eval(expr)
-        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup)
-        storage = GT.storage(index)
+        storage = index_storage(index)
+        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_sDface_to_dofs)
         counter = invokelatest(loop!,counter,args,storage)
-        nothing
-    end
-    for (measure_and_contribution,field_to_glue) in zip(contributions,glues)
-        measure, contribution = measure_and_contribution
-        map(fields,field_to_glue) do field,glue
-            loop(glue,field,measure,contribution)
-        end
     end
     state
 end
@@ -373,8 +316,8 @@ end
 function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
     test_dim = 1
     trial_dim = 2
-    dv = GT.shape_functions(test_space,test_dim)
-    du = GT.shape_functions(trial_space,trial_dim)
+    dv = GT.form_argument(test_space,test_dim)
+    du = GT.form_argument(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix(integral,trial_space,test_space,T;kwargs...)
 end
@@ -400,8 +343,8 @@ end
 function assemble_matrix!(f,trial_space,test_space,A,cache)
     test_dim = 1
     trial_dim = 2
-    dv = GT.shape_functions(test_space,test_dim)
-    du = GT.shape_functions(trial_space,trial_dim)
+    dv = GT.form_argument(test_space,test_dim)
+    du = GT.form_argument(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix!(integral,A,cache)
 end
@@ -817,8 +760,8 @@ function nonlinear_ode(
     U = space(uts[1])
     test=1
     trial=2
-    v = shape_functions(V,test)
-    du = shape_functions(U,trial)
+    v = form_argument(V,test)
+    du = form_argument(U,trial)
     t0 = first(tspan)
     uhs_0 = map(uh->uh(t0),uts)
     coeffs_0 = map(uh_0 -> one(eltype(free_values(uh_0))),uhs_0) 

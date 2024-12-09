@@ -327,7 +327,20 @@ free_dims(a::BoundaryTerm) = setdiff(free_dims(a.term),[a.dim_around])
 
 prototype(a::BoundaryTerm) = prototype(a.term)
 
+function binary_call_term(f,a,b::BoundaryTerm)
+    t = binary_call_term(f,a,b.term)
+    boundary_term(b.dim,b.dim_around,t,b.face_around)
+end
+
 skeleton_term(args...) = SkeletonTerm(args...)
+
+function skeleton_term(dim,dim_around,term::BoundaryTerm)
+    if dim == term.dim && dim_around == term.dim_around
+        term
+    else
+        SkeletonTerm(dim,dim_around,term)
+    end
+end
 
 struct SkeletonTerm{A,B,C} <: AbstractTerm
     dim::A

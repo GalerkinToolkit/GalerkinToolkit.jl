@@ -305,6 +305,8 @@ abstract type AbstractMeshFace <: GT.AbstractType end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
+num_dofs(f::AbstractMeshFace) = num_nodes(f)
+
 abstract type AbstractLagrangeMeshFace <: AbstractMeshFace end
 
 AutoHashEquals.@auto_hash_equals struct GenericLagrangeMeshFace{A,B,C} <: AbstractLagrangeMeshFace
