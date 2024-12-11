@@ -66,16 +66,16 @@ s = PS.solve(s)
 uh = GT.solution_field(uh,s)
 Makie.plot(Ω;color=uh,strokecolor=:black)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">          iterations             residual             solution
    current     target    current     target    current     target
-         0       1000   1.34e+01   1.00e-08   0.00e+00   0.00e+00
-         1       1000   3.34e+00   1.00e-08   4.87e-01   0.00e+00
-         2       1000   8.33e-01   1.00e-08   2.39e-01   0.00e+00
-         3       1000   2.10e-01   1.00e-08   1.14e-01   0.00e+00
-         4       1000   5.64e-02   1.00e-08   5.27e-02   0.00e+00
-         5       1000   1.16e-02   1.00e-08   4.89e-02   0.00e+00
-         6       1000   1.29e-03   1.00e-08   1.49e-02   0.00e+00
-         7       1000   2.98e-05   1.00e-08   2.09e-03   0.00e+00
-         8       1000   3.00e-08   1.00e-08   4.68e-05   0.00e+00
-         9       1000   2.71e-14   1.00e-08   3.64e-08   0.00e+00</code></pre><p><img src="../fig_pt_plaplacian.png" alt/></p><p>Now, by showing the intermediate results in the iteration process</p><pre><code class="language-julia hljs">uh = GT.rand_field(Float64,V)
+         0       1000   1.32e+01   1.00e-08  6.94e-310   0.00e+00
+         1       1000   3.30e+00   1.00e-08   4.88e-01   0.00e+00
+         2       1000   8.24e-01   1.00e-08   2.35e-01   0.00e+00
+         3       1000   2.06e-01   1.00e-08   1.14e-01   0.00e+00
+         4       1000   5.40e-02   1.00e-08   5.38e-02   0.00e+00
+         5       1000   2.22e-02   1.00e-08   4.83e-02   0.00e+00
+         6       1000   5.78e-03   1.00e-08   2.27e-02   0.00e+00
+         7       1000   3.75e-04   1.00e-08   5.05e-03   0.00e+00
+         8       1000   1.63e-06   1.00e-08   3.32e-04   0.00e+00
+         9       1000   2.94e-11   1.00e-08   1.43e-06   0.00e+00</code></pre><p><img src="../fig_pt_plaplacian.png" alt/></p><p>Now, by showing the intermediate results in the iteration process</p><pre><code class="language-julia hljs">uh = GT.rand_field(Float64,V)
 GT.interpolate_dirichlet!(g,uh)
 p = GT.nonlinear_problem(uh,res,jac)
 s = PS.newton_raphson(p)
@@ -151,4 +151,4 @@ s = PS.solve(s)
 #ph = GT.solution_field(uhph_dirichlet,s,p_field;zeromean=true)
 uh,ph = GT.solution_field(uhph_dirichlet,s)
 Makie.plot(Ω,color=ph)
-Makie.arrows!(uh;color=x-&gt;norm(uh(x)),lengthscale=0.1)</code></pre><p><img src="../fig_pt_stokes.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../methods/">Discretization methods »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Friday 6 December 2024 19:02">Friday 6 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Makie.arrows!(uh;color=x-&gt;norm(uh(x)),lengthscale=0.1)</code></pre><p><img src="../fig_pt_stokes.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Introduction</a><a class="docs-footer-nextpage" href="../methods/">Discretization methods »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Wednesday 11 December 2024 08:28">Wednesday 11 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
