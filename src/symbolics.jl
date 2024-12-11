@@ -734,7 +734,8 @@ end
 
 function binary_call_term(f,a::FormArgumentTerm,b::ReferencePointTerm)
     t = binary_call_term(f,a.functions,b)
-    form_argument_term(a.axis,a.field,t,true)
+    evaluated = true
+    form_argument_term(a.axis,a.field,t,evaluated)
 end
 
 discrete_function_term(args...) = DiscreteFunctionTerm(args...)

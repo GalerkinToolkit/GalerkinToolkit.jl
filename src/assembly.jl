@@ -177,7 +177,7 @@ function assemble_vector_count(integral,state)
     nfields = GT.num_fields(space)
     field_to_domain = map(field->domain(space,field),1:nfields)
     field_to_sDface_to_dofs = map(field->face_dofs(space,field),1:nfields)
-    field_to_Dface_to_sDface = map(faces,field_to_domain)
+    field_to_Dface_to_sDface = map(inverse_faces,field_to_domain) # TODO faces or inverse_faces??
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
     for measure_and_contribution in contributions
@@ -366,73 +366,53 @@ end
 function assemble_matrix_count(integral,state)
     (;test_space,trial_space,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
-    num_fields_test = GT.num_fields(test_space)
-    num_fields_trial = GT.num_fields(trial_space)
-    fields_test = ntuple(identity,num_fields_test)
-    fields_trial = ntuple(identity,num_fields_trial)
-    glues_test = map(contributions) do measure_and_contribution
-        measure, = measure_and_contribution
-        domain = GT.domain(measure)
-        map(fields_test) do field
-            GT.domain_glue(domain,GT.domain(test_space,field),strict=false)
-        end
-    end
-    glues_trial = map(contributions) do measure_and_contribution
-        measure, = measure_and_contribution
-        domain = GT.domain(measure)
-        map(fields_trial) do field
-            GT.domain_glue(domain,GT.domain(trial_space,field),strict=false)
-        end
-    end
+    test, trial = 1, 2
+    axis_to_space = (test_space,trial_space)
+    axis_to_nfields = map(num_fields,axis_to_space)
+    axis_to_field_to_domain = map(space->map(field->domain(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_sDface_to_dofs = map(space->map(field->face_dofs(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_Dface_to_sDface = map(field_to_domain->map(faces,field_to_domain),axis_to_field_to_domain)
+    axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
-    function loop(glue_test,glue_trial,field_per_dim)
-        sface_to_faces_test, = target_face(glue_test)
-        sface_to_faces_trial, = target_face(glue_trial)
-        face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
-        face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
-        nsfaces = length(sface_to_faces_test)
-        field_test,field_trial = field_per_dim
+    for measure_and_contribution in contributions
+        measure, = measure_and_contribution
+        domain = GT.domain(measure)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        nsfaces = length(sface_to_face)
         for sface in 1:nsfaces
-            faces_test = sface_to_faces_test[sface]
-            faces_trial = sface_to_faces_trial[sface]
-            for face_test in faces_test
-                if face_test == 0
-                    continue
-                end
-                dofs_test = face_to_dofs_test[face_test]
-                ndofs_test = length(dofs_test)
-                for face_trial in faces_trial
-                    if face_trial == 0
-                        continue
-                    end
-                    dofs_trial = face_to_dofs_trial[face_trial]
-                    ndofs_trial = length(dofs_trial)
-                    for idof_test in 1:ndofs_test
-                        dof_test = dofs_test[idof_test]
-                        for idof_trial in 1:ndofs_trial
-                            dof_trial = dofs_trial[idof_trial]
-                            counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+            face = sface_to_face[sface]
+            for field_test in 1:axis_to_nfields[test]
+                test_Dface_to_sDface = axis_to_field_to_Dface_to_sDface[field_test][test]
+                test_D = axis_to_field_to_D[field_test][test]
+                test_face_to_Dfaces = face_incidence(topo,d,test_D)
+                test_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[field_test][test]
+                test_Dfaces = test_face_to_Dfaces[face]
+                for field_trial in 1:axis_to_nfields[trial]
+                    trial_Dface_to_sDface = axis_to_field_to_Dface_to_sDface[field_trial][trial]
+                    trial_D = axis_to_field_to_D[field_trial][trial]
+                    trial_face_to_Dfaces = face_incidence(topo,d,trial_D)
+                    trial_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[field_trial][trial]
+                    trial_Dfaces = trial_face_to_Dfaces[face]
+                    for trial_Dface in trial_Dfaces #TODO Typo this should be test
+                        trial_sDface = trial_Dface_to_sDface[trial_Dface]
+                        trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                        for trial_Dface in trial_Dfaces
+                            trial_sDface = trial_Dface_to_sDface[trial_Dface]
+                            trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                            for test_dof in test_dofs
+                                for trial_dof in trial_dofs
+                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,test_field,trial_field)
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
-    for (domain_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
-        domain, _ = domain_and_contribution
-        for field_test in fields_test
-            glue_test = field_to_glue_test[field_test]
-            for field_trial in fields_trial
-                glue_trial = field_to_glue_trial[field_trial]
-                if glue_test === nothing || glue_trial == nothing
-                    continue
-                end
-                field_per_dim = (field_test,field_trial)
-                loop(glue_test,glue_trial,field_per_dim)
-            end
-        end
-    end
-    (;counter,glues_test,glues_trial,fields_test,fields_trial,state...)
+    (;counter,state...)
 end
 
 function assemble_matrix_allocate(state)

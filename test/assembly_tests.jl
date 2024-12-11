@@ -115,6 +115,7 @@ function a(u,v)
     end +
     ∫(dΛref) do p
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        index = GT.generate_index(Λ)
         jump(v,ϕ_Λref_Ωref,p)*jump(u,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
@@ -180,9 +181,9 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
 Ω = GT.interior(mesh)
 Ωref = GT.reference_domain(Ω)
-ϕ = GT.domain_map(Ωref,Ω)
-
 D = GT.num_dims(mesh)
+ϕ = GT.physical_map(mesh,D)
+
 Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
 
 #V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
