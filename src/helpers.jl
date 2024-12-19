@@ -60,7 +60,7 @@ function jacobian_accessor(measure::Measure)
     end
 end
 
-function quadrature_length_accessor(measure::Measure)
+function num_points_accessor(measure::Measure)
     mesh = measure.mesh
     dom = measure.domain
     d = num_dims(dom)
@@ -168,6 +168,42 @@ function dofs_accessor(space::AbstractSpace,dom::AbstractDomain)
         rface = face_to_rface[face]
         dofs = rface_to_dofs[rface]
         dofs
+    end
+end
+
+function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+    dom = domain(measure)
+    space = GT.space(uh)
+    d = num_dims(dom)
+    dom2 = domain(space)
+    @assert num_dims(dom2) == d
+    sface_to_face = faces(dom)
+    face_to_rface = inverse_faces(dom)
+    rface_to_dofs = face_dofs(space)
+    rface_to_rid = face_reference_id(space)
+    free_vals = free_values(uh)
+    diri_vals = dirichlet_values(uh)
+    face_point_dof_s = shape_function_accessor(f,space,measure)
+    function face_point_val(sface)
+        face = sface_to_face[sface]
+        rface = face_to_rface[face]
+        dofs = rface_to_dofs[rface]
+        rid = rface_to_rid[rface]
+        point_dof_s = face_point_dof_s(sface)
+        ndofs = length(dofs)
+        function point_val(point,J)
+            dof_s = point_dof_s(point,J)
+            sum(1:ndofs) do i
+                dof = dofs[i]
+                s = dof_s(i)
+                if dof > 0
+                    v = free_vals[dof]
+                else
+                    v = diri_vals[-dof]
+                end
+                v*s
+            end
+        end
     end
 end
 

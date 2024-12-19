@@ -3,6 +3,7 @@ module HelpersTests
 import GalerkinToolkit as GT
 import ForwardDiff
 using LinearAlgebra
+using Test
 
 domain = (0,1,0,1)
 cells = (4,4)
@@ -19,7 +20,7 @@ dΩ = GT.measure(Ω,degree)
 dΓ = GT.measure(Γ,degree)
 dΛ = GT.measure(Λ,degree)
 
-V = GT.lagrange_space(Ω,degree;dirichlet_boundary=Γ)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
 face_point_x = GT.coordinate_accessor(dΩ)
 face_point_J = GT.jacobian_accessor(dΩ)
@@ -28,7 +29,7 @@ face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
 face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
 
 face = 3
-point = 6
+point = 4
 dof = 2
 
 point_x = face_point_x(face)
@@ -50,7 +51,8 @@ s = dof_s(dof)
 
 T = Float64
 uh = GT.zero_field(T,V)
-u = GT.analytical_field(sum,Ω)
+ufun = sum
+u = GT.analytical_field(ufun,Ω)
 GT.interpolate_dirichlet!(u,uh)
 face_dirichlet! = GT.dirichlet_accessor(uh,Ω)
 dirichlet! = face_dirichlet!(face)
@@ -74,10 +76,10 @@ GT.contribute!(A_alloc,Auu,dofs,dofs)
 A = GT.compress(A_alloc)
 
 uhd = GT.dirichlet_field(T,V)
-GT.interpolate_dirichlet!(u,uh)
+GT.interpolate_dirichlet!(u,uhd)
 f = x -> 0
 
-face_npoints = GT.quadrature_length_accessor(dΩ)
+face_npoints = GT.num_points_accessor(dΩ)
 
 b_alloc = GT.allocate_vector(T,V,Ω)
 A_alloc = GT.allocate_matrix(T,V,V,Ω)
@@ -119,8 +121,27 @@ x = A\b
 
 uh = GT.solution_field(uhd,x)
 
+face_point_val = GT.discrete_field_accessor(GT.value,uh,dΩ)
 
-display(A)
+err = Ref(0.0)
+for face in 1:GT.num_faces(Ω)
+    npoints = face_npoints(face)
+    point_x = face_point_x(face)
+    point_J = face_point_J(face)
+    point_dV = face_point_dV(face)
+    point_val = face_point_val(face)
+    for point in 1:npoints
+        x = point_x(point)
+        J = point_J(point)
+        dV = point_dV(point,J)
+        val = point_val(point,J)
+        err[] += abs2(val-ufun(x))*dV
+    end
+end
+tol = 1e-12
+@test sqrt(err[]) < tol
+
+#display(A)
 
 
 end # module
