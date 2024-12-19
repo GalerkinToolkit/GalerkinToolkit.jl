@@ -3,18 +3,19 @@ using Documenter
 using Literate
 
 src_dir = joinpath(@__DIR__,"src") 
-examples_dir = joinpath(src_dir,"examples") 
-examples = [
-            "problem_types",
-            "methods",
-            "mesh_generation",
-            "interpolations",
-            "boundary_conditions",
-            "fields",
-            "solvers",
-            "posprocessing",
-            "visualization",
-           ]
+examples_dir = joinpath(src_dir,"examples_new") 
+#examples = [
+#            "problem_types",
+#            "methods",
+#            "mesh_generation",
+#            "interpolations",
+#            "boundary_conditions",
+#            "fields",
+#            "solvers",
+#            "posprocessing",
+#            "visualization",
+#           ]
+examples = ["poisson"]
 codefence = "```julia" => "```"
 for example in examples
     file_jl = joinpath(examples_dir,example*".jl")
@@ -34,7 +35,7 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Examples" => [ "Introduction" => "examples.md", map(example->"examples/$(example).md",examples)...],
+        "Examples" => [ "Introduction" => "examples.md", map(example->"examples_new/$(example).md",examples)...],
         "API reference" =>[
                        "Introduction" => "reference.md",
                        "Mesh" => "reference/mesh.md",
