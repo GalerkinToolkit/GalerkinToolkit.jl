@@ -5,7 +5,7 @@ using Literate
 codefence = "```julia" => "```"
 src_dir = joinpath(@__DIR__,"src") 
 pdes_dir = joinpath(src_dir,"pdes_automatic") 
-pdes = ["poisson"]
+pdes = ["poisson","p_laplacian","elasticity","stokes"]
 for pde in pdes
     file_jl = joinpath(pdes_dir,pde*".jl")
     Literate.markdown(file_jl,pdes_dir)#;codefence)
