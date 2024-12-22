@@ -2,24 +2,19 @@ using GalerkinToolkit
 using Documenter
 using Literate
 
-src_dir = joinpath(@__DIR__,"src") 
-examples_dir = joinpath(src_dir,"pdes") 
-#examples = [
-#            "problem_types",
-#            "methods",
-#            "mesh_generation",
-#            "interpolations",
-#            "boundary_conditions",
-#            "fields",
-#            "solvers",
-#            "posprocessing",
-#            "visualization",
-#           ]
-examples = ["poisson"]
 codefence = "```julia" => "```"
-for example in examples
-    file_jl = joinpath(examples_dir,example*".jl")
-    Literate.markdown(file_jl,examples_dir;codefence)
+src_dir = joinpath(@__DIR__,"src") 
+pdes_dir = joinpath(src_dir,"pdes") 
+pdes = ["poisson"]
+for pde in pdes
+    file_jl = joinpath(pdes_dir,pde*".jl")
+    Literate.markdown(file_jl,pdes_dir;codefence)
+end
+assembly_dir = joinpath(src_dir,"assembly") 
+assembly = ["poisson"]
+for pde in assembly
+    file_jl = joinpath(assembly_dir,pde*".jl")
+    Literate.markdown(file_jl,assembly_dir)#;codefence)
 end
 
 DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
@@ -39,7 +34,8 @@ makedocs(;
         "Developers guide" => "developers_guide.md",
         "Examples" => [
                        "Introduction" => "examples.md",
-                       "PDEs" => map(example->"pdes/$(example).md",examples),
+                       "PDEs" => map(pde->"pdes/$(pde).md",pdes),
+                       "Manual assembly" => map(pde->"assembly/$(pde).md",assembly),
                       ],
         "API reference" =>[
                        "Introduction" => "reference.md",
