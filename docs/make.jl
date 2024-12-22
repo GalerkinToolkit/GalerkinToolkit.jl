@@ -3,7 +3,7 @@ using Documenter
 using Literate
 
 src_dir = joinpath(@__DIR__,"src") 
-examples_dir = joinpath(src_dir,"examples_new") 
+examples_dir = joinpath(src_dir,"pdes") 
 #examples = [
 #            "problem_types",
 #            "methods",
@@ -35,14 +35,18 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Examples" => [ "Introduction" => "examples.md", map(example->"examples_new/$(example).md",examples)...],
+        "Users guide" => "users_guide.md",
+        "Developers guide" => "developers_guide.md",
+        "Examples" => [
+                       "Introduction" => "examples.md",
+                       "PDEs" => map(example->"pdes/$(example).md",examples),
+                      ],
         "API reference" =>[
                        "Introduction" => "reference.md",
                        "Mesh" => "reference/mesh.md",
                        "Integration" => "reference/integration.md",
                        "Interpolation" => "reference/interpolation.md",
                       ],
-        "Developers guide" => "developers_guide.md",
         "refindex.md",
     ],
 )
