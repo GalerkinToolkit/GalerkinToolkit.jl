@@ -1,4 +1,4 @@
-# # Hello, world!
+# # Laplace
 #
 # ## Problem statement
 #
