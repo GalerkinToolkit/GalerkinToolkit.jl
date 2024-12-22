@@ -4,13 +4,13 @@ using Literate
 
 codefence = "```julia" => "```"
 src_dir = joinpath(@__DIR__,"src") 
-pdes_dir = joinpath(src_dir,"pdes") 
+pdes_dir = joinpath(src_dir,"pdes_automatic") 
 pdes = ["poisson"]
 for pde in pdes
     file_jl = joinpath(pdes_dir,pde*".jl")
     Literate.markdown(file_jl,pdes_dir)#;codefence)
 end
-assembly_dir = joinpath(src_dir,"assembly") 
+assembly_dir = joinpath(src_dir,"pdes_manual") 
 assembly = ["poisson"]
 for pde in assembly
     file_jl = joinpath(assembly_dir,pde*".jl")
@@ -40,8 +40,8 @@ makedocs(;
         "Developers guide" => "developers_guide.md",
         "Examples" => [
                        "Introduction" => "examples.md",
-                       "PDEs (automatic assembly)"=> map(pde->"pdes/$(pde).md",pdes),
-                       "PDEs (manual assembly)" => map(pde->"assembly/$(pde).md",assembly),
+                       "PDEs (automatic assembly)"=> map(pde->"pdes_automatic/$(pde).md",pdes),
+                       "PDEs (manual assembly)" => map(pde->"pdes_manual/$(pde).md",assembly),
                        "Tooling" => map(pde->"tooling/$(pde).md",tooling),
                       ],
         "API reference" =>[
