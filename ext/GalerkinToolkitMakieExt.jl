@@ -608,7 +608,7 @@ function Makie.plot!(sc::Arrows{<:Tuple{<:GT.PPlot,<:Any}})
     error("Not implemented")
 end
 
-function Makie.plot!(sc::Arrows{<:Tuple{<:GT.AbstractQuantity}})
+function Makie.plot!(sc::Arrows{<:Tuple{<:GT.AbstractField}})
     q = sc[1]
     valid_attributes = Makie.shared_attributes(sc, Arrows)
     color = valid_attributes[:color]

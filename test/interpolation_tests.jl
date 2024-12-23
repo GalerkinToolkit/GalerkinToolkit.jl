@@ -98,7 +98,8 @@ GT.face_permutation_ids(topo,2,2)
 
 Ω = GT.interior(mesh)
 Ωref = GT.interior(mesh;is_reference_domain=true)
-ϕ = GT.domain_map(Ωref,Ω)
+D = GT.num_dims(mesh)
+ϕ = GT.physical_map(mesh,D)
 
 D = GT.num_dims(mesh)
 Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
@@ -187,9 +188,9 @@ V = GT.lagrange_space(Γdiri,order)
 Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
 Γ3 = GT.boundary(mesh;physical_names=["0-face-1"])
 
-u1 = GT.analytical_field(x->1.0,Ωref)
-u2 = GT.analytical_field(x->2.0,Ωref)
-u3 = GT.analytical_field(x->3.0,Ωref)
+u1 = GT.analytical_field(x->1.0,Ω)
+u2 = GT.analytical_field(x->2.0,Ω)
+u3 = GT.analytical_field(x->3.0,Ω)
 
 # TODO better names than piecewiese_field and piecewiese_domain?
 udiri = GT.piecewiese_field(u1,u2,u3)

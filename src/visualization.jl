@@ -403,41 +403,40 @@ function plot!(plt::Plot,field;label)
     q = GT.coordinates(plt)
     f_q = field(q)
     term = GT.term(f_q)
-    T = typeof(GT.prototype(f_q))
-    plot_impl!(plt,term,label,T)
+    plot_impl!(plt,term,label)
 end
 
 function plot!(plt::PPlot,field;label)
     q = GT.coordinates(plt)
     f_q = field(q)
     term = GT.term(f_q)
-    T = typeof(GT.prototype(f_q))
     map(partition(plt),term) do myplt, myterm
-        plot_impl!(myplt,myterm,label,T)
+        plot_impl!(myplt,myterm,label)
     end
     plt
 end
 
-function plot_impl!(plt,term,label,::Type{T}) where T
+function plot_impl!(plt,term,label)
     vmesh  = plt.mesh
     vglue = plt.cache.glue
     nnodes = GT.num_nodes(vmesh)
+    index = GT.generate_index(domain(plt))
+    d = target_dim(index)
+    face_to_nodes = GT.get_symbol!(index,vglue.face_fine_nodes,"face_to_nodes")
+    t = term(index)
+    T = typeof(prototype(t))
     data = zeros(T,nnodes)
-    face_to_nodes = vglue.face_fine_nodes
-    face = :face
-    point = :point
-    index = GT.index(;face,point)
-    dict = index.dict
-    dict[face_to_nodes] = :face_to_nodes
+    expr1 = expression(t) |> simplify
+    face = face_index(index,d)
+    point = point_index(index)
     deps = (face,point)
-    expr1 = term(index) |> simplify
     v = GT.topological_sort(expr1,deps)
     expr = quote
-        function filldata!(data,state)
-            $(unpack_storage(dict,:state))
+        (data,state) -> begin
+            $(unpack_index_storage(index,:state))
             $(v[1])
-            for $face in 1:length(face_to_nodes)
-                nodes = face_to_nodes[$face]
+            for $face in 1:length($face_to_nodes)
+                nodes = $face_to_nodes[$face]
                 $(v[2])
                 for $point in 1:length(nodes)
                     data[nodes[$point]] = $(v[3])
@@ -446,7 +445,7 @@ function plot_impl!(plt,term,label,::Type{T}) where T
         end
     end
     filldata! = eval(expr)
-    invokelatest(filldata!,data,GT.storage(index))
+    invokelatest(filldata!,data,GT.index_storage(index))
     plt.node_data[label] = data
     plt
 end
@@ -464,10 +463,14 @@ end
 
 function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
     domain_phys = plt |> GT.domain
-    domain_ref = domain_phys |> reference_domain
-    phi = GT.domain_map(domain_ref,domain_phys)
+    d = num_dims(domain(plt))
+    phi = physical_map(mesh(domain(plt)),d)
     q = GT.reference_coordinates(plt)
     phi(q)
+    #domain_ref = domain_phys |> reference_domain
+    #phi = GT.domain_map(domain_ref,domain_phys)
+    #q = GT.reference_coordinates(plt)
+    #phi(q)
 end
 
 function reference_coordinates(plt::Plot)
@@ -478,24 +481,25 @@ function reference_coordinates(plt::Plot)
     vmesh, vglue = GT.visualization_mesh(plt,glue=true)
     refid_to_snode_to_coords = vglue.reference_coordinates
     d = GT.num_dims(vmesh)
-    face_to_refid = GT.face_reference_id(mesh,d)
-    prototype = first(first(refid_to_snode_to_coords))
-    GT.quantity(prototype,domain) do index
-        domface = index.face
-        point = index.point
-        dict = index.dict
-        domface_to_face_sym = get!(dict,domface_to_face,gensym("domface_to_face"))
-        face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
-        refid_to_snode_to_coords_sym = get!(dict,refid_to_snode_to_coords,gensym("refid_to_snode_to_coords"))
-        @term begin
-            face = $domface_to_face_sym[$domface]
-            coords = reference_value(
-                $refid_to_snode_to_coords_sym,
-                $face_to_refid_sym,
-                $face)
-            coords[$point]
-        end
-    end
+    face_reference_id = GT.face_reference_id(mesh,d)
+    GT.point_quantity(refid_to_snode_to_coords,domain;reference=true,face_reference_id)
+    #prototype = first(first(refid_to_snode_to_coords))
+    #GT.quantity(prototype,domain) do index
+    #    domface = index.face
+    #    point = index.point
+    #    dict = index.dict
+    #    domface_to_face_sym = get!(dict,domface_to_face,gensym("domface_to_face"))
+    #    face_to_refid_sym = get!(dict,face_to_refid,gensym("face_to_refid"))
+    #    refid_to_snode_to_coords_sym = get!(dict,refid_to_snode_to_coords,gensym("refid_to_snode_to_coords"))
+    #    @term begin
+    #        face = $domface_to_face_sym[$domface]
+    #        coords = reference_value(
+    #            $refid_to_snode_to_coords_sym,
+    #            $face_to_refid_sym,
+    #            $face)
+    #        coords[$point]
+    #    end
+    #end
 end
 
 function reference_coordinates(plt::PPlot)

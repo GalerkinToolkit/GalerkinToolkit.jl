@@ -108,8 +108,8 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
 end
 
 function assemble_vector(f,space,::Type{T};kwargs...) where T
-    dim = 1
-    dv = GT.shape_functions(space,dim)
+    axis = 1
+    dv = GT.form_argument(space,axis)
     integral = f(dv)
     assemble_vector(integral,space,T;kwargs...)
 end
@@ -152,7 +152,7 @@ end
 
 function assemble_vector!(f,space,b,cache)
     dim = 1
-    dv = GT.shape_functions(space,dim)
+    dv = GT.form_argument(space,dim)
     integral = f(dv)
     assemble_vector!(integral,b,cache)
 end
@@ -174,42 +174,44 @@ end
 function assemble_vector_count(integral,state)
     (;space,vector_strategy,setup) = state
     contributions = GT.contributions(integral)
-    num_fields = GT.num_fields(space)
-    fields = ntuple(identity,num_fields)
-    glues = map(contributions) do measure_and_contribution
+    nfields = GT.num_fields(space)
+    field_to_domain = map(field->domain(space,field),1:nfields)
+    field_to_sDface_to_dofs = map(field->face_dofs(space,field),1:nfields)
+    field_to_Dface_to_sDface = map(inverse_faces,field_to_domain) # TODO faces or inverse_faces??
+    field_to_D = map(num_dims,field_to_domain)
+    counter = vector_strategy.counter(setup)
+    for measure_and_contribution in contributions
         measure, = measure_and_contribution
         domain = GT.domain(measure)
-        map(fields) do field
-            GT.domain_glue(domain,GT.domain(space,field);strict=false)
-        end
-    end
-    counter = vector_strategy.counter(setup)
-    function loop(glue::Nothing,field)
-    end
-    function loop(glue,field)
-        sface_to_faces, = target_face(glue)
-        face_to_dofs = face_dofs(space,field)
-        nsfaces = length(sface_to_faces)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        nsfaces = length(sface_to_face)
         for sface in 1:nsfaces
-            faces = sface_to_faces[sface]
-            for face in faces
-                if face == 0
+            face = sface_to_face[sface]
+            for field in 1:nfields
+                Dface_to_sDface = field_to_Dface_to_sDface[field]
+                D = field_to_D[field]
+                if D < d
                     continue
                 end
-                dofs = face_to_dofs[face]
-                ndofs = length(dofs)
-                for idof in 1:ndofs
-                    dof = dofs[idof]
-                    counter = vector_strategy.count(counter,setup,dof,field)
+                face_to_Dfaces = face_incidence(topo,d,D)
+                sDface_to_dofs = field_to_sDface_to_dofs[field]
+                Dfaces = face_to_Dfaces[face]
+                for Dface in Dfaces
+                    sDface = Dface_to_sDface[Dface]
+                    if sDface == 0
+                        continue
+                    end
+                    dofs = sDface_to_dofs[sDface]
+                    for dof in dofs
+                        counter = vector_strategy.count(counter,setup,dof,field)
+                    end
                 end
             end
         end
     end
-    for (domain_and_contribution,field_to_glue) in zip(contributions,glues)
-        domain, _ = domain_and_contribution
-        map(loop,field_to_glue,fields)
-    end
-    (;counter,glues,fields,state...)
+    (;counter,state...)
 end
 
 function assemble_vector_allocate(state)
@@ -218,59 +220,85 @@ function assemble_vector_allocate(state)
     (;alloc,state...)
 end
 
+function max_local_dofs(space,field)
+    rid_to_reffe = reference_fes(component(space,field))
+    map(num_dofs,rid_to_reffe) |> maximum
+end
+
+function max_local_dofs(space)
+    nfields = num_fields(space)
+    map(field->max_local_dofs(space,field),1:nfields) |> maximum
+end
+
 function assemble_vector_fill!(integral,state)
-    (;space,glues,fields,vector_strategy,alloc,setup) = state
+    (;space,vector_strategy,alloc,setup) = state
     contributions = GT.contributions(integral)
-    num_fields = GT.num_fields(space)
+    nfields = GT.num_fields(space)
+    field_to_domain = map(field->domain(space,field),1:nfields)
+    field_to_sDface_to_dofs = map(field->face_dofs(space,field),1:nfields)
+    field_to_Dface_to_sDface = map(inverse_faces,field_to_domain)
+    field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
-    function loop(glue::Nothing,field,measure,contribution)
-    end
-    function loop(glue,field,measure,contribution)
-        sface_to_faces,_,sface_to_faces_around = target_face(glue)
-        face_to_dofs = face_dofs(space,field)
-        term_qty = GT.term(contribution)
+    T = vector_strategy.scalar_type(setup)
+    b = zeros(T,max_local_dofs(space))
+    for measure_and_contribution in contributions
+        measure,contribution = measure_and_contribution
+        domain = GT.domain(measure)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        form_arity = 1
+        index = GT.generate_index(domain,form_arity)
+        t = GT.term(contribution,index)
         term_npoints = GT.num_points(measure)
-        sface = :sface
-        point = :point
-        idof = :idof
-        face_around = :face_around
-        field_per_dim = (field,)
-        dof_per_dim = (idof,)
-        face_around_per_dim = (face_around,)
-        index = GT.index(;face=sface,point,field_per_dim,dof_per_dim,face_around_per_dim)
-        expr_qty = term_qty(index) |> simplify
-        expr_npoints = term_npoints(index) |> simplify
-        # TODO merge statements
-        s_qty = GT.topological_sort(expr_qty,(sface,face_around,idof,point))
-        s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        expr_qty = t |> expression |> simplify
+        expr_npoints = term_npoints(index) |> expression |> simplify
+        face = face_index(index,d)
+        point = point_index(index)
+        axis = 1
+        idof = dof_index(index,axis)
+        Dface_around = face_around_index(index,axis)
+        field = field_index(index,axis)
+        s_qty = GT.topological_sort(expr_qty,(face,field,Dface_around,point,idof))
+        s_npoints = GT.topological_sort(expr_npoints,(face,))
         expr = quote
-            function loop!(counter,args,storage)
-                (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup) = args
-                $(unpack_storage(index.dict,:storage))
+            (counter,args,storage) -> begin
+                $(unpack_index_storage(index,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
-                nsfaces = length(sface_to_faces)
-                z = zero(vector_strategy.scalar_type(setup))
-                for $sface in 1:nsfaces
+                b = args.b
+                nsfaces = length(args.sface_to_face)
+                for sface in 1:nsfaces
+                    $face = args.sface_to_face[sface]
                     $(s_qty[2])
                     npoints = $(s_npoints[2])
-                    faces = sface_to_faces[sface]
-                    faces_around = sface_to_faces_around[sface]
-                    for ($face_around,face) in zip(faces_around,faces)
-                        if face == 0
+                    for $field in 1:args.nfields
+                        $(s_qty[3])
+                        Dface_to_sDface = args.field_to_Dface_to_sDface[$field]
+                        D = args.field_to_D[$field]
+                        if D < args.d
                             continue
                         end
-                        $(s_qty[3])
-                        dofs = face_to_dofs[face]
-                        ndofs = length(dofs)
-                        for $idof in 1:ndofs
+                        face_to_Dfaces = face_incidence(args.topo,args.d,D)
+                        sDface_to_dofs = args.field_to_sDface_to_dofs[$field]
+                        Dfaces = face_to_Dfaces[$face]
+                        for ($Dface_around,Dface) in enumerate(Dfaces)
                             $(s_qty[4])
-                            v = z
-                            for $point in 1:npoints
-                                v += $(s_qty[5])
+                            fill!(b,zero(eltype(b)))
+                            sDface = Dface_to_sDface[Dface]
+                            if sDface == 0
+                                continue
                             end
-                            dof = dofs[$idof]
-                            counter = vector_strategy.set!(alloc,counter,setup,v,dof,field)
+                            dofs = sDface_to_dofs[sDface]
+                            for $point in 1:npoints
+                                $(s_qty[5])
+                                for ($idof,dof) in enumerate(dofs)
+                                    b[$idof] += $(s_qty[6])
+                                end
+                            end
+                            for ($idof,dof) in enumerate(dofs)
+                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field)
+                            end
                         end
                     end
                 end
@@ -278,16 +306,9 @@ function assemble_vector_fill!(integral,state)
             end
         end
         loop! = eval(expr)
-        args = (;sface_to_faces,sface_to_faces_around,face_to_dofs,field,vector_strategy,alloc,setup)
-        storage = GT.storage(index)
+        storage = index_storage(index)
+        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_sDface_to_dofs)
         counter = invokelatest(loop!,counter,args,storage)
-        nothing
-    end
-    for (measure_and_contribution,field_to_glue) in zip(contributions,glues)
-        measure, contribution = measure_and_contribution
-        map(fields,field_to_glue) do field,glue
-            loop(glue,field,measure,contribution)
-        end
     end
     state
 end
@@ -307,8 +328,8 @@ end
 function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
     test_dim = 1
     trial_dim = 2
-    dv = GT.shape_functions(test_space,test_dim)
-    du = GT.shape_functions(trial_space,trial_dim)
+    dv = GT.form_argument(test_space,test_dim)
+    du = GT.form_argument(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix(integral,trial_space,test_space,T;kwargs...)
 end
@@ -334,8 +355,8 @@ end
 function assemble_matrix!(f,trial_space,test_space,A,cache)
     test_dim = 1
     trial_dim = 2
-    dv = GT.shape_functions(test_space,test_dim)
-    du = GT.shape_functions(trial_space,trial_dim)
+    dv = GT.form_argument(test_space,test_dim)
+    du = GT.form_argument(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix!(integral,A,cache)
 end
@@ -357,73 +378,65 @@ end
 function assemble_matrix_count(integral,state)
     (;test_space,trial_space,matrix_strategy,setup) = state
     contributions = GT.contributions(integral)
-    num_fields_test = GT.num_fields(test_space)
-    num_fields_trial = GT.num_fields(trial_space)
-    fields_test = ntuple(identity,num_fields_test)
-    fields_trial = ntuple(identity,num_fields_trial)
-    glues_test = map(contributions) do measure_and_contribution
-        measure, = measure_and_contribution
-        domain = GT.domain(measure)
-        map(fields_test) do field
-            GT.domain_glue(domain,GT.domain(test_space,field),strict=false)
-        end
-    end
-    glues_trial = map(contributions) do measure_and_contribution
-        measure, = measure_and_contribution
-        domain = GT.domain(measure)
-        map(fields_trial) do field
-            GT.domain_glue(domain,GT.domain(trial_space,field),strict=false)
-        end
-    end
+    test, trial = 1, 2
+    axis_to_space = (test_space,trial_space)
+    axis_to_nfields = map(num_fields,axis_to_space)
+    axis_to_field_to_domain = map(space->map(field->domain(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_sDface_to_dofs = map(space->map(field->face_dofs(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_Dface_to_sDface = map(field_to_domain->map(inverse_faces,field_to_domain),axis_to_field_to_domain) # TODO: faces or inverse_faces??
+    axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
-    function loop(glue_test,glue_trial,field_per_dim)
-        sface_to_faces_test, = target_face(glue_test)
-        sface_to_faces_trial, = target_face(glue_trial)
-        face_to_dofs_test = face_dofs(test_space,field_per_dim[1])
-        face_to_dofs_trial = face_dofs(trial_space,field_per_dim[2])
-        nsfaces = length(sface_to_faces_test)
-        field_test,field_trial = field_per_dim
+    for measure_and_contribution in contributions
+        measure, = measure_and_contribution
+        domain = GT.domain(measure)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        nsfaces = length(sface_to_face)
         for sface in 1:nsfaces
-            faces_test = sface_to_faces_test[sface]
-            faces_trial = sface_to_faces_trial[sface]
-            for face_test in faces_test
-                if face_test == 0
+            face = sface_to_face[sface]
+            for field_test in 1:axis_to_nfields[test]
+                test_Dface_to_sDface = axis_to_field_to_Dface_to_sDface[test][field_test]
+                test_D = axis_to_field_to_D[test][field_test]
+                if test_D < d
                     continue
                 end
-                dofs_test = face_to_dofs_test[face_test]
-                ndofs_test = length(dofs_test)
-                for face_trial in faces_trial
-                    if face_trial == 0
+                test_face_to_Dfaces = face_incidence(topo,d,test_D)
+                test_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[test][field_test]
+                test_Dfaces = test_face_to_Dfaces[face]
+                for field_trial in 1:axis_to_nfields[trial]
+                    trial_Dface_to_sDface = axis_to_field_to_Dface_to_sDface[trial][field_trial]
+                    trial_D = axis_to_field_to_D[trial][field_trial]
+                    if trial_D < d
                         continue
                     end
-                    dofs_trial = face_to_dofs_trial[face_trial]
-                    ndofs_trial = length(dofs_trial)
-                    for idof_test in 1:ndofs_test
-                        dof_test = dofs_test[idof_test]
-                        for idof_trial in 1:ndofs_trial
-                            dof_trial = dofs_trial[idof_trial]
-                            counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+                    trial_face_to_Dfaces = face_incidence(topo,d,trial_D)
+                    trial_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[trial][field_trial]
+                    trial_Dfaces = trial_face_to_Dfaces[face]
+                    for test_Dface in test_Dfaces 
+                        test_sDface = test_Dface_to_sDface[test_Dface]
+                        if test_sDface == 0
+                            continue
+                        end
+                        test_dofs = test_sDface_to_dofs[test_sDface]
+                        for trial_Dface in trial_Dfaces
+                            trial_sDface = trial_Dface_to_sDface[trial_Dface]
+                            if trial_sDface == 0
+                                continue
+                            end
+                            trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                            for test_dof in test_dofs
+                                for trial_dof in trial_dofs
+                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial)
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
-    for (domain_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
-        domain, _ = domain_and_contribution
-        for field_test in fields_test
-            glue_test = field_to_glue_test[field_test]
-            for field_trial in fields_trial
-                glue_trial = field_to_glue_trial[field_trial]
-                if glue_test === nothing || glue_trial == nothing
-                    continue
-                end
-                field_per_dim = (field_test,field_trial)
-                loop(glue_test,glue_trial,field_per_dim)
-            end
-        end
-    end
-    (;counter,glues_test,glues_trial,fields_test,fields_trial,state...)
+    (;counter,state...)
 end
 
 function assemble_matrix_allocate(state)
@@ -433,106 +446,116 @@ function assemble_matrix_allocate(state)
 end
 
 function assemble_matrix_fill!(integral,state)
-    (;test_space,trial_space,fields_test,fields_trial,alloc,glues_test,glues_trial,matrix_strategy,setup) = state
+    (;test_space,trial_space,alloc,matrix_strategy,setup) = state 
+
     contributions = GT.contributions(integral)
-    num_fields_test = GT.num_fields(test_space)
-    num_fields_trial = GT.num_fields(trial_space)
+    test, trial = 1, 2
+    axis_to_space = (test_space,trial_space)
+    axis_to_nfields = map(num_fields,axis_to_space)
+    axis_to_field_to_domain = map(space->map(field->domain(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_sDface_to_dofs = map(space->map(field->face_dofs(space,field),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_Dface_to_sDface = map(field_to_domain->map(inverse_faces,field_to_domain),axis_to_field_to_domain) # TODO: faces or inverse_faces??
+    axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
-    function loop(glue_test,glue_trial,field_per_dim,measure,contribution)
-        field_test,field_trial = field_per_dim
-        sface_to_faces_test, _,sface_to_faces_around_test = target_face(glue_test)
-        sface_to_faces_trial, _,sface_to_faces_around_trial = target_face(glue_trial)
-        face_to_dofs_test = face_dofs(test_space,field_test)
-        face_to_dofs_trial = face_dofs(trial_space,field_trial)
-        term_qty = GT.term(contribution)
+    T = matrix_strategy.scalar_type(setup)
+    b = zeros(T,max_local_dofs(trial_space), max_local_dofs(test_space))
+
+    for measure_and_contribution in contributions
+        measure,contribution = measure_and_contribution
+        domain = GT.domain(measure)
+        sface_to_face = faces(domain)
+        topo = topology(mesh(domain))
+        d = num_dims(domain)
+        form_arity = 2
+        index = GT.generate_index(domain,form_arity)
+        t = GT.term(contribution,index)
         term_npoints = GT.num_points(measure)
-        sface = :sface
-        point = :point
-        idof_test = :idof_test
-        idof_trial = :idof_trial
-        face_around_test = :face_around_test
-        face_around_trial = :face_around_trial
-        dof_per_dim = (idof_test,idof_trial)
-        face_around_per_dim = (face_around_test,face_around_trial)
-        index = GT.index(;face=sface,point,field_per_dim,dof_per_dim,face_around_per_dim)
-        expr_qty = term_qty(index) |> simplify
-        expr_npoints = term_npoints(index) |> simplify
-        # TODO merge statements
-        s_qty = GT.topological_sort(expr_qty,(sface,face_around_test,face_around_trial,idof_test,idof_trial,point))
-        s_npoints = GT.topological_sort(expr_npoints,(sface,))
+        expr_qty = t |> expression |> simplify
+        expr_npoints = term_npoints(index) |> expression |> simplify
+        face = face_index(index,d)
+        point = point_index(index)
+        axes = (test, trial)
+
+        idof_test, idof_trial = map(axis -> dof_index(index,axis), axes) # TODO: test, trial
+        test_Dface_around, trial_Dface_around = map(axis -> face_around_index(index,axis), axes)
+        field_test, field_trial = map(axis -> field_index(index,axis), axes)
+
+        s_qty = GT.topological_sort(expr_qty,(face, field_test, field_trial, test_Dface_around, trial_Dface_around, point, idof_test, idof_trial)) # 8 deps
+        s_npoints = GT.topological_sort(expr_npoints,(face,))
+        
         expr = quote
             function loop!(counter,args,storage)
-                (;sface_to_faces_test,sface_to_faces_around_test,
-                 sface_to_faces_trial,sface_to_faces_around_trial,
-                 face_to_dofs_test,face_to_dofs_trial,field_test,field_trial,
-                 alloc,matrix_strategy,setup) = args
-                $(unpack_storage(index.dict,:storage))
+                $(unpack_index_storage(index,:storage))
                 $(s_qty[1])
                 $(s_npoints[1])
-                nsfaces = length(sface_to_faces_test)
-                z = zero(matrix_strategy.scalar_type(setup))
-                for $sface in 1:nsfaces
+                b = args.b
+                nsfaces = length(args.sface_to_face)
+                for sface in 1:nsfaces
+                    $face = args.sface_to_face[sface]
                     $(s_qty[2])
                     npoints = $(s_npoints[2])
-                    faces_test = sface_to_faces_test[sface]
-                    faces_trial = sface_to_faces_trial[sface]
-                    faces_around_test = sface_to_faces_around_test[sface]
-                    faces_around_trial = sface_to_faces_around_trial[sface]
-                    for ($face_around_test,face_test) in zip(faces_around_test,faces_test)
-                        if face_test == 0
+                    for $field_test in 1:args.axis_to_nfields[$test]
+                        $(s_qty[3])
+                        test_Dface_to_sDface = args.axis_to_field_to_Dface_to_sDface[$test][$field_test]
+                        test_D = args.axis_to_field_to_D[$test][$field_test]
+                        if test_D < args.d
                             continue
                         end
-                        $(s_qty[3])
-                        dofs_test = face_to_dofs_test[face_test]
-                        ndofs_test = length(dofs_test)
-                        for ($face_around_trial,face_trial) in zip(faces_around_trial,faces_trial)
-                            if face_trial == 0
+                        test_face_to_Dfaces = face_incidence(args.topo,args.d,test_D)
+                        test_sDface_to_dofs = args.axis_to_field_to_sDface_to_dofs[$test][$field_test]
+                        test_Dfaces = test_face_to_Dfaces[$face]
+                        for $field_trial in 1:args.axis_to_nfields[$trial]
+                            $(s_qty[4])
+                            trial_Dface_to_sDface = args.axis_to_field_to_Dface_to_sDface[$trial][$field_trial]
+                            trial_D = args.axis_to_field_to_D[$trial][$field_trial]
+                            if trial_D < args.d
                                 continue
                             end
-                            $(s_qty[4])
-                            dofs_trial = face_to_dofs_trial[face_trial]
-                            ndofs_trial = length(dofs_trial)
-                            for $idof_test in 1:ndofs_test
+                            trial_face_to_Dfaces = face_incidence(args.topo,args.d,trial_D)
+                            trial_sDface_to_dofs = args.axis_to_field_to_sDface_to_dofs[$trial][$field_trial]
+                            trial_Dfaces = trial_face_to_Dfaces[$face]
+                            for ($test_Dface_around,test_Dface) in enumerate(test_Dfaces)
                                 $(s_qty[5])
-                                dof_test = dofs_test[$idof_test]
-                                for $idof_trial in 1:ndofs_trial
+                                test_sDface = test_Dface_to_sDface[test_Dface]
+                                if test_sDface == 0
+                                    continue
+                                end
+                                test_dofs = test_sDface_to_dofs[test_sDface]
+                                for ($trial_Dface_around,trial_Dface) in enumerate(trial_Dfaces)
                                     $(s_qty[6])
-                                    dof_trial = dofs_trial[$idof_trial]
-                                    v = z
-                                    for $point in 1:npoints
-                                        v += $(s_qty[7])
+                                    trial_sDface = trial_Dface_to_sDface[trial_Dface]
+                                    if trial_sDface == 0
+                                        continue
                                     end
-                                    counter = matrix_strategy.set!(alloc,counter,setup,v,dof_test,dof_trial,field_test,field_trial)
+                                    trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                                    fill!(b,zero(eltype(b)))
+                                    for $point in 1:npoints
+                                        $(s_qty[7])
+                                        for ($idof_test, dof_test) in enumerate(test_dofs)
+                                            $(s_qty[8])
+                                            for ($idof_trial, dof_trial) in enumerate(trial_dofs)
+                                                b[$idof_test, $idof_trial] += $(s_qty[9])
+                                            end
+                                        end
+                                    end
+                                    for ($idof_test, dof_test) in enumerate(test_dofs)
+                                        for ($idof_trial, dof_trial) in enumerate(trial_dofs)
+                                            counter = args.matrix_strategy.set!(args.alloc,counter,args.setup,b[$idof_test, $idof_trial],dof_test,dof_trial,$field_test,$field_trial)
+                                        end
+                                    end
                                 end
                             end
                         end
                     end
+ 
                 end
                 counter
             end
         end
         loop! = eval(expr)
-        storage = GT.storage(index)
-        args = (;sface_to_faces_test,sface_to_faces_around_test,
-                 sface_to_faces_trial,sface_to_faces_around_trial,
-                 face_to_dofs_test,face_to_dofs_trial,field_test,field_trial,
-                 alloc,matrix_strategy,setup)
+        storage = index_storage(index)
+        args = (;d,axis_to_nfields,alloc,matrix_strategy,setup,b,topo,sface_to_face,axis_to_field_to_D,axis_to_field_to_Dface_to_sDface,axis_to_field_to_sDface_to_dofs) 
         counter = invokelatest(loop!,counter,args,storage)
-        nothing
-    end
-    for (measure_and_contribution,field_to_glue_test,field_to_glue_trial) in zip(contributions,glues_test,glues_trial)
-        measure, contribution = measure_and_contribution
-        for field_test in fields_test
-            glue_test = field_to_glue_test[field_test]
-            for field_trial in fields_trial
-                glue_trial = field_to_glue_trial[field_trial]
-                if glue_test === nothing || glue_trial == nothing
-                    continue
-                end
-                field_per_dim = (field_test,field_trial)
-                loop(glue_test,glue_trial,field_per_dim,measure,contribution)
-            end
-        end
     end
     state
 end
@@ -751,8 +774,8 @@ function nonlinear_ode(
     U = space(uts[1])
     test=1
     trial=2
-    v = shape_functions(V,test)
-    du = shape_functions(U,trial)
+    v = form_argument(V,test)
+    du = form_argument(U,trial)
     t0 = first(tspan)
     uhs_0 = map(uh->uh(t0),uts)
     coeffs_0 = map(uh_0 -> one(eltype(free_values(uh_0))),uhs_0) 
