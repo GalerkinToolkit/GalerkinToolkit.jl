@@ -332,6 +332,15 @@ function binary_call_term(f,a,b::BoundaryTerm)
     boundary_term(b.dim,b.dim_around,t,b.face_around)
 end
 
+function binary_call_term(f,a::BoundaryTerm,b)
+    t = binary_call_term(f,a.term,b)
+    boundary_term(a.dim,a.dim_around,t,a.face_around)
+end
+
+function binary_call_term(f,a::BoundaryTerm,b::BoundaryTerm)
+    BinaryCallTerm(f,a,b)
+end
+
 skeleton_term(args...) = SkeletonTerm(args...)
 
 function skeleton_term(dim,dim_around,term::BoundaryTerm)
@@ -825,7 +834,10 @@ end
 free_dims(a::PhysicalMapTerm) = [a.dim]
 
 
-prototype(a::PhysicalMapTerm) = x-> zero(SVector{val_parameter(a.dim),Float64})
+function prototype(a::PhysicalMapTerm)
+    D = num_ambient_dims(mesh(index(a)))
+    x-> zero(SVector{D,Float64})
+end
 
 
 function Base.:(==)(a::PhysicalMapTerm,b::PhysicalMapTerm)
@@ -976,7 +988,7 @@ function binary_call_term_physical_maps(::typeof(call),a,b,phi1::PhysicalMapTerm
     f(phi(x))
 end
 
-function binary_call_term_physical_maps(::typeof(ForwardDiff.gradient),a,b,phi1::PhysicalMapTerm,phi2::PhysicalMapTerm)
+function binary_call_term_physical_maps(d::typeof(ForwardDiff.gradient),a,b,phi1::PhysicalMapTerm,phi2::PhysicalMapTerm)
     @assert phi1.dim != phi2.dim
     phi = reference_map_term(phi2.dim,phi1.dim,index(a))
     f = a.arg1
@@ -1237,7 +1249,7 @@ struct UnitNormalTerm{A} <: AbstractTerm
 end
 
 free_dims(a::UnitNormalTerm) = free_dims(a.outwards_normals)
-prototype(a::UnitNormalTerm) = prototype(a.outwards_normals)
+prototype(a::UnitNormalTerm) = x -> prototype(a.outwards_normals)
 index(a::UnitNormalTerm) = index(a.outwards_normals)
 
 function expression(c::BinaryCallTerm{typeof(call),<:UnitNormalTerm,<:Any})

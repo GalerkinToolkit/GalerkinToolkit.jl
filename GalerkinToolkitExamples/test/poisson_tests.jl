@@ -19,7 +19,7 @@ for discretization_method in (:continuous_galerkin,)
         params[:dirichlet_tags] = ["1-face-1","1-face-2","1-face-3","1-face-4"]
         params[:discretization_method] = discretization_method
         params[:dirichlet_method] = dirichlet_method
-        params[:integration_degree] = 2
+        params[:interpolation_degree] = 2
         results = Poisson.main(params)
         @test results[:error_l2_norm] < tol
         @test results[:error_h1_norm] < tol
@@ -35,7 +35,7 @@ for discretization_method in (:interior_penalty,:continuous_galerkin)
         params[:neumann_tags] = ["1-face-2"]
         params[:discretization_method] = discretization_method
         params[:dirichlet_method] = dirichlet_method
-        params[:integration_degree] = 2
+        params[:interpolation_degree] = 2
         results = Poisson.main(params)
         @test results[:error_l2_norm] < tol
         @test results[:error_h1_norm] < tol
