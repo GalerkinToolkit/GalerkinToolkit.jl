@@ -976,6 +976,28 @@ function binary_call_term(d::typeof(ForwardDiff.gradient),a::ComposedWithInverse
     call(\,Jt,gradf)
 end
 
+function binary_call_term(d::typeof(ForwardDiff.jacobian),a::ComposedWithInverseTerm,b::FunctionCallTerm)
+    phi1 = a.arg2.arg1
+    phi2 = b.arg1
+    if phi1 != phi2
+        return binary_call_term_physical_maps(d,a,b,phi1,phi2)
+    end
+    phi = phi1
+    f = a.arg1
+    x = b.arg2
+    J = call(ForwardDiff.jacobian,phi,x)
+    Jf = call(d,f,x)
+    call(/,Jf,J)
+end
+
+#  w(q) = u(ϕ(q))
+#  ∇(w,q) = Jt(ϕ,q)*∇(u,ϕ(q))
+#  Jt(ϕ,q)\∇(w,q) = ∇(u,ϕ(q))
+#
+#
+#  J(w,q) = J(u,ϕ(q))*J(ϕ,q)
+#  J(w,q)/J(ϕ,q) = J(u,ϕ(q))
+
 function binary_call_term_physical_maps(op,a,b,phi1,phi2)
     return BinaryCallTerm(op,a,b)
 end
