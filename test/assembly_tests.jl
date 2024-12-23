@@ -289,9 +289,8 @@ mesh = GT.cartesian_mesh(domain,cells)
 k = 1
 V = GT.lagrange_space(Ω,k)
 dΩ = GT.measure(Ω,2*k)
-gradient(u) = x->ForwardDiff.gradient(u,x)
-∇(u,x) = GT.call(gradient,u)(x)
-a(u,v) = GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
+∇3 = ForwardDiff.gradient
+a(u,v) = GT.∫( x->∇3(u,x)⋅∇3(v,x), dΩ)
 l(v) = 0
 p = GT.linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
