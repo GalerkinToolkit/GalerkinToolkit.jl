@@ -9,21 +9,22 @@ using Test
 domain = (0,1,0,1)
 cells = (10,10)
 mesh = GT.cartesian_mesh(domain,cells)
+D = GT.num_dims(mesh)
 GT.label_boundary_faces!(mesh;physical_name=&quot;Γd&quot;)
 Ω = GT.interior(mesh)
 Γd = GT.boundary(mesh;physical_names=[&quot;Γd&quot;])
-n_Γd = GT.unit_normal(Γd,Ω)
+n_Γd = GT.unit_normal(mesh,D-1)
 u = GT.analytical_field(x-&gt;sum(x),Ω)
 #TODO these two definitions should be enough
-#∇ = ForwardDiff.gradient
-#Δ = (u,x) -&gt; tr(ForwardDiff.jacobian(y-&gt;∇(u,y),x))
-gradient(u) = x-&gt;ForwardDiff.gradient(u,x)
-jacobian(u) = x-&gt;ForwardDiff.jacobian(u,x)
-laplacian(u) = x-&gt; tr(ForwardDiff.jacobian(y-&gt;ForwardDiff.gradient(u,y),x))
-Δ(u) = GT.call(laplacian,u)
-∇(u) = GT.call(gradient,u)
-Δ(u,x) = Δ(u)(x)
-∇(u,x) = ∇(u)(x)
+∇ = ForwardDiff.gradient
+Δ = (u,x) -&gt; tr(ForwardDiff.jacobian(y-&gt;∇(u,y),x))
+#gradient(u) = x-&gt;ForwardDiff.gradient(u,x)
+#jacobian(u) = x-&gt;ForwardDiff.jacobian(u,x)
+#laplacian(u) = x-&gt; tr(ForwardDiff.jacobian(y-&gt;ForwardDiff.gradient(u,y),x))
+#Δ(u) = GT.call(laplacian,u)
+#∇(u) = GT.call(gradient,u)
+#Δ(u,x) = Δ(u)(x)
+#∇(u,x) = ∇(u)(x)
 tol = 1e-10
 order = 2
 γ = order*(order+1)/10</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">0.6</code></pre><h2 id="Continuous-Galerkin"><a class="docs-heading-anchor" href="#Continuous-Galerkin">Continuous Galerkin</a><a id="Continuous-Galerkin-1"></a><a class="docs-heading-anchor-permalink" href="#Continuous-Galerkin" title="Permalink"></a></h2><pre><code class="language-julia hljs">V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γd)
@@ -38,7 +39,7 @@ uh = GT.solution_field(uhd,s)
 eh = x -&gt; u(x) - uh(x)
 el2 = sqrt(sum(GT.∫( x-&gt;abs2(eh(x)), dΩ)))
 @test el2 &lt; tol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr32"><span class="sgr1">Test Passed</span></span></code></pre><h2 id="Static-condensation"><a class="docs-heading-anchor" href="#Static-condensation">Static condensation</a><a id="Static-condensation-1"></a><a class="docs-heading-anchor-permalink" href="#Static-condensation" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO</p></div></div><h2 id="Nitche-Method"><a class="docs-heading-anchor" href="#Nitche-Method">Nitche Method</a><a id="Nitche-Method-1"></a><a class="docs-heading-anchor-permalink" href="#Nitche-Method" title="Permalink"></a></h2><pre><code class="language-julia hljs">V = GT.lagrange_space(Ω,order)
-n_Γd = GT.unit_normal(Γd,Ω)
+n_Γd = GT.unit_normal(mesh,D-1)
 h_Γd = GT.face_diameter_field(Γd)
 dΓd = GT.measure(Γd,2*order)
 a_Γd = (u,v) -&gt; GT.∫(
@@ -66,18 +67,18 @@ s = PS.solve(p)
 uh, = GT.solution_field(VxQ,s)
 eh = x -&gt; u(x) - uh(x)
 el2 = sqrt(sum(GT.∫( x-&gt;abs2(eh(x)), dΩ)))
-@test el2 &lt; tol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr32"><span class="sgr1">Test Passed</span></span></code></pre><h2 id="Interior-Penalty"><a class="docs-heading-anchor" href="#Interior-Penalty">Interior Penalty</a><a id="Interior-Penalty-1"></a><a class="docs-heading-anchor-permalink" href="#Interior-Penalty" title="Permalink"></a></h2><pre><code class="language-julia hljs">mean(u,x) = 0.5*(u(x)[+]+u(x)[-])
-jump(u,n,x) = u(x)[+]*n[+](x) + u(x)[-]*n[-](x)
+@test el2 &lt; tol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr32"><span class="sgr1">Test Passed</span></span></code></pre><h2 id="Interior-Penalty"><a class="docs-heading-anchor" href="#Interior-Penalty">Interior Penalty</a><a id="Interior-Penalty-1"></a><a class="docs-heading-anchor-permalink" href="#Interior-Penalty" title="Permalink"></a></h2><pre><code class="language-julia hljs">mean(u) = 0.5*(u[1]+u[2])
+jump(u,n) = u[2]*n[2] + u[1]*n[1]
 GT.label_interior_faces!(mesh;physical_name=&quot;Λ&quot;)
 Λ = GT.skeleton(mesh;physical_names=[&quot;Λ&quot;])
 dΛ = GT.measure(Λ,2*order)
-n_Λ = GT.unit_normal(Λ,Ω)
+n_Λ = GT.unit_normal(mesh,D-1)
 h_Λ = GT.face_diameter_field(Λ)
 V = GT.lagrange_space(Ω,order;conformity=:L2)
 a_Λ = (u,v) -&gt; GT.∫(
-    x-&gt; (γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-
-    jump(v,n_Λ,x)⋅mean(∇(u),x)-
-    mean(∇(v),x)⋅jump(u,n_Λ,x), dΛ)
+                    x-&gt; (γ/h_Λ(x))*jump(v(x),n_Λ(x))⋅jump(u(x),n_Λ(x))-
+                    jump(v(x),n_Λ(x))⋅mean(∇(u,x))-
+                    mean(∇(v,x))⋅jump(u(x),n_Λ(x)), dΛ)
 a_ip = (u,v) -&gt; a_Ω(u,v) + a_Γd(u,v) + a_Λ(u,v)
 l_ip = l_ni
 p = GT.linear_problem(Float64,V,a_ip,l_ip)
@@ -92,4 +93,4 @@ p = GT.linear_problem(Float64,VxQ,A_ip,L_ip)
 s = PS.solve(p)
 uh, = GT.solution_field(VxQ,s)
 eh = x -&gt; u(x) - uh(x)
-@test el2 &lt; tol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr32"><span class="sgr1">Test Passed</span></span></code></pre><h2 id="Hybrid-method"><a class="docs-heading-anchor" href="#Hybrid-method">Hybrid method</a><a id="Hybrid-method-1"></a><a class="docs-heading-anchor-permalink" href="#Hybrid-method" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO. Raviart-Thomas interpolation needed for this case</p></div></div><h2 id="HDG"><a class="docs-heading-anchor" href="#HDG">HDG</a><a id="HDG-1"></a><a class="docs-heading-anchor-permalink" href="#HDG" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO. This one is challenging</p></div></div><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../problem_types/">« Problem types</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Wednesday 11 December 2024 08:28">Wednesday 11 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+@test el2 &lt; tol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr32"><span class="sgr1">Test Passed</span></span></code></pre><h2 id="Hybrid-method"><a class="docs-heading-anchor" href="#Hybrid-method">Hybrid method</a><a id="Hybrid-method-1"></a><a class="docs-heading-anchor-permalink" href="#Hybrid-method" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO. Raviart-Thomas interpolation needed for this case</p></div></div><h2 id="HDG"><a class="docs-heading-anchor" href="#HDG">HDG</a><a id="HDG-1"></a><a class="docs-heading-anchor-permalink" href="#HDG" title="Permalink"></a></h2><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO. This one is challenging</p></div></div><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../problem_types/">« Problem types</a><a class="docs-footer-nextpage" href="../mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Monday 23 December 2024 20:01">Monday 23 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
