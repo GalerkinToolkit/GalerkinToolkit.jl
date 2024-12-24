@@ -11,7 +11,7 @@ for pde in pdes
     Literate.markdown(file_jl,pdes_dir)#;codefence)
 end
 assembly_dir = joinpath(src_dir,"pdes_manual") 
-assembly = ["poisson"]
+assembly = ["poisson","p_laplacian"]
 for pde in assembly
     file_jl = joinpath(assembly_dir,pde*".jl")
     Literate.markdown(file_jl,assembly_dir)#;codefence)

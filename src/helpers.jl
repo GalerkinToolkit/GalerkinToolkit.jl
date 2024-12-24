@@ -275,6 +275,12 @@ struct VectorAllocation{A} <: AbstractType
     data::A
 end
 
+function reset!(alloc::VectorAllocation)
+    (;counter_ref,setup,vector_strategy) = alloc.data
+    counter_ref[] = vector_strategy.counter(setup)
+    alloc
+end
+
 function contribute!(alloc::VectorAllocation,b,dofs_test,field_test=1)
     (;setup,coo,counter_ref,vector_strategy) = alloc.data
     counter = counter_ref[]
@@ -293,6 +299,12 @@ function compress(alloc::VectorAllocation;reuse=Val(false))
     else
         b
     end
+end
+
+function compress!(alloc::VectorAllocation,A,A_cache)
+    (;setup,coo,vector_strategy) = alloc.data
+    vector_strategy.compress!(A,A_cache,coo,setup)
+    A
 end
 
 function allocate_matrix(
@@ -329,6 +341,12 @@ struct MatrixAllocation{A} <: AbstractType
     data::A
 end
 
+function reset!(alloc::MatrixAllocation)
+    (;counter_ref,setup,matrix_strategy) = alloc.data
+    counter_ref[] = matrix_strategy.counter(setup)
+    alloc
+end
+
 function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
     (;setup,coo,counter_ref,matrix_strategy) = alloc.data
     counter = counter_ref[]
@@ -350,4 +368,11 @@ function compress(alloc::MatrixAllocation;reuse=Val(false))
         b
     end
 end
+
+function compress!(alloc::MatrixAllocation,A,A_cache)
+    (;setup,coo,matrix_strategy) = alloc.data
+    matrix_strategy.compress!(A,A_cache,coo,setup)
+    A
+end
+
 
