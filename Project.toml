@@ -32,6 +32,7 @@ GalerkinToolkitMakieExt = "Makie"
 GalerkinToolkitWriteVTKExt = "WriteVTK"
 
 [compat]
+AbstractTrees = "0.4"
 BlockArrays = "1"
 Combinatorics = "1"
 FastGaussQuadrature = "1"
