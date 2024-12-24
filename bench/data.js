@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1734983348634,
+  "lastUpdate": 1735038436743,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -644,6 +644,36 @@ window.BENCHMARK_DATA = {
             "value": 753607634,
             "unit": "ns",
             "extra": "gctime=27899412\nmemory=467129568\nallocs=15851978\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d70ebb8e3479a8fa2573031109df7395f849bbb3",
+          "message": "Merge pull request #166 from GalerkinToolkit/helpers\n\nHelper functions for hand-written assembly loops",
+          "timestamp": "2024-12-24T12:03:45+01:00",
+          "tree_id": "29a3152749ff9f4277e1c0fbd07981424433e6d5",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/d70ebb8e3479a8fa2573031109df7395f849bbb3"
+        },
+        "date": 1735038435881,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 725110434,
+            "unit": "ns",
+            "extra": "gctime=25722253.5\nmemory=467129568\nallocs=15851978\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
