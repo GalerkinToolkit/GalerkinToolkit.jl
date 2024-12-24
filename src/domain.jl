@@ -965,7 +965,13 @@ function analytical_field(f,dom::AbstractDomain)
         expr = get_symbol!(index,f,"analytical_field")
         expr_term([D],expr,f,index)
     end
-    Field(q,dom)
+    AnalyticalField(f,q,dom)
+end
+
+struct AnalyticalField{A,B,C} <: AbstractField
+    definition::A
+    quantity::B
+    domain::C
 end
 
 function face_constant_field(data,dom::AbstractDomain)

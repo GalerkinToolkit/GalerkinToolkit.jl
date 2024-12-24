@@ -351,37 +351,3 @@ function compress(alloc::MatrixAllocation;reuse=Val(false))
     end
 end
 
-# TODO remove after merging branch assembly
-
-function inverse_faces(domain::AbstractDomain)
-    d = num_dims(domain)
-    ndfaces = num_faces(mesh(domain),d)
-    dface_to_face = zeros(Int32,ndfaces)
-    face_to_dface = faces(domain)
-    dface_to_face[face_to_dface] = 1:length(face_to_dface)
-    dface_to_face
-end
-
-function inverse_faces(domain::AbstractDomain{<:PMesh})
-    map(GT.inverse_faces,partition(domain))
-end
-
-function analytical_field_tmp(callee,domain)
-    AnalyticalField(mesh(domain),callee,domain)
-end
-
-struct AnalyticalField{A,B,C} <: AbstractQuantity{A}
-    mesh::A
-    definition::B
-    domain::C
-end
-
-prototype(a::AnalyticalField) = a.definition
-domain(a::AnalyticalField) = a.domain
-term(a::AnalyticalField) = term(constant_quantity(a.definition,a.domain))
-
-
-
-
-
-

@@ -65,8 +65,8 @@ const ∇ = ForwardDiff.gradient
 
 # Define manufactured fields.
 
-g = GT.analytical_field_tmp(sum,Ω) # TODO remove _tmp
-f = GT.analytical_field_tmp(x->-Δ(g.definition,x),Ω)
+g = GT.analytical_field(sum,Ω)
+f = GT.analytical_field(x->-Δ(g.definition,x),Ω)
 nothing # hide
 
 # Define the interpolation space.
@@ -147,8 +147,8 @@ function main(;domain,cells)
     Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
     ∇ = ForwardDiff.gradient
     Δ(f,x) = tr(ForwardDiff.jacobian(y->∇(f,y),x))
-    g = GT.analytical_field_tmp(sum,Ω) # TODO remove _tmp
-    f = GT.analytical_field_tmp(x->-Δ(g.definition,x),Ω)
+    g = GT.analytical_field(sum,Ω)
+    f = GT.analytical_field(x->-Δ(g.definition,x),Ω)
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
     T = Float64
