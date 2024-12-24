@@ -104,28 +104,28 @@ function setup_nonlinear_problem(state)
     b,b_cache = GT.compress(b_alloc;reuse=Val(true))
     A,A_cache = GT.compress(A_alloc;reuse=Val(true))
 
-    # Get initial guess
+    #Get initial guess
     x0 = GT.free_values(uh)
 
     workspace = nothing
     problem = PS.nonlinear_problem(x0,b,A,workspace) do p
 
-        # Get the current solution vector
+        #Get the current solution vector
         x = PS.solution(p)
 
-        # Build the current solution field
+        #Build the current solution field
         GT.solution_field!(uh,x)
 
-        # Fill in residual and Jacobian
+        #Fill in residual and Jacobian
         fill_residual_and_jacobian!(state,allocs)
 
-        # In-place compression of matrix and vector
+        #In-place compression of matrix and vector
         GT.compress!(b_alloc,b,b_cache)
         GT.compress!(A_alloc,A,A_cache)
 
-        # Update the nonlinear problem object
-        # Here, we computed the residual and Jacobian simultaneously,
-        # but this API also allows to compute them separately.
+        #Update the nonlinear problem object
+        #Here, we computed the residual and Jacobian simultaneously,
+        #but this API also allows to compute them separately.
         if PS.residual(p) !== nothing
             p = PS.update(p,residual=b)
         end
@@ -147,7 +147,7 @@ function fill_residual_and_jacobian!(state,allocs)
     (;example) = state
     (;Ω,) = example
 
-    # Reset allocations
+    #Reset allocations
     GT.reset!(b_alloc)
     GT.reset!(A_alloc)
 
@@ -172,7 +172,7 @@ function face_tensors!(Auu,bu,face,state)
     (;example,integration,interpolation) = state
     (;f) = example
 
-    # Define flux and its derivative
+    #Define flux and its derivative
     q = 3
     flux(∇u) = norm(∇u)^(q-2) * ∇u
     dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
@@ -226,13 +226,13 @@ function solve_and_visualize(state)
     (;problem,example) = state
     (;uh,file,Ω) = example
 
-    # Setup solver
+    #Setup solver
     solver = PS.newton_raphson(problem,verbose=true)
 
-    # Get the lazy solver history
+    #Get the lazy solver history
     solver_history = PS.history(solver)
 
-    # Visualize
+    #Visualize
     color = Makie.Observable(uh)
     fig = Makie.plot(Ω;color,strokecolor=:black)
     fn = joinpath(@__DIR__,"fig_pt_plaplacian.gif")
@@ -256,6 +256,7 @@ nothing # hide
 
 file = joinpath(@__DIR__,"p_laplacian_2d_manual.gif")
 main(;domain=(0,1,0,1),cells=(10,10),file)
+nothing # hide
 
 # ![](p_laplacian_2d_manual.gif)
 
