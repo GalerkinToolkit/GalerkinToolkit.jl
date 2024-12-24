@@ -649,6 +649,14 @@ function solution_field(uhd::DiscreteField,x::AbstractVector)
     discrete_field(U,free_vals,diri_vals)
 end
 
+function solution_field!(uh::DiscreteField,x::AbstractVector)
+    U = GT.space(uh)
+    free_vals_src = free_values_from_solution(x,free_dofs(U))
+    free_vals_dest = free_values(uh)
+    copyto!(free_vals_dest,free_vals_src)
+    uh
+end
+
 function solution_field(U::AbstractSpace,p::PS.AbstractProblem)
     solution_field(U,PS.solution(p))
 end
@@ -677,6 +685,13 @@ function solution_field(uts,p::PS.AbstractODESolver)
     solution_field(uts,PS.problem(p))
 end
 
+function solution_field!(uh::DiscreteField,p::PS.AbstractProblem)
+    solution_field!(uh,PS.solution(p))
+end
+
+function solution_field!(uh::DiscreteField,p::PS.AbstractSolver)
+    solution_field!(uh,PS.solution(p))
+end
 
 function free_values_from_solution(x,dofs)
     x
@@ -826,59 +841,59 @@ function vector_allocation(vector_strategy,space_test,domains...)
 end
 
 
-function system_assembler(uhd::DiscreteField,space_trial,space_test,domains...;
-        vector_strategy=monolithic_vector_assembly_strategy(),
-        matrix_strategy=monolithic_matrix_assembly_strategy(),
-    )
-    T = eltype(free_values(uh))
-    b_setup = vector_strategy.init(GT.free_dofs(space_test),T)
-    A_setup = matrix_strategy.init(free_dofs(space_test),free_dofs(space_trial),T)
-    b_counter = vector_strategy.counter(b_setup)
-    A_counter = matrix_strategy.counter(A_setup)
-    rface_to_dofs_test = face_dofs(space_test)
-    rface_to_dofs_trial = face_dofs(space_trial)
-    face_to_rface_test = inverse_faces(GT.domain(space_test))
-    face_to_rface_trial = inverse_faces(GT.domain(space_trial))
-    @assert num_fields(space_test) == 1
-    @assert num_fields(space_trial) == 1
-    field_test = 1 # TODO
-    field_trial = 1 # TODO
-    for domain in domains
-        sface_to_face = faces(domain)
-        for face in sface_to_face
-            rface_test = face_to_rface_test[face]
-            rface_trial = face_to_rface_trial[face]
-            dofs_test = rface_to_dofs_test[rface_test]
-            dofs_trial = rface_to_dofs_trial[rface_trial]
-            for dof_test in dofs_test
-                b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
-                for dof_trial in dofs_trial
-                    A_counter = matrix_strategy.count(A_counter,A_setup,dof_test,dof_trial,field_test,field_trial)
-                end
-            end
-        end
-    end
-    b_alloc = vector_strategy.allocate(b_counter,b_setup)
-    A_alloc = matrix_strategy.allocate(A_counter,A_setup)
-    b_counter_ref = vector_strategy.counter(b_setup) |> Ref
-    A_counter_ref = matrix_strategy.counter(A_setup) |> Ref
-    map(domains) do domain
-        sface_to_face = faces(domain)
-        function set_domain!(sface,A,b)
-            face = sface_to_face[sface]
-            rface_test = face_to_rface_test[face]
-            rface_trial = face_to_rface_trial[face]
-            dofs_test = rface_to_dofs_test[rface_test]
-            dofs_trial = rface_to_dofs_trial[rface_trial]
-
-            for dof_test in dofs_test
-                b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
-                for dof_trial in dofs_trial
-                    A_counter = matrix_strategy.count(A_counter,A_setup,dof_test,dof_trial,field_test,field_trial)
-                end
-            end
-        end
-    end
-
-
-end
+#function system_assembler(uhd::DiscreteField,space_trial,space_test,domains...;
+#        vector_strategy=monolithic_vector_assembly_strategy(),
+#        matrix_strategy=monolithic_matrix_assembly_strategy(),
+#    )
+#    T = eltype(free_values(uh))
+#    b_setup = vector_strategy.init(GT.free_dofs(space_test),T)
+#    A_setup = matrix_strategy.init(free_dofs(space_test),free_dofs(space_trial),T)
+#    b_counter = vector_strategy.counter(b_setup)
+#    A_counter = matrix_strategy.counter(A_setup)
+#    rface_to_dofs_test = face_dofs(space_test)
+#    rface_to_dofs_trial = face_dofs(space_trial)
+#    face_to_rface_test = inverse_faces(GT.domain(space_test))
+#    face_to_rface_trial = inverse_faces(GT.domain(space_trial))
+#    @assert num_fields(space_test) == 1
+#    @assert num_fields(space_trial) == 1
+#    field_test = 1 # TODO
+#    field_trial = 1 # TODO
+#    for domain in domains
+#        sface_to_face = faces(domain)
+#        for face in sface_to_face
+#            rface_test = face_to_rface_test[face]
+#            rface_trial = face_to_rface_trial[face]
+#            dofs_test = rface_to_dofs_test[rface_test]
+#            dofs_trial = rface_to_dofs_trial[rface_trial]
+#            for dof_test in dofs_test
+#                b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
+#                for dof_trial in dofs_trial
+#                    A_counter = matrix_strategy.count(A_counter,A_setup,dof_test,dof_trial,field_test,field_trial)
+#                end
+#            end
+#        end
+#    end
+#    b_alloc = vector_strategy.allocate(b_counter,b_setup)
+#    A_alloc = matrix_strategy.allocate(A_counter,A_setup)
+#    b_counter_ref = vector_strategy.counter(b_setup) |> Ref
+#    A_counter_ref = matrix_strategy.counter(A_setup) |> Ref
+#    map(domains) do domain
+#        sface_to_face = faces(domain)
+#        function set_domain!(sface,A,b)
+#            face = sface_to_face[sface]
+#            rface_test = face_to_rface_test[face]
+#            rface_trial = face_to_rface_trial[face]
+#            dofs_test = rface_to_dofs_test[rface_test]
+#            dofs_trial = rface_to_dofs_trial[rface_trial]
+#
+#            for dof_test in dofs_test
+#                b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
+#                for dof_trial in dofs_trial
+#                    A_counter = matrix_strategy.count(A_counter,A_setup,dof_test,dof_trial,field_test,field_trial)
+#                end
+#            end
+#        end
+#    end
+#
+#
+#end

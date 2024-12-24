@@ -73,7 +73,7 @@ function setup_interpolation_accessors(state)
     face_dofs = GT.dofs_accessor(V,Ω)
     face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
     face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
-    face_point_∇uh = GT.discrete_field_accessor(ForwardDiff.gradient,uh,Ω)
+    face_point_∇uh = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
     interpolation = (;
         face_dofs,face_point_dof_s,face_point_dof_∇s,face_point_∇uh)
     (;interpolation,state...)
@@ -85,7 +85,7 @@ nothing # hide
 function setup_nonlinear_problem(state)
 
     (;example) = state
-    (;V,Ω,T,f) = example
+    (;V,Ω,T,f,uh) = example
 
     #Allocate auxiliary face matrix and vector
     n = maximum(map(GT.num_dofs,GT.reference_fes(V)))
@@ -94,42 +94,43 @@ function setup_nonlinear_problem(state)
 
     #Allocate space for the global matrix and vector
     b_alloc = GT.allocate_vector(T,V,Ω)
-    A_alloc = GT.allocate_matrix(T,V,V)
+    A_alloc = GT.allocate_matrix(T,V,V,Ω)
 
     #Fill in residual and jacobian according to the initial state
+    allocs = (;A_alloc,b_alloc,Auu,bu)
     fill_residual_and_jacobian!(state,allocs) # Defined later
 
     #Compress matrix and vector into the final format
     b,b_cache = GT.compress(b_alloc;reuse=Val(true))
     A,A_cache = GT.compress(A_alloc;reuse=Val(true))
 
-    allocs = (;A_alloc,b_alloc,Auu,bu)
+    # Get initial guess
+    x0 = GT.free_values(uh)
 
     workspace = nothing
-    problem = PS.nonlinear_problem(x0,r0,j0,workspace) do p
+    problem = PS.nonlinear_problem(x0,b,A,workspace) do p
 
         # Get the current solution vector
         x = PS.solution(p)
 
         # Build the current solution field
-        uh = state.example.uh
         GT.solution_field!(uh,x)
 
         # Fill in residual and Jacobian
         fill_residual_and_jacobian!(state,allocs)
 
         # In-place compression of matrix and vector
-        GT.compress!(b,b_cache,b_alloc)
-        GT.compress!(A,A_cache,A_alloc)
+        GT.compress!(b_alloc,b,b_cache)
+        GT.compress!(A_alloc,A,A_cache)
 
         # Update the nonlinear problem object
         # Here, we computed the residual and Jacobian simultaneously,
         # but this API also allows to compute them separately.
         if PS.residual(p) !== nothing
-            p = PS.update(p,b)
+            p = PS.update(p,residual=b)
         end
         if PS.jacobian(p) !== nothing
-            p = PS.update(p,A)
+            p = PS.update(p,jacobian=A)
         end
 
         p
@@ -200,13 +201,13 @@ function face_tensors!(Auu,bu,face,state)
         dV = point_dV(point,J)
         dof_s = point_dof_s(point)
         dof_∇s = point_dof_∇s(point,J)
-        point_∇uh = point_∇uh(point,J)
+        ∇uh = point_∇uh(point,J)
 
         #Fill in face matrix and vector
         for (i,dofi) in enumerate(dofs)
             v = dof_s(i)
             ∇v = dof_∇s(i)
-            bu[i] += flux(∇uh)⋅∇v - fx*v*dV
+            bu[i] += (flux(∇uh)⋅∇v - fx*v)*dV
             for (j,dofj) in enumerate(dofs)
                 ∇du = dof_∇s(j)
                 Auu[i,j] += dflux(∇du,∇uh)⋅∇v*dV
@@ -221,9 +222,9 @@ nothing # hide
 
 # Solve and visualize results
 
-function solve_and_visualize!(state)
+function solve_and_visualize(state)
     (;problem,example) = state
-    (;uh,file) = example
+    (;uh,file,Ω) = example
 
     # Setup solver
     solver = PS.newton_raphson(problem,verbose=true)
@@ -236,7 +237,6 @@ function solve_and_visualize!(state)
     fig = Makie.plot(Ω;color,strokecolor=:black)
     fn = joinpath(@__DIR__,"fig_pt_plaplacian.gif")
     Makie.record(fig,file,solver_history;framerate=2) do s
-        GT.solution_field!(uh,s)
         color[] = uh
     end
 end
@@ -248,14 +248,14 @@ function main(;kwargs...)
     state2 = setup_integration_accessors(state1)
     state3 = setup_interpolation_accessors(state2)
     state4 = setup_nonlinear_problem(state3)
-    solve_and_visualize!(state4)
+    solve_and_visualize(state4)
 end
 nothing # hide
 
 # Run it for a 2d case
 
 file = joinpath(@__DIR__,"p_laplacian_2d_manual.gif")
-Program.main(domain=(0,1,0,1),cells=(10,10),file)
+main(;domain=(0,1,0,1),cells=(10,10),file)
 
 # ![](p_laplacian_2d_manual.gif)
 
