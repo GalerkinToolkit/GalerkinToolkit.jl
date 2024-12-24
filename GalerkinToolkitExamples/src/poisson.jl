@@ -13,6 +13,8 @@ using SparseArrays
 using PartitionedArrays
 using TimerOutputs
 using WriteVTK
+using AbstractTrees
+
 
 function main(params_in)
     params_default = default_params()
@@ -26,18 +28,15 @@ function main(params_in)
     end
 end
 
-gradient(u) = x->ForwardDiff.gradient(u,x)
-jacobian(u) = x->ForwardDiff.jacobian(u,x)
 laplacian(u,x) = tr(ForwardDiff.jacobian(y->ForwardDiff.gradient(u,y),x))
-laplacian(u) = x->laplacian(u,x)
+# TODO hide this
+laplacian(u::GT.AbstractQuantity,x::GT.AbstractQuantity) = GT.call(laplacian,u,x)
 
-Δ(u) = GT.call(laplacian,u)
-∇(u) = GT.call(gradient,u)
-Δ(u,x) = Δ(u)(x)
-∇(u,x) = ∇(u)(x)
+const ∇ = ForwardDiff.gradient
+const Δ = laplacian
 
-mean(u,x) = 0.5*(u(x)[+]+u(x)[-])
-jump(u,n,x) = u(x)[+]*n[+](x) + u(x)[-]*n[-](x)
+mean(u) = 0.5*(u[1]+u[2])
+jump(u,n) = u[2]*n[2] + u[1]*n[1]
 
 function main_automatic(params)
     timer = params[:timer]
@@ -54,7 +53,7 @@ function main_automatic(params)
 
     u = GT.analytical_field(params[:u],Ω)
     f(x) = -Δ(u,x)
-    n_Γn = GT.unit_normal(Γn,Ω)
+    n_Γn = GT.unit_normal(mesh,D-1)
     g(x) = n_Γn(x)⋅∇(u,x)
 
     interpolation_degree = params[:interpolation_degree]
@@ -68,7 +67,7 @@ function main_automatic(params)
         GT.label_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;physical_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
-        n_Λ = GT.unit_normal(Λ,Ω)
+        n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
     else
         conformity = :default
@@ -79,7 +78,7 @@ function main_automatic(params)
         uhd = GT.dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
-        n_Γd = GT.unit_normal(Γd,Ω)
+        n_Γd = GT.unit_normal(mesh,D-1)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
         V = GT.lagrange_space(Ω,interpolation_degree;conformity)
@@ -98,7 +97,7 @@ function main_automatic(params)
         end
         if params[:discretization_method] === :interior_penalty
             r += ∫( x->
-                   (γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇(u),x)-mean(∇(v),x)⋅jump(u,n_Λ,x), dΛ)
+                   (γ/h_Λ(x))*jump(v(x),n_Λ(x))⋅jump(u(x),n_Λ(x))-jump(v(x),n_Λ(x))⋅mean(∇(u,x))-mean(∇(v,x))⋅jump(u(x),n_Λ(x)), dΛ)
         end
         r
     end
@@ -625,8 +624,8 @@ function default_params()
     params[:dirichlet_tags] = ["boundary"]
     params[:neumann_tags] = String[]
     params[:dirichlet_method] = :strong
-    params[:integration_degree] = 1
-    params[:interpolation_degree] = 2*params[:integration_degree]
+    params[:interpolation_degree] = 1
+    params[:integration_degree] = 2*params[:interpolation_degree]
     params[:solver] = PS.LinearAlgebra_lu
     params[:example_path] = joinpath(mkpath(joinpath(@__DIR__,"..","output")),"example_001")
     params[:export_vtu] = true

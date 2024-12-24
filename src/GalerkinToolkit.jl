@@ -14,7 +14,10 @@ using Combinatorics
 using SparseArrays
 using Metis
 using Metatheory
+import MacroTools
 import PartitionedSolvers as PS
+import AutoHashEquals
+import AbstractTrees
 
 include("mesh.jl")
 include("p_mesh.jl")

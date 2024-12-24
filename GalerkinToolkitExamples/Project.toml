@@ -4,6 +4,8 @@ authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl>"]
 version = "0.1.0"
 
 [deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 GalerkinToolkit = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
@@ -20,14 +22,12 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+
+[compat]
+PartitionedSolvers = "0.3"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
-
-[compat]
-PartitionedSolvers = "0.3"
-

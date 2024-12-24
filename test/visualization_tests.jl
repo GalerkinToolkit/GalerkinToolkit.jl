@@ -30,7 +30,7 @@ for s in  (false,true)
     fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),strokecolor=:black)
     display(fig)
 
-    for mesh2 in (mesh,pmesh)
+    for mesh2 in (mesh,)#pmesh)
 
         plt = GT.plot(mesh2)
         vtk_grid("mesh",plt) |> close

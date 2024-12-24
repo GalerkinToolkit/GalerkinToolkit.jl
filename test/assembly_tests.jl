@@ -6,6 +6,7 @@ using GalerkinToolkit: ∫, ×
 using Test
 import ForwardDiff
 using LinearAlgebra
+using AbstractTrees
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
@@ -14,10 +15,11 @@ cells = (4,4)
 mesh = GT.cartesian_mesh(domain,cells)
 GT.label_interior_faces!(mesh;physical_name="interior_faces")
 GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+D = GT.num_dims(mesh)
 
 Ω = GT.interior(mesh)
 Ωref = GT.interior(mesh;is_reference_domain=true)
-ϕ = GT.domain_map(Ωref,Ω)
+ϕ = GT.physical_map(mesh,D)
 
 D = GT.num_dims(mesh)
 Γdiri = GT.boundary(mesh;physical_names=["1-face-1","1-face-3"])
@@ -32,11 +34,11 @@ V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 
 degree = 2
 dΩref = GT.measure(Ωref,degree)
-ϕ = GT.domain_map(Ωref,Ω)
+ϕ = GT.physical_map(mesh,D)
 
 dΓref = GT.measure(Γref,degree)
-α = GT.domain_map(Γref,Γ)
-β = GT.domain_map(Γref,Ωref)
+α = GT.physical_map(mesh,D-1)
+β = GT.reference_map(mesh,D-1,D)
 
 Λref = GT.skeleton(mesh;
                  is_reference_domain=true,
@@ -44,8 +46,8 @@ dΓref = GT.measure(Γref,degree)
 
 Λ = GT.physical_domain(Λref)
 dΛref = GT.measure(Λref,degree)
-ϕ_Λref_Λ = GT.domain_map(Λref,Λ)
-ϕ_Λref_Ωref = GT.domain_map(Λref,Ωref)
+ϕ_Λref_Λ = GT.physical_map(mesh,D-1)
+ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
 
 function dV(J)
     abs(det(J))
@@ -56,7 +58,7 @@ function dS(J)
     sqrt(det(Jt*J))
 end
 
-jump(u,ϕ,q) = u(ϕ[+](q))[+]-u(ϕ[-](q))[-]
+jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
 
 function l(v)
     ∫(dΩref) do q
@@ -113,6 +115,7 @@ function a(u,v)
     end +
     ∫(dΛref) do p
         J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+        index = GT.generate_index(Λ)
         jump(v,ϕ_Λref_Ωref,p)*jump(u,ϕ_Λref_Ωref,p)*dS(J)
     end
 end
@@ -178,9 +181,9 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
 Ω = GT.interior(mesh)
 Ωref = GT.reference_domain(Ω)
-ϕ = GT.domain_map(Ωref,Ω)
-
 D = GT.num_dims(mesh)
+ϕ = GT.physical_map(mesh,D)
+
 Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
 
 #V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
@@ -286,9 +289,8 @@ mesh = GT.cartesian_mesh(domain,cells)
 k = 1
 V = GT.lagrange_space(Ω,k)
 dΩ = GT.measure(Ω,2*k)
-gradient(u) = x->ForwardDiff.gradient(u,x)
-∇(u,x) = GT.call(gradient,u)(x)
-a(u,v) = GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
+∇3 = ForwardDiff.gradient
+a(u,v) = GT.∫( x->∇3(u,x)⋅∇3(v,x), dΩ)
 l(v) = 0
 p = GT.linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
