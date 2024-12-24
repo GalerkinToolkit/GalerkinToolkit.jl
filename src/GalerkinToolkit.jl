@@ -27,5 +27,6 @@ include("integration.jl")
 include("interpolation.jl")
 include("assembly.jl")
 include("visualization.jl")
+include("helpers.jl")
 
 end # module
