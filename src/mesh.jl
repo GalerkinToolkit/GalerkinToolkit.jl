@@ -276,6 +276,7 @@ function is_unitary(geom)
     all(i->i==0,first(my_bounding_box)) && all(i->i==1,last(my_bounding_box))
 end
 
+abstract type AbstractFiniteElement <: AbstractType end
 
 """
     abstract type AbstractMeshFace
@@ -301,7 +302,7 @@ end
 - [`lagrange_mesh_face`](@ref)
 
 """
-abstract type AbstractMeshFace <: GT.AbstractType end
+abstract type AbstractMeshFace <: AbstractFiniteElement end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
@@ -3116,6 +3117,10 @@ function refine_reference_geometry(geo,resolution)
     else
         error("Case not implemented (yet)")
     end
+end
+
+function mesh(refface::AbstractMeshFace)
+    mesh_from_reference_face(refface)
 end
 
 function mesh_from_reference_face(ref_face)

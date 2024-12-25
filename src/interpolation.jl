@@ -1901,3 +1901,162 @@ function reference_fes(space::LagrangeSpace)
     ctype_to_reffe
 end
 
+function raviart_thomas_fe(args...)
+    RaviartThomas(args...)
+end
+
+struct RaviartThomasFE{A,B} <: AbstractFiniteElement
+    geometry::A
+    order::B
+end
+
+function primal_basis(fe::RaviartThomas)
+    D = num_dims(fe.geometry)
+    k = fe.order
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k+1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end
+        end
+    end
+    reduce(vcat,nested)
+end
+
+function dual_basis(fe::RaviartThomas)
+    face_to_duals = dual_basis_boundary(fe)
+    dofs_boundary = reduce(vcat,face_to_duals)
+    dofs_interior = dual_basis_interior(fe)
+    # TODO this is type unstable
+    # Precompute moments for boundary / interior instead
+    # of the final duals.
+    vcat(dofs_boundary,dofs_interior)
+end
+
+function dual_basis_boundary(fe::RaviartThomas)
+    # TODO this function can perhaps be implemented
+    # with a higher level API
+    k = fe.order # TODO k
+    cell = fe.geometry
+    D = num_dims(cell)
+    cell_boundary = boundary(cell)
+    face_to_rid = face_reference_id(cell_boundary,D-1)
+    rid_to_refface = reference_faces(cell_boundary)
+    rid_to_fe = map(rid_to_refface) do refface
+        lagrange_mesh_face(geometry(refface),k)
+    end
+    rid_to_quad = map(rid_to_fe) do fe
+        default_quadrature(geometry(fe),2*k) # TODO 2*K
+    end
+    rid_to_xs = map(coordinates,rid_to_quad)
+        face_to_duals = dual_basis_boundary(fe)
+        map(length,face_to_duals)
+    rid_to_ws = map(weights,rid_to_quad)
+    rid_to_tabface = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(value,refface)(xs)
+    end
+    rid_to_tabface_grad = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(ForwardDiff.gradient,refface)(xs)
+    end
+    rid_to_tabfe = map(rid_to_fe,rid_to_xs) do fe,xs
+        tabulator(value,fe)(xs)
+    end
+    face_to_n = outwards_normals(cell_boundary)
+    face_to_nodes = face_nodes(cell_boundary,D-1)
+    node_to_x = node_coordinates(cell_boundary)
+    nfaces = length(face_to_n)
+    map(1:nfaces) do face
+        rid = face_to_rid[face]
+        tabfe = rid_to_tabfe[rid]
+        tabface = rid_to_tabface[rid]
+        tabface_grad = rid_to_tabface_grad[rid]
+        npoints,ndofs = size(tabfe)
+        nodes = face_to_nodes[face]
+        n = face_to_n[face]
+        point_to_w = rid_to_ws[rid]
+        point_to_x = map(1:npoints) do point
+            sum(1:nnodes) do node
+                x = node_to_x[node]
+                coeff = tabface[point,node]
+                coeff*x
+            end
+        end
+        point_to_dV = map(1:npoints) do point
+            sum(1:nnodes) do node
+                x = node_to_x[node]
+                w = point_to_w[point]
+                coeff = tabface_grad[point,node]
+                J = outer(x,coeff)
+                change_of_measure(J)*w
+            end
+        end
+        map(1:ndofs) do dof
+            v -> sum(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = tabfe[point,dof]
+                (v(x)⋅n)*s*dV
+        face_to_duals = dual_basis_boundary(fe)
+        map(length,face_to_duals)
+            end
+        end
+    end
+end
+
+function dual_basis_interior(fe::RaviartThomas)
+    cell = fe.geometry
+    if is_n_cube(cell)
+        dual_basis_interior_n_cube(fe)
+    else
+        error("Case not implemented")
+    end
+end
+
+function dual_basis_interior_n_cube(fe::RaviartThomas)
+    k = fe.order
+    cell = fe.geometry
+    quad = default_quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_w = weights(quad)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))
+        map(exponents_list) do exponents
+            v -> sum(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_w[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                (v(x)⋅s)*dV
+            end
+        end
+    end
+    reduce(vcat,nested)
+end
+
+function face_own_dofs(fe::RaviartThomas,d)
+    # TODO this is a lot of redundant computation
+    face_to_duals = dual_basis_boundary(fe)
+    face_to_ndofs = map(length,face_to_duals)
+    dofs_interior = dual_basis_interior(fe)
+    nidofs = length(dofs_interior)
+    nbdofs = sum(face_to_ndofs)
+    D = num_dims(fe)
+    if d == D
+        dofs_interior = dual_basis_interior(fe)
+        [collect(1:nidofs) .+ nbdofs]
+    elseif d == D-1
+    else
+        map()
+
+    end
+end
+
+
+
