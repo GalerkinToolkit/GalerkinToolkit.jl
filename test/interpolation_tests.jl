@@ -85,6 +85,36 @@ GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
+geo = GT.unit_n_cube(Val(2))
+order = 0
+fe = GT.raviart_thomas(geo,order)
+
+GT.face_dofs(fe,0)
+GT.face_dofs(fe,1)
+GT.face_dofs(fe,2)
+
+GT.face_own_dofs(fe,0)
+GT.face_own_dofs(fe,1)
+GT.face_own_dofs(fe,2)
+
+GT.face_own_dof_permutations(fe,0)
+GT.face_own_dof_permutations(fe,1)
+GT.face_own_dof_permutations(fe,2)
+
+domain = (0,1,0,1)
+cells = (3,3)
+mesh = GT.cartesian_mesh(domain,cells)
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+
+Ω = GT.interior(mesh)
+V = GT.raviart_thomas_space(Ω,order)
+uh = GT.rand_field(Float64,V)
+
+#plt = GT.plot(Ω,refinement=10)
+#GT.plot!(plt,uh;label="uh")
+#vtk_grid("rt",plt) |> close
+
+
 domain = (0,1,0,1)
 cells = (3,3)
 mesh = GT.cartesian_mesh(domain,cells)

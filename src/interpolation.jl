@@ -329,6 +329,9 @@ Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
 Base.length(m::AbstractSpace) = num_fields(m)
 
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
+num_dims(a::AbstractSpace) = num_dims(mesh(a))
+conformity(space::AbstractSpace) = space.conformity
+dirichlet_boundary(space::AbstractSpace) = space.dirichlet_boundary
 
 function free_dofs(a::AbstractSpace,field)
     @assert field == 1
@@ -365,9 +368,21 @@ function component(a::AbstractSpace,field)
     a
 end
 
+function domain(space::AbstractSpace)
+    space.domain
+end
+
 function domain(space::AbstractSpace,field)
     @assert field == 1
     space |> GT.domain
+end
+
+function face_reference_id(space::AbstractSpace)
+    space.face_reference_id
+end
+
+function reference_fes(space::AbstractSpace)
+    space.reference_fes
 end
 
 @enum FreeOrDirichlet FREE=1 DIRICHLET=2
@@ -1901,42 +1916,56 @@ function reference_fes(space::LagrangeSpace)
     ctype_to_reffe
 end
 
-function raviart_thomas_fe(args...)
-    RaviartThomas(args...)
+function raviart_thomas(geometry,order)
+    cache = rt_setup((;geometry,order))
+    RaviartThomas(geometry,order,cache)
 end
 
-struct RaviartThomasFE{A,B} <: AbstractFiniteElement
+struct RaviartThomas{A,B,C} <: AbstractFiniteElement
     geometry::A
     order::B
+    cache::C
 end
 
-function primal_basis(fe::RaviartThomas)
+function rt_setup(fe)
+    face_cache,offset = rt_setup_dual_basis_boundary(fe)
+    cell_cache,ndofs = rt_setup_dual_basis_interior_n_cube(fe,offset)
+    primal_basis = rt_primal_basis_n_cube(fe)
+    face_dof_point_moment = map(cache->cache.moments,face_cache)
+    push!(face_dof_point_moment,cell_cache.moments)
+    face_point_x = map(cache->cache.points,face_cache)
+    push!(face_point_x,cell_cache.points)
+    dual_basis_nested = map(face_dof_point_moment,face_point_x) do dof_point_moment,point_x
+        map(dof_point_moment) do point_moment
+            npoints = length(point_x)
+            v -> sum(1:npoints) do point
+                moment = point_moment[point]
+                x = point_x[point]
+                moment⋅v(x)
+            end
+        end
+    end
+    dual_basis = reduce(vcat,dual_basis_nested)
+    (;face_cache,cell_cache,primal_basis,dual_basis,ndofs)
+end
+
+function rt_primal_basis_n_cube(fe)
     D = num_dims(fe.geometry)
     k = fe.order
     nested = map(1:D) do d
         ranges = ntuple(d2-> d==d2 ? (0:k+1) : (0:k) ,Val(D))
-        exponents_list = map(Tuple,CartesianIndices(ranges))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
         map(exponents_list) do exponents
             x -> ntuple(Val(D)) do d3
                 v = prod( x.^exponents )
                 d==d3 ? v : zero(v)
-            end
+            end |> SVector
         end
     end
     reduce(vcat,nested)
 end
 
-function dual_basis(fe::RaviartThomas)
-    face_to_duals = dual_basis_boundary(fe)
-    dofs_boundary = reduce(vcat,face_to_duals)
-    dofs_interior = dual_basis_interior(fe)
-    # TODO this is type unstable
-    # Precompute moments for boundary / interior instead
-    # of the final duals.
-    vcat(dofs_boundary,dofs_interior)
-end
-
-function dual_basis_boundary(fe::RaviartThomas)
+function rt_setup_dual_basis_boundary(fe)
     # TODO this function can perhaps be implemented
     # with a higher level API
     k = fe.order # TODO k
@@ -1944,119 +1973,186 @@ function dual_basis_boundary(fe::RaviartThomas)
     D = num_dims(cell)
     cell_boundary = boundary(cell)
     face_to_rid = face_reference_id(cell_boundary,D-1)
-    rid_to_refface = reference_faces(cell_boundary)
+    rid_to_refface = reference_faces(cell_boundary,D-1)
     rid_to_fe = map(rid_to_refface) do refface
-        lagrange_mesh_face(geometry(refface),k)
+        lagrangian_fe(geometry(refface),k) # TODO k
     end
     rid_to_quad = map(rid_to_fe) do fe
         default_quadrature(geometry(fe),2*k) # TODO 2*K
     end
     rid_to_xs = map(coordinates,rid_to_quad)
-        face_to_duals = dual_basis_boundary(fe)
-        map(length,face_to_duals)
     rid_to_ws = map(weights,rid_to_quad)
     rid_to_tabface = map(rid_to_refface,rid_to_xs) do refface,xs
-        tabulator(value,refface)(xs)
+        tabulator(refface)(value,xs)
     end
     rid_to_tabface_grad = map(rid_to_refface,rid_to_xs) do refface,xs
-        tabulator(ForwardDiff.gradient,refface)(xs)
+        tabulator(refface)(ForwardDiff.gradient,xs)
     end
     rid_to_tabfe = map(rid_to_fe,rid_to_xs) do fe,xs
-        tabulator(value,fe)(xs)
+        tabulator(fe)(value,xs)
     end
+    rid_to_permutations = map(fe->node_permutations(fe),rid_to_fe)
     face_to_n = outwards_normals(cell_boundary)
     face_to_nodes = face_nodes(cell_boundary,D-1)
     node_to_x = node_coordinates(cell_boundary)
     nfaces = length(face_to_n)
-    map(1:nfaces) do face
+    offset = 0
+    face_cache = map(1:nfaces) do face
         rid = face_to_rid[face]
         tabfe = rid_to_tabfe[rid]
         tabface = rid_to_tabface[rid]
         tabface_grad = rid_to_tabface_grad[rid]
         npoints,ndofs = size(tabfe)
         nodes = face_to_nodes[face]
+        nnodes = length(nodes)
         n = face_to_n[face]
         point_to_w = rid_to_ws[rid]
         point_to_x = map(1:npoints) do point
             sum(1:nnodes) do node
-                x = node_to_x[node]
+                x = node_to_x[nodes[node]]
                 coeff = tabface[point,node]
                 coeff*x
             end
         end
         point_to_dV = map(1:npoints) do point
             sum(1:nnodes) do node
-                x = node_to_x[node]
+                x = node_to_x[nodes[node]]
                 w = point_to_w[point]
                 coeff = tabface_grad[point,node]
                 J = outer(x,coeff)
                 change_of_measure(J)*w
             end
         end
-        map(1:ndofs) do dof
-            v -> sum(1:npoints) do point
+        scaling = sum(point_to_dV)
+        moments = map(1:ndofs) do dof
+            map(1:npoints) do point
                 x = point_to_x[point]
                 dV = point_to_dV[point]
                 s = tabfe[point,dof]
-                (v(x)⋅n)*s*dV
-        face_to_duals = dual_basis_boundary(fe)
-        map(length,face_to_duals)
+                n*(s*dV/scaling)
             end
         end
+        points = point_to_x
+        permutations = rid_to_permutations[rid]
+        ids = collect(Int32,1:ndofs) .+ offset
+        offset += ndofs
+        (;moments,points,ids,permutations)
     end
+    face_cache,offset
 end
 
-function dual_basis_interior(fe::RaviartThomas)
-    cell = fe.geometry
-    if is_n_cube(cell)
-        dual_basis_interior_n_cube(fe)
-    else
-        error("Case not implemented")
-    end
-end
-
-function dual_basis_interior_n_cube(fe::RaviartThomas)
+function rt_setup_dual_basis_interior_n_cube(fe,offset)
     k = fe.order
     cell = fe.geometry
     quad = default_quadrature(cell,2*k) # TODO 2*k
     point_to_x = coordinates(quad)
-    point_to_w = weights(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
     D = num_dims(cell)
     nested = map(1:D) do d
         ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
-        exponents_list = map(Tuple,CartesianIndices(ranges))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
         map(exponents_list) do exponents
-            v -> sum(1:npoints) do point
+            scaling = sum(point_to_dV)
+            map(1:npoints) do point
                 x = point_to_x[point]
-                dV = point_to_w[point]
+                dV = point_to_dV[point]
                 s = ntuple(Val(D)) do d3
                     si = prod( x.^exponents )
                     d==d3 ? si : zero(si)
                 end |> SVector
-                (v(x)⋅s)*dV
-            end
+                s*dV/scaling
+            end |> Ref
         end
     end
-    reduce(vcat,nested)
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function num_dofs(fe::RaviartThomas)
+    fe.cache.ndofs
+end
+
+function primal_basis(fe::RaviartThomas)
+    fe.cache.primal_basis
+end
+
+function dual_basis(fe::RaviartThomas)
+    fe.cache.dual_basis
 end
 
 function face_own_dofs(fe::RaviartThomas,d)
-    # TODO this is a lot of redundant computation
-    face_to_duals = dual_basis_boundary(fe)
-    face_to_ndofs = map(length,face_to_duals)
-    dofs_interior = dual_basis_interior(fe)
-    nidofs = length(dofs_interior)
-    nbdofs = sum(face_to_ndofs)
-    D = num_dims(fe)
-    if d == D
-        dofs_interior = dual_basis_interior(fe)
-        [collect(1:nidofs) .+ nbdofs]
-    elseif d == D-1
+    D = num_dims(fe.geometry)
+    if D == d
+        [fe.cache.cell_cache.ids]
+    elseif D-1 == d
+        map(cache->cache.ids,fe.cache.face_cache)
     else
-        map()
-
+        [ Int32[] for _ in 1:num_faces(boundary(fe.geometry),d)]
     end
 end
 
+function face_dofs(fe::RaviartThomas,d)
+    face_own_dofs(fe,d)
+end
 
+function face_own_dof_permutations(fe::RaviartThomas,d)
+    D = num_dims(fe.geometry)
+    if D == d
+        [fe.cache.cell_cache.permutations]
+    elseif D-1 == d
+        map(cache->cache.permutations,fe.cache.face_cache)
+    else
+        [ [Int32[]] for _ in 1:num_faces(boundary(fe.geometry),d)]
+    end
+end
+
+function raviart_thomas_space(domain::AbstractDomain,order::Integer;conformity=:default,dirichlet_boundary=nothing)
+    mesh = domain |> GT.mesh
+    cell_to_Dface = domain |> GT.faces
+    D = domain |> GT.num_dims
+    Dface_to_ctype = GT.face_reference_id(mesh,D)
+    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+    ctype_to_refface = GT.reference_faces(mesh,D)
+    ctype_to_geometry = map(GT.geometry,ctype_to_refface)
+    ctype_to_reffe = map(ctype_to_geometry) do geometry
+        raviart_thomas(geometry,order)
+    end
+    cache = nothing
+    RaviartThomasSpace(
+        domain,
+        order,
+        conformity,
+        dirichlet_boundary,
+        cell_to_ctype,
+        ctype_to_reffe,
+        cache) |> setup_space
+end
+
+struct RaviartThomasSpace{A,B,C,D,E,F} <: AbstractSpace
+    domain::A
+    order::B
+    conformity::Symbol
+    dirichlet_boundary::C
+    face_reference_id::D
+    reference_fes::E
+    cache::F
+end
+
+function replace_cache(space::RaviartThomasSpace,cache)
+    GT.RaviartThomasSpace(
+        space.domain,
+        space.order,
+        space.conformity,
+        space.dirichlet_boundary,
+        space.face_reference_id,
+        space.reference_fes,
+        cache
+    )
+end
 

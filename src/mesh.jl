@@ -350,6 +350,10 @@ function monomial_exponents(fe::AbstractLagrangeMeshFace)
 end
 
 function node_coordinates(fe::AbstractLagrangeMeshFace)
+    if order(fe) == 0 && boundary(geometry(fe)) !== nothing
+        x = node_coordinates(boundary(geometry(fe)))
+        return [ sum(x)/length(x) ]
+    end
     @assert fe |> geometry |> is_unitary
     mexps = monomial_exponents(fe)
     lib_node_to_coords = node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
@@ -1161,6 +1165,9 @@ function node_permutations_from_mesh_face(refface,interior_ho_nodes)
         return map(i->Int[],vertex_perms)
     end
     if length(vertex_perms) == 1
+        return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
+    end
+    if order(refface) == 0 # TODO ugly. It assumes the hack above for node coordinates of faces of order 0
         return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
     end
     geo_mesh = boundary(geo)
