@@ -673,6 +673,18 @@ struct FormArgumentTerm{A,B,C,D} <: AbstractTerm
     evaluated::D
 end
 
+function dof_index(t::FormArgumentTerm)
+    dof_index(t.functions)
+end
+
+function dof_index(t::TabulatorTerm)
+    dof_index(t.arg1)
+end
+
+function dof_index(t::ReferenceShapeFunctionTerm)
+    t.dof
+end
+
 AbstractTrees.children(a::FormArgumentTerm) =
 (
  "axis = $(a.axis)",

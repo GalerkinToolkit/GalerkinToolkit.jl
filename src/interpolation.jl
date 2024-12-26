@@ -977,8 +977,8 @@ end
 #    f
 #end
 
-function primal_map(a::AbstractSpace)
-    nothing
+function primal_map(a::AbstractSpace,qty)
+    qty
 end
 
 function dual_map(a::AbstractSpace)
@@ -999,7 +999,6 @@ end
 #end
 
 function shape_functions(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
-    @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.shape_functions,refid_to_reffes)
@@ -1010,11 +1009,10 @@ function shape_functions(a::AbstractSpace,dof;reference=is_reference_domain(GT.d
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    qty∘ϕinv
+    primal_map(a,qty)∘ϕinv
 end
 
 function form_argument(a::AbstractSpace,axis,field=1)
-    @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.shape_functions,refid_to_reffes)
@@ -1025,7 +1023,7 @@ function form_argument(a::AbstractSpace,axis,field=1)
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    qty∘ϕinv
+    primal_map(a,qty)∘ϕinv
 end
 
 ## TODO a better name
@@ -1059,7 +1057,7 @@ end
 
 function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     ldof = gensym("fe-dof")
-    s = shape_functions(a,ldof;reference=true)
+    s = shape_functions(a,ldof)
     face_to_dofs = GT.face_dofs(a)
     D = num_dims(domain(a))
     qty = quantity() do index
@@ -1946,6 +1944,7 @@ function rt_setup(fe)
         end
     end
     dual_basis = reduce(vcat,dual_basis_nested)
+    @assert length(dual_basis) == length(primal_basis)
     (;face_cache,cell_cache,primal_basis,dual_basis,ndofs)
 end
 
@@ -2155,4 +2154,70 @@ function replace_cache(space::RaviartThomasSpace,cache)
         cache
     )
 end
+
+function primal_map(space::RaviartThomasSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    #mesh = GT.mesh(space)
+    #D = num_dims(mesh)
+
+    #phi = physical_map(mesh,D)
+    #J = call(s->x->ForwardDiff.jacobian(s,x),phi)
+    #invdetJ = call(j->1/change_of_measure(j),J)
+    #qty_flipped = flip_sign(space,qty)
+    #invdetJ*J*qty_flipped
+end
+
+function flip_sign(space,qty)
+    D = num_dims(mesh(space))
+    quantity() do index
+        face_dof_flip = get_symbol!(index,sign_flip_accessor(space),"face_dof_flip")
+        face = face_index(index,D)
+        t = term(qty,index)
+        dof = dof_index(t)
+        expr = @term begin
+            flip = $face_dof_flip($face)($dof)
+            s = $(expression(t))
+            x->flip*s(x)
+        end
+        expr_term(D,expr,x->1*prototype(t)(x),index)
+    end
+end
+
+function sign_flip_accessor(space::RaviartThomasSpace)
+    D = num_dims(mesh(space))
+    cell_rid = face_reference_id(space)
+    rid_fe = reference_fes(space)
+    rid_ldof_lface = map(rid_fe) do fe
+        nldofs = num_dofs(fe)
+        ldof_lface = zeros(Int32,nldofs)
+        lface_to_ldofs = face_own_dofs(fe,D-1)
+        for (lface,ldofs) in enumerate(lface_to_ldofs)
+            ldof_lface[ldofs] .= lface
+        end
+        ldof_lface
+    end
+    topo = topology(mesh(space))
+    cell_faces = face_incidence(topo,D,D-1)
+    face_cells = face_incidence(topo,D-1,D)
+    function cell_dof_flip(cell)
+        rid = cell_rid[cell]
+        ldof_lface = rid_ldof_lface[rid]
+        lface_to_face = cell_faces[cell]
+        function dof_flip(ldof)
+            lface = ldof_lface[ldof]
+            if lface == 0
+                return 1
+            end
+            face = lface_to_face[lface]
+            cells = face_cells[face]
+            if cell == cells[1]
+                1
+            else
+                -1
+            end
+        end
+    end
+end
+
+
 

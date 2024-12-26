@@ -93,16 +93,16 @@ GT.face_dofs(fe,0)
 GT.face_dofs(fe,1)
 GT.face_dofs(fe,2)
 
-GT.face_own_dofs(fe,0)
-GT.face_own_dofs(fe,1)
-GT.face_own_dofs(fe,2)
+@show GT.face_own_dofs(fe,0)
+@show GT.face_own_dofs(fe,1)
+@show GT.face_own_dofs(fe,2)
 
 GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
 domain = (0,1,0,1)
-cells = (3,3)
+cells = (2,2)
 mesh = GT.cartesian_mesh(domain,cells)
 GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 
@@ -110,10 +110,15 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 V = GT.raviart_thomas_space(Ω,order)
 uh = GT.rand_field(Float64,V)
 
-#plt = GT.plot(Ω,refinement=10)
-#GT.plot!(plt,uh;label="uh")
-#vtk_grid("rt",plt) |> close
+display(GT.face_dofs(V))
 
+#free_vals = GT.free_values(uh)
+#free_vals[9] = 1
+
+plt = GT.plot(Ω,refinement=10)
+GT.plot!(plt,uh;label="uh")
+vtk_grid("rt",plt) |> close
+xxx
 
 domain = (0,1,0,1)
 cells = (3,3)
