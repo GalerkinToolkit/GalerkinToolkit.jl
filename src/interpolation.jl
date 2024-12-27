@@ -1057,7 +1057,11 @@ end
 
 function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     ldof = gensym("fe-dof")
-    s = shape_functions(a,ldof)
+    s = shape_functions(a,ldof;reference=true)
+    # TODO ugly
+    if is_physical_domain(GT.domain(a))
+        s = primal_map(a,s)
+    end
     face_to_dofs = GT.face_dofs(a)
     D = num_dims(domain(a))
     qty = quantity() do index
@@ -1105,6 +1109,7 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     #                                         $face)
     #    end
     #end
+    # TODO ugly
     if is_reference_domain(GT.domain(a))
         return qty
     end
@@ -2157,9 +2162,15 @@ end
 
 function primal_map(space::RaviartThomasSpace,qty)
     qty_flipped = flip_sign(space,qty)
-    #mesh = GT.mesh(space)
-    #D = num_dims(mesh)
-
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do q,phi
+        x->begin
+            J = ForwardDiff.jacobian(phi,x)
+            (J/change_of_measure(J))*q(x)
+        end
+    end
     #phi = physical_map(mesh,D)
     #J = call(s->x->ForwardDiff.jacobian(s,x),phi)
     #invdetJ = call(j->1/change_of_measure(j),J)
