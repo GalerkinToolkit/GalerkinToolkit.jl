@@ -426,14 +426,17 @@ function binary_call_term(::typeof(getindex),a::SkeletonTerm,b::ConstantTerm)
     #boundary_term(a.dim,a.dim_around,t,b)
 end
 
-expr_term(args...) = ExprTerm(args...)
+expr_term(args...;dof=nothing) = ExprTerm(args...,dof)
 
-struct ExprTerm{A,B,C,D} <: AbstractTerm
+struct ExprTerm{A,B,C,D,E} <: AbstractTerm
     free_dims::A
     expr::B
     prototype::C
     index::D
+    dof::E # TODO ugly. Hack for dual_basis(a::AbstractSpace) + sign flip in RT space
 end
+
+dof_index(a::ExprTerm) = a.dof
 
 AbstractTrees.children(a::ExprTerm) = ("dim = $(a.free_dims)",)
 

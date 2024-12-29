@@ -110,19 +110,21 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 V = GT.raviart_thomas_space(Ω,order)
 #V = GT.lagrange_space(Ω,order)
 uh = GT.zero_field(Float64,V)
+u = GT.analytical_field(identity,Ω)
+GT.interpolate!(u,uh)
+
 #uh = GT.rand_field(Float64,V)
 
-display(GT.face_dofs(V))
+#display(GT.face_dofs(V))
 
-free_vals = GT.free_values(uh)
-##free_vals[1] = 1
-free_vals[9] = 1
+#free_vals = GT.free_values(uh)
+###free_vals[1] = 1
+#free_vals[9] = 1
 
-plt = GT.plot(Ω,refinement=10)
-GT.plot!(plt,uh;label="uh")
-vtk_grid("rt",plt) |> close
+#plt = GT.plot(Ω,refinement=10)
+#GT.plot!(plt,uh;label="uh")
+#vtk_grid("rt",plt) |> close
 
-xxx
 
 domain = (0,1,0,1)
 cells = (3,3)

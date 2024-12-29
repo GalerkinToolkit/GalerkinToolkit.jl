@@ -977,12 +977,12 @@ end
 #    f
 #end
 
-function primal_map(a::AbstractSpace,qty)
+function push_forward(a::AbstractSpace,qty)
     qty
 end
 
-function dual_map(a::AbstractSpace)
-    nothing
+function pull_back(a::AbstractSpace,qty)
+    qty
 end
 
 #function mask_function(f,bool)
@@ -1009,7 +1009,7 @@ function shape_functions(a::AbstractSpace,dof;reference=is_reference_domain(GT.d
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    primal_map(a,qty)∘ϕinv
+    push_forward(a,qty)∘ϕinv
 end
 
 function form_argument(a::AbstractSpace,axis,field=1)
@@ -1023,7 +1023,7 @@ function form_argument(a::AbstractSpace,axis,field=1)
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    primal_map(a,qty)∘ϕinv
+    push_forward(a,qty)∘ϕinv
 end
 
 ## TODO a better name
@@ -1060,7 +1060,7 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     s = shape_functions(a,ldof;reference=true)
     # TODO ugly
     if is_physical_domain(GT.domain(a))
-        s = primal_map(a,s)
+        s = push_forward(a,s)
     end
     face_to_dofs = GT.face_dofs(a)
     D = num_dims(domain(a))
@@ -1118,7 +1118,6 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
 end
 
 function dual_basis(a::AbstractSpace,dof)
-    @assert dual_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.dual_basis,refid_to_reffes)
@@ -1135,13 +1134,14 @@ function dual_basis(a::AbstractSpace,dof)
             refid = $sface_to_refid_sym[sface]
             $refid_to_funs_sym[refid][$dof]
         end
-        expr_term([D],expr,prototype,index)
+        expr_term([D],expr,prototype,index;dof)
     end
     if is_reference_domain(GT.domain(a))
         return s
     end
     ϕ = GT.physical_map(mesh(domain),D)
-    call(dual_compose,s,ϕ)
+    s2 = pull_back(a,s)
+    call(dual_compose,s2,ϕ)
     ##call(dual_compose,s,ϕ)
     #ϕ_proto = GT.prototype(ϕ)
     #s_proto = GT.prototype(s)
@@ -2160,7 +2160,7 @@ function replace_cache(space::RaviartThomasSpace,cache)
     )
 end
 
-function primal_map(space::RaviartThomasSpace,qty)
+function push_forward(space::RaviartThomasSpace,qty)
     qty_flipped = flip_sign(space,qty)
     mesh = GT.mesh(space)
     D = num_dims(mesh)
@@ -2171,11 +2171,22 @@ function primal_map(space::RaviartThomasSpace,qty)
             (J/change_of_measure(J))*q(x)
         end
     end
-    #phi = physical_map(mesh,D)
-    #J = call(s->x->ForwardDiff.jacobian(s,x),phi)
-    #invdetJ = call(j->1/change_of_measure(j),J)
-    #qty_flipped = flip_sign(space,qty)
-    #invdetJ*J*qty_flipped
+end
+
+function pull_back(space::RaviartThomasSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do σ,phi
+        u -> begin
+            v = x->begin
+                J = ForwardDiff.jacobian(phi,x)
+                (J/change_of_measure(J))\u(x)
+            end
+            σ(v)
+        end
+    end
 end
 
 function flip_sign(space,qty)
@@ -2191,6 +2202,14 @@ function flip_sign(space,qty)
             x->flip*s(x)
         end
         expr_term(D,expr,x->1*prototype(t)(x),index)
+    end
+end
+
+function sign_flip_criterion(cell,cells)
+    if cell == cells[1]
+        1
+    else
+        -1
     end
 end
 
@@ -2221,11 +2240,7 @@ function sign_flip_accessor(space::RaviartThomasSpace)
             end
             face = lface_to_face[lface]
             cells = face_cells[face]
-            if cell == cells[1]
-                1
-            else
-                -1
-            end
+            sign_flip_criterion(cell,cells)
         end
     end
 end
