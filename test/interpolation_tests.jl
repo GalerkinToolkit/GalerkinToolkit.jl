@@ -101,29 +101,74 @@ GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
-domain = (0,1,0,1)
-cells = (3,3)
-mesh = GT.cartesian_mesh(domain,cells)
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+geo = GT.unit_simplex(Val(2))
+order = 0
+fe = GT.raviart_thomas(geo,order)
 
+GT.face_dofs(fe,0)
+GT.face_dofs(fe,1)
+GT.face_dofs(fe,2)
+
+@show GT.face_own_dofs(fe,0)
+@show GT.face_own_dofs(fe,1)
+@show GT.face_own_dofs(fe,2)
+
+GT.face_own_dof_permutations(fe,0)
+GT.face_own_dof_permutations(fe,1)
+GT.face_own_dof_permutations(fe,2)
+
+
+domain = (0,1,0,1)
+cells = (1,1)
+mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.label_interior_faces!(mesh;physical_name="interior_faces")
+
+D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
+Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+dΛ = GT.measure(Λ,2*order)
+n = GT.unit_normal(mesh,D-1)
 V = GT.raviart_thomas_space(Ω,order)
-#V = GT.lagrange_space(Ω,order)
+#V = GT.lagrange_space(Ω,order,shape=(D,))
 uh = GT.zero_field(Float64,V)
-u = GT.analytical_field(identity,Ω)
-GT.interpolate!(u,uh)
+#u = GT.analytical_field(identity,Ω)
+#GT.interpolate!(u,uh)
 
 #uh = GT.rand_field(Float64,V)
 
+shs = map(1:GT.num_free_dofs(V)) do i
+    uh = GT.zero_field(Float64,V)
+    free_vals = GT.free_values(uh)
+    free_vals[i] = 1
+    uh
+end
+
 #display(GT.face_dofs(V))
-
+#display(GT.face_nodes(mesh,2))
+#
 #free_vals = GT.free_values(uh)
-###free_vals[1] = 1
-#free_vals[9] = 1
+#free_vals[1] = 1
+##free_vals[9] = 1
 
-#plt = GT.plot(Ω,refinement=10)
-#GT.plot!(plt,uh;label="uh")
+plt = GT.plot(Ω,refinement=10)
+for (i,sh) in enumerate(shs)
+    GT.plot!(plt,sh;label="sh-$i")
+end
+vtk_grid("rt",plt) |> close
+
+xxxx
+
+jump(a,b) = a[1]⋅b[1] + a[2]⋅b[2]
+
+#plt = GT.plot(Λ,refinement=10)
+#GT.plot!(plt,x->jump(uh(x),n(x));label="uh")
 #vtk_grid("rt",plt) |> close
+
+face_err = GT.face_contribution(GT.∫(x->jump(uh(x),n(x)),dΛ),Λ)
+@show face_err
+
+xxx
 
 
 domain = (0,1,0,1)

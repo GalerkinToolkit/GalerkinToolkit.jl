@@ -333,6 +333,9 @@ num_dims(a::AbstractSpace) = num_dims(mesh(a))
 conformity(space::AbstractSpace) = space.conformity
 dirichlet_boundary(space::AbstractSpace) = space.dirichlet_boundary
 
+num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
+num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
+
 function free_dofs(a::AbstractSpace,field)
     @assert field == 1
     free_dofs(a)
@@ -1932,8 +1935,15 @@ end
 
 function rt_setup(fe)
     face_cache,offset = rt_setup_dual_basis_boundary(fe)
-    cell_cache,ndofs = rt_setup_dual_basis_interior_n_cube(fe,offset)
-    primal_basis = rt_primal_basis_n_cube(fe)
+    if is_n_cube(fe.geometry)
+        cell_cache,ndofs = rt_setup_dual_basis_interior_n_cube(fe,offset)
+        primal_basis = rt_primal_basis_n_cube(fe)
+    elseif is_simplex(fe.geometry)
+        cell_cache,ndofs = rt_setup_dual_basis_interior_simplex(fe,offset)
+        primal_basis = rt_primal_basis_simplex(fe)
+    else
+        error("case not implemented")
+    end
     face_dof_point_moment = map(cache->cache.moments,face_cache)
     push!(face_dof_point_moment,cell_cache.moments)
     face_point_x = map(cache->cache.points,face_cache)
@@ -1967,6 +1977,31 @@ function rt_primal_basis_n_cube(fe)
         end
     end
     reduce(vcat,nested)
+end
+
+function rt_primal_basis_simplex(fe)
+    D = num_dims(fe.geometry)
+    k = fe.order
+    ranges = ntuple(d2-> (0:k) ,Val(D))
+    exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+    exponents_list = filter(exponents->sum(exponents)<=k,exponents_list)
+    nested = map(1:D) do d
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end |> SVector
+        end
+    end
+    list1 = reduce(vcat,nested)
+    list2 = map(exponents_list) do exponents
+        x -> begin
+            v = prod( x.^exponents )
+            x*v
+        end
+    end
+    # TODO this array does not have concrete eltype
+    vcat(list1,list2)
 end
 
 function rt_setup_dual_basis_boundary(fe)
@@ -2019,13 +2054,13 @@ function rt_setup_dual_basis_boundary(fe)
             end
         end
         point_to_dV = map(1:npoints) do point
-            sum(1:nnodes) do node
+            w = point_to_w[point]
+            J = sum(1:nnodes) do node
                 x = node_to_x[nodes[node]]
-                w = point_to_w[point]
                 coeff = tabface_grad[point,node]
-                J = outer(x,coeff)
-                change_of_measure(J)*w
+                outer(x,coeff)
             end
+            change_of_measure(J)*w
         end
         scaling = sum(point_to_dV)
         moments = map(1:ndofs) do dof
@@ -2056,6 +2091,40 @@ function rt_setup_dual_basis_interior_n_cube(fe,offset)
     nested = map(1:D) do d
         ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
         exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        map(exponents_list) do exponents
+            scaling = sum(point_to_dV)
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                s*dV/scaling
+            end |> Ref
+        end
+    end
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function rt_setup_dual_basis_interior_simplex(fe,offset)
+    k = fe.order
+    cell = fe.geometry
+    quad = default_quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2->(0:k-1),Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        exponents_list = filter(exponents->sum(exponents)<=k,exponents_list)
         map(exponents_list) do exponents
             scaling = sum(point_to_dV)
             map(1:npoints) do point
@@ -2240,7 +2309,13 @@ function sign_flip_accessor(space::RaviartThomasSpace)
             end
             face = lface_to_face[lface]
             cells = face_cells[face]
-            sign_flip_criterion(cell,cells)
+            aaaaaa # c should be the scaling of the current lface
+            if lface == 3
+                c = sqrt(2)
+            else
+                c = 1
+            end
+            sign_flip_criterion(cell,cells)/c
         end
     end
 end

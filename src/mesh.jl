@@ -3054,12 +3054,11 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = chain_from_arrays(;
-                       num_dims=Val(2),
-                       node_coordinates = X,
-                       face_nodes = T,
-                       face_reference_id = fill(1,length(T)),
-                       reference_faces = [refface]
+        chain = chain_from_arrays(
+                       X,
+                       T,
+                       fill(1,length(T)),
+                       [refface]
                       )
         mesh_from_chain(chain)
     end
