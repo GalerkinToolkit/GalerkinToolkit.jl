@@ -1983,8 +1983,8 @@ function rt_primal_basis_simplex(fe)
     D = num_dims(fe.geometry)
     k = fe.order
     ranges = ntuple(d2-> (0:k) ,Val(D))
-    exponents_list = map(Tuple,CartesianIndices(ranges))[:]
-    exponents_list = filter(exponents->sum(exponents)<=k,exponents_list)
+    exponents_list_all = map(Tuple,CartesianIndices(ranges))[:]
+    exponents_list = filter(exponents->sum(exponents)<=k,exponents_list_all)
     nested = map(1:D) do d
         map(exponents_list) do exponents
             x -> ntuple(Val(D)) do d3
@@ -1994,6 +1994,7 @@ function rt_primal_basis_simplex(fe)
         end
     end
     list1 = reduce(vcat,nested)
+    exponents_list = filter(exponents->sum(exponents)==k,exponents_list_all)
     list2 = map(exponents_list) do exponents
         x -> begin
             v = prod( x.^exponents )
@@ -2062,13 +2063,13 @@ function rt_setup_dual_basis_boundary(fe)
             end
             change_of_measure(J)*w
         end
-        scaling = sum(point_to_dV)
+        #scaling = sum(point_to_dV)
         moments = map(1:ndofs) do dof
             map(1:npoints) do point
                 x = point_to_x[point]
                 dV = point_to_dV[point]
                 s = tabfe[point,dof]
-                n*(s*dV/scaling)
+                n*(s*dV)#/scaling)
             end
         end
         points = point_to_x
@@ -2092,7 +2093,7 @@ function rt_setup_dual_basis_interior_n_cube(fe,offset)
         ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
         exponents_list = map(Tuple,CartesianIndices(ranges))[:]
         map(exponents_list) do exponents
-            scaling = sum(point_to_dV)
+            #scaling = sum(point_to_dV)
             map(1:npoints) do point
                 x = point_to_x[point]
                 dV = point_to_dV[point]
@@ -2100,7 +2101,7 @@ function rt_setup_dual_basis_interior_n_cube(fe,offset)
                     si = prod( x.^exponents )
                     d==d3 ? si : zero(si)
                 end |> SVector
-                s*dV/scaling
+                s*dV#/scaling
             end |> Ref
         end
     end
@@ -2114,7 +2115,7 @@ function rt_setup_dual_basis_interior_n_cube(fe,offset)
 end
 
 function rt_setup_dual_basis_interior_simplex(fe,offset)
-    k = fe.order
+    k = fe.order - 1
     cell = fe.geometry
     quad = default_quadrature(cell,2*k) # TODO 2*k
     point_to_x = coordinates(quad)
@@ -2122,11 +2123,11 @@ function rt_setup_dual_basis_interior_simplex(fe,offset)
     npoints = length(point_to_x)
     D = num_dims(cell)
     nested = map(1:D) do d
-        ranges = ntuple(d2->(0:k-1),Val(D))
+        ranges = ntuple(d2->(0:k),Val(D))
         exponents_list = map(Tuple,CartesianIndices(ranges))[:]
-        exponents_list = filter(exponents->sum(exponents)<=k,exponents_list)
+        exponents_list = filter(exponents->sum(exponents)<=(k),exponents_list)
         map(exponents_list) do exponents
-            scaling = sum(point_to_dV)
+            #scaling = sum(point_to_dV)
             map(1:npoints) do point
                 x = point_to_x[point]
                 dV = point_to_dV[point]
@@ -2134,7 +2135,7 @@ function rt_setup_dual_basis_interior_simplex(fe,offset)
                     si = prod( x.^exponents )
                     d==d3 ? si : zero(si)
                 end |> SVector
-                s*dV/scaling
+                s*dV#/scaling
             end |> Ref
         end
     end
@@ -2309,13 +2310,7 @@ function sign_flip_accessor(space::RaviartThomasSpace)
             end
             face = lface_to_face[lface]
             cells = face_cells[face]
-            aaaaaa # c should be the scaling of the current lface
-            if lface == 3
-                c = sqrt(2)
-            else
-                c = 1
-            end
-            sign_flip_criterion(cell,cells)/c
+            sign_flip_criterion(cell,cells)
         end
     end
 end
