@@ -85,6 +85,55 @@ GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
+for geo in (GT.unit_n_cube(Val(2)),GT.unit_simplex(Val(2)))
+    for order in (0,1)
+        fe = GT.raviart_thomas_fe(geo,order)
+        GT.face_dofs(fe,0)
+        GT.face_dofs(fe,1)
+        GT.face_dofs(fe,2)
+        @show GT.face_own_dofs(fe,0)
+        @show GT.face_own_dofs(fe,1)
+        @show GT.face_own_dofs(fe,2)
+        GT.face_own_dof_permutations(fe,0)
+        GT.face_own_dof_permutations(fe,1)
+        GT.face_own_dof_permutations(fe,2)
+    end
+end
+
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.label_interior_faces!(mesh;physical_name="interior_faces")
+
+order = 1
+
+D = GT.num_dims(mesh)
+Ω = GT.interior(mesh)
+Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+dΛ = GT.measure(Λ,2*order)
+n = GT.unit_normal(mesh,D-1)
+V = GT.raviart_thomas_space(Ω,order)
+#V = GT.lagrange_space(Ω,order,shape=(D,))
+uh = GT.zero_field(Float64,V)
+u = GT.analytical_field(identity,Ω)
+GT.interpolate!(u,uh)
+rh = GT.rand_field(Float64,V)
+
+#plt = GT.plot(Ω,refinement=10)
+#GT.plot!(plt,uh;label="uh")
+#GT.plot!(plt,rh;label="rh")
+#
+##foreach(1:GT.num_free_dofs(V)) do i
+##    sh = GT.zero_field(Float64,V)
+##    free_vals = GT.free_values(sh)
+##    free_vals[i] = 1
+##    GT.plot!(plt,sh;label="sh-$i")
+##end
+#vtk_grid("rt",plt) |> close
+#
+#xxxx
+
 domain = (0,1,0,1)
 cells = (3,3)
 mesh = GT.cartesian_mesh(domain,cells)

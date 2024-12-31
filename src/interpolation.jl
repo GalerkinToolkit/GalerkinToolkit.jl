@@ -329,6 +329,12 @@ Base.getindex(m::AbstractSpace,field::Integer) = component(m,field)
 Base.length(m::AbstractSpace) = num_fields(m)
 
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
+num_dims(a::AbstractSpace) = num_dims(mesh(a))
+conformity(space::AbstractSpace) = space.conformity
+dirichlet_boundary(space::AbstractSpace) = space.dirichlet_boundary
+
+num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
+num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 
 function free_dofs(a::AbstractSpace,field)
     @assert field == 1
@@ -365,9 +371,21 @@ function component(a::AbstractSpace,field)
     a
 end
 
+function domain(space::AbstractSpace)
+    space.domain
+end
+
 function domain(space::AbstractSpace,field)
     @assert field == 1
     space |> GT.domain
+end
+
+function face_reference_id(space::AbstractSpace)
+    space.face_reference_id
+end
+
+function reference_fes(space::AbstractSpace)
+    space.reference_fes
 end
 
 @enum FreeOrDirichlet FREE=1 DIRICHLET=2
@@ -962,12 +980,12 @@ end
 #    f
 #end
 
-function primal_map(a::AbstractSpace)
-    nothing
+function push_forward(a::AbstractSpace,qty)
+    qty
 end
 
-function dual_map(a::AbstractSpace)
-    nothing
+function pull_back(a::AbstractSpace,qty)
+    qty
 end
 
 #function mask_function(f,bool)
@@ -984,7 +1002,6 @@ end
 #end
 
 function shape_functions(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
-    @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.shape_functions,refid_to_reffes)
@@ -995,11 +1012,10 @@ function shape_functions(a::AbstractSpace,dof;reference=is_reference_domain(GT.d
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    qty∘ϕinv
+    push_forward(a,qty)∘ϕinv
 end
 
 function form_argument(a::AbstractSpace,axis,field=1)
-    @assert primal_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.shape_functions,refid_to_reffes)
@@ -1010,7 +1026,7 @@ function form_argument(a::AbstractSpace,axis,field=1)
     end
     D = num_dims(domain)
     ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    qty∘ϕinv
+    push_forward(a,qty)∘ϕinv
 end
 
 ## TODO a better name
@@ -1045,6 +1061,10 @@ end
 function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     ldof = gensym("fe-dof")
     s = shape_functions(a,ldof;reference=true)
+    # TODO ugly
+    if is_physical_domain(GT.domain(a))
+        s = push_forward(a,s)
+    end
     face_to_dofs = GT.face_dofs(a)
     D = num_dims(domain(a))
     qty = quantity() do index
@@ -1092,6 +1112,7 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
     #                                         $face)
     #    end
     #end
+    # TODO ugly
     if is_reference_domain(GT.domain(a))
         return qty
     end
@@ -1100,7 +1121,6 @@ function discrete_field_qty(a::AbstractSpace,free_vals,diri_vals)
 end
 
 function dual_basis(a::AbstractSpace,dof)
-    @assert dual_map(a) === nothing
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_fes(a)
     refid_to_funs = map(GT.dual_basis,refid_to_reffes)
@@ -1117,13 +1137,14 @@ function dual_basis(a::AbstractSpace,dof)
             refid = $sface_to_refid_sym[sface]
             $refid_to_funs_sym[refid][$dof]
         end
-        expr_term([D],expr,prototype,index)
+        expr_term([D],expr,prototype,index;dof)
     end
     if is_reference_domain(GT.domain(a))
         return s
     end
     ϕ = GT.physical_map(mesh(domain),D)
-    call(dual_compose,s,ϕ)
+    s2 = pull_back(a,s)
+    call(dual_compose,s2,ϕ)
     ##call(dual_compose,s,ϕ)
     #ϕ_proto = GT.prototype(ϕ)
     #s_proto = GT.prototype(s)
@@ -1900,4 +1921,399 @@ function reference_fes(space::LagrangeSpace)
     end
     ctype_to_reffe
 end
+
+function raviart_thomas_fe(geometry,order)
+    cache = rt_setup((;geometry,order))
+    RaviartThomasFE(geometry,order,cache)
+end
+
+struct RaviartThomasFE{A,B,C} <: AbstractFiniteElement
+    geometry::A
+    order::B
+    cache::C
+end
+
+function rt_setup(fe)
+    face_cache,offset = rt_setup_dual_basis_boundary(fe)
+    if is_n_cube(fe.geometry)
+        cell_cache,ndofs = rt_setup_dual_basis_interior_n_cube(fe,offset)
+        primal_basis = rt_primal_basis_n_cube(fe)
+    elseif is_simplex(fe.geometry)
+        cell_cache,ndofs = rt_setup_dual_basis_interior_simplex(fe,offset)
+        primal_basis = rt_primal_basis_simplex(fe)
+    else
+        error("case not implemented")
+    end
+    face_dof_point_moment = map(cache->cache.moments,face_cache)
+    push!(face_dof_point_moment,cell_cache.moments)
+    face_point_x = map(cache->cache.points,face_cache)
+    push!(face_point_x,cell_cache.points)
+    dual_basis_nested = map(face_dof_point_moment,face_point_x) do dof_point_moment,point_x
+        map(dof_point_moment) do point_moment
+            npoints = length(point_x)
+            v -> sum(1:npoints) do point
+                moment = point_moment[point]
+                x = point_x[point]
+                moment⋅v(x)
+            end
+        end
+    end
+    dual_basis = reduce(vcat,dual_basis_nested)
+    @assert length(dual_basis) == length(primal_basis)
+    (;face_cache,cell_cache,primal_basis,dual_basis,ndofs)
+end
+
+function rt_primal_basis_n_cube(fe)
+    D = num_dims(fe.geometry)
+    k = fe.order
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k+1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end |> SVector
+        end
+    end
+    reduce(vcat,nested)
+end
+
+function rt_primal_basis_simplex(fe)
+    D = num_dims(fe.geometry)
+    k = fe.order
+    ranges = ntuple(d2-> (0:k) ,Val(D))
+    exponents_list_all = map(Tuple,CartesianIndices(ranges))[:]
+    exponents_list = filter(exponents->sum(exponents)<=k,exponents_list_all)
+    nested = map(1:D) do d
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end |> SVector
+        end
+    end
+    list1 = reduce(vcat,nested)
+    exponents_list = filter(exponents->sum(exponents)==k,exponents_list_all)
+    list2 = map(exponents_list) do exponents
+        x -> begin
+            v = prod( x.^exponents )
+            x*v
+        end
+    end
+    # TODO this array does not have concrete eltype
+    vcat(list1,list2)
+end
+
+function rt_setup_dual_basis_boundary(fe)
+    # TODO this function can perhaps be implemented
+    # with a higher level API
+    k = fe.order # TODO k
+    cell = fe.geometry
+    D = num_dims(cell)
+    cell_boundary = boundary(cell)
+    face_to_rid = face_reference_id(cell_boundary,D-1)
+    rid_to_refface = reference_faces(cell_boundary,D-1)
+    rid_to_fe = map(rid_to_refface) do refface
+        lagrangian_fe(geometry(refface),k) # TODO k
+    end
+    rid_to_quad = map(rid_to_fe) do fe
+        default_quadrature(geometry(fe),2*k) # TODO 2*K
+    end
+    rid_to_xs = map(coordinates,rid_to_quad)
+    rid_to_ws = map(weights,rid_to_quad)
+    rid_to_tabface = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(refface)(value,xs)
+    end
+    rid_to_tabface_grad = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(refface)(ForwardDiff.gradient,xs)
+    end
+    rid_to_tabfe = map(rid_to_fe,rid_to_xs) do fe,xs
+        tabulator(fe)(value,xs)
+    end
+    rid_to_permutations = map(fe->node_permutations(fe),rid_to_fe)
+    face_to_n = outwards_normals(cell_boundary)
+    face_to_nodes = face_nodes(cell_boundary,D-1)
+    node_to_x = node_coordinates(cell_boundary)
+    nfaces = length(face_to_n)
+    offset = 0
+    face_cache = map(1:nfaces) do face
+        rid = face_to_rid[face]
+        tabfe = rid_to_tabfe[rid]
+        tabface = rid_to_tabface[rid]
+        tabface_grad = rid_to_tabface_grad[rid]
+        npoints,ndofs = size(tabfe)
+        nodes = face_to_nodes[face]
+        nnodes = length(nodes)
+        n = face_to_n[face]
+        point_to_w = rid_to_ws[rid]
+        point_to_x = map(1:npoints) do point
+            sum(1:nnodes) do node
+                x = node_to_x[nodes[node]]
+                coeff = tabface[point,node]
+                coeff*x
+            end
+        end
+        point_to_dV = map(1:npoints) do point
+            w = point_to_w[point]
+            J = sum(1:nnodes) do node
+                x = node_to_x[nodes[node]]
+                coeff = tabface_grad[point,node]
+                outer(x,coeff)
+            end
+            change_of_measure(J)*w
+        end
+        #scaling = sum(point_to_dV)
+        moments = map(1:ndofs) do dof
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = tabfe[point,dof]
+                n*(s*dV)#/scaling)
+            end
+        end
+        points = point_to_x
+        permutations = rid_to_permutations[rid]
+        ids = collect(Int32,1:ndofs) .+ offset
+        offset += ndofs
+        (;moments,points,ids,permutations)
+    end
+    face_cache,offset
+end
+
+function rt_setup_dual_basis_interior_n_cube(fe,offset)
+    k = fe.order
+    cell = fe.geometry
+    quad = default_quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        map(exponents_list) do exponents
+            #scaling = sum(point_to_dV)
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                s*dV#/scaling
+            end |> Ref
+        end
+    end
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function rt_setup_dual_basis_interior_simplex(fe,offset)
+    k = fe.order - 1
+    cell = fe.geometry
+    quad = default_quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2->(0:k),Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        exponents_list = filter(exponents->sum(exponents)<=(k),exponents_list)
+        map(exponents_list) do exponents
+            #scaling = sum(point_to_dV)
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                s*dV#/scaling
+            end |> Ref
+        end
+    end
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function num_dofs(fe::RaviartThomasFE)
+    fe.cache.ndofs
+end
+
+function primal_basis(fe::RaviartThomasFE)
+    fe.cache.primal_basis
+end
+
+function dual_basis(fe::RaviartThomasFE)
+    fe.cache.dual_basis
+end
+
+function face_own_dofs(fe::RaviartThomasFE,d)
+    D = num_dims(fe.geometry)
+    if D == d
+        [fe.cache.cell_cache.ids]
+    elseif D-1 == d
+        map(cache->cache.ids,fe.cache.face_cache)
+    else
+        [ Int32[] for _ in 1:num_faces(boundary(fe.geometry),d)]
+    end
+end
+
+function face_dofs(fe::RaviartThomasFE,d)
+    face_own_dofs(fe,d)
+end
+
+function face_own_dof_permutations(fe::RaviartThomasFE,d)
+    D = num_dims(fe.geometry)
+    if D == d
+        [fe.cache.cell_cache.permutations]
+    elseif D-1 == d
+        map(cache->cache.permutations,fe.cache.face_cache)
+    else
+        [ [Int32[]] for _ in 1:num_faces(boundary(fe.geometry),d)]
+    end
+end
+
+function raviart_thomas_space(domain::AbstractDomain,order::Integer;conformity=:default,dirichlet_boundary=nothing)
+    mesh = domain |> GT.mesh
+    cell_to_Dface = domain |> GT.faces
+    D = domain |> GT.num_dims
+    Dface_to_ctype = GT.face_reference_id(mesh,D)
+    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+    ctype_to_refface = GT.reference_faces(mesh,D)
+    ctype_to_geometry = map(GT.geometry,ctype_to_refface)
+    ctype_to_reffe = map(ctype_to_geometry) do geometry
+        raviart_thomas_fe(geometry,order)
+    end
+    cache = nothing
+    RaviartThomasSpace(
+        domain,
+        order,
+        conformity,
+        dirichlet_boundary,
+        cell_to_ctype,
+        ctype_to_reffe,
+        cache) |> setup_space
+end
+
+struct RaviartThomasSpace{A,B,C,D,E,F} <: AbstractSpace
+    domain::A
+    order::B
+    conformity::Symbol
+    dirichlet_boundary::C
+    face_reference_id::D
+    reference_fes::E
+    cache::F
+end
+
+function replace_cache(space::RaviartThomasSpace,cache)
+    GT.RaviartThomasSpace(
+        space.domain,
+        space.order,
+        space.conformity,
+        space.dirichlet_boundary,
+        space.face_reference_id,
+        space.reference_fes,
+        cache
+    )
+end
+
+function push_forward(space::RaviartThomasSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do q,phi
+        x->begin
+            J = ForwardDiff.jacobian(phi,x)
+            (J/change_of_measure(J))*q(x)
+        end
+    end
+end
+
+function pull_back(space::RaviartThomasSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do σ,phi
+        u -> begin
+            v = x->begin
+                J = ForwardDiff.jacobian(phi,x)
+                (J/change_of_measure(J))\u(x)
+            end
+            σ(v)
+        end
+    end
+end
+
+function flip_sign(space,qty)
+    D = num_dims(mesh(space))
+    quantity() do index
+        face_dof_flip = get_symbol!(index,sign_flip_accessor(space),"face_dof_flip")
+        face = face_index(index,D)
+        t = term(qty,index)
+        dof = dof_index(t)
+        expr = @term begin
+            flip = $face_dof_flip($face)($dof)
+            s = $(expression(t))
+            x->flip*s(x)
+        end
+        expr_term(D,expr,x->1*prototype(t)(x),index)
+    end
+end
+
+function sign_flip_criterion(cell,cells)
+    if cell == cells[1]
+        1
+    else
+        -1
+    end
+end
+
+function sign_flip_accessor(space::RaviartThomasSpace)
+    D = num_dims(mesh(space))
+    cell_rid = face_reference_id(space)
+    rid_fe = reference_fes(space)
+    rid_ldof_lface = map(rid_fe) do fe
+        nldofs = num_dofs(fe)
+        ldof_lface = zeros(Int32,nldofs)
+        lface_to_ldofs = face_own_dofs(fe,D-1)
+        for (lface,ldofs) in enumerate(lface_to_ldofs)
+            ldof_lface[ldofs] .= lface
+        end
+        ldof_lface
+    end
+    topo = topology(mesh(space))
+    cell_faces = face_incidence(topo,D,D-1)
+    face_cells = face_incidence(topo,D-1,D)
+    function cell_dof_flip(cell)
+        rid = cell_rid[cell]
+        ldof_lface = rid_ldof_lface[rid]
+        lface_to_face = cell_faces[cell]
+        function dof_flip(ldof)
+            lface = ldof_lface[ldof]
+            if lface == 0
+                return 1
+            end
+            face = lface_to_face[lface]
+            cells = face_cells[face]
+            sign_flip_criterion(cell,cells)
+        end
+    end
+end
+
+
 

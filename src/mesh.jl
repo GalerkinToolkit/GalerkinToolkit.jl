@@ -276,6 +276,7 @@ function is_unitary(geom)
     all(i->i==0,first(my_bounding_box)) && all(i->i==1,last(my_bounding_box))
 end
 
+abstract type AbstractFiniteElement <: AbstractType end
 
 """
     abstract type AbstractMeshFace
@@ -301,7 +302,7 @@ end
 - [`lagrange_mesh_face`](@ref)
 
 """
-abstract type AbstractMeshFace <: GT.AbstractType end
+abstract type AbstractMeshFace <: AbstractFiniteElement end
 
 num_dims(f::AbstractMeshFace) = num_dims(geometry(f))
 
@@ -349,6 +350,10 @@ function monomial_exponents(fe::AbstractLagrangeMeshFace)
 end
 
 function node_coordinates(fe::AbstractLagrangeMeshFace)
+    if order(fe) == 0 && boundary(geometry(fe)) !== nothing
+        x = node_coordinates(boundary(geometry(fe)))
+        return [ sum(x)/length(x) ]
+    end
     @assert fe |> geometry |> is_unitary
     mexps = monomial_exponents(fe)
     lib_node_to_coords = node_coordinates_from_monomials_exponents(mexps,fe.order_per_dir,fe.geometry |> real_type)
@@ -1160,6 +1165,9 @@ function node_permutations_from_mesh_face(refface,interior_ho_nodes)
         return map(i->Int[],vertex_perms)
     end
     if length(vertex_perms) == 1
+        return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
+    end
+    if order(refface) == 0 # TODO ugly. It assumes the hack above for node coordinates of faces of order 0
         return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
     end
     geo_mesh = boundary(geo)
@@ -3046,12 +3054,11 @@ function refine_reference_geometry(geo,resolution)
           end
         end
         refface = lagrange_mesh_face(geo,1)
-        chain = chain_from_arrays(;
-                       num_dims=Val(2),
-                       node_coordinates = X,
-                       face_nodes = T,
-                       face_reference_id = fill(1,length(T)),
-                       reference_faces = [refface]
+        chain = chain_from_arrays(
+                       X,
+                       T,
+                       fill(1,length(T)),
+                       [refface]
                       )
         mesh_from_chain(chain)
     end
@@ -3116,6 +3123,10 @@ function refine_reference_geometry(geo,resolution)
     else
         error("Case not implemented (yet)")
     end
+end
+
+function mesh(refface::AbstractMeshFace)
+    mesh_from_reference_face(refface)
 end
 
 function mesh_from_reference_face(ref_face)
