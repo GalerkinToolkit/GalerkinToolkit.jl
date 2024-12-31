@@ -1922,12 +1922,12 @@ function reference_fes(space::LagrangeSpace)
     ctype_to_reffe
 end
 
-function raviart_thomas(geometry,order)
+function raviart_thomas_fe(geometry,order)
     cache = rt_setup((;geometry,order))
-    RaviartThomas(geometry,order,cache)
+    RaviartThomasFE(geometry,order,cache)
 end
 
-struct RaviartThomas{A,B,C} <: AbstractFiniteElement
+struct RaviartThomasFE{A,B,C} <: AbstractFiniteElement
     geometry::A
     order::B
     cache::C
@@ -2148,19 +2148,19 @@ function rt_setup_dual_basis_interior_simplex(fe,offset)
     (;moments,points,ids,permutations), offset
 end
 
-function num_dofs(fe::RaviartThomas)
+function num_dofs(fe::RaviartThomasFE)
     fe.cache.ndofs
 end
 
-function primal_basis(fe::RaviartThomas)
+function primal_basis(fe::RaviartThomasFE)
     fe.cache.primal_basis
 end
 
-function dual_basis(fe::RaviartThomas)
+function dual_basis(fe::RaviartThomasFE)
     fe.cache.dual_basis
 end
 
-function face_own_dofs(fe::RaviartThomas,d)
+function face_own_dofs(fe::RaviartThomasFE,d)
     D = num_dims(fe.geometry)
     if D == d
         [fe.cache.cell_cache.ids]
@@ -2171,11 +2171,11 @@ function face_own_dofs(fe::RaviartThomas,d)
     end
 end
 
-function face_dofs(fe::RaviartThomas,d)
+function face_dofs(fe::RaviartThomasFE,d)
     face_own_dofs(fe,d)
 end
 
-function face_own_dof_permutations(fe::RaviartThomas,d)
+function face_own_dof_permutations(fe::RaviartThomasFE,d)
     D = num_dims(fe.geometry)
     if D == d
         [fe.cache.cell_cache.permutations]
@@ -2195,7 +2195,7 @@ function raviart_thomas_space(domain::AbstractDomain,order::Integer;conformity=:
     ctype_to_refface = GT.reference_faces(mesh,D)
     ctype_to_geometry = map(GT.geometry,ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
-        raviart_thomas(geometry,order)
+        raviart_thomas_fe(geometry,order)
     end
     cache = nothing
     RaviartThomasSpace(

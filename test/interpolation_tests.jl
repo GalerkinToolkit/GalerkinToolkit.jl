@@ -85,38 +85,20 @@ GT.face_own_dof_permutations(fe,0)
 GT.face_own_dof_permutations(fe,1)
 GT.face_own_dof_permutations(fe,2)
 
-geo = GT.unit_n_cube(Val(2))
-order = 0
-fe = GT.raviart_thomas(geo,order)
-
-GT.face_dofs(fe,0)
-GT.face_dofs(fe,1)
-GT.face_dofs(fe,2)
-
-@show GT.face_own_dofs(fe,0)
-@show GT.face_own_dofs(fe,1)
-@show GT.face_own_dofs(fe,2)
-
-GT.face_own_dof_permutations(fe,0)
-GT.face_own_dof_permutations(fe,1)
-GT.face_own_dof_permutations(fe,2)
-
-geo = GT.unit_simplex(Val(2))
-order = 0
-fe = GT.raviart_thomas(geo,order)
-
-GT.face_dofs(fe,0)
-GT.face_dofs(fe,1)
-GT.face_dofs(fe,2)
-
-GT.face_own_dofs(fe,0)
-GT.face_own_dofs(fe,1)
-GT.face_own_dofs(fe,2)
-
-GT.face_own_dof_permutations(fe,0)
-GT.face_own_dof_permutations(fe,1)
-GT.face_own_dof_permutations(fe,2)
-
+for geo in (GT.unit_n_cube(Val(2)),GT.unit_simplex(Val(2)))
+    for order in (0,1)
+        fe = GT.raviart_thomas_fe(geo,order)
+        GT.face_dofs(fe,0)
+        GT.face_dofs(fe,1)
+        GT.face_dofs(fe,2)
+        @show GT.face_own_dofs(fe,0)
+        @show GT.face_own_dofs(fe,1)
+        @show GT.face_own_dofs(fe,2)
+        GT.face_own_dof_permutations(fe,0)
+        GT.face_own_dof_permutations(fe,1)
+        GT.face_own_dof_permutations(fe,2)
+    end
+end
 
 domain = (0,1,0,1)
 cells = (2,2)
