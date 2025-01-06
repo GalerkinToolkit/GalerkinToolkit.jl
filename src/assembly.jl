@@ -603,7 +603,7 @@ function assemble_matrix_and_vector_with_dirichlet(a,l,U,V,dirichlet_values;kwar
 end
 
 function assemble_matrix_and_vector_with_dirichlet!(a,l,U,V,dirichlet_values,A,b,cache)
-    T = eltype(diri_vals)
+    T = eltype(dirichlet_values)
     free_values = constant_values(zero(T),GT.free_dofs(U))
     ud = discrete_field(U,free_values,dirichlet_values)
     l2(v) = l(v) - a(ud,v)
