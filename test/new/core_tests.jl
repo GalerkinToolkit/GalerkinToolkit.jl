@@ -23,13 +23,13 @@ options = GT.options(cube0)
 @show GT.int_type(options)
 
 degree = 2
-qua = GT.default_quadrature(cube2,degree)
+qua = GT.quadrature(cube2,degree)
 @test cube2 === GT.domain(qua)
 x = GT.coordinates(qua)
 @test sum(GT.weights(qua)) ≈ 1
 
 degree = 2
-qua = GT.default_quadrature(spx2,degree)
+qua = GT.quadrature(spx2,degree)
 @test spx2 === GT.domain(qua)
 x = GT.coordinates(qua)
 @test sum(GT.weights(qua)) ≈ 0.5

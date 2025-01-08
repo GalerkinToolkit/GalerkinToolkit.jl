@@ -102,6 +102,10 @@ Return the default real type used in the computation.
 """
 real_type(options::Options) = options.contents.real_type
 
+abstract type AbstractDomain <: AbstractType end
+
+domain(a::AbstractDomain) = a
+
 """
     abstract type AbstractFaceDomain <: AbstractType end
 
@@ -126,7 +130,7 @@ Abstract type representing the geometry of a single mesh face, typically one of 
 - [`unit_n_cube`](@ref)
 
 """
-abstract type AbstractFaceDomain <: AbstractType end
+abstract type AbstractFaceDomain <: AbstractDomain end
 
 function is_unit_n_cube(geo::AbstractFaceDomain)
     is_n_cube(geo) && is_unitary(geo)
@@ -197,7 +201,9 @@ is_axis_aligned(geo::UnitSimplex) = true
 is_unitary(geo::UnitSimplex) = true
 bounding_box(geo::UnitSimplex) = bounding_box(UnitNCube(geo.num_dims,geo.options))
 
-abstract type AbstractFaceSpace <: AbstractType end
+abstract type AbstractSpace <: AbstractType end
+
+abstract type AbstractFaceSpace <: AbstractSpace end
 
 """
 """
@@ -233,6 +239,13 @@ end
 
 options(fe::AbstractFaceSpace) = options(domain(fe))
 num_dims(fe::AbstractFaceSpace) = num_dims(domain(fe))
+
+function node_quadrature(fe::AbstractFaceSpace)
+    coordinates = node_coordinates(fe)
+    Tv = real_type(options(fe))
+    nnodes = length(coordinates)
+    weights = fill(Tv(1/nnodes),nnodes)
+end
 
 function lagrange_space(domain::AbstractFaceDomain;
         order = 1,
@@ -444,6 +457,8 @@ function dof_node(fe::LagrangeFaceSpace)
     end
 end
 
+abstract type AbstractQuadrature <: AbstractType end
+
 """
     abstract type AbstractFaceQuadrature
 
@@ -455,7 +470,7 @@ end
 
 # Basic constructors
 
-- [`default_quadrature`](@ref)
+- [`quadrature`](@ref)
 - [`duffy_quadrature`](@ref)
 - [`tensor_product_quadrature`](@ref)
 
@@ -463,21 +478,24 @@ end
 
     AbstractQuadrature <: GT.AbstractType
 """
-abstract type AbstractFaceQuadrature <: AbstractType end
+abstract type AbstractFaceQuadrature <: AbstractQuadrature end
 
-struct FaceQuadrature{A,B,C} <: AbstractFaceQuadrature
-    domain::A
-    coordinates::B
-    weights::C
+function face_quadrature(;domain,coordinates,weights)
+    contents = (;domain,coordinates,weights)
+    FaceQuadrature(contents)
 end
 
-domain(a::FaceQuadrature) = a.domain
-coordinates(a::FaceQuadrature) = a.coordinates
-weights(a::FaceQuadrature) = a.weights
+struct FaceQuadrature{A} <: AbstractFaceQuadrature
+    contents::A
+end
+
+domain(a::FaceQuadrature) = a.contents.domain
+coordinates(a::FaceQuadrature) = a.contents.coordinates
+weights(a::FaceQuadrature) = a.contents.weights
 
 """
 """
-function default_quadrature(geo::AbstractFaceDomain,degree)
+function quadrature(geo::AbstractFaceDomain,degree)
     if is_n_cube(geo) && is_axis_aligned(geo)
         D = num_dims(geo)
         tensor_product_quadrature(geo,degree)
@@ -519,7 +537,7 @@ function tensor_product_quadrature(geo::AbstractFaceDomain,degree_per_dir)
     x = zeros(SVector{D,Tv},m)
     tensor_product!(identity,x,coords_per_dir)
     tensor_product!(prod,w,weights_per_dir)
-    FaceQuadrature(geo,x,w)
+    face_quadrature(;domain=geo,coordinates=x,weights=w)
 end
 
 function tensor_product!(f,result,values_per_dir)
@@ -542,7 +560,7 @@ function duffy_quadrature(geo,degree)
     if D == 0
         x = zeros(SVector{0,Tv},1)
         w = ones(Tv,1)
-        return FaceQuadrature(geo,x,w)
+        return face_quadrature(;domain=geo,coordinates=x,weights=w)
     end
     function map_to(a,b,(points,weights))
       points_ab = similar(points)
@@ -587,7 +605,7 @@ function duffy_quadrature(geo,degree)
     tensor_product!(identity,x,coords_per_dir)
     tensor_product!(prod,w,weights_per_dir)
     x .= duffy_map.(x)
-    FaceQuadrature(geo,x,w)
+    face_quadrature(;domain=geo,coordinates=x,weights=w)
 end
 
 """
@@ -651,6 +669,14 @@ face_reference_id(m::Mesh,d) = m.contents.face_reference_id[d+1]
 reference_spaces(m::Mesh) = m.contents.reference_spaces
 reference_spaces(m::Mesh,d) = m.contents.reference_spaces[d+1]
 
+function reference_domains(a::AbstractMesh,d)
+    map(domain,reference_spaces(a,d))
+end
+
+function reference_domains(a::AbstractMesh)
+    ntuple(d->reference_domains(a,d-1),Val{D+1})
+end
+
 function periodic_nodes(m::Mesh)
     if m.contents.periodic_nodes === :default
         Ti = int_type(options(mesh))
@@ -663,7 +689,7 @@ end
 function physical_faces(m::Mesh,d)
     if m.contents.physical_faces === :default
         Ti = int_type(options(mesh))
-        Dict{String,Vector{Ti}}()
+        Dict{String,Vector{Ti}}("$d-faces"=>collect(Ti,1:num_faces(m,d)))
     else
         m.contents.physical_faces[d+1]
     end
@@ -680,6 +706,22 @@ end
 function outward_normals(m::Mesh)
     @assert m.contents.outward_normals !== :default
     m.contents.outward_normals
+end
+
+"""
+"""
+function physical_names(mesh,d)
+    groups = physical_faces(mesh,d)
+    Set(keys(groups))
+end
+
+function physical_names(mesh;merge_dims=Val(false))
+    D = num_dims(mesh)
+    d_to_names = [ physical_names(mesh,d) for d in 0:D]
+    if val_parameter(merge_dims) == false
+        return d_to_names
+    end
+    reduce(union,d_to_names)
 end
 
 function complexify(geom::Union{UnitNCube{0},UnitSimplex{0}})
@@ -855,5 +897,339 @@ function opposite_faces(geom::UnitNCube{3})
     Ti = int_type(options(geom))
     Vector{Ti}[[8,7,6,5,4,3,2,1],[6,5,8,7,2,1,4,3,12,11,10,9],[2,1,4,3,6,5],[1]]
 end
+
+abstract type AbstractMeshDomain <: AbstractDomain end
+
+mesh(a::AbstractMeshDomain) = a.mesh
+mesh_id(a::AbstractMeshDomain) = a.mesh_id
+physical_names(a::AbstractMeshDomain) = a.physical_names
+num_dims(a::AbstractMeshDomain) = GT.val_parameter(a.num_dims)
+num_ambient_dims(a::AbstractMeshDomain) = num_ambient_dims(mesh(a))
+is_physical_domain(a::AbstractMeshDomain) = ! is_reference_domain(a)
+face_around(a::AbstractMeshDomain) = a.face_around
+
+function is_boundary(dom::AbstractMeshDomain)
+    dom.face_around !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
+end
+
+function inverse_faces(domain::AbstractMeshDomain)
+    if domain.cache !== nothing
+        return domain.cache.inverse_faces
+    end
+    Ti = int_type(options(domain))
+    d = num_dims(domain)
+    ndfaces = num_faces(mesh(domain),d)
+    dface_to_face = zeros(Ti,ndfaces)
+    face_to_dface = faces(domain)
+    dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    dface_to_face
+end
+
+function faces(domain::AbstractMeshDomain)
+    if domain.cache !== nothing
+        return domain.cache.faces
+    end
+    Ti = int_type(options(domain))
+    mesh = domain |> GT.mesh
+    D = GT.num_dims(domain)
+    Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
+    tag_to_name = GT.physical_names(domain)
+    GT.classify_mesh_faces!(Dface_to_tag,mesh,D,tag_to_name)
+    physical_Dfaces = findall(i->i!=0,Dface_to_tag)
+    Ti.(physical_Dfaces)
+end
+
+"""
+"""
+function classify_mesh_faces!(dface_to_tag,mesh::AbstractMesh,d,tag_to_name)
+    fill!(dface_to_tag,zero(eltype(dface_to_tag)))
+    face_groups = physical_faces(mesh,d)
+    for (tag,name) in enumerate(tag_to_name)
+        for (name2,faces) in face_groups
+            if name != name2
+                continue
+            end
+            dface_to_tag[faces] .= tag
+        end
+    end
+    dface_to_tag
+end
+
+function face_reference_id(a::AbstractMeshDomain)
+    d = num_dims(a)
+    face_reference_id(mesh(a),d)
+end
+
+function reference_domains(a::AbstractMeshDomain)
+    d = num_dims(a)
+    reference_domains(mesh(a),d)
+end
+
+function Base.:(==)(a::AbstractMeshDomain,b::AbstractMeshDomain)
+    flag = true
+    flag = flag && (GT.mesh_id(a) == GT.mesh_id(b))
+    flag = flag && (GT.physical_names(a) == GT.physical_names(b))
+    flag = flag && (GT.num_dims(a) == GT.num_dims(b))
+    flag = flag && (GT.is_reference_domain(a) == GT.is_reference_domain(b))
+    flag
+end
+
+function domain(mesh::AbstractMesh,d;
+    mesh_id = objectid(mesh),
+    physical_names=GT.physical_names(mesh,d),
+    is_reference_domain = Val(false))
+    mesh_domain(;mesh,num_dims=Val(val_parameter(d)),face_around=nothing,mesh_id,physical_names,is_reference_domain)
+end
+
+function interior(mesh::AbstractMesh;
+    mesh_id = objectid(mesh),
+    physical_names=GT.physical_names(mesh,num_dims(mesh)),
+    is_reference_domain = Val(false))
+    D = num_dims(mesh)
+    mesh_domain(;mesh,num_dims=D,face_around=1,mesh_id,physical_names,is_reference_domain)
+end
+
+function skeleton(mesh::AbstractMesh;
+    mesh_id = objectid(mesh),
+    physical_names=GT.physical_names(mesh,num_dims(mesh)-1),
+    is_reference_domain = Val(false))
+    D = num_dims(mesh)
+    mesh_domain(;mesh,num_dims=D-1,face_around=nothing,mesh_id,physical_names,is_reference_domain)
+end
+
+function boundary(mesh::AbstractMesh;
+    face_around=1,
+    mesh_id = objectid(mesh),
+    physical_names=GT.physical_names(mesh,num_dims(mesh)-1),
+    is_reference_domain = Val(false))
+    D = num_dims(mesh)
+    mesh_domain(;mesh,num_dims=D-1,face_around,mesh_id,physical_names,is_reference_domain)
+end
+
+function mesh_domain(;
+    mesh,
+    mesh_id = objectid(mesh),
+    num_dims = Val(GT.num_dims(mesh)),
+    physical_names=GT.physical_names(mesh,num_dims),
+    is_reference_domain = Val(false),
+    face_around=nothing,
+    cache=nothing,
+    )
+
+    if val_parameter(is_reference_domain)
+        ReferenceDomain(
+                        mesh,
+                        mesh_id,
+                        physical_names,
+                        Val(val_parameter(num_dims)),
+                        face_around,
+                        cache,
+                       )
+    else
+        PhysicalDomain(
+                        mesh,
+                        mesh_id,
+                        physical_names,
+                        Val(val_parameter(num_dims)),
+                        face_around,
+                        cache,
+                       )
+    end |> setup_domain
+end
+
+function setup_domain(domain::AbstractMeshDomain)
+    if domain.cache !== nothing
+        return domain
+    end
+    faces = GT.faces(domain)
+    inverse_faces = GT.inverse_faces(domain)
+    cache = (;faces,inverse_faces)
+    replace_cache(domain,cache)
+end
+
+function replace_cache(domain::AbstractMeshDomain,cache)
+    mesh = GT.mesh(domain)
+    num_dims = GT.num_dims(domain)
+    mesh_id = GT.mesh_id(domain)
+    physical_names = GT.physical_names(domain)
+    is_reference_domain = GT.is_reference_domain(domain)
+    face_around = GT.face_around(domain)
+    GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,cache)
+end
+
+struct PhysicalDomain{A,B,C,D,E,F} <: AbstractMeshDomain{A}
+    mesh::A
+    mesh_id::B
+    physical_names::C
+    num_dims::Val{D}
+    face_around::E
+    cache::F
+end
+is_reference_domain(a::PhysicalDomain) = false
+
+struct ReferenceDomain{A,B,C,D,E,F} <: AbstractMeshDomain{A}
+    mesh::A
+    mesh_id::B
+    physical_names::C
+    num_dims::Val{D}
+    face_around::E
+    cache::F
+end
+is_reference_domain(a::ReferenceDomain) = true
+
+function reference_domain(domain::PhysicalDomain)
+    mesh = GT.mesh(domain)
+    num_dims = GT.num_dims(domain)
+    mesh_id = GT.mesh_id(domain)
+    physical_names = GT.physical_names(domain)
+    is_reference_domain = Val(true)
+    face_around = GT.face_around(domain)
+    cache = domain.cache
+    GT.domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,cache)
+end
+
+function reference_domain(domain::ReferenceDomain)
+    domain
+end
+
+function physical_domain(domain::ReferenceDomain)
+    mesh = GT.mesh(domain)
+    num_dims = GT.num_dims(domain)
+    mesh_id = GT.mesh_id(domain)
+    physical_names = GT.physical_names(domain)
+    face_around = GT.face_around(domain)
+    is_reference_domain = Val(false)
+    cache = domain.cache
+    GT.domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,cache)
+end
+
+function physical_domain(domain::PhysicalDomain)
+    domain
+end
+
+abstract type AbstractMeshQuadrature <: AbstractQuadrature end
+
+function quadrature(domain::AbstractMeshDomain,degree)
+    rid_to_dom = reference_domains(domain)
+    reference_quadratures = map(dom->quadrature(dom,degree),rid_to_dom)
+    face_reference_id = GT.face_reference_id(domain)
+    mesh_quadrature(;domain,face_reference_id,reference_quadratures)
+end
+
+function node_quadrature(domain::AbstractMeshDomain)
+    d = num_dims(domain)
+    rid_to_dom = reference_spaces(mesh(domain),d)
+    reference_quadratures = map(node_quadrature,rid_to_dom)
+    face_reference_id = GT.face_reference_id(domain)
+    mesh_quadrature(;domain,face_reference_id,reference_quadratures)
+end
+
+function mesh_quadrature(;domain,face_reference_id,reference_quadratures)
+    contents = (;domain,face_reference_id,reference_quadratures)
+    MeshQuadrature(contents)
+end
+
+struct MeshQuadrature{A} <: AbstractMeshQuadrature
+    contents::A
+end
+
+domain(q::MeshQuadrature) = q.contents.domain
+face_reference_id(q::MeshQuadrature) = q.contents.face_reference_id
+reference_quadratures(q::MeshQuadrature) = q.contents.reference_quadratures
+
+function num_points_accessor(measure::MeshQuadrature)
+    mesh = measure.mesh
+    dom = measure.domain
+    d = num_dims(dom)
+    rid_to_point_to_w = map(weights,reference_quadratures(measure))
+    face_to_rid = face_reference_id(measure)
+    sface_to_face = faces(dom)
+    function face_npoints(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        point_to_w = rid_to_point_to_w[rid]
+        length(point_to_w)
+    end
+end
+
+function coordinate_accessor(measure::MeshQuadrature)
+    mesh = measure.mesh
+    dom = measure.domain
+    @assert is_physical_domain(dom)
+    d = num_dims(dom)
+    rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
+    rid_to_tab = map(rid_to_point_to_x,reference_faces(mesh,d)) do point_to_x, refface
+        tabulator(refface)(value,point_to_x)
+    end
+    face_to_rid = face_reference_id(measure)
+    face_to_nodes = face_nodes(mesh,d)
+    node_to_x = node_coordinates(mesh)
+    sface_to_face = faces(dom)
+    function face_point_x(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        tab = rid_to_tab[rid]
+        nodes = face_to_nodes[face]
+        function point_x(point)
+            nnodes = length(nodes)
+            sum(1:nnodes) do i
+                node = nodes[i]
+                x = node_to_x[node]
+                x*tab[point,i]
+            end
+        end
+    end
+end
+
+outer(a,b) = a*transpose(b)
+
+function jacobian_accessor(measure::MeshQuadrature)
+    mesh = measure.mesh
+    dom = measure.domain
+    @assert is_physical_domain(dom)
+    d = num_dims(dom)
+    rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
+    rid_to_tab = map(rid_to_point_to_x,reference_faces(mesh,d)) do point_to_x, refface
+        tabulator(refface)(ForwardDiff.gradient,point_to_x)
+    end
+    face_to_rid = face_reference_id(measure)
+    face_to_nodes = face_nodes(mesh,d)
+    node_to_x = node_coordinates(mesh)
+    sface_to_face = faces(dom)
+    function face_point_x(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        tab = rid_to_tab[rid]
+        nodes = face_to_nodes[face]
+        function point_x(point)
+            nnodes = length(nodes)
+            sum(1:nnodes) do i
+                node = nodes[i]
+                x = node_to_x[node]
+                outer(x,tab[point,i])
+            end
+        end
+    end
+end
+
+function weight_accessor(measure::MeshQuadrature)
+    mesh = measure.mesh
+    dom = measure.domain
+    @assert is_physical_domain(dom)
+    d = num_dims(dom)
+    rid_to_point_to_w = map(weights,reference_quadratures(measure))
+    face_to_rid = face_reference_id(measure)
+    sface_to_face = faces(dom)
+    function face_point_x(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        point_to_w = rid_to_point_to_w[rid]
+        function point_x(point,J)
+            w = point_to_w[point]
+            change_of_measure(J)*w
+        end
+    end
+end
+
 
 
