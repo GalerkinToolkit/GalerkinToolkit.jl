@@ -4,6 +4,7 @@ using Test
 
 @testset "GalerkinToolkit" begin
     @testset "Core" begin include("core_tests.jl") end
+    @testset "Complexify" begin include("complexify_tests.jl") end
     #@testset "Geometry" begin include("geometry_tests.jl") end
     #@testset "Symbolics" begin include("symbolics_tests.jl") end
     #@testset "Domain" begin include("domain_tests.jl") end

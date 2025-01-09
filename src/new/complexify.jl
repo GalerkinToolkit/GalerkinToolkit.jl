@@ -1270,7 +1270,3 @@ function find_node_to_vertex(mesh)
 end
 
 
-
-
-
-
