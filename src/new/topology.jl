@@ -501,7 +501,8 @@ function topology(mesh::AbstractMesh)
     D = num_dims(mesh)
     my_face_incidence = Matrix{T}(undef,D+1,D+1)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
-    my_reference_faces = Tuple([ map(topology,reference_domains(mesh,d)) for d in 0:D ])
+    dims = ntuple(d->d-1,Val(D+1))
+    my_reference_faces = map(d->map(topology,reference_domains(mesh,d)),dims)
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
     topo = mesh_topology(;
         face_incidence = my_face_incidence,

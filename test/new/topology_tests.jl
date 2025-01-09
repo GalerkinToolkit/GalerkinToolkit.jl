@@ -57,6 +57,8 @@ GT.face_permutation_ids(topo,0,0)
 mesh = GT.boundary(cube0)
 mesh = GT.boundary(cube1)
 topo = GT.topology(mesh)
+
+
 mesh = GT.boundary(cube2)
 topo = GT.topology(mesh)
 mesh = GT.boundary(cube3)
@@ -96,7 +98,9 @@ chain = GT.chain(;
     )
 
 mesh = GT.mesh(chain)
+
 mesh2 = GT.complexify(mesh)
+
 topo = GT.topology(mesh2)
 
 end # module
