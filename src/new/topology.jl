@@ -226,7 +226,7 @@ function complexify(refface::LagrangeFaceSpace)
        )
 end
 
-function boundary(geo::Union{AbstractFaceSpace,AbstractFaceDomain})
+function boundary(geo::Union{LagrangeFaceSpace,AbstractFaceDomain})
     mesh = complexify(geo)
     GT.mesh(;
          node_coordinates = node_coordinates(mesh),
@@ -239,7 +239,7 @@ function boundary(geo::Union{AbstractFaceSpace,AbstractFaceDomain})
         )
 end
 
-function chain(geo::Union{AbstractFaceSpace,AbstractFaceDomain},d=Val(num_dims(geo)))
+function chain(geo::Union{LagrangeFaceSpace,AbstractFaceDomain},d=Val(num_dims(geo)))
     mesh = complexify(geo)
     chain(mesh,d)
 end
@@ -307,7 +307,7 @@ function compute_volume(vertex_coords,TJ,A)
     vol
 end
 
-function interior_nodes(fe::AbstractFaceSpace)
+function interior_nodes(fe::LagrangeFaceSpace)
     nnodes = num_nodes(fe)
     D = num_dims(fe)
     if D == 0

@@ -244,16 +244,6 @@ end
 
 options(fe::AbstractFaceSpace) = options(domain(fe))
 num_dims(fe::AbstractFaceSpace) = num_dims(domain(fe))
-num_nodes(fe::AbstractFaceSpace) = length(node_coordinates(fe))
-
-function node_quadrature(fe::AbstractFaceSpace)
-    coordinates = node_coordinates(fe)
-    Tv = real_type(options(fe))
-    nnodes = length(coordinates)
-    weights = fill(Tv(1/nnodes),nnodes)
-    domain = GT.domain(fe)
-    face_quadrature(;domain,coordinates,weights)
-end
 
 function lagrange_space(domain::AbstractFaceDomain;
         order = 1,
@@ -415,6 +405,15 @@ function dual_basis(fe::LagrangeFaceSpace)
         end
         return reduce(vcat,dual_nested)
     end
+end
+
+function node_quadrature(fe::LagrangeFaceSpace)
+    coordinates = node_coordinates(fe)
+    Tv = real_type(options(fe))
+    nnodes = length(coordinates)
+    weights = fill(Tv(1/nnodes),nnodes)
+    domain = GT.domain(fe)
+    face_quadrature(;domain,coordinates,weights)
 end
 
 contraction(a,b) = sum(map(*,a,b))
