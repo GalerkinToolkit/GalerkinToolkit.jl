@@ -540,12 +540,11 @@ abstract type AbstractDiscretization end
 - [`mesh`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
-- [`mesh_from_chain`](@ref)
 
 """
 abstract type AbstractMesh <: AbstractDiscretization end
 
-num_dims(m::AbstractMesh) = length(reference_spaces(m))
+num_dims(m::AbstractMesh) = length(reference_spaces(m))-1
 num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
 options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
 num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
@@ -587,8 +586,7 @@ physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
 
 function default_physical_faces(reference_spaces)
-    Ti = int_type(options(first(last(reference_spaces))))
-    [ Dict{String,Vector{Ti}}() for _ in 1:length(reference_spaces) ]
+    [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
 end
 
 function default_periodic_nodes(reference_spaces)
@@ -601,7 +599,8 @@ function reference_domains(a::AbstractMesh,d)
 end
 
 function reference_domains(a::AbstractMesh)
-    ntuple(d->reference_domains(a,d-1),Val{D+1})
+    D = num_dims(a)
+    ntuple(d->reference_domains(a,d-1),Val(D+1))
 end
 
 function outward_normals(m::Mesh)
@@ -624,6 +623,80 @@ function physical_names(mesh;merge_dims=Val(false))
     end
     reduce(union,d_to_names)
 end
+
+abstract type AbstractChain <: AbstractDiscretization end
+
+num_dims(m::AbstractChain) = num_dims(domain(first(reference_spaces(m))))
+num_ambient_dims(m::AbstractChain) = length(eltype(node_coordinates(m)))
+options(m::AbstractChain) = options(first(reference_spaces(m)))
+num_faces(m::AbstractChain) = length(face_reference_id(m))
+
+"""
+"""
+function mesh(chain::AbstractChain)
+    D = num_dims(chain)
+    cell_nodes = face_nodes(chain)
+    cell_reference_id = face_reference_id(chain)
+    reference_cells = reference_spaces(chain)
+    node_coords = node_coordinates(chain)
+    face_to_nodes = Vector{typeof(cell_nodes)}(undef,D+1)
+    face_to_refid = Vector{typeof(cell_reference_id)}(undef,D+1)
+    for d in 0:D-1
+        face_to_nodes[d+1] = Vector{Int}[]
+        face_to_refid[d+1] = Int[]
+    end
+    face_to_nodes[end] = cell_nodes
+    face_to_refid[end] = cell_reference_id
+    ref_cell = first(reference_cells)
+    ref_faces = reference_spaces(complexify(ref_cell))
+    refid_to_refface = push(ref_faces[1:end-1],reference_cells)
+    cell_groups = physical_faces(chain)
+    groups = [ typeof(cell_groups)() for d in 0:D]
+    groups[end] = cell_groups
+    pnodes = periodic_nodes(chain)
+    onormals = outward_normals(chain)
+    GT.mesh(;
+      node_coordinates = node_coords,
+      face_nodes = face_to_nodes,
+      face_reference_id = face_to_refid,
+      reference_spaces = refid_to_refface,
+      periodic_nodes = pnodes,
+      physical_faces = groups,
+      outward_normals = onormals)
+end
+
+struct Chain{A} <: AbstractChain
+    contents::A
+end
+
+function chain(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        periodic_nodes = default_periodic_nodes((reference_spaces,)),
+        physical_faces = default_physical_faces((reference_spaces,))[end],
+        outward_normals = nothing,
+    )
+    contents = (;
+                node_coordinates,
+                face_nodes,
+                face_reference_id,
+                reference_spaces,
+                periodic_nodes,
+                physical_faces,
+                outward_normals,
+               )
+    Chain(contents)
+end
+
+node_coordinates(m::Chain) = m.contents.node_coordinates
+face_nodes(m::Chain) = m.contents.face_nodes
+face_reference_id(m::Chain) = m.contents.face_reference_id
+reference_spaces(m::Chain) = m.contents.reference_spaces
+physical_faces(m::Chain) = m.contents.physical_faces
+periodic_nodes(m::Chain) = m.contents.periodic_nodes
+outward_normals(m::Chain) = m.contents.outward_normals
 
 abstract type AbstractMeshDomain{A} <: AbstractDomain end
 
@@ -839,8 +912,8 @@ face_reference_id(q::MeshQuadrature) = q.contents.face_reference_id
 reference_quadratures(q::MeshQuadrature) = q.contents.reference_quadratures
 
 function num_points_accessor(measure::MeshQuadrature)
-    mesh = measure.mesh
-    dom = measure.domain
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     d = num_dims(dom)
     rid_to_point_to_w = map(weights,reference_quadratures(measure))
     face_to_rid = face_reference_id(measure)

@@ -32,6 +32,7 @@ options = GT.options(cube0)
 
 #@code_warntype GT.real_type(options)
 
+
 degree = 2
 qua = GT.quadrature(cube2,degree)
 
@@ -68,6 +69,9 @@ n = GT.num_dofs(fe)
 
 t = GT.tabulator(fe)
 #@code_warntype t(GT.value,x)
+
+qua = GT.node_quadrature(fe)
+#@code_warntype GT.node_quadrature(fe)
 
 fe = GT.lagrange_space(cube2;tensor_size=Val((2,)))
 
@@ -131,6 +135,23 @@ point = 1
 x = face_point_x(face)(point)
 J = face_point_J(face)(point)
 dV = face_point_dV(face)(point,J)
+
+face_nodes = Vector{Ti}[[1,2,3,4]]
+face_reference_id = Tr[1]
+reference_spaces = (space2,)
+chain = GT.chain(;
+     node_coordinates,
+     face_nodes,
+     face_reference_id,
+     reference_spaces,
+     outward_normals
+    )
+
+mesh = GT.mesh(chain)
+
+#@code_warntype face_point_x(face)
+#f = face_point_x(face)
+#@code_warntype f(point)
 
 
 end # module

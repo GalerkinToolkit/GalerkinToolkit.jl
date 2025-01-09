@@ -226,3 +226,112 @@ function complexify(refface::LagrangeFaceSpace)
        )
 end
 
+function complexify(mesh::AbstractMesh;glue=Val(false))
+    Ti = int_type(options(mesh))
+    T = JaggedArray{Ti,Ti}
+    D = num_dims(mesh)
+    oldface_to_newvertices = Vector{T}(undef,D+1)
+    newvertex_to_oldfaces = Vector{T}(undef,D+1)
+    newface_incidence = Matrix{T}(undef,D+1,D+1)
+    nnewfaces = zeros(Int,D+1)
+    newface_refid = Vector{Vector{Ti}}(undef,D+1)
+    newreffaces = Vector{Any}(undef,D+1)
+    newface_nodes = Vector{T}(undef,D+1)
+    old_to_new = Vector{Vector{Ti}}(undef,D+1)
+    node_to_newvertex, n_new_vertices = find_node_to_vertex(mesh) # Optimizable for linear meshes
+    for d in 0:D
+        oldface_to_newvertices[d+1] = fill_face_vertices(mesh,d,node_to_newvertex) # Optimizable for linear meshes
+        newvertex_to_oldfaces[d+1] = generate_face_coboundary(oldface_to_newvertices[d+1],n_new_vertices) # Optimizable for linear meshes
+    end
+    newface_incidence[D+1,0+1] = oldface_to_newvertices[D+1]
+    newface_incidence[0+1,D+1] = newvertex_to_oldfaces[D+1]
+    nnewfaces[D+1] = length(oldface_to_newvertices[D+1])
+    newface_refid[D+1] = face_reference_id(mesh,D)
+    newreffaces[D+1] = reference_faces(mesh,D)
+    newface_nodes[D+1] = face_nodes(mesh,D)
+    old_to_new[D+1] = collect(Ti,1:length(newface_nodes[D+1]))
+    # TODO optimize for d==0
+    for d in (D-1):-1:0
+        n = d+1
+        new_nface_to_new_vertices = newface_incidence[n+1,0+1]
+        new_vertex_to_new_nfaces = newface_incidence[0+1,n+1]
+        old_dface_to_new_vertices = oldface_to_newvertices[d+1]
+        new_vertex_to_old_dfaces = newvertex_to_oldfaces[d+1]
+        new_nface_to_nrefid = newface_refid[n+1]
+        old_dface_to_drefid = face_reference_id(mesh,d)
+        drefid_to_ref_dface = reference_faces(mesh,d)
+        old_dface_to_nodes = face_nodes(mesh,d)
+        new_nface_to_nodes = newface_nodes[n+1]
+        nrefid_to_ldface_to_lvertices = map(a->face_incidence(topology(boundary(geometry(a))),d,0),newreffaces[n+1])
+        nrefid_to_ldface_to_lnodes = map(a->face_nodes(boundary(a),d),newreffaces[n+1])
+        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(boundary(a),d),newreffaces[n+1])
+        nrefid_to_drefrefid_to_ref_dface = map(a->reference_faces(boundary(a),d),newreffaces[n+1])
+        new_nface_to_new_dfaces, n_new_dfaces, old_dface_to_new_dface = generate_face_boundary(
+            new_nface_to_new_vertices,
+            new_vertex_to_new_nfaces,
+            old_dface_to_new_vertices,
+            new_vertex_to_old_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lvertices)
+        new_dface_to_new_vertices = generate_face_vertices(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_new_vertices,
+            new_nface_to_new_vertices,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lvertices)
+        new_vertex_to_new_dfaces = generate_face_coboundary(new_dface_to_new_vertices,n_new_vertices)
+        new_dface_to_nodes = generate_face_vertices(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_nodes,
+            new_nface_to_nodes,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_lnodes)
+        new_dface_to_new_drefid, new_refid_to_ref_dface = generate_reference_faces(
+            n_new_dfaces,
+            old_dface_to_new_dface,
+            old_dface_to_drefid,
+            drefid_to_ref_dface,
+            new_nface_to_new_dfaces,
+            new_nface_to_nrefid,
+            nrefid_to_ldface_to_drefrefid,
+            nrefid_to_drefrefid_to_ref_dface)
+        newface_incidence[n+1,d+1] = new_nface_to_new_dfaces
+        newface_incidence[d+1,0+1] = new_dface_to_new_vertices
+        newface_incidence[0+1,d+1] = new_vertex_to_new_dfaces
+        newface_refid[d+1] = new_dface_to_new_drefid
+        newreffaces[d+1] = new_refid_to_ref_dface
+        nnewfaces[d+1] = n_new_dfaces
+        newface_nodes[d+1] = new_dface_to_nodes
+        old_to_new[d+1] = old_dface_to_new_dface
+    end
+    node_to_coords = node_coordinates(mesh)
+    old_physical_faces = physical_faces(mesh)
+    new_physical_faces = [ Dict{String,Vector{Int32}}() for d in 0:D] # TODO hardcoded
+    for d in 0:D
+        old_groups = old_physical_faces[d+1]
+        for (group_name,old_group_faces) in old_groups
+            new_group_faces = similar(old_group_faces)
+            new_group_faces .= old_to_new[d+1][old_group_faces]
+            new_physical_faces[d+1][group_name] = new_group_faces
+        end
+    end
+    new_mesh = GT.mesh_from_arrays(
+            node_to_coords,
+            newface_nodes,
+            newface_refid,
+            Tuple(newreffaces);
+            physical_faces = new_physical_faces,
+            periodic_nodes = periodic_nodes(mesh),
+            outwards_normals = outwards_normals(mesh)
+           )
+    if val_parameter(glue)
+        new_mesh, old_to_new
+    else
+        new_mesh
+    end
+end
+
