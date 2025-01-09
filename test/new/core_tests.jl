@@ -51,6 +51,11 @@ x = GT.coordinates(qua)
 fe = GT.lagrange_space(cube2)
 display(fe)
 
+fe2 = GT.lagrange_space(cube2)
+
+@test isequal(fe,fe2)
+@test hash(fe) == hash(fe2)
+
 x = GT.monomial_exponents(fe)
 
 #@code_warntype GT.monomial_exponents(fe)
