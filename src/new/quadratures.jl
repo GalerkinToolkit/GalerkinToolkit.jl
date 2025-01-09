@@ -1,7 +1,24 @@
+
 function tensor_product_quadrature(geo::AbstractFaceDomain,degree::Integer)
     D = num_dims(geo)
     degree_per_dir = ntuple(d->degree,Val(D))
     tensor_product_quadrature(geo,degree_per_dir)
+end
+
+function gauss_legendre(n,limits)
+    x,w = FastGaussQuadrature.gausslegendre(n)
+    a,b = limits
+    x .= (0.5*(b-a)) .*x .+ (0.5*(b+a))
+    w .*= 0.5*(b-a)
+    x,w
+end
+
+function gauss_jacobi(n,alpha,beta,limits)
+    x,w = FastGaussQuadrature.gaussjacobi(n,alpha,beta)
+    a,b = limits
+    x .= (0.5*(b-a)) .*x .+ (0.5*(b+a))
+    w .*= 0.5*(b-a)
+    x,w
 end
 
 """
@@ -13,14 +30,7 @@ function tensor_product_quadrature(geo::AbstractFaceDomain,degree_per_dir)
     D = num_dims(geo)
     limits_per_dir = ntuple(i->(my_bounding_box[1][i],my_bounding_box[2][i]),Val(D))
     n_per_dir = map(d->ceil(Int,(d+1)/2),degree_per_dir)
-    function quadrature_1d(n,limits)
-        x,w = FastGaussQuadrature.gausslegendre(n)
-        a,b = limits
-        x .= (0.5*(b-a)) .*x .+ (0.5*(b+a))
-        w .*= 0.5*(b-a)
-        x,w
-    end
-    quad_per_dir = map(quadrature_1d,n_per_dir,limits_per_dir)
+    quad_per_dir = map(gauss_legendre,n_per_dir,limits_per_dir)
     coords_per_dir = map(first,quad_per_dir)
     weights_per_dir = map(last,quad_per_dir)
     m = prod(map(length,weights_per_dir))
@@ -43,6 +53,20 @@ function tensor_product!(f,result,values_per_dir)
     result
 end
 
+function duffy_map(q)
+    D = length(q)
+    a = 1.0
+    m = ntuple(Val(D)) do i
+        if i == 1
+            q[i]
+        else
+            a *= (1-q[i-1])
+            a*q[i]
+        end
+    end
+    typeof(q)(m)
+end
+
 """
 """
 function duffy_quadrature(geo,degree)
@@ -54,34 +78,14 @@ function duffy_quadrature(geo,degree)
         w = ones(Tv,1)
         return face_quadrature(;domain=geo,coordinates=x,weights=w)
     end
-    function map_to(a,b,(points,weights))
-      points_ab = similar(points)
-      weights_ab = similar(weights)
-      points_ab .= 0.5*(b-a)*points .+ 0.5*(a+b)
-      weights_ab .= 0.5*(b-a)*weights
-      (points_ab, weights_ab)
-    end
-    function duffy_map(q)
-        D = length(q)
-        a = 1.0
-        m = ntuple(Val(D)) do i
-            if i == 1
-                q[i]
-            else
-                a *= (1-q[i-1])
-                a*q[i]
-            end
-        end
-        typeof(q)(m)
-    end
     Ti = int_type(options(geo))
     n = ceil(Ti, (degree + 1.0) / 2.0 )
     beta = 0
     dim_to_quad_1d = map(1:(D-1)) do d
         alpha = (D-1)-(d-1)
-        map_to(0,1,gaussjacobi(n,alpha,beta))
+        gauss_jacobi(n,alpha,beta,(0,1))
     end
-    quad_1d = map_to(0,1,gausslegendre(n))
+    quad_1d = gauss_legendre(n,(0,1))
     push!(dim_to_quad_1d,quad_1d)
     coords_per_dir = map(first,dim_to_quad_1d)
     weights_per_dir =  map(last,dim_to_quad_1d)

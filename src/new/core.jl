@@ -51,7 +51,12 @@ function options(;
     global_int_type=Int,
     real_type=Float64,
     )
-    contents = (;reference_int_type,int_type,global_int_type,real_type)
+    contents = (;
+                reference_int_type=Val(reference_int_type),
+                int_type=Val(int_type),
+                global_int_type=Val(global_int_type),
+                real_type=Val(real_type),
+               )
     Options(contents)
 end
 
@@ -79,28 +84,28 @@ end
 
 Return the type of the integers used to enumerate reference quantities.
 """
-reference_int_type(options::Options) = options.contents.reference_int_type
+reference_int_type(options::Options) = val_parameter(options.contents.reference_int_type)
 
 """
     int_type(options::Options)
 
 Return the default integer type used in the computation except for reference and global quantities.
 """
-int_type(options::Options) = options.contents.int_type
+int_type(options::Options) = val_parameter(options.contents.int_type)
 
 """
     global_int_type(options::Options)
 
 Return the type of the integers used to enumerate global quantities.
 """
-global_int_type(options::Options) = options.contents.global_int_type
+global_int_type(options::Options) = val_parameter(options.contents.global_int_type)
 
 """
     real_type(options::Options)
 
 Return the default real type used in the computation.
 """
-real_type(options::Options) = options.contents.real_type
+real_type(options::Options) = val_parameter(options.contents.real_type)
 
 abstract type AbstractDomain <: AbstractType end
 
@@ -253,8 +258,8 @@ function lagrange_space(domain::AbstractFaceDomain;
         order = 1,
         space_type = default_space_type(domain),
         lib_to_user_nodes = :default,
-        major = :component,
-        tensor_size = :scalar,
+        major = Val(:component),
+        tensor_size = Val(:scalar),
     )
 
 
@@ -306,7 +311,7 @@ order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
 space_type(fe::LagrangeFaceSpace) = fe.contents.space_type
 lib_to_user_nodes(fe::LagrangeFaceSpace) = fe.contents.lib_to_user_nodes
-major(fe::LagrangeFaceSpace) = fe.contents.major
+major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
 
 function monomial_exponents(a::LagrangeFaceSpace)
@@ -388,7 +393,8 @@ end
 function dual_basis(fe::LagrangeFaceSpace)
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
-    if tensor_size(fe) === :scalar
+    ts = tensor_size(fe) 
+    if ts === :scalar
         return scalar_basis
     else
         if major(fe) === :component
