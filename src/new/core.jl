@@ -244,6 +244,7 @@ end
 
 options(fe::AbstractFaceSpace) = options(domain(fe))
 num_dims(fe::AbstractFaceSpace) = num_dims(domain(fe))
+num_nodes(fe::AbstractFaceSpace) = length(node_coordinates(fe))
 
 function node_quadrature(fe::AbstractFaceSpace)
     coordinates = node_coordinates(fe)
@@ -548,6 +549,7 @@ num_dims(m::AbstractMesh) = length(reference_spaces(m))-1
 num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
 options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
 num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
+num_nodes(fe::AbstractMesh) = length(node_coordinates(fe))
 
 struct Mesh{A} <: AbstractMesh
     contents::A
@@ -604,7 +606,6 @@ function reference_domains(a::AbstractMesh)
 end
 
 function outward_normals(m::Mesh)
-    @assert m.contents.outward_normals !== nothing
     m.contents.outward_normals
 end
 
@@ -697,6 +698,19 @@ reference_spaces(m::Chain) = m.contents.reference_spaces
 physical_faces(m::Chain) = m.contents.physical_faces
 periodic_nodes(m::Chain) = m.contents.periodic_nodes
 outward_normals(m::Chain) = m.contents.outward_normals
+
+function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
+    d = val_parameter(D)
+    chain(;
+          node_coordinates=node_coordinates(mesh),
+          face_nodes=face_nodes(mesh,d),
+          face_reference_id=face_reference_id(mesh,d),
+          reference_spaces=reference_spaces(mesh,d),
+          periodic_nodes=periodic_nodes(mesh),
+          physical_faces=physical_faces(mesh,d),
+          outward_normals=outward_normals(mesh),
+         )
+end
 
 abstract type AbstractMeshDomain{A} <: AbstractDomain end
 

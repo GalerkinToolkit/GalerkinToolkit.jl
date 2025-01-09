@@ -149,6 +149,8 @@ chain = GT.chain(;
 
 mesh = GT.mesh(chain)
 
+chain2 = GT.chain(mesh)
+
 #@code_warntype face_point_x(face)
 #f = face_point_x(face)
 #@code_warntype f(point)
