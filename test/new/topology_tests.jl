@@ -16,6 +16,12 @@ cube1 = GT.unit_n_cube(1)
 cube2 = GT.unit_n_cube(2)
 cube3 = GT.unit_n_cube(3)
 
+GT.opposite_faces(cube3,0)
+GT.opposite_faces(cube3,1)
+GT.opposite_faces(cube3,2)
+GT.opposite_faces(cube3,3)
+GT.opposite_faces(cube3)
+
 mesh = GT.complexify(spx0)
 mesh = GT.complexify(spx1)
 mesh = GT.complexify(spx2)
@@ -101,6 +107,11 @@ mesh = GT.mesh(chain)
 
 mesh2 = GT.complexify(mesh)
 
+@show GT.workspace(mesh2)
+
 topo = GT.topology(mesh2)
+topo2 = GT.topology(mesh2)
+
+@test topo === topo2
 
 end # module

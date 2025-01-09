@@ -12,7 +12,9 @@ function complexify(geom::Union{UnitNCube{0},UnitSimplex{0}})
                 node_coordinates,
                 face_nodes,
                 face_reference_id,
-                reference_spaces)
+                reference_spaces,
+                is_cell_complex = Val(true),
+               )
 end
 
 function complexify(geom::Union{UnitNCube{1},UnitSimplex{1}})
@@ -37,7 +39,8 @@ function complexify(geom::Union{UnitNCube{1},UnitSimplex{1}})
                 face_nodes,
                 face_reference_id,
                 reference_spaces,
-                outward_normals
+                outward_normals,
+                is_cell_complex = Val(true),
                )
 end
 
@@ -62,7 +65,8 @@ function complexify(geom::UnitSimplex{2})
                 face_nodes,
                 face_reference_id,
                 reference_spaces,
-                outward_normals
+                outward_normals,
+                is_cell_complex = Val(true),
                )
 end
 
@@ -86,6 +90,7 @@ function complexify(geom::UnitNCube{2})
                 face_nodes,
                 face_reference_id,
                 reference_spaces,
+                is_cell_complex = Val(true),
                 outward_normals
                )
 end
@@ -118,6 +123,7 @@ function complexify(geom::UnitSimplex{3})
                 face_nodes,
                 face_reference_id,
                 reference_spaces,
+                is_cell_complex = Val(true),
                 outward_normals
                )
 end
@@ -149,9 +155,12 @@ function complexify(geom::UnitNCube{3})
                 face_nodes,
                 face_reference_id,
                 reference_spaces,
+                is_cell_complex = Val(true),
                 outward_normals
                )
 end
+
+opposite_faces(geom::AbstractFaceDomain,d) = opposite_faces(geom)[d+1]
 
 function opposite_faces(geom::Union{UnitNCube{0},UnitSimplex{0}})
     Ti = int_type(options(geom))
@@ -222,6 +231,7 @@ function complexify(refface::LagrangeFaceSpace)
         face_nodes,
         face_reference_id,
         reference_spaces,
+        is_cell_complex = Val(true),
         outward_normals
        )
 end
@@ -235,6 +245,7 @@ function boundary(geo::Union{LagrangeFaceSpace,AbstractFaceDomain})
          reference_spaces = reference_spaces(mesh)[1:end-1],
          physical_faces = physical_faces(mesh)[1:end-1],
          outward_normals = outward_normals(mesh),
+         is_cell_complex = Val(is_cell_complex(mesh)),
          periodic_nodes = periodic_nodes(mesh)
         )
 end
@@ -496,6 +507,9 @@ reference_topologies(a::MeshTopology,d) = a.contents.reference_topologies[d+1]
 """
 """
 function topology(mesh::AbstractMesh)
+    if workspace(mesh) !== nothing
+        return workspace(mesh).topology
+    end
     # Assumes that the input is a cell complex
     T = JaggedArray{Int32,Int32}
     D = num_dims(mesh)
@@ -916,12 +930,16 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             reference_spaces = Tuple(newreffaces),
             physical_faces = new_physical_faces,
             periodic_nodes = periodic_nodes(mesh),
-            outward_normals = outward_normals(mesh)
+            outward_normals = outward_normals(mesh),
+            is_cell_complex = Val(true),
            )
+    mtopology = GT.topology(new_mesh)
+    workspace = (;topology=mtopology)
+    new_mesh2 = replace_workspace(new_mesh,workspace)
     if val_parameter(glue)
-        new_mesh, old_to_new
+        new_mesh2, old_to_new
     else
-        new_mesh
+        new_mesh2
     end
 end
 

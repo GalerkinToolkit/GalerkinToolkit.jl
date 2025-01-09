@@ -562,6 +562,8 @@ function mesh(;
         periodic_nodes = default_periodic_nodes(reference_spaces),
         physical_faces = default_physical_faces(reference_spaces),
         outward_normals = nothing,
+        is_cell_complex = Val(false),
+        workspace = nothing,
     )
     contents = (;
                 node_coordinates,
@@ -571,6 +573,23 @@ function mesh(;
                 periodic_nodes,
                 physical_faces,
                 outward_normals,
+                is_cell_complex,
+                workspace,
+               )
+    mesh = Mesh(contents)
+end
+
+function replace_workspace(mesh::Mesh,workspace)
+    contents = (;
+                node_coordinates=node_coordinates(mesh),
+                face_nodes=face_nodes(mesh),
+                face_reference_id=face_reference_id(mesh),
+                reference_spaces=reference_spaces(mesh),
+                periodic_nodes=periodic_nodes(mesh),
+                physical_faces=physical_faces(mesh),
+                outward_normals=outward_normals(mesh),
+                is_cell_complex=Val(is_cell_complex(mesh)),
+                workspace,
                )
     Mesh(contents)
 end
@@ -585,6 +604,8 @@ reference_spaces(m::Mesh,d) = m.contents.reference_spaces[d+1]
 physical_faces(m::Mesh) = m.contents.physical_faces
 physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
+is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
+workspace(m::Mesh) = m.contents.workspace
 
 function default_physical_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
