@@ -640,6 +640,7 @@ abstract type AbstractMesh <: AbstractDiscretization end
 num_dims(m::AbstractMesh) = length(reference_spaces(m))
 num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
 options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
+num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
 
 struct Mesh{A} <: AbstractMesh
     contents::A
@@ -650,9 +651,9 @@ function mesh(;
         face_nodes,
         face_reference_id,
         reference_spaces,
-        periodic_nodes = :default,
-        physical_faces = :default,
-        outward_normals = :default,
+        periodic_nodes = default_periodic_nodes(reference_spaces),
+        physical_faces = default_physical_faces(reference_spaces),
+        outward_normals = nothing,
     )
     contents = (;
                 node_coordinates,
@@ -673,6 +674,19 @@ face_reference_id(m::Mesh) = m.contents.face_reference_id
 face_reference_id(m::Mesh,d) = m.contents.face_reference_id[d+1]
 reference_spaces(m::Mesh) = m.contents.reference_spaces
 reference_spaces(m::Mesh,d) = m.contents.reference_spaces[d+1]
+physical_faces(m::Mesh) = m.contents.physical_faces
+physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
+periodic_nodes(m::Mesh) = m.contents.periodic_nodes
+
+function default_physical_faces(reference_spaces)
+    Ti = int_type(options(first(last(reference_spaces))))
+    [ Dict{String,Vector{Ti}}() for _ in 1:length(reference_spaces) ]
+end
+
+function default_periodic_nodes(reference_spaces)
+    Ti = int_type(options(first(last(reference_spaces))))
+    Ti[] => Ti[]
+end
 
 function reference_domains(a::AbstractMesh,d)
     map(domain,reference_spaces(a,d))
@@ -682,35 +696,8 @@ function reference_domains(a::AbstractMesh)
     ntuple(d->reference_domains(a,d-1),Val{D+1})
 end
 
-function periodic_nodes(m::Mesh)
-    if m.contents.periodic_nodes === :default
-        Ti = int_type(options(mesh))
-        Ti[] => Ti[]
-    else
-        m.contents.periodic_nodes
-    end
-end
-
-function physical_faces(m::Mesh,d)
-    if m.contents.physical_faces === :default
-        Ti = int_type(options(mesh))
-        #Dict{String,Vector{Ti}}("$d-faces"=>collect(Ti,1:num_faces(m,d)))
-        Dict{String,Vector{Ti}}()
-    else
-        m.contents.physical_faces[d+1]
-    end
-end
-
-function physical_faces(m::Mesh)
-    if m.contents.physical_faces === :default
-        ntuple(d->physical_faces(m,d-1),Val{D+1})
-    else
-        m.contents.physical_faces
-    end
-end
-
 function outward_normals(m::Mesh)
-    @assert m.contents.outward_normals !== :default
+    @assert m.contents.outward_normals !== nothing
     m.contents.outward_normals
 end
 
@@ -734,6 +721,7 @@ abstract type AbstractMeshDomain{A} <: AbstractDomain end
 
 num_ambient_dims(a::AbstractMeshDomain) = num_ambient_dims(mesh(a))
 is_physical_domain(a::AbstractMeshDomain) = ! is_reference_domain(a)
+options(a::AbstractMeshDomain) = options(mesh(a))
 
 function face_reference_id(a::AbstractMeshDomain)
     d = num_dims(a)
@@ -790,7 +778,7 @@ struct ReferenceDomain{A,B} <: AbstractMeshDomain{A}
 end
 is_reference_domain(a::ReferenceDomain) = true
 
-const MeshDomain{A,B} where {A,B} = Union{PhysicalDomain{A,B},ReferenceDomain{A,B}}
+const MeshDomain = Union{PhysicalDomain{A,B},ReferenceDomain{A,B}} where {A,B} 
 
 function mesh_domain(;
     mesh,
@@ -807,14 +795,14 @@ function mesh_domain(;
     else
         constructor = PhysicalDomain
     end
-    constructor(
-                mesh,
+    contents = (;
                 mesh_id,
                 physical_names,
-                Val(val_parameter(num_dims)),
+                num_dims = Val(val_parameter(num_dims)),
                 face_around,
                 workspace,
-               ) |> setup_domain
+               )
+    constructor(mesh,contents) |> setup_domain
 end
 
 function reference_domain(domain::PhysicalDomain)
@@ -855,7 +843,7 @@ num_dims(a::MeshDomain) = GT.val_parameter(a.contents.num_dims)
 workspace(a::MeshDomain) = a.contents.workspace
 
 function setup_domain(domain::MeshDomain)
-    if workspace(domain) !== nothing
+    if GT.workspace(domain) !== nothing
         return domain
     end
     faces = GT.faces(domain)
@@ -883,14 +871,14 @@ function faces(domain::MeshDomain)
     D = GT.num_dims(domain)
     Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
     tag_to_name = GT.physical_names(domain)
-    fill!(dface_to_tag,zero(eltype(dface_to_tag)))
-    face_groups = physical_faces(mesh,d)
+    fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
+    face_groups = physical_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
         for (name2,faces) in face_groups
             if name != name2
                 continue
             end
-            dface_to_tag[faces] .= tag
+            Dface_to_tag[faces] .= tag
         end
     end
     physical_Dfaces = findall(i->i!=0,Dface_to_tag)
@@ -937,6 +925,7 @@ function mesh_quadrature(;domain,face_reference_id,reference_quadratures)
     MeshQuadrature(mesh(domain),contents)
 end
 
+mesh(q::MeshQuadrature) = q.mesh
 domain(q::MeshQuadrature) = q.contents.domain
 face_reference_id(q::MeshQuadrature) = q.contents.face_reference_id
 reference_quadratures(q::MeshQuadrature) = q.contents.reference_quadratures
@@ -957,12 +946,14 @@ function num_points_accessor(measure::MeshQuadrature)
 end
 
 function coordinate_accessor(measure::MeshQuadrature)
-    mesh = measure.mesh
-    dom = measure.domain
+    ## TODO the following ones assume that the same reference ids are for the mesh
+    # as for the quadrature. This needs to be generalized for adaptive quadrature schemes.
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert is_physical_domain(dom)
     d = num_dims(dom)
     rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
-    rid_to_tab = map(rid_to_point_to_x,reference_faces(mesh,d)) do point_to_x, refface
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(mesh,d)) do point_to_x, refface
         tabulator(refface)(value,point_to_x)
     end
     face_to_rid = face_reference_id(measure)
@@ -988,12 +979,12 @@ end
 outer(a,b) = a*transpose(b)
 
 function jacobian_accessor(measure::MeshQuadrature)
-    mesh = measure.mesh
-    dom = measure.domain
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert is_physical_domain(dom)
     d = num_dims(dom)
     rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
-    rid_to_tab = map(rid_to_point_to_x,reference_faces(mesh,d)) do point_to_x, refface
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(mesh,d)) do point_to_x, refface
         tabulator(refface)(ForwardDiff.gradient,point_to_x)
     end
     face_to_rid = face_reference_id(measure)
@@ -1017,8 +1008,8 @@ function jacobian_accessor(measure::MeshQuadrature)
 end
 
 function weight_accessor(measure::MeshQuadrature)
-    mesh = measure.mesh
-    dom = measure.domain
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert is_physical_domain(dom)
     d = num_dims(dom)
     rid_to_point_to_w = map(weights,reference_quadratures(measure))
@@ -1033,6 +1024,10 @@ function weight_accessor(measure::MeshQuadrature)
             change_of_measure(J)*w
         end
     end
+end
+
+function change_of_measure(J)
+    sqrt(det(transpose(J)*J))
 end
 
 
