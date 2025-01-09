@@ -20,6 +20,7 @@ import AutoHashEquals
 import AbstractTrees
 
 include("new/core.jl")
+include("new/quadratures.jl")
 
 #include("mesh.jl")
 #include("p_mesh.jl")
