@@ -19,9 +19,12 @@ import PartitionedSolvers as PS
 import AutoHashEquals
 import AbstractTrees
 
-include("new/core.jl")
-include("new/quadratures.jl")
-include("new/complexify.jl")
+include("new_helpers.jl")
+include("new_domain.jl")
+include("new_mesh.jl")
+include("new_topology.jl")
+include("new_space.jl")
+include("new_quadrature.jl")
 
 #include("mesh.jl")
 #include("p_mesh.jl")

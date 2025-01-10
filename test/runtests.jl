@@ -3,8 +3,14 @@ module GalerkinToolkitTests
 using Test
 
 @testset "GalerkinToolkit" begin
-    @testset "Core" begin include("core_tests.jl") end
-    @testset "Complexify" begin include("complexify_tests.jl") end
+    @testset "Helpers" begin include("new_helpers_tests.jl") end
+    @testset "Domain" begin include("new_domain_tests.jl") end
+    @testset "Mesh" begin include("new_mesh_tests.jl") end
+    @testset "Topology" begin include("new_topology_tests.jl") end
+    @testset "Space" begin include("new_space_tests.jl") end
+    @testset "Quadrature" begin include("new_quadrature_tests.jl") end
+    #@testset "Core" begin include("core_tests.jl") end
+    #@testset "Complexify" begin include("complexify_tests.jl") end
     #@testset "Geometry" begin include("geometry_tests.jl") end
     #@testset "Symbolics" begin include("symbolics_tests.jl") end
     #@testset "Domain" begin include("domain_tests.jl") end
