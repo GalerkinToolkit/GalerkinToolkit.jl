@@ -210,7 +210,7 @@ function vtk_cells(mesh,d)
     end
     face_to_nodes = GalerkinToolkit.face_nodes(mesh,d)
     face_to_refid = GalerkinToolkit.face_reference_id(mesh,d)
-    refid_refface = GalerkinToolkit.reference_faces(mesh,d)
+    refid_refface = GalerkinToolkit.reference_spaces(mesh,d)
     refid_mesh_cell = map(vtk_mesh_cell,refid_refface)
     barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
 end

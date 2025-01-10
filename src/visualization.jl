@@ -1,3 +1,275 @@
+
+
+function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order=nothing,refinement=nothing)
+    function barrier(
+            refid_to_tabulation,
+            refid_to_scell_to_snodes,
+            refid_to_scell_to_srefid,
+            refid_to_srefid_to_oid,
+            refid_to_srefid_to_vrefface,
+            refid_to_snode_to_coords,
+            node_to_coords,
+            cell_to_nodes,
+            cell_to_refid,
+            ::Val{Dn}) where Dn
+
+        ncells = length(cell_to_refid)
+        nvnodes = 0
+        nvcells = 0
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            nvnodes += length(refid_to_snode_to_coords[refid])
+            nvcells += length(refid_to_scell_to_srefid[refid])
+
+        end
+        nrefids = length(refid_to_srefid_to_oid)
+        i_to_oid = reduce(vcat,refid_to_srefid_to_oid)
+        i_to_vrefface = reduce(vcat,refid_to_srefid_to_vrefface)
+        refid_to_srefid_to_i = Vector{Vector{Int}}(undef,nrefids)
+        i = 0
+        for refid in 1:nrefids
+            srefid_to_oid = refid_to_srefid_to_oid[refid]
+            nsrefids = length(srefid_to_oid)
+            srefid_to_i = zeros(Int,nsrefids)
+            for srefid in 1:nsrefids
+                i += 1
+                srefid_to_i[srefid] = i
+            end
+            refid_to_srefid_to_i[refid] = srefid_to_i
+        end
+        vrefid_to_oid = unique(i_to_oid)
+        i_to_vrefid = indexin(i_to_oid,vrefid_to_oid)
+        vrefid_to_i = indexin(vrefid_to_oid,i_to_oid)
+        vrefid_to_vrefface = i_to_vrefface[vrefid_to_i]
+        Tx = SVector{Dn,Float64}
+        vnode_to_coords = zeros(Tx,nvnodes)
+        vcell_to_vnodes_ptrs = zeros(Int32,nvcells+1)
+        vcell_to_vrefid = zeros(Int32,nvcells)
+        vcell_to_cell = zeros(Int32,nvcells)
+        cell_to_vnodes = fill(0:1,ncells)
+        vcell = 0
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            scell_to_snodes = refid_to_scell_to_snodes[refid]
+            nscells = length(scell_to_snodes)
+            scell_to_srefid = refid_to_scell_to_srefid[refid]
+            srefid_to_i = refid_to_srefid_to_i[refid]
+            for scell in 1:nscells
+                srefid = scell_to_srefid[scell]
+                i = srefid_to_i[srefid]
+                vrefid = i_to_vrefid[i]
+                snodes = scell_to_snodes[scell]
+                vcell += 1
+                vcell_to_vnodes_ptrs[vcell+1] = length(snodes)
+                vcell_to_vrefid[vcell] = vrefid
+                vcell_to_cell[vcell] = cell
+            end
+        end
+        length_to_ptrs!(vcell_to_vnodes_ptrs)
+        ndata = vcell_to_vnodes_ptrs[end]-1
+        vcell_to_vnodes_data = zeros(Int32,ndata)
+        vcell = 0
+        vnode = 0
+        vnode_prev = 1
+        for cell in 1:ncells
+            refid = cell_to_refid[cell]
+            scell_to_snodes = refid_to_scell_to_snodes[refid]
+            nscells = length(scell_to_snodes)
+            for scell in 1:nscells
+                snodes = scell_to_snodes[scell]
+                vcell += 1
+                p = vcell_to_vnodes_ptrs[vcell]
+                for (i,snode) in enumerate(snodes)
+                    vcell_to_vnodes_data[p-1+i] = snode + vnode
+                end
+            end
+            tabulation = refid_to_tabulation[refid]
+            nsnodes = size(tabulation,1)
+            nodes = cell_to_nodes[cell]
+            for snode in 1:nsnodes
+                y = zero(Tx)
+                for (i,node) in enumerate(nodes)
+                    coeff = tabulation[snode,i]
+                    x = node_to_coords[node]
+                    y += coeff*x
+                end
+                vnode += 1
+                vnode_to_coords[vnode] = y
+            end
+            cell_to_vnodes[cell] = vnode_prev:vnode
+            vnode_prev = vnode + 1
+        end
+        vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
+        vchain = GT.chain(
+                        node_coordinates = vnode_to_coords,
+                        face_nodes = vcell_to_vnodes,
+                        face_reference_id = vcell_to_vrefid,
+                        reference_spaces = vrefid_to_vrefface)
+        vmesh = GT.mesh(vchain)
+        vglue = (;parent_face=vcell_to_cell,
+                 reference_coordinates=refid_to_snode_to_coords,
+                 face_fine_nodes = cell_to_vnodes,
+                 num_dims=Val(dim))
+        vmesh, vglue
+    end # barrier
+    refid_to_refface = reference_spaces(mesh,dim)
+    refid_to_refmesh = map(refid_to_refface) do ref_face
+        if order === nothing && refinement === nothing
+            # Use the given cells as visualization cells
+            mesh_from_reference_face(ref_face)
+        elseif order !== nothing && refinement === nothing
+            # Use cells of given order as visualization cells
+            geo = geometry(ref_face)
+            ref_face_ho = lagrange_mesh_face(geo,order)
+            mesh_from_reference_face(ref_face_ho)
+        elseif order === nothing && refinement !== nothing
+            # Use linear sub-cells with $refinement per direction per direction
+            geom = geometry(ref_face)
+            refine_reference_geometry(geom,refinement)
+        else
+            error("order and refinement kw-arguments can not be given at the same time")
+        end
+    end
+    refid_to_tabulation = map(refid_to_refface,refid_to_refmesh) do refface,refmesh
+        x = node_coordinates(refmesh)
+        tabulator(refface)(value,x)
+    end
+    refid_to_scell_to_snodes = map(refmesh->face_nodes(refmesh,dim),refid_to_refmesh)
+    refid_to_scell_to_srefid = map(refmesh->face_reference_id(refmesh,dim),refid_to_refmesh)
+    refid_to_srefid_to_oid = map(refmesh->map(objectid,reference_spaces(refmesh,dim)),refid_to_refmesh)
+    refid_to_srefid_to_vrefface = map(refmesh->reference_spaces(refmesh,dim),refid_to_refmesh)
+    refid_to_snode_to_coords = map(node_coordinates,refid_to_refmesh)
+    node_to_coords = node_coordinates(mesh)
+    cell_to_nodes = view(face_nodes(mesh,dim),ids)
+    cell_to_refid = view(face_reference_id(mesh,dim),ids)
+    Dn = num_ambient_dims(mesh)
+    barrier(
+            refid_to_tabulation,
+            refid_to_scell_to_snodes,
+            refid_to_scell_to_srefid,
+            refid_to_srefid_to_oid,
+            refid_to_srefid_to_vrefface,
+            refid_to_snode_to_coords,
+            node_to_coords,
+            cell_to_nodes,
+            cell_to_refid,
+            Val(Dn))
+end
+
+function refine_reference_geometry(geo,resolution)
+    function refine_n_cube_aligned(geo,n)
+        box = bounding_box(geo)
+        domain = domain_from_bounding_box(box)
+        D = num_dims(geo)
+        cells = ntuple(i->n,Val(D))
+        cartesian_mesh(domain,cells)
+    end
+    function refine_unit_triangle(geo,n)
+        # Copyed + adapted from Gridap
+        tri_num(n) = n*(n+1)÷2
+        v(n,i,j) = tri_num(n) - tri_num(n-i+1) + j
+        D = 2
+        quad_to_tris = ((1,2,3),(2,4,3))
+        quad = CartesianIndices( (0:1,0:1) )
+        Tp = SVector{2,Float64}
+        n_verts = tri_num(n+1)
+        n_cells = tri_num(n)+tri_num(n-1)
+        n_verts_x_cell = 3
+        X = zeros(Tp,n_verts)
+        T = [ zeros(Int,n_verts_x_cell) for i in 1:n_cells ]
+        for i in 1:n+1
+          for j in 1:n+1-i+1
+            vert = v(n+1,i,j)
+            X[vert] = SVector((i-1)/n,(j-1)/n)
+          end
+        end
+        for i in 1:n
+          for j in 1:n-(i-1)
+            verts = ntuple( lv-> v(n+1, (i,j).+quad[lv].I ...), Val{2^D}() )
+            cell = v(n,i,j)
+            T[cell] .= map(i->verts[i],quad_to_tris[1])
+            if (i-1)+(j-1) < n-1
+              cell = tri_num(n) + v(n-1,i,j)
+              T[cell] .= map(i->verts[i],quad_to_tris[2])
+            end
+          end
+        end
+        refface = lagrange_mesh_face(geo,1)
+        chain = chain_from_arrays(
+                       X,
+                       T,
+                       fill(1,length(T)),
+                       [refface]
+                      )
+        mesh_from_chain(chain)
+    end
+    function refine_unit_tet(geo,n)
+        # Copyed + adapted from Gridap
+        tri_num(n) = n*(n+1)÷2
+        tet_num(n) = n*(n+1)*(n+2)÷6
+        v(n,i,j) = tri_num(n) - tri_num(n-i+1) + j
+        v(n,i,j,k) = tet_num(n) - tet_num(n-i+1) + v(n-i+1,j,k)
+        D = 3
+        cube_to_tets = ((1,2,3,5),(2,4,3,6),(3,5,7,6),(2,3,5,6),(3,4,7,6),(4,6,7,8))
+        cube = CartesianIndices( (0:1,0:1,0:1) )
+        n_core_tets = length(cube_to_tets)-2
+        Tp = SVector{3,Float64}
+        n_verts = tet_num(n+1)
+        n_cells = tet_num(n)+n_core_tets*tet_num(n-1)+tet_num(n-2)
+        n_verts_x_cell = 4
+        X = zeros(Tp,n_verts)
+        T = [ zeros(Int,n_verts_x_cell) for i in 1:n_cells ]
+        for i in 1:n+1
+          for j in 1:n+1-(i-1)
+            for k in 1:n+1-(i-1)-(j-1)
+              vert = v(n+1,i,j,k)
+              X[vert] = SVector((i-1)/n,(j-1)/n,(k-1)/n)
+            end
+          end
+        end
+        for i in 1:n
+          for j in 1:n-(i-1)
+            for k in 1:n-(i-1)-(j-1)
+              verts = ntuple( lv-> v(n+1, (i,j,k).+cube[lv].I ...), Val{2^D}() )
+              cell = v(n,i,j,k)
+              T[cell] .= map(i->verts[i],cube_to_tets[1])
+              if (i-1)+(j-1)+(k-1) < n-1
+                cell = tet_num(n) + (v(n-1,i,j,k)-1)*n_core_tets
+                for t in 1:n_core_tets
+                  T[cell+t] .= map(i->verts[i],cube_to_tets[t+1])
+                end
+              end
+              if (i-1)+(j-1)+(k-1) < n-2
+                cell = tet_num(n) + n_core_tets*tet_num(n-1) + v(n-2,i,j,k)
+                T[cell] .= map(i->verts[i],cube_to_tets[end])
+              end
+            end
+          end
+        end
+        refface = lagrange_mesh_face(geo,1)
+        chain = chain_from_arrays(
+                       X,
+                       T,
+                       fill(1,length(T)),
+                       [refface],
+                      )
+        mesh_from_chain(chain)
+    end
+    if is_n_cube(geo) && is_axis_aligned(geo)
+        refine_n_cube_aligned(geo,resolution)
+    elseif is_unit_simplex(geo) && num_dims(geo) == 2
+        refine_unit_triangle(geo,resolution)
+    elseif is_unit_simplex(geo) && num_dims(geo) == 3
+        refine_unit_tet(geo,resolution)
+    else
+        error("Case not implemented (yet)")
+    end
+end
+
+
+
+
+
 struct Plot{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B
@@ -268,14 +540,14 @@ function plot(pmesh::PMesh)
 end
 
 function restrict_to_dim(mesh::AbstractMesh,d)
-    chain = chain_from_arrays(
-    node_coordinates(mesh),
-    face_nodes(mesh,d),
-    face_reference_id(mesh,d),
-    reference_faces(mesh,d);
+    chain = GT.chain(;
+    node_coordinates = node_coordinates(mesh),
+    face_nodes = face_nodes(mesh,d),
+    face_reference_id = face_reference_id(mesh,d),
+    reference_spaces = reference_spaces(mesh,d),
     periodic_nodes = periodic_nodes(mesh),
     physical_faces = physical_faces(mesh,d))
-    mesh_from_chain(chain)
+    GT.mesh(chain)
 end
 
 function restrict_to_dim(plt::Plot,d)
@@ -343,7 +615,7 @@ function shrink(plt::Plot;scale=0.75)
             newnode_to_x,
             face_newnodes,
             face_reference_id(mesh),
-            reference_faces(mesh);
+            reference_spaces(mesh);
             physical_faces = physical_faces(mesh), # TODO propagate also periodic nodes??
             outwards_normals = outwards_normals(mesh)
            )
@@ -386,7 +658,7 @@ function plot(domain::AbstractDomain;kwargs...)
     Plot(vmesh,face_data(vmesh),node_data,cache)
 end
 
-function plot(domain::AbstractDomain{<:PMesh};kwargs...)
+function plot(domain::AbstractMeshDomain{<:PMesh};kwargs...)
     mesh = GT.mesh(domain)
     plts = map(partition(domain)) do mydom
         plt = plot(mydom;kwargs...)
@@ -524,6 +796,18 @@ struct PPVD{A} <: AbstractType
     partition::A
 end
 
+function vtk_points end
+function vtk_points! end
+function vtk_cells end
+function vtk_cells! end
+function vtk_args end
+function vtk_args! end
+function vtk_physical_faces end
+function vtk_physical_faces! end
+function vtk_physical_nodes end
+function vtk_physical_nodes! end
+function vtk_mesh_cell end
+function vtk_mesh_cell! end
 function translate_vtk_data end
 function translate_vtk_data! end
 function vtk_close_impl end

@@ -28,6 +28,7 @@ include("new_quadrature.jl")
 include("cartesian_mesh.jl")
 include("gmsh.jl")
 include("p_mesh.jl")
+include("visualization.jl")
 
 #include("mesh.jl")
 #include("p_mesh.jl")
