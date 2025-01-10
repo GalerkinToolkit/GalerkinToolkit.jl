@@ -9,6 +9,9 @@ using Test
     @testset "Topology" begin include("new_topology_tests.jl") end
     @testset "Space" begin include("new_space_tests.jl") end
     @testset "Quadrature" begin include("new_quadrature_tests.jl") end
+    @testset "Cartesian mesh" begin include("cartesian_mesh_tests.jl") end
+    @testset "Gmsh" begin include("gmsh_tests.jl") end
+    @testset "PMesh" begin include("p_mesh_tests.jl") end
     #@testset "Core" begin include("core_tests.jl") end
     #@testset "Complexify" begin include("complexify_tests.jl") end
     #@testset "Geometry" begin include("geometry_tests.jl") end

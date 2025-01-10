@@ -27,6 +27,30 @@ function cartesian_mesh(
     mesh
 end
 
+function cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir;
+    boundary=true,
+    complexify=true,
+    simplexify=false,
+    partition_strategy = GT.partition_strategy()
+    )
+
+    mesh = cartesian_mesh(domain,cells_per_dir;boundary,complexify,simplexify)
+
+    graph_nodes = partition_strategy.graph_nodes
+    graph_edges = partition_strategy.graph_edges
+    ghost_layers = partition_strategy.ghost_layers
+    @assert graph_nodes === :cells
+    @assert graph_edges === :nodes
+    np = prod(parts_per_dir)
+    graph = mesh_graph(mesh;partition_strategy)
+    parts_seq = LinearIndices((np,))
+    graph_partition = zeros(Int,prod(cells_per_dir))
+    for ids in uniform_partition(LinearIndices((np,)),parts_per_dir,cells_per_dir)
+        graph_partition[local_to_global(ids)] = local_to_owner(ids)
+    end
+    partition_mesh(mesh,np;partition_strategy,parts,graph_partition)
+end
+
 function bounding_box_from_domain(domain)
     l = length(domain)
     D = div(l,2)

@@ -26,6 +26,7 @@ num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
 options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
 num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
 num_nodes(fe::AbstractMesh) = length(node_coordinates(fe))
+num_faces(mesh::AbstractMesh) = map(length,face_reference_id(mesh))
 
 function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     groups = physical_faces(m,d)
@@ -36,6 +37,34 @@ function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     faces = collect(Ti,1:num_faces(m,d))
     groups[physical_name] = faces
     m
+end
+
+function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
+    D = num_dims(mesh)
+    d = D-1
+    groups = physical_faces(mesh,d)
+    if haskey(groups,physical_name)
+        return m
+    end
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    faces = findall(cells->length(cells)==2,face_to_cells)
+    groups[physical_name] = faces
+    mesh
+end
+
+function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
+    D = num_dims(mesh)
+    d = D-1
+    groups = physical_faces(mesh,d)
+    if haskey(groups,physical_name)
+        return m
+    end
+    topo = topology(mesh)
+    face_to_cells = face_incidence(topo,d,D)
+    faces = findall(cells->length(cells)==1,face_to_cells)
+    groups[physical_name] = faces
+    mesh
 end
 
 function domain(mesh::AbstractMesh,d;is_reference_domain=Val(false),physical_name="__$d-FACES__")
@@ -233,6 +262,55 @@ function simplexify_generate_tface_to_face(
         end
     end
     tface_to_face
+end
+
+function restrict(mesh::AbstractMesh,args...)
+    restrict_mesh(mesh,args...)
+end
+
+function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+    nnodes = num_nodes(mesh)
+    node_to_lnode = zeros(Int32,nnodes)
+    node_to_lnode[lnode_to_node] = 1:length(lnode_to_node)
+    lnode_to_coords = node_coordinates(mesh)[lnode_to_node]
+    lface_to_lnodes_mesh = map(lface_to_face_mesh,face_nodes(mesh)) do lface_to_face,face_to_nodes
+        lface_to_nodes = view(face_to_nodes,lface_to_face)
+        lface_to_lnodes = JaggedArray(lface_to_nodes)
+        f = node->node_to_lnode[node]
+        lface_to_lnodes.data .= f.(lface_to_lnodes.data)
+        lface_to_lnodes
+    end
+    lface_to_refid_mesh = map((a,b)->b[a],lface_to_face_mesh,face_reference_id(mesh))
+    D = num_dims(mesh)
+    lgroups_mesh = map(lface_to_face_mesh,num_faces(mesh),physical_faces(mesh)) do lface_to_face, nfaces, groups
+        lgroups = Dict{String,Vector{Int32}}()
+        face_to_lface = zeros(Int32,nfaces)
+        face_to_lface[lface_to_face] = 1:length(lface_to_face)
+        for (k,faces) in groups
+            lgroups[k] = filter(i->i!=0,face_to_lface[faces])
+        end
+        lgroups
+    end
+    pnode_to_node,pnode_to_master = periodic_nodes(mesh)
+    plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
+    plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
+    if outward_normals(mesh) !== nothing
+        lnormals = outward_normals(mesh)[lface_to_face_mesh[end]]
+    else
+        lnormals = nothing
+    end
+
+    lmesh = GT.mesh(;
+        node_coordinates = lnode_to_coords,
+        face_nodes = lface_to_lnodes_mesh,
+        face_reference_id = lface_to_refid_mesh,
+        reference_spaces = reference_spaces(mesh),
+        physical_faces = lgroups_mesh,
+        periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
+        outward_normals = lnormals
+        )
+
+    lmesh
 end
 
 struct Mesh{A} <: AbstractMesh
