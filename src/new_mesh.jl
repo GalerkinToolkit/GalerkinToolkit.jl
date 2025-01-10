@@ -69,6 +69,172 @@ function remove_interior(mesh::AbstractMesh)
         )
 end
 
+function simplexify(mesh::AbstractMesh;glue=Val(false))
+
+    # TODO add attributes to mesh to figure out if we really
+    # need to simplexify and/or complexify
+    #mesh, = complexify(mesh)
+
+    D = num_dims(mesh)
+    refid_to_refcell = reference_spaces(mesh,D)
+    #@assert length(refid_to_refcell) == 1
+    refcell = first(refid_to_refcell)
+    #@assert order(refcell) == 1
+    ltmesh = simplexify(domain(refcell))
+
+    ltcell_to_lnodes = face_nodes(ltmesh,D)
+    cell_to_nodes = face_nodes(mesh,D)
+
+    ncells = length(cell_to_nodes)
+    nltcells = length(ltcell_to_lnodes)
+    ntcells = ncells * nltcells
+    tcell_to_nodes_ptrs = zeros(Int32,ntcells+1)
+    tcell_to_cell = zeros(Int32,ntcells)
+
+    tcell = 0
+    for cell in 1:ncells
+        for lnodes in ltcell_to_lnodes
+            tcell +=1
+            tcell_to_nodes_ptrs[tcell+1] = length(lnodes)
+            tcell_to_cell[tcell] = cell
+        end
+    end
+    length_to_ptrs!(tcell_to_nodes_ptrs)
+    ndata = tcell_to_nodes_ptrs[end]-1
+    T = eltype(eltype(cell_to_nodes))
+    tcell_to_nodes_data = zeros(T,ndata)
+    k = 1
+    for cell in 1:ncells
+        nodes = cell_to_nodes[cell]
+        for lnodes in ltcell_to_lnodes
+            for lnode in lnodes
+                node = nodes[lnode]
+                tcell_to_nodes_data[k] = node
+                k += 1
+            end
+        end
+    end
+    tcell_to_nodes = JaggedArray(tcell_to_nodes_data,tcell_to_nodes_ptrs)
+    reftcell = first(reference_spaces(ltmesh,D))
+    tcell_to_refid = fill(Int8(1),ntcells)
+    refid_to_reftcell = [reftcell]
+    node_to_coords = node_coordinates(mesh)
+
+    tchain = chain(;
+        node_coordinates = node_to_coords,
+        face_nodes = tcell_to_nodes,
+        face_reference_id = tcell_to_refid,
+        reference_spaces = refid_to_reftcell,)
+    tmesh = complexify(GT.mesh(tchain))
+    topo = topology(mesh)
+    ttopo = topology(tmesh)
+    ltopo = topology(ltmesh)
+    d_to_tface_to_face = map(0:(D-1)) do d
+        cell_to_faces = face_incidence(topo,D,d)
+        tcell_to_tfaces = JaggedArray(face_incidence(ttopo,D,d))
+        lface_to_lnodes = face_nodes(complexify(refcell),d)
+        ltface_to_ltnodes = face_nodes(complexify(reftcell),d)
+        if length(tcell_to_tfaces.data) != 0
+            ntfaces = maximum(tcell_to_tfaces.data)
+        else
+            ntfaces = 0
+        end
+        tface_to_face = simplexify_generate_tface_to_face(
+                                                          cell_to_faces,
+                                                          tcell_to_tfaces,
+                                                          ltcell_to_lnodes,
+                                                          ltface_to_ltnodes,
+                                                          lface_to_lnodes,
+                                                          ntfaces)
+
+    end
+    push!(d_to_tface_to_face,tcell_to_cell)
+    for d in 0:D
+        groups = physical_faces(mesh,d)
+        tgroups = physical_faces(tmesh,d)
+        nfaces = num_faces(mesh,d)
+        ntfaces = num_faces(tmesh,d)
+        face_to_mask = fill(false,nfaces)
+        tface_to_mask = fill(false,ntfaces)
+        tface_to_face = d_to_tface_to_face[d+1]
+        for (k,v) in groups
+            fill!(face_to_mask,false)
+            fill!(tface_to_mask,false)
+            face_to_mask[v] .= true
+            for tface in 1:ntfaces
+                face = tface_to_face[tface]
+                if face != 0
+                    tface_to_mask[tface] = face_to_mask[face]
+                end
+            end
+            tgroups[k] = findall(tface_to_mask)
+        end
+    end
+    if val_parameter(glue)
+        tmesh, d_to_tface_to_face
+    else
+        tmesh
+    end
+end
+
+function simplexify_generate_tface_to_face(
+        cell_to_faces,
+        tcell_to_tfaces,
+        ltcell_to_lnodes,
+        ltface_to_ltnodes,
+        lface_to_lnodes,
+        ntfaces)
+
+    nltcells = length(ltcell_to_lnodes)
+    nltfaces = length(ltface_to_ltnodes)
+    nlfaces = length(lface_to_lnodes)
+    ltcell_ltface_to_lface = [ zeros(Int32,nltfaces) for ltcell in 1:nltcells  ]
+    for ltcell in 1:nltcells
+        ltnode_to_lnode = ltcell_to_lnodes[ltcell]
+        for ltface in 1:nltfaces
+            ltnodes = ltface_to_ltnodes[ltface]
+            for lface in 1:nlfaces
+                lnodes = lface_to_lnodes[lface]
+                allin = true
+                for ltnode in ltnodes
+                    lnode = ltnode_to_lnode[ltnode]
+                    if !(lnode in lnodes)
+                        allin = false
+                        break
+                    end
+                end
+                if allin
+                    ltcell_ltface_to_lface[ltcell][ltface] = lface
+                    break
+                end
+            end
+        end
+    end
+    ltcell_to_lfaces = ltcell_ltface_to_lface
+    tface_to_face = zeros(Int32,ntfaces)
+    ncells = length(cell_to_faces)
+    nltcells = length(ltcell_to_lfaces)
+    tcell = 1
+    for cell in 1:ncells
+        faces = cell_to_faces[cell]
+        for ltcell in 1:nltcells
+            tfaces = tcell_to_tfaces[tcell]
+            nltfaces = length(tfaces)
+            ltface_to_lface = ltcell_to_lfaces[ltcell]
+            for ltface in 1:nltfaces
+                tface = tfaces[ltface]
+                lface = ltface_to_lface[ltface]
+                if lface != 0
+                    face = faces[lface]
+                    tface_to_face[tface] = face
+                end
+            end
+            tcell += 1
+        end
+    end
+    tface_to_face
+end
+
 struct Mesh{A} <: AbstractMesh
     contents::A
 end
@@ -179,7 +345,7 @@ function mesh(chain::AbstractChain)
     face_to_nodes[end] = cell_nodes
     face_to_refid[end] = cell_reference_id
     ref_cell = first(reference_cells)
-    ref_faces = reference_spaces(mesh_from_space(ref_cell))
+    ref_faces = reference_spaces(complexify(ref_cell))
     refid_to_refface = push(ref_faces[1:end-1],reference_cells)
     cell_groups = physical_faces(chain)
     groups = [ typeof(cell_groups)() for d in 0:D]

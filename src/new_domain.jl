@@ -63,7 +63,6 @@ abstract type AbstractFaceDomain <: AbstractDomain end
 num_faces(geo::AbstractFaceDomain) = 1
 faces(geo::AbstractFaceDomain) = [1]
 inverse_faces(geo::AbstractFaceDomain) = [1]
-topology(geo::AbstractFaceDomain) = topology(mesh(geo))
 face_around(geo::AbstractFaceDomain) = nothing
 geometries(geo::AbstractFaceDomain,d) = 1:num_faces(mesh(geo),d)
 num_geometries(geo::AbstractFaceDomain,d) = length(geometries(geo,d))
@@ -97,8 +96,8 @@ function vertex_permutations(geo::AbstractFaceDomain)
         return collect(permutations)
     end
     admissible_permutations = Vector{Int}[]
-    ref_face = lagrange_space(geo)
-    fun_mesh = mesh_from_space(ref_face)
+    ref_face = lagrange_space(geo,1)
+    fun_mesh = complexify(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)
     fun_node_coords = node_coordinates(fun_mesh)
     vertex_coords = geo_node_coords[vertex_to_geo_node]
@@ -148,6 +147,8 @@ function topology(geom::AbstractFaceDomain)
     face_topology(;boundary,vertex_permutations)
 end
 
+complexify(geom::AbstractFaceDomain) = mesh(geom)
+
 """
     unit_n_cube(d)
     unit_n_cube(Val(d))
@@ -190,7 +191,7 @@ function mesh(geom::UnitNCube{0})
     node_coordinates = [SVector{0,Tv}()]
     face_nodes = [Ti[1]]
     face_reference_id = [Tr[1]]
-    space = lagrange_space(geom)
+    space = lagrange_space(geom,1)
     reference_spaces = ((space,),)
     mesh(;
          node_coordinates,
@@ -211,8 +212,8 @@ function mesh(geom::UnitNCube{1})
         unit_simplex(Val(0);options=options(geom))
     end
     geom1 = geom
-    space0 = lagrange_space(geom0)
-    space1 = lagrange_space(geom1)
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
     node_coordinates = SVector{1,Tv}[(0,),(1,)]
     face_nodes = Vector{Vector{Ti}}[[[1],[2]],[[1,2]]]
     face_reference_id = Vector{Tr}[[1,1],[1]]
@@ -235,9 +236,9 @@ function mesh(geom::UnitNCube{2})
     geom0 = unit_n_cube(Val(0);options=options(geom))
     geom1 = unit_n_cube(Val(1);options=options(geom))
     geom2 = geom
-    space0 = lagrange_space(geom0)
-    space1 = lagrange_space(geom1)
-    space2 = lagrange_space(geom2)
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
+    space2 = lagrange_space(geom2,1)
     node_coordinates = SVector{2,Tv}[(0,0),(1,0),(0,1),(1,1)]
     face_nodes = Vector{Vector{Ti}}[[[1],[2],[3],[4]],[[1,2],[3,4],[1,3],[2,4]],[[1,2,3,4]]]
     face_reference_id = Vector{Tr}[[1,1,1,1],[1,1,1,1],[1]]
@@ -261,10 +262,10 @@ function mesh(geom::UnitNCube{3})
     geom1 = unit_n_cube(Val(1);options=options(geom))
     geom2 = unit_n_cube(Val(2);options=options(geom))
     geom3 = geom
-    space0 = lagrange_space(geom0)
-    space1 = lagrange_space(geom1)
-    space2 = lagrange_space(geom2)
-    space3 = lagrange_space(geom3)
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
+    space2 = lagrange_space(geom2,1)
+    space3 = lagrange_space(geom3,1)
     node_coordinates = SVector{3,Tv}[(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,0,1),(1,0,1),(0,1,1),(1,1,1)]
     face_nodes = [
                   Vector{Ti}[[1],[2],[3],[4],[5],[6],[7],[8]],
@@ -292,7 +293,7 @@ function simplexify(geo::UnitNCube)
         return GT.mesh(geo)
     end
     simplex = unit_simplex(Val(D))
-    ref_cell = lagrange_space(simplex)
+    ref_cell = lagrange_space(simplex,1)
     node_coords = node_coordinates(GT.mesh(geo))
     cell_nodes = simplex_nodes(geo)
     ncells = length(cell_nodes)
@@ -398,9 +399,9 @@ function mesh(geom::UnitSimplex{2})
     geom0 = unit_simplex(Val(0);options=options(geom))
     geom1 = unit_simplex(Val(1);options=options(geom))
     geom2 = geom
-    space0 = lagrange_space(geom0)
-    space1 = lagrange_space(geom1)
-    space2 = lagrange_space(geom2)
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
+    space2 = lagrange_space(geom2,1)
     node_coordinates = SVector{2,Tv}[(0,0),(1,0),(0,1)]
     face_nodes = Vector{Vector{Ti}}[[[1],[2],[3]],[[1,2],[1,3],[2,3]],[[1,2,3]]]
     face_reference_id = Vector{Tr}[[1,1,1],[1,1,1],[1]]
@@ -425,10 +426,10 @@ function mesh(geom::UnitSimplex{3})
     geom1 = unit_simplex(Val(1);options=options(geom))
     geom2 = unit_simplex(Val(2);options=options(geom))
     geom3 = geom
-    space0 = lagrange_space(geom0)
-    space1 = lagrange_space(geom1)
-    space2 = lagrange_space(geom2)
-    space3 = lagrange_space(geom3)
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
+    space2 = lagrange_space(geom2,1)
+    space3 = lagrange_space(geom3,1)
     node_coordinates = SVector{3,Tv}[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
     face_nodes = [
                   Vector{Ti}[[1],[2],[3],[4]],

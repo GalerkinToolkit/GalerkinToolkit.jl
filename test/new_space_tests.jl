@@ -46,10 +46,10 @@ qua = GT.quadrature(spx2,degree)
 x = GT.coordinates(qua)
 @test sum(GT.weights(qua)) ≈ 0.5
 
-fe = GT.lagrange_space(cube2)
+fe = GT.lagrange_space(cube2,1)
 display(fe)
 
-fe2 = GT.lagrange_space(cube2)
+fe2 = GT.lagrange_space(cube2,1)
 
 @test isequal(fe,fe2)
 @test hash(fe) == hash(fe2)
@@ -76,7 +76,7 @@ t = GT.tabulator(fe)
 qua = GT.node_quadrature(fe)
 #@code_warntype GT.node_quadrature(fe)
 
-fe = GT.lagrange_space(cube2;tensor_size=Val((2,)))
+fe = GT.lagrange_space(cube2,1;tensor_size=Val((2,)))
 
 @test GT.num_dofs(fe) == 2*GT.num_nodes(fe)
 
@@ -85,11 +85,11 @@ A = GT.tabulator(fe)(GT.value,x)
 @show GT.node_dofs(fe)
 @show GT.dof_node(fe)
 
-fe = GT.lagrange_space(cube2;order=0)
+fe = GT.lagrange_space(cube2,0)
 x = GT.node_coordinates(fe)
 @test x[1] ≈ [0.5,0.5]
 
-fe = GT.lagrange_space(spx0)
+fe = GT.lagrange_space(spx0,1)
 x = GT.monomial_exponents(fe)
 display(x)
 
@@ -101,5 +101,10 @@ display(x)
 A = GT.tabulator(fe)(GT.value,x)
 n = GT.num_dofs(fe)
 @test A ≈ Matrix{Float64}(I,n,n)
+
+mesh = GT.simplexify(fe)
+mesh = GT.complexify(fe)
+mesh = GT.simplexify(cube2)
+mesh = GT.complexify(cube2)
 
 end # module

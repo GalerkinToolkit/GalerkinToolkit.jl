@@ -25,6 +25,8 @@ include("new_mesh.jl")
 include("new_topology.jl")
 include("new_space.jl")
 include("new_quadrature.jl")
+include("cartesian_mesh.jl")
+include("gmsh.jl")
 
 #include("mesh.jl")
 #include("p_mesh.jl")

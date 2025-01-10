@@ -27,16 +27,16 @@ mesh = GT.mesh(cube2)
 mesh = GT.mesh(cube3)
 
 order = 1
-fe = GT.lagrange_space(cube2;order)
-mesh = GT.mesh_from_space(fe)
+fe = GT.lagrange_space(cube2,order)
+mesh = GT.complexify(fe)
 
 order = 2
-fe = GT.lagrange_space(cube2;order)
-mesh = GT.mesh_from_space(fe)
+fe = GT.lagrange_space(cube2,order)
+mesh = GT.complexify(fe)
 
 order = 3
-fe = GT.lagrange_space(cube2;order)
-mesh = GT.mesh_from_space(fe)
+fe = GT.lagrange_space(cube2,order)
+mesh = GT.complexify(fe)
 
 display(GT.face_nodes(mesh,0))
 display(GT.face_nodes(mesh,1))
@@ -44,7 +44,7 @@ display(GT.face_nodes(mesh,2))
 
 #@code_warntype GT.mesh(cube0)
 
-#@code_warntype GT.mesh_from_space(fe)
+#@code_warntype GT.complexify(fe)
 
 topo = GT.topology(cube0)
 @test GT.num_dims(topo) == 0
@@ -84,7 +84,7 @@ topo = GT.topology(spx3)
 Tv = GT.real_type(GT.options(spx2))
 Ti = GT.int_type(GT.options(spx2))
 Tr = GT.reference_int_type(GT.options(spx2))
-space2 = GT.lagrange_space(spx2)
+space2 = GT.lagrange_space(spx2,1)
 node_coordinates = SA.SVector{2,Tv}[(0,0),(1,0),(0,1),(1,1)]
 face_nodes = Vector{Ti}[[1,2,3],[2,3,4]]
 face_reference_id = Tr[1,1]

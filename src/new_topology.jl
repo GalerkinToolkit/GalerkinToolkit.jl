@@ -261,7 +261,7 @@ function fill_face_vertices_mesh_topology!(topo,mesh,d)
     dface_to_nodes = face_nodes(mesh,d)
     dface_to_refid = face_reference_id(mesh,d)
     refid_refface = reference_spaces(mesh,d)
-    refid_to_lvertex_to_lnodes = map(refface->face_nodes(remove_interior(mesh_from_space(refface)),0),refid_refface)
+    refid_to_lvertex_to_lnodes = map(refface->face_nodes(remove_interior(complexify(refface)),0),refid_refface)
     face_incidence(topo)[d+1,0+1] = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
 end
 
@@ -505,9 +505,9 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
         old_dface_to_nodes = face_nodes(mesh,d)
         new_nface_to_nodes = newface_nodes[n+1]
         nrefid_to_ldface_to_lvertices = map(a->face_incidence(topology(GT.mesh(domain(a))),d,0),newreffaces[n+1])
-        nrefid_to_ldface_to_lnodes = map(a->face_nodes(mesh_from_space(a),d),newreffaces[n+1])
-        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(mesh_from_space(a),d),newreffaces[n+1])
-        nrefid_to_drefrefid_to_ref_dface = map(a->reference_spaces(mesh_from_space(a),d),newreffaces[n+1])
+        nrefid_to_ldface_to_lnodes = map(a->face_nodes(complexify(a),d),newreffaces[n+1])
+        nrefid_to_ldface_to_drefrefid = map(a->face_reference_id(complexify(a),d),newreffaces[n+1])
+        nrefid_to_drefrefid_to_ref_dface = map(a->reference_spaces(complexify(a),d),newreffaces[n+1])
         new_nface_to_new_dfaces, n_new_dfaces, old_dface_to_new_dface = generate_face_boundary(
             new_nface_to_new_vertices,
             new_vertex_to_new_nfaces,
@@ -855,7 +855,7 @@ function fill_face_vertices(mesh,d,node_to_vertex)
     face_to_refid = face_reference_id(mesh,d)
     refid_to_lvertex_to_lnodes = map(reference_spaces(mesh,d)) do a
         if num_dims(domain(a)) != 0
-            face_nodes(mesh_from_space(a),0)
+            face_nodes(complexify(a),0)
         else
             [interior_nodes(a)]
         end
@@ -890,7 +890,7 @@ function find_node_to_vertex(mesh)
         face_to_refid = face_reference_id(mesh,d)
         refid_to_lvertex_to_lnodes = map(reference_spaces(mesh,d)) do a
             if num_dims(domain(a)) != 0
-                face_nodes(mesh_from_space(a),0)
+                face_nodes(complexify(a),0)
             else
                 [interior_nodes(a)]
             end

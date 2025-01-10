@@ -68,8 +68,7 @@ num_dims(fe::AbstractFaceSpace) = num_dims(domain(fe))
 
 const LagrangeFaceDomain = Union{UnitNCube,UnitSimplex}
 
-function lagrange_space(domain::LagrangeFaceDomain;
-        order = 1,
+function lagrange_space(domain::LagrangeFaceDomain, order;
         space_type = default_space_type(domain),
         lib_to_user_nodes = :default,
         major = Val(:component),
@@ -149,7 +148,7 @@ num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
 function node_coordinates(a::LagrangeFaceSpace)
     if order(a) == 0 && num_dims(a) != 0
-        a_linear = lagrange_space(domain(a))
+        a_linear = lagrange_space(domain(a),1)
         x  = node_coordinates(a_linear)
         return [ sum(x)/length(x) ]
     end
@@ -285,7 +284,7 @@ function interior_nodes(fe::LagrangeFaceSpace)
     if D == 0
         return collect(1:nnodes)
     else
-        mesh = mesh_from_space(fe)
+        mesh = complexify(fe)
         node_is_touched = fill(true,nnodes)
         for d in 0:(D-1)
             face_to_nodes = face_nodes(mesh,d)
@@ -306,7 +305,7 @@ function node_quadrature(fe::LagrangeFaceSpace)
     face_quadrature(;domain,coordinates,weights)
 end
 
-function mesh_from_space(refface::LagrangeFaceSpace)
+function complexify(refface::LagrangeFaceSpace)
     geom = domain(refface)
     mesh = GT.mesh(geom)
     D = num_dims(geom)
@@ -318,12 +317,12 @@ function mesh_from_space(refface::LagrangeFaceSpace)
     dims = ntuple(d->d-1,Val(D+1))
     face_reference_id = GT.face_reference_id(mesh)
     reference_spaces = map(GT.reference_domains(mesh)) do rid_to_domain
-        map(domain->lagrange_space(domain;order=order_inter),rid_to_domain)
+        map(domain->lagrange_space(domain,order_inter),rid_to_domain)
     end
     face_nodes_tuple = map(dims) do d
         domain = GT.domain(mesh,d)
         rid_to_refqua = map(reference_domains(domain)) do refdom
-            reffe = lagrange_space(refdom;order=order_inter)
+            reffe = lagrange_space(refdom,order_inter)
             node_quadrature(reffe)
         end
         face_to_rid = face_reference_id[d+1]
@@ -360,4 +359,53 @@ function mesh_from_space(refface::LagrangeFaceSpace)
        )
 end
 
+function simplexify(ref_face::LagrangeFaceSpace)
+    mesh_geom  = simplexify(domain(ref_face))
+    D = num_dims(mesh_geom)
+    node_coordinates_geom = node_coordinates(mesh_geom)
+    ref_faces_geom = reference_spaces(mesh_geom,D)
+    face_nodes_geom = face_nodes(mesh_geom,D)
+    face_ref_id_geom = face_reference_id(mesh_geom,D)
+    nfaces = length(face_ref_id_geom)
+    # We need the same order in all directions
+    # for this to make sense
+    my_order = order(ref_face)
+    ref_faces_inter = map(r_geom->lagrange_space(domain(r_geom),my_order),ref_faces_geom)
+    s_ref = map(ref_faces_geom,ref_faces_inter) do r_geom,r
+        m = num_nodes(r)
+        n = num_nodes(r_geom)
+        x = node_coordinates(r)
+        tabulator(r_geom)(value,x)
+    end
+    node_coordinates_inter = node_coordinates(ref_face)
+    node_coordinates_aux = map(xi->map(xii->round(Int,my_order*xii),xi),node_coordinates_inter)
+    face_nodes_inter = Vector{Vector{Int}}(undef,nfaces)
+    for face in 1:nfaces
+        ref_id_geom = face_ref_id_geom[face]
+        s = s_ref[ref_id_geom]
+        nodes_geom = face_nodes_geom[face]
+        nnodes, nnodes_geom = size(s)
+        x_mapped = map(1:nnodes) do i
+            x = zero(eltype(node_coordinates_inter))
+            for k in 1:nnodes_geom
+                x += node_coordinates_geom[nodes_geom[k]]*s[i,k]
+            end
+            map(xi->round(Int,my_order*xi),x)
+        end
+        my_nodes = indexin(x_mapped,node_coordinates_aux)
+        face_nodes_inter[face] = my_nodes
+    end
+    ref_inter = 
+    chain = GT.chain(;
+        node_coordinates=node_coordinates_inter,
+        face_nodes = face_nodes_inter,
+        face_reference_id = face_ref_id_geom,
+        reference_spaces = ref_faces_inter,
+    )
+    mesh = GT.mesh(chain)
+    mesh_complex = complexify(mesh)
+    pg = physical_faces(mesh_complex)
+    pg .= physical_faces(mesh_geom)
+    mesh_complex
+end
 
