@@ -183,7 +183,7 @@ function mesh(geom::UnitNCube{1})
     face_nodes = Vector{Vector{Ti}}[[[1],[2]],[[1,2]]]
     face_reference_id = Vector{Tr}[[1,1],[1]]
     reference_spaces = ((space0,),(space1,))
-    outwards_normals = SVector{1,Tv}[(-1,),(1,)]
+    outward_normals = SVector{1,Tv}[(-1,),(1,)]
     mesh(;
          node_coordinates,
          face_nodes,
@@ -207,7 +207,7 @@ function mesh(geom::UnitNCube{2})
     node_coordinates = SVector{2,Tv}[(0,0),(1,0),(0,1),(1,1)]
     face_nodes = Vector{Vector{Ti}}[[[1],[2],[3],[4]],[[1,2],[3,4],[1,3],[2,4]],[[1,2,3,4]]]
     face_reference_id = Vector{Tr}[[1,1,1,1],[1,1,1,1],[1]]
-    outwards_normals = SVector{2,Tv}[(0,-1),(0,1),(-1,0),(1,0)]
+    outward_normals = SVector{2,Tv}[(0,-1),(0,1),(-1,0),(1,0)]
     reference_spaces = ((space0,),(space1,),(space2,))
     mesh(;
          node_coordinates,
@@ -239,7 +239,7 @@ function mesh(geom::UnitNCube{3})
                   Vector{Ti}[[1,2,3,4,5,6,7,8]],
                  ]
     face_reference_id = [ones(Tr,8),ones(Tr,12),ones(Tr,6),ones(Tr,1)]
-    outwards_normals = SVector{3,Tv}[(0,0,-1),(0,0,1),(0,-1,0),(0,1,0),(-1,0,0),(1,0,0)]
+    outward_normals = SVector{3,Tv}[(0,0,-1),(0,0,1),(0,-1,0),(0,1,0),(-1,0,0),(1,0,0)]
     reference_spaces = ((space0,),(space1,),(space2,),(space3,))
     mesh(;
          node_coordinates,
@@ -372,7 +372,7 @@ function mesh(geom::UnitSimplex{2})
     face_reference_id = Vector{Tr}[[1,1,1],[1,1,1],[1]]
     reference_spaces = ((space0,),(space1,),(space2,))
     n1 = sqrt(2)/2
-    outwards_normals = SVector{2,Tv}[(0,-1),(-1,0),(n1,n1)]
+    outward_normals = SVector{2,Tv}[(0,-1),(-1,0),(n1,n1)]
     mesh(;
          node_coordinates,
          face_nodes,
@@ -404,7 +404,7 @@ function mesh(geom::UnitSimplex{3})
                  ]
     face_reference_id = [ones(Tr,4),ones(Tr,6),ones(Tr,4),ones(Tr,1)]
     n1 = sqrt(3)/3
-    outwards_normals = SVector{3,Tv}[(0,0,-1),(0,-1,0),(-1,0,0),(n1,n1,n1)]
+    outward_normals = SVector{3,Tv}[(0,0,-1),(0,-1,0),(-1,0,0),(n1,n1,n1)]
     reference_spaces = ((space0,),(space1,),(space2,),(space3,))
     mesh(;
          node_coordinates,

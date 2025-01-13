@@ -124,7 +124,7 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
             complexify(ref_face_ho)
         elseif order === nothing && refinement !== nothing
             # Use linear sub-cells with $refinement per direction per direction
-            geom = GT.deomain(ref_face)
+            geom = GT.domain(ref_face)
             refine_reference_geometry(geom,refinement)
         else
             error("order and refinement kw-arguments can not be given at the same time")

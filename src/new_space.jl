@@ -26,7 +26,7 @@ function dirichlet_dofs(a::AbstractSpace)
 end
 
 function setup_space(space::AbstractSpace)
-    if workspace(space) !== nothing
+    if GT.workspace(space) !== nothing
         return space
     end
     state = generate_dof_ids(space)
@@ -113,7 +113,7 @@ function shape_function_quantity(a::AbstractSpace,dof;reference=is_reference_dom
     push_forward(a,qty)∘ϕinv
 end
 
-function form_argumen_quantity(a::AbstractSpace,axis,field=1)
+function form_argument_quantity(a::AbstractSpace,axis,field=1)
     face_to_refid = face_reference_id(a)
     refid_to_reffes = reference_spaces(a)
     refid_to_funs = map(GT.shape_functions,refid_to_reffes)
@@ -137,7 +137,7 @@ end
 
 function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
     ldof = gensym("fe-dof")
-    s = shape_functions(a,ldof;reference=true)
+    s = shape_function_quantity(a,ldof;reference=true)
     # TODO ugly
     if is_physical_domain(GT.domain(a))
         s = push_forward(a,s)
@@ -171,7 +171,7 @@ function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
 end
 
 function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
-    qty = discrete_field_qty(space,free_values,dirichlet_values)
+    qty = discrete_field_quantity(space,free_values,dirichlet_values)
     mesh = space |> GT.mesh
     DiscreteField(mesh,space,free_values,dirichlet_values,qty)
 end
@@ -323,10 +323,11 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
      d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
-    physical_names = dirichlet_boundary |> GT.physical_names
+    #physical_names = dirichlet_boundary |> GT.physical_names
     Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
     mesh = dirichlet_boundary |> GT.mesh
-    classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
     ncells = length(cell_to_dofs)
     let d = N
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
@@ -376,14 +377,15 @@ function generate_dof_ids_step_2(space,state,q::AbstractField)
     dirichlet_boundary = domain(q)
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
-    physical_names = dirichlet_boundary |> GT.physical_names
+    #physical_names = dirichlet_boundary |> GT.physical_names
     Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
     mesh = dirichlet_boundary |> GT.mesh
-    classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
     ncells = length(cell_to_dofs)
     dim = 1
     ldof = :ldof
-    sigma = GT.dual_basis(space,ldof)
+    sigma = GT.dual_basis_quantity(space,ldof)
     index1 = generate_index(domain(space))
     Dface = face_index(index1,num_dims(domain(space)))
     sigma_expr = term(sigma,index1) |> expression |> simplify
@@ -466,10 +468,11 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
             if d != N
                 continue
             end
-            physical_names = dirichlet_boundary |> GT.physical_names
+            #physical_names = dirichlet_boundary |> GT.physical_names
             Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
             mesh = dirichlet_boundary |> GT.mesh
-            classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
             ncells = length(cell_to_dofs)
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
             ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
@@ -524,14 +527,15 @@ function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
             if d != N
                 continue
             end
-            physical_names = dirichlet_boundary |> GT.physical_names
+            #physical_names = dirichlet_boundary |> GT.physical_names
             Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
             mesh = dirichlet_boundary |> GT.mesh
-            classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
             ncells = length(cell_to_dofs)
             dim = 1
             ldof = :ldof
-            sigma = GT.dual_basis(space,ldof)
+            sigma = GT.dual_basis_quantity(space,ldof)
             index1 = generate_index(domain(space))
             Dface = face_index(index1,num_dims(domain(space)))
             sigma_expr = term(sigma,index1) |> expression |> simplify
@@ -682,9 +686,41 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
     end
 end
 
+partition_from_mask(a) = partition_from_mask(identity,a)
+
+function partition_from_mask(f,node_to_mask)
+    T = Vector{Int32}
+    free_nodes = convert(T,findall(f,node_to_mask))
+    dirichlet_nodes = convert(T,findall(i->!f(i),node_to_mask))
+    nfree = length(free_nodes)
+    ndiri = length(dirichlet_nodes)
+    permutation = T(undef,nfree+ndiri)
+    permutation[free_nodes] = 1:nfree
+    permutation[dirichlet_nodes] = (1:ndiri) .+ nfree
+    TwoWayPartition(free_nodes,dirichlet_nodes,permutation)
+end
+
+struct TwoWayPartition{A} <: AbstractVector{A}
+    first::A
+    last::A
+    permutation::A
+end
+
+permutation(a::TwoWayPartition) = a.permutation
+Base.size(a::TwoWayPartition) = (2,)
+Base.IndexStyle(::Type{<:TwoWayPartition}) = IndexLinear()
+function Base.getindex(a::TwoWayPartition,i::Int)
+    @boundscheck @assert i in (1,2)
+    if i == 1
+        a.first
+    else
+        a.last
+    end
+end
+
 """
 """
-function shape_functions(fe::AbstractFaceSpace)
+function shape_functions(fe::AbstractSpace)
     primal = primal_basis(fe)
     dual = dual_basis(fe)
     primal_t = permutedims(primal)
@@ -702,7 +738,7 @@ end
 
 """
 """
-function tabulator(fe::AbstractFaceSpace)
+function tabulator(fe::AbstractSpace)
     primal = primal_basis(fe)
     dual = dual_basis(fe)
     primal_t = permutedims(primal)
@@ -773,7 +809,7 @@ end
 domain(a::LagrangeFaceSpace) = a.contents.domain
 order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
-space_type(fe::LagrangeFaceSpace) = fe.contents.space_type
+space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
 
@@ -800,7 +836,7 @@ function monomial_exponents(a::LagrangeFaceSpace)
     elseif space_type(a) === :P
         exponents_list = filter(exponents->sum(exponents)<=order(a),exponents_list)
     else
-        error("Case not implemented (yet)")
+        error("space_type == $(space_type(a)) case not implemented (yet)")
     end
 end
 
@@ -937,13 +973,13 @@ function dof_node(fe::LagrangeFaceSpace)
 end
 
 function conforming(fe::LagrangeFaceSpace)
-    nonconforming = (order(fe) == 0) || (is_n_cube(geometry(domain)) && space_type(fe) === :P)
+    nonconforming = (order(fe) == 0) || (is_n_cube(domain(fe)) && space_type(fe) === :P)
     ! nonconforming
 end
 
 function interior_nodes(fe::LagrangeFaceSpace)
     if !conforming(fe)
-        collect(Int,1:num_nodes(fe))
+        return collect(Int,1:num_nodes(fe))
     end
     nnodes = num_nodes(fe)
     D = num_dims(fe)
@@ -962,6 +998,10 @@ function interior_nodes(fe::LagrangeFaceSpace)
     end
 end
 
+function num_interior_nodes(fe::LagrangeFaceSpace)
+    length(interior_nodes(fe))
+end
+
 function face_nodes(fe::LagrangeFaceSpace,d)
     if conforming(fe)
         face_nodes_from_mesh_face(fe,d)
@@ -970,8 +1010,18 @@ function face_nodes(fe::LagrangeFaceSpace,d)
         if d == D
             [collect(Int32,1:GT.num_nodes(fe))]
         else
-            [Int32[] for _ in 1:num_faces(boundary(fe.geometry),d)]
+            [Int32[] for _ in 1:num_faces(mesh(domain(fe)),d)]
         end
+    end
+end
+
+function face_nodes_from_mesh_face(fe,d)
+    D = num_dims(fe)
+    if d == D
+        [collect(Int32,1:GT.num_nodes(fe))]
+    else
+        boundary = GT.complexify(fe)
+        GT.face_nodes(boundary,d)
     end
 end
 
@@ -983,6 +1033,23 @@ function face_interior_nodes(fe::LagrangeFaceSpace,d)
     end
 end
 
+function face_interior_nodes_from_mesh_face(fe,d)
+    D = num_dims(fe)
+    if  d == D
+        [GT.interior_nodes(fe)]
+    else
+        boundary = GT.complexify(fe)
+        dface_to_lnode_to_node = GT.face_nodes(boundary,d)
+        dface_to_ftype = GT.face_reference_id(boundary,d)
+        ftype_to_refdface = GT.reference_spaces(boundary,d)
+        ftype_to_lnodes = map(GT.interior_nodes,ftype_to_refdface)
+        map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
+            lnodes = ftype_to_lnodes[ftype]
+            lnode_to_node[lnodes]
+        end
+    end
+end
+
 function face_interior_node_permutations(fe::LagrangeFaceSpace,d)
     if conforming(fe)
         face_interior_node_permutations_from_mesh_face(fe,d)
@@ -991,7 +1058,22 @@ function face_interior_node_permutations(fe::LagrangeFaceSpace,d)
         if  d == D
             [[ collect(1:num_interior_nodes(fe)) ]]
         else
-            [[ Int32[] ] for _ in 1:num_faces(boundary(fe.geometry),d)]
+            [[ Int32[] ] for _ in 1:num_faces(mesh(domain(fe)),d)]
+        end
+    end
+end
+
+function face_interior_node_permutations_from_mesh_face(fe,d)
+    D = num_dims(fe)
+    if  d == D
+        [[ collect(1:num_interior_nodes(fe)) ]]
+    else
+        boundary = GT.complexify(fe)
+        dface_to_ftype = GT.face_reference_id(boundary,d)
+        ftype_to_refdface = GT.reference_spaces(boundary,d)
+        ftype_to_perms = map(GT.interior_node_permutations,ftype_to_refdface)
+        map(dface_to_ftype) do ftype
+            perms = ftype_to_perms[ftype]
         end
     end
 end
@@ -1071,18 +1153,18 @@ function face_own_dofs(a::LagrangeFaceSpace,d)
 end
 
 function face_dofs_from_nodes(fe::LagrangeFaceSpace,face_to_nodes)
-    if fe.shape == SCALAR_SHAPE
+    if tensor_size(fe) === :scalar
         return face_to_nodes
     else
         node_to_dofs = node_dofs(fe)
-        lis = LinearIndices(val_parameter(fe.shape))
+        lis = LinearIndices(tensor_size(fe))
         face_to_dofs = map(face_to_nodes) do nodes
-            if fe.major === :component
+            if major(fe) === :component
                 nested = map(nodes) do node
                     dofs = node_to_dofs[node]
                     collect(dofs[:])
                 end
-            elseif fe.major === :node
+            elseif major(fe) === :node
                 nested = map(lis[:]) do li
                     map(nodes) do node
                         dofs = node_to_dofs[node]
@@ -1099,17 +1181,17 @@ end
 
 function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
     face_to_pindex_to_inodes = face_interior_node_permutations(fe,d)
-    if fe.shape == SCALAR_SHAPE
+    if tensor_size(fe) === :scalar
         return face_to_pindex_to_inodes
     else
-        Tv = fe |> geometry |> int_type
+        Tv = fe |> options |> int_type
         node_to_dofs = node_dofs(fe)
         face_to_inodes = face_interior_nodes(fe,d)
         face_to_idofs = face_own_dofs(fe,d)
         nfaces = length(face_to_inodes)
         ndofs = num_dofs(fe)
         dof_to_idof = zeros(Tv,ndofs)
-        lis = LinearIndices(val_parameter(fe.shape))
+        lis = LinearIndices(tensor_size(fe))
         map(1:nfaces) do face
             pindex_to_inodes = face_to_pindex_to_inodes[face]
             inode_to_node = face_to_inodes[face]
@@ -1117,7 +1199,7 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
             fill!(dof_to_idof,Tv(0))
             dof_to_idof[idof_to_dof] = 1:length(idof_to_dof)
             map(pindex_to_inodes) do inodes
-                if fe.major === :component
+                if major(fe) === :component
                     nested = map(inodes) do inode
                         node = inode_to_node[inode]
                         dofs = node_to_dofs[node]
@@ -1127,7 +1209,7 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
                             idof
                         end
                     end
-                elseif fe.major === :node
+                elseif major(fe) === :node
                     nested = map(lis[:]) do li
                         map(inodes) do inode
                             node = inode_to_node[inode]
@@ -1152,7 +1234,7 @@ function num_dofs(a::LagrangeFaceSpace)
     if tensor_size(a) === :scalar
         nnodes
     else
-        ndofs_per_node = prod(val_parameter(a.shape))
+        ndofs_per_node = prod(tensor_size(a))
         nnodes*ndofs_per_node
     end
 end
@@ -1285,6 +1367,7 @@ function lagrange_space(domain::AbstractDomain,order;
                         domain,
                         order,
                         conformity,
+                        dirichlet_boundary,
                         space_type,
                         major,
                         tensor_size,
@@ -1297,6 +1380,7 @@ function lagrange_mesh_space(;
         domain,
         order,
         conformity,
+        dirichlet_boundary,
         space_type,
         major,
         tensor_size,
@@ -1306,6 +1390,7 @@ function lagrange_mesh_space(;
         domain,
         order,
         conformity,
+        dirichlet_boundary,
         space_type,
         major,
         tensor_size,
@@ -1319,9 +1404,10 @@ struct LagrangeMeshSpace{A} <: AbstractSpace
 end
 
 conformity(space::LagrangeMeshSpace) = space.contents.conformity
-domain(space::LagrangeMeshSpace) = space.contents.dirichlet_boundary
+dirichlet_boundary(space::LagrangeMeshSpace) = space.contents.dirichlet_boundary
+domain(space::LagrangeMeshSpace) = space.contents.domain
 order(space::LagrangeMeshSpace) = space.contents.order
-space_type(space::LagrangeMeshSpace) = space.contents.space_type
+space_type(space::LagrangeMeshSpace) = val_parameter(space.contents.space_type)
 major(space::LagrangeMeshSpace) = val_parameter(space.contents.major)
 tensor_size(space::LagrangeMeshSpace) = val_parameter(space.contents.tensor_size)
 workspace(space::LagrangeMeshSpace) = space.contents.workspace
@@ -1330,7 +1416,7 @@ function replace_workspace(space::LagrangeMeshSpace,workspace)
     contents = (;
         domain = space.contents.domain,
         order = space.contents.order,
-        conformity = space.contents = conformity,
+        conformity = space.contents.conformity,
         space_type = space.contents.space_type,
         major = space.contents.major,
         tensor_size = space.contents.tensor_size,
@@ -1355,9 +1441,9 @@ function reference_spaces(space::LagrangeMeshSpace)
     D = domain |> GT.num_dims
     space_type = GT.space_type(space) # TODO Ugly
     ctype_to_refface = GT.reference_spaces(mesh,D)
-    ctype_to_geometry = map(GT.geometry,ctype_to_refface)
+    ctype_to_geometry = map(GT.domain,ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
-        space2 = space_type === nothing ? default_space_type(geometry) : space_type
+        space2 = space_type === :default ? default_space_type(geometry) : space_type
         lagrange_space(geometry,order(space);
            space_type=Val(space2),
            major=Val(major(space)),
@@ -1501,3 +1587,512 @@ end
 #    free_dof_to_node, diri_dof_to_node
 #end
 
+function raviart_thomas_space(domain::AbstractFaceDomain,order)
+    workspace = rt_setup((;domain,order))
+    RaviartThomasFaceSpace(domain,order,workspace)
+end
+
+struct RaviartThomasFaceSpace{A,B,C} <: AbstractSpace
+    domain::A
+    order::B
+    workspace::C
+end
+
+function rt_setup(fe)
+    face_workspace,offset = rt_setup_dual_basis_boundary(fe)
+    if is_n_cube(fe.domain)
+        cell_workspace,ndofs = rt_setup_dual_basis_interior_n_cube(fe,offset)
+        primal_basis = rt_primal_basis_n_cube(fe)
+    elseif is_simplex(fe.domain)
+        cell_workspace,ndofs = rt_setup_dual_basis_interior_simplex(fe,offset)
+        primal_basis = rt_primal_basis_simplex(fe)
+    else
+        error("case not implemented")
+    end
+    face_dof_point_moment = map(workspace->workspace.moments,face_workspace)
+    push!(face_dof_point_moment,cell_workspace.moments)
+    face_point_x = map(workspace->workspace.points,face_workspace)
+    push!(face_point_x,cell_workspace.points)
+    dual_basis_nested = map(face_dof_point_moment,face_point_x) do dof_point_moment,point_x
+        map(dof_point_moment) do point_moment
+            npoints = length(point_x)
+            v -> sum(1:npoints) do point
+                moment = point_moment[point]
+                x = point_x[point]
+                moment⋅v(x)
+            end
+        end
+    end
+    dual_basis = reduce(vcat,dual_basis_nested)
+    @assert length(dual_basis) == length(primal_basis)
+    (;face_workspace,cell_workspace,primal_basis,dual_basis,ndofs)
+end
+
+function rt_primal_basis_n_cube(fe)
+    D = num_dims(fe.domain)
+    k = fe.order
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k+1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end |> SVector
+        end
+    end
+    reduce(vcat,nested)
+end
+
+function rt_primal_basis_simplex(fe)
+    D = num_dims(fe.domain)
+    k = fe.order
+    ranges = ntuple(d2-> (0:k) ,Val(D))
+    exponents_list_all = map(Tuple,CartesianIndices(ranges))[:]
+    exponents_list = filter(exponents->sum(exponents)<=k,exponents_list_all)
+    nested = map(1:D) do d
+        map(exponents_list) do exponents
+            x -> ntuple(Val(D)) do d3
+                v = prod( x.^exponents )
+                d==d3 ? v : zero(v)
+            end |> SVector
+        end
+    end
+    list1 = reduce(vcat,nested)
+    exponents_list = filter(exponents->sum(exponents)==k,exponents_list_all)
+    list2 = map(exponents_list) do exponents
+        x -> begin
+            v = prod( x.^exponents )
+            x*v
+        end
+    end
+    # TODO this array does not have concrete eltype
+    vcat(list1,list2)
+end
+
+function rt_setup_dual_basis_boundary(fe)
+    # TODO this function can perhaps be implemented
+    # with a higher level API
+    k = fe.order # TODO k
+    cell = fe.domain
+    D = num_dims(cell)
+    cell_boundary = mesh(cell)
+    face_to_rid = face_reference_id(cell_boundary,D-1)
+    rid_to_refface = reference_spaces(cell_boundary,D-1)
+    rid_to_fe = map(rid_to_refface) do refface
+        lagrange_space(domain(refface),k) # TODO k
+    end
+    rid_to_quad = map(rid_to_fe) do fe
+        quadrature(domain(fe),2*k) # TODO 2*K
+    end
+    rid_to_xs = map(coordinates,rid_to_quad)
+    rid_to_ws = map(weights,rid_to_quad)
+    rid_to_tabface = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(refface)(value,xs)
+    end
+    rid_to_tabface_grad = map(rid_to_refface,rid_to_xs) do refface,xs
+        tabulator(refface)(ForwardDiff.gradient,xs)
+    end
+    rid_to_tabfe = map(rid_to_fe,rid_to_xs) do fe,xs
+        tabulator(fe)(value,xs)
+    end
+    rid_to_permutations = map(fe->node_permutations(fe),rid_to_fe)
+    face_to_n = GT.outward_normals(cell_boundary)
+    face_to_nodes = face_nodes(cell_boundary,D-1)
+    node_to_x = node_coordinates(cell_boundary)
+    nfaces = length(face_to_n)
+    offset = 0
+    face_workspace = map(1:nfaces) do face
+        rid = face_to_rid[face]
+        tabfe = rid_to_tabfe[rid]
+        tabface = rid_to_tabface[rid]
+        tabface_grad = rid_to_tabface_grad[rid]
+        npoints,ndofs = size(tabfe)
+        nodes = face_to_nodes[face]
+        nnodes = length(nodes)
+        n = face_to_n[face]
+        point_to_w = rid_to_ws[rid]
+        point_to_x = map(1:npoints) do point
+            sum(1:nnodes) do node
+                x = node_to_x[nodes[node]]
+                coeff = tabface[point,node]
+                coeff*x
+            end
+        end
+        point_to_dV = map(1:npoints) do point
+            w = point_to_w[point]
+            J = sum(1:nnodes) do node
+                x = node_to_x[nodes[node]]
+                coeff = tabface_grad[point,node]
+                outer(x,coeff)
+            end
+            change_of_measure(J)*w
+        end
+        #scaling = sum(point_to_dV)
+        moments = map(1:ndofs) do dof
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = tabfe[point,dof]
+                n*(s*dV)#/scaling)
+            end
+        end
+        points = point_to_x
+        permutations = rid_to_permutations[rid]
+        ids = collect(Int32,1:ndofs) .+ offset
+        offset += ndofs
+        (;moments,points,ids,permutations)
+    end
+    face_workspace,offset
+end
+
+function rt_setup_dual_basis_interior_n_cube(fe,offset)
+    k = fe.order
+    cell = fe.domain
+    quad = quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2-> d==d2 ? (0:k-1) : (0:k) ,Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        map(exponents_list) do exponents
+            #scaling = sum(point_to_dV)
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                s*dV#/scaling
+            end |> Ref
+        end
+    end
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function rt_setup_dual_basis_interior_simplex(fe,offset)
+    k = fe.order - 1
+    cell = fe.domain
+    quad = quadrature(cell,2*k) # TODO 2*k
+    point_to_x = coordinates(quad)
+    point_to_dV = weights(quad)
+    npoints = length(point_to_x)
+    D = num_dims(cell)
+    nested = map(1:D) do d
+        ranges = ntuple(d2->(0:k),Val(D))
+        exponents_list = map(Tuple,CartesianIndices(ranges))[:]
+        exponents_list = filter(exponents->sum(exponents)<=(k),exponents_list)
+        map(exponents_list) do exponents
+            #scaling = sum(point_to_dV)
+            map(1:npoints) do point
+                x = point_to_x[point]
+                dV = point_to_dV[point]
+                s = ntuple(Val(D)) do d3
+                    si = prod( x.^exponents )
+                    d==d3 ? si : zero(si)
+                end |> SVector
+                s*dV#/scaling
+            end |> Ref
+        end
+    end
+    moments = map(r->r[],reduce(vcat,nested))
+    nmoments = length(moments)
+    permutations = [collect(Int32,1:nmoments)]
+    points = point_to_x
+    ids = collect(Int32,1:nmoments).+offset
+    offset += nmoments
+    (;moments,points,ids,permutations), offset
+end
+
+function num_dofs(fe::RaviartThomasFaceSpace)
+    fe.workspace.ndofs
+end
+
+function primal_basis(fe::RaviartThomasFaceSpace)
+    fe.workspace.primal_basis
+end
+
+function dual_basis(fe::RaviartThomasFaceSpace)
+    fe.workspace.dual_basis
+end
+
+function face_own_dofs(fe::RaviartThomasFaceSpace,d)
+    D = num_dims(fe.domain)
+    if D == d
+        [fe.workspace.cell_workspace.ids]
+    elseif D-1 == d
+        map(workspace->workspace.ids,fe.workspace.face_workspace)
+    else
+        [ Int32[] for _ in 1:num_faces(mesh(fe.domain),d)]
+    end
+end
+
+function face_dofs(fe::RaviartThomasFaceSpace,d)
+    face_own_dofs(fe,d)
+end
+
+function face_own_dof_permutations(fe::RaviartThomasFaceSpace,d)
+    D = num_dims(fe.domain)
+    if D == d
+        [fe.workspace.cell_workspace.permutations]
+    elseif D-1 == d
+        map(workspace->workspace.permutations,fe.workspace.face_workspace)
+    else
+        [ [Int32[]] for _ in 1:num_faces(mesh(fe.domain),d)]
+    end
+end
+
+function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformity=:default,dirichlet_boundary=nothing)
+    mesh = domain |> GT.mesh
+    cell_to_Dface = domain |> GT.faces
+    D = domain |> GT.num_dims
+    Dface_to_ctype = GT.face_reference_id(mesh,D)
+    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+    ctype_to_refface = GT.reference_spaces(mesh,D)
+    ctype_to_geometry = map(GT.domain,ctype_to_refface)
+    ctype_to_reffe = map(ctype_to_geometry) do geometry
+        raviart_thomas_space(geometry,order)
+    end
+    workspace = nothing
+    RaviartThomasMeshSpace(
+        domain,
+        order,
+        conformity,
+        dirichlet_boundary,
+        cell_to_ctype,
+        ctype_to_reffe,
+        workspace) |> setup_space
+end
+
+struct RaviartThomasMeshSpace{A,B,C,D,E,F} <: AbstractSpace
+    domain::A
+    order::B
+    conformity::Symbol
+    dirichlet_boundary::C
+    face_reference_id::D
+    reference_spaces::E
+    workspace::F
+end
+
+domain(a::RaviartThomasMeshSpace) = a.domain
+order(a::RaviartThomasMeshSpace) = a.order
+conformity(a::RaviartThomasMeshSpace) = a.conformity
+dirichlet_boundary(a::RaviartThomasMeshSpace) = a.dirichlet_boundary
+face_reference_id(a::RaviartThomasMeshSpace) = a.face_reference_id
+reference_spaces(a::RaviartThomasMeshSpace) = a.reference_spaces
+workspace(a::RaviartThomasMeshSpace) = a.workspace
+
+function replace_workspace(space::RaviartThomasMeshSpace,workspace)
+    GT.RaviartThomasMeshSpace(
+        space.domain,
+        space.order,
+        space.conformity,
+        space.dirichlet_boundary,
+        space.face_reference_id,
+        space.reference_spaces,
+        workspace
+    )
+end
+
+function push_forward(space::RaviartThomasMeshSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do q,phi
+        x->begin
+            J = ForwardDiff.jacobian(phi,x)
+            (J/change_of_measure(J))*q(x)
+        end
+    end
+end
+
+function pull_back(space::RaviartThomasMeshSpace,qty)
+    qty_flipped = flip_sign(space,qty)
+    mesh = GT.mesh(space)
+    D = num_dims(mesh)
+    phi = physical_map(mesh,D)
+    call(qty_flipped,phi) do σ,phi
+        u -> begin
+            v = x->begin
+                J = ForwardDiff.jacobian(phi,x)
+                (J/change_of_measure(J))\u(x)
+            end
+            σ(v)
+        end
+    end
+end
+
+function flip_sign(space,qty)
+    D = num_dims(mesh(space))
+    quantity() do index
+        face_dof_flip = get_symbol!(index,sign_flip_accessor(space),"face_dof_flip")
+        face = face_index(index,D)
+        t = term(qty,index)
+        dof = dof_index(t)
+        expr = @term begin
+            flip = $face_dof_flip($face)($dof)
+            s = $(expression(t))
+            x->flip*s(x)
+        end
+        expr_term(D,expr,x->1*prototype(t)(x),index)
+    end
+end
+
+function sign_flip_criterion(cell,cells)
+    if cell == cells[1]
+        1
+    else
+        -1
+    end
+end
+
+function sign_flip_accessor(space::RaviartThomasMeshSpace)
+    D = num_dims(mesh(space))
+    cell_rid = face_reference_id(space)
+    rid_fe = reference_spaces(space)
+    rid_ldof_lface = map(rid_fe) do fe
+        nldofs = num_dofs(fe)
+        ldof_lface = zeros(Int32,nldofs)
+        lface_to_ldofs = face_own_dofs(fe,D-1)
+        for (lface,ldofs) in enumerate(lface_to_ldofs)
+            ldof_lface[ldofs] .= lface
+        end
+        ldof_lface
+    end
+    topo = topology(mesh(space))
+    cell_faces = face_incidence(topo,D,D-1)
+    face_cells = face_incidence(topo,D-1,D)
+    function cell_dof_flip(cell)
+        rid = cell_rid[cell]
+        ldof_lface = rid_ldof_lface[rid]
+        lface_to_face = cell_faces[cell]
+        function dof_flip(ldof)
+            lface = ldof_lface[ldof]
+            if lface == 0
+                return 1
+            end
+            face = lface_to_face[lface]
+            cells = face_cells[face]
+            sign_flip_criterion(cell,cells)
+        end
+    end
+end
+
+function cartesian_product(spaces::AbstractSpace...)
+    CartesianProductSpace(spaces)
+end
+
+struct CartesianProductSpace{A} <: GT.AbstractSpace
+    spaces::A
+end
+
+function mesh(space::CartesianProductSpace)
+    GT.mesh(first(space.spaces))
+end
+
+function LinearAlgebra.:×(a::AbstractSpace,b::AbstractSpace)
+    cartesian_product(a,b)
+end
+
+function LinearAlgebra.:×(a::CartesianProductSpace,b::AbstractSpace)
+    cartesian_product(a.spaces...,b)
+end
+
+function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
+    cartesian_product(a,b.spaces...)
+end
+
+function fields(a::CartesianProductSpace)
+    a.spaces
+end
+
+function field(u::CartesianProductSpace,field::Integer)
+    u.spaces[field]
+end
+
+function num_fields(a::CartesianProductSpace)
+    length(a.spaces)
+end
+
+function domain(a::CartesianProductSpace)
+    domains = map(GT.domain,a.spaces)
+    domain = first(domains)
+    if all(dom -> dom == domain,domains)
+        domain
+    else
+        # TODO generalize the concept of AbstractQuantity
+        # by introducing PiecewiseQuantity and PiecewiseDomain
+        # include also domain id in index
+        # I am not sure about this. Not needed in practice
+        error("Case not yet implemented")
+    end
+end
+
+function domain(a::CartesianProductSpace,field)
+    GT.domain(GT.field(a,field))
+end
+
+function face_dofs(a::CartesianProductSpace)
+    error("Not implemented, not needed in practice")
+end
+
+function face_dofs(a::CartesianProductSpace,field)
+    face_dofs(a.spaces[field])
+end
+
+function free_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        free_dofs(a,field)
+    end |> BRange
+end
+
+function free_dofs(a::CartesianProductSpace,field)
+    f = GT.field(a,field)
+    free_dofs(f)
+end
+
+function dirichlet_dofs(a::CartesianProductSpace)
+    nfields = GT.num_fields(a)
+    map(1:nfields) do field
+        dirichlet_dofs(a,field)
+    end |> BRange
+end
+
+function dirichlet_dofs(a::CartesianProductSpace,field)
+    f = GT.field(a,field)
+    dirichlet_dofs(f)
+end
+
+function form_argument_quantity(a::CartesianProductSpace,axis)
+    fields = ntuple(identity,GT.num_fields(a))
+    map(fields) do field
+        GT.form_argument_quantity(GT.field(a,field),axis,field)
+    end
+end
+
+function discrete_field_quantity(a::CartesianProductSpace,free_vals,diri_vals)
+    nothing
+end
+
+function shape_function_quantity(a::CartesianProductSpace,field)
+    error("Not implemented yet. Not needed in practice.")
+end
+
+function dual_basis_quantity(a::CartesianProductSpace)
+    error("Not implemented yet. Not needed in practice.")
+end
+
+function dual_basis_quantity(a::CartesianProductSpace,field)
+    error("Not implemented yet. Not needed in practice.")
+end
