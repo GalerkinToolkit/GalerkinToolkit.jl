@@ -112,6 +112,53 @@ mesh = GT.complexify(fe)
 mesh = GT.simplexify(cube2)
 mesh = GT.complexify(cube2)
 
+D = 0
+order = 1
+fe = GT.lagrange_space(GT.unit_n_cube(Val(D)),order)
+@test GT.interior_nodes(fe) == [1]
+
+D = 1
+order = 1
+fe = GT.lagrange_space(GT.unit_n_cube(Val(D)),order)
+
+@test GT.num_dims(fe) == 1
+@test GT.num_nodes(fe) == 2
+@test GT.order(fe) == 1
+@test GT.conforming(fe) == true
+@test GT.space_type(fe) == :Q
+
+@test GT.interior_nodes(fe) == Int[]
+
+D = 2
+order = 1
+fe = GT.lagrange_space(GT.unit_n_cube(Val(D)),order)
+@show GT.interior_nodes(fe)
+
+@test GT.face_nodes(fe,0) == [[1], [2], [3], [4]]
+@test GT.face_nodes(fe,1) == [[1, 2], [3, 4], [1, 3], [2, 4]]
+@test GT.face_nodes(fe,2) == [[1, 2, 3, 4]]
+
+@test GT.face_interior_nodes(fe,0) == [[1], [2], [3], [4]]
+@test GT.face_interior_nodes(fe,1) == [[], [], [], []]
+@test GT.face_interior_nodes(fe,2) == [Int64[]]
+
+
+GT.face_interior_node_permutations(fe,0)
+GT.face_interior_node_permutations(fe,1)
+GT.face_interior_node_permutations(fe,2)
+
+GT.face_dofs(fe,0)
+GT.face_dofs(fe,1)
+GT.face_dofs(fe,2)
+
+GT.face_own_dofs(fe,0)
+GT.face_own_dofs(fe,1)
+GT.face_own_dofs(fe,2)
+
+GT.face_own_dof_permutations(fe,0)
+GT.face_own_dof_permutations(fe,1)
+GT.face_own_dof_permutations(fe,2)
+
 D = 2
 order = 3
 fe = GT.lagrange_space(GT.unit_n_cube(Val(D)),order)
@@ -205,7 +252,7 @@ end
 
 domain = (0,1,0,1)
 cells = (2,2)
-mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
+mesh = GT.cartesian_mesh(domain,cells;simplexify=false)
 GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 GT.label_interior_faces!(mesh;physical_name="interior_faces")
 
@@ -216,6 +263,16 @@ D = GT.num_dims(mesh)
 Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
 dΛ = GT.measure(Λ,2*order)
 n = GT.unit_normal(mesh,D-1)
+
+
+V = GT.lagrange_space(Ω,1)
+GT.reference_face_own_dofs(V,0) |> display
+GT.reference_face_own_dofs(V,1) |> display
+GT.reference_face_own_dofs(V,2) |> display
+
+display(GT.face_dofs(V))
+
+
 V = GT.raviart_thomas_space(Ω,order)
 #V = GT.lagrange_space(Ω,order,shape=(D,))
 uh = GT.zero_field(Float64,V)

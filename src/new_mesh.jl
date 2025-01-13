@@ -119,13 +119,15 @@ end
 function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
     physical_names=[label_boundary_faces!(mesh)],
-    is_reference_domain=Val(false)
+    is_reference_domain=Val(false),
+    face_around = 1,
     )
     d = num_dims(mesh) - 1
     mesh_domain(;
         mesh,
         mesh_id,
         physical_names,
+        face_around,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
 end

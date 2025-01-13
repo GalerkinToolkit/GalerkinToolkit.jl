@@ -109,7 +109,7 @@ end
 
 function assemble_vector(f,space,::Type{T};kwargs...) where T
     axis = 1
-    dv = GT.form_argument(space,axis)
+    dv = GT.form_argument_quantity(space,axis)
     integral = f(dv)
     assemble_vector(integral,space,T;kwargs...)
 end
@@ -152,7 +152,7 @@ end
 
 function assemble_vector!(f,space,b,cache)
     dim = 1
-    dv = GT.form_argument(space,dim)
+    dv = GT.form_argument_quantity(space,dim)
     integral = f(dv)
     assemble_vector!(integral,b,cache)
 end
@@ -218,16 +218,6 @@ function assemble_vector_allocate(state)
     (;counter,vector_strategy,setup) = state
     alloc = vector_strategy.allocate(counter,setup)
     (;alloc,state...)
-end
-
-function max_local_dofs(space,field)
-    rid_to_reffe = reference_fes(component(space,field))
-    map(num_dofs,rid_to_reffe) |> maximum
-end
-
-function max_local_dofs(space)
-    nfields = num_fields(space)
-    map(field->max_local_dofs(space,field),1:nfields) |> maximum
 end
 
 function assemble_vector_fill!(integral,state)
@@ -328,8 +318,8 @@ end
 function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
     test_dim = 1
     trial_dim = 2
-    dv = GT.form_argument(test_space,test_dim)
-    du = GT.form_argument(trial_space,trial_dim)
+    dv = GT.form_argument_quantity(test_space,test_dim)
+    du = GT.form_argument_quantity(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix(integral,trial_space,test_space,T;kwargs...)
 end
@@ -355,8 +345,8 @@ end
 function assemble_matrix!(f,trial_space,test_space,A,cache)
     test_dim = 1
     trial_dim = 2
-    dv = GT.form_argument(test_space,test_dim)
-    du = GT.form_argument(trial_space,trial_dim)
+    dv = GT.form_argument_quantity(test_space,test_dim)
+    du = GT.form_argument_quantity(trial_space,trial_dim)
     integral = f(du,dv)
     assemble_matrix!(integral,A,cache)
 end
@@ -789,8 +779,8 @@ function nonlinear_ode(
     U = space(uts[1])
     test=1
     trial=2
-    v = form_argument(V,test)
-    du = form_argument(U,trial)
+    v = form_argument_quantity(V,test)
+    du = form_argument_quantity(U,trial)
     t0 = first(tspan)
     uhs_0 = map(uh->uh(t0),uts)
     coeffs_0 = map(uh_0 -> one(eltype(free_values(uh_0))),uhs_0) 

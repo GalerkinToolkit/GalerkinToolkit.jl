@@ -30,7 +30,10 @@ D = GT.num_dims(mesh)
 
 Γ = GT.physical_domain(Γref)
 
-V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ωref,1;dirichlet_boundary=Γdiri)
+@show GT.num_free_dofs(V)
+@show GT.num_dirichlet_dofs(V)
+
 
 degree = 2
 dΩref = GT.measure(Ωref,degree)
@@ -60,6 +63,8 @@ end
 
 jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
 
+@show GT.is_boundary(Γref)
+
 function l(v)
     ∫(dΩref) do q
         J = ForwardDiff.jacobian(ϕ,q)
@@ -77,6 +82,9 @@ function l(v)
 end
 
 b = GT.assemble_vector(l,V,Float64)
+
+@test length(b) == GT.num_free_dofs(V)
+
 
 function l(v)
     ∫(dΛref) do p
@@ -121,6 +129,7 @@ function a(u,v)
 end
 
 A = GT.assemble_matrix(a,V,V,Float64)
+@test size(A,1) == GT.num_free_dofs(V)
 
 function a((u1,u2),(v1,v2))
     ∫(dΩref) do q
@@ -153,9 +162,15 @@ f = GT.analytical_field(sum,Ω)
 
 l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
 
-V = GT.iso_parametric_space(Ωref)
+V = GT.lagrange_space(Ωref,1)#;dirichlet_boundary=Γdiri)
 
 p = GT.linear_problem(Float64,V,a,l)
+A = PS.matrix(p)
+b = PS.rhs(p)
+display(A)
+@show GT.num_free_dofs(V)
+@test size(A,1) == GT.num_free_dofs(V)
+@test length(b) == GT.num_free_dofs(V)
 x = PS.matrix(p)\PS.rhs(p)
 uh = GT.solution_field(V,x)
 

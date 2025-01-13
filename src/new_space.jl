@@ -1,9 +1,21 @@
 
 
+domain(space::LagrangeMeshSpace,field) = domain(space)
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
+
+function max_local_dofs(space::AbstractSpace,field)
+    rid_to_reffe = reference_spaces(GT.field(space,field))
+    map(num_dofs,rid_to_reffe) |> maximum
+end
+
+function max_local_dofs(space::AbstractSpace)
+    nfields = num_fields(space)
+    map(field->max_local_dofs(space,field),1:nfields) |> maximum
+end
+
 
 function free_dofs(a::AbstractSpace,field)
     @assert field == 1
@@ -774,14 +786,12 @@ function lagrange_space(domain::LagrangeFaceDomain, order;
                tensor_size)
 end
 
-function default_space_type(geom::LagrangeFaceDomain)
-    if is_simplex(geom)
-        :P
-    elseif is_n_cube(geom)
-        :Q
-    else
-        error("Not implemented")
-    end
+function default_space_type(geom::UnitNCube)
+    :Q
+end
+
+function default_space_type(geom::UnitSimplex)
+    :P
 end
 
 function lagrange_face_space(;
@@ -973,7 +983,13 @@ function dof_node(fe::LagrangeFaceSpace)
 end
 
 function conforming(fe::LagrangeFaceSpace)
-    nonconforming = (order(fe) == 0) || (is_n_cube(domain(fe)) && space_type(fe) === :P)
+    if order(fe) == 0
+        return false
+    end
+    if num_dims(fe) in (0,1)
+        return true
+    end
+    nonconforming = (is_n_cube(domain(fe)) && space_type(fe) === :P)
     ! nonconforming
 end
 
