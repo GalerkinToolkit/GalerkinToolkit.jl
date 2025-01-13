@@ -1,38 +1,4 @@
 
-"""
-    abstract type AbstractDomain <: AbstractType end
-
-Abstract type representing the geometry of a single mesh face, typically one of the reference faces.
-
-# Basic queries
-
-- [`num_dims`](@ref)
-- [`is_axis_aligned`](@ref)
-- [`is_simplex`](@ref)
-- [`is_n_cube`](@ref)
-- [`is_unit_n_cube`](@ref)
-- [`is_unit_simplex`](@ref)
-- [`is_unitary`](@ref)
-- [`bounding_box`](@ref)
-- [`vertex_permutations`](@ref)
-- [`mesh`](@ref)
-- [`faces`](@ref)
-- [`inverse_faces`](@ref)
-- [`geometries`](@ref)
-- [`topology`](@ref)
-- [`geometries`](@ref)
-- [`options`](@ref)
-- [`is_boundary`](@ref)
-- [`face_around`](@ref)
-
-# Basic constructors
-
-- [`unit_simplex`](@ref)
-- [`unit_n_cube`](@ref)
-- [`domain`](@ref)
-
-"""
-abstract type AbstractDomain <: AbstractType end
 
 domain(a::AbstractDomain) = a
 
@@ -43,6 +9,7 @@ is_unitary(geo::AbstractDomain) = false
 num_ambient_dims(a::AbstractDomain) = num_ambient_dims(mesh(a))
 is_physical_domain(a::AbstractDomain) = ! is_reference_domain(a)
 options(a::AbstractDomain) = options(mesh(a))
+num_faces(a::AbstractDomain) = length(faces(a))
 
 function is_unit_n_cube(geo::AbstractDomain)
     is_n_cube(geo) && is_unitary(geo)
@@ -57,8 +24,6 @@ end
 function is_boundary(dom::AbstractDomain)
     face_around(dom) !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
 end
-
-abstract type AbstractFaceDomain <: AbstractDomain end
 
 num_faces(geo::AbstractFaceDomain) = 1
 faces(geo::AbstractFaceDomain) = [1]
@@ -522,7 +487,7 @@ function reference_domain(domain::PhysicalDomain)
     physical_names = GT.physical_names(domain)
     is_reference_domain = Val(true)
     face_around = GT.face_around(domain)
-    workspace = domain.workspace
+    workspace = GT.workspace(domain)
     GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
 end
 
@@ -537,7 +502,7 @@ function physical_domain(domain::ReferenceDomain)
     physical_names = GT.physical_names(domain)
     face_around = GT.face_around(domain)
     is_reference_domain = Val(false)
-    workspace = domain.workspace
+    workspace = GT.workspace(domain)
     GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
 end
 

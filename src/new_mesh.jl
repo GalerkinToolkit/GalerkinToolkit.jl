@@ -1,25 +1,4 @@
 
-"""
-    abstract type AbstractMesh
-
-# Basic queries
-
-- [`node_coordinates`](@ref)
-- [`face_nodes`](@ref)
-- [`face_reference_id`](@ref)
-- [`reference_spaces`](@ref)
-- [`periodic_nodes`](@ref)
-- [`physical_faces`](@ref)
-- [`outward_normals`](@ref)
-
-# Basic constructors
-
-- [`mesh`](@ref)
-- [`mesh_from_gmsh`](@ref)
-- [`cartesian_mesh`](@ref)
-
-"""
-abstract type AbstractMesh end
 
 num_dims(m::AbstractMesh) = length(reference_spaces(m))-1
 num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
@@ -31,12 +10,12 @@ num_faces(mesh::AbstractMesh) = map(length,face_reference_id(mesh))
 function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     groups = physical_faces(m,d)
     if haskey(groups,physical_name)
-        return m
+        return physical_name
     end
     Ti = int_type(options(m))
     faces = collect(Ti,1:num_faces(m,d))
     groups[physical_name] = faces
-    m
+    physical_name
 end
 
 function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
@@ -44,13 +23,13 @@ function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACE
     d = D-1
     groups = physical_faces(mesh,d)
     if haskey(groups,physical_name)
-        return m
+        return physical_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==2,face_to_cells)
     groups[physical_name] = faces
-    mesh
+    physical_name
 end
 
 function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
@@ -58,21 +37,68 @@ function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACE
     d = D-1
     groups = physical_faces(mesh,d)
     if haskey(groups,physical_name)
-        return m
+        return physical_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==1,face_to_cells)
     groups[physical_name] = faces
-    mesh
+    physical_name
 end
 
-function domain(mesh::AbstractMesh,d;is_reference_domain=Val(false),physical_name="__$d-FACES__")
-    label_faces_in_dim!(mesh,d;physical_name)
+function domain(mesh::AbstractMesh,d;
+    mesh_id = objectid(mesh),
+    face_around=nothing,
+    is_reference_domain=Val(false)
+    )
+    physical_name = label_faces_in_dim!(mesh,d)
     mesh_domain(;
         mesh,
+        mesh_id,
         num_dims=Val(val_parameter(d)),
         physical_names=[physical_name],
+        is_reference_domain)
+end
+
+function interior(mesh::AbstractMesh;
+    mesh_id = objectid(mesh),
+    physical_names=[label_faces_in_dim!(mesh,num_dims(mesh))],
+    is_reference_domain=Val(false)
+    )
+    d = num_dims(mesh)
+    mesh_domain(;
+        mesh,
+        mesh_id,
+        physical_names,
+        num_dims=Val(val_parameter(d)),
+        is_reference_domain)
+end
+
+function skeleton(mesh::AbstractMesh;
+    mesh_id = objectid(mesh),
+    physical_names=[label_interior_faces!(mesh)],
+    is_reference_domain=Val(false)
+    )
+    d = num_dims(mesh) - 1
+    mesh_domain(;
+        mesh,
+        mesh_id,
+        physical_names,
+        num_dims=Val(val_parameter(d)),
+        is_reference_domain)
+end
+
+function boundary(mesh::AbstractMesh;
+    mesh_id = objectid(mesh),
+    physical_names=[label_boundary_faces!(mesh)],
+    is_reference_domain=Val(false)
+    )
+    d = num_dims(mesh) - 1
+    mesh_domain(;
+        mesh,
+        mesh_id,
+        physical_names,
+        num_dims=Val(val_parameter(d)),
         is_reference_domain)
 end
 
@@ -398,8 +424,6 @@ function physical_names(mesh;merge_dims=Val(false))
     end
     reduce(union,d_to_names)
 end
-
-abstract type AbstractChain <: AbstractType end
 
 num_dims(m::AbstractChain) = num_dims(domain(first(reference_spaces(m))))
 num_ambient_dims(m::AbstractChain) = length(eltype(node_coordinates(m)))

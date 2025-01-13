@@ -19,18 +19,18 @@ cube2 = GT.unit_n_cube(2)
 cube3 = GT.unit_n_cube(3)
 
 degree = 4
-quad = GT.default_quadrature(spx0,degree)
-quad = GT.default_quadrature(spx1,degree)
-quad = GT.default_quadrature(spx2,degree)
-quad = GT.default_quadrature(spx3,degree)
+quad = GT.quadrature(spx0,degree)
+quad = GT.quadrature(spx1,degree)
+quad = GT.quadrature(spx2,degree)
+quad = GT.quadrature(spx3,degree)
 
-quad = GT.default_quadrature(cube0,degree)
+quad = GT.quadrature(cube0,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube1,degree)
+quad = GT.quadrature(cube1,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube2,degree)
+quad = GT.quadrature(cube2,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube3,degree)
+quad = GT.quadrature(cube3,degree)
 @test sum(GT.weights(quad)) ≈ 1
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
@@ -38,8 +38,6 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 domain = (0,2,0,2)
 cells = (8,8)
 mesh = GT.cartesian_mesh(domain,cells)
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
-GT.label_interior_faces!(mesh;physical_name="interior_faces")
 
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
@@ -57,6 +55,7 @@ int = ∫(dΩref) do q
 end
 sum(int)
 @test sum(int) ≈ 8
+
 
 int = ∫(dΩref) do q
     J = ForwardDiff.jacobian(ϕ,q)

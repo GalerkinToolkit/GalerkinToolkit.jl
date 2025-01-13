@@ -1,26 +1,7 @@
 
-"""
-    abstract type AbstractTopology
-
-# Basic queries
-- [`face_incidence`](@ref)
-- [`face_reference_id`](@ref)
-- [`face_permutation_ids`](@ref)
-- [`reference_topologies`](@ref)
-- [`vertex_permutations`](@ref)
-
-# Basic constructors
-
-- [`topology`](@ref)
-
-"""
-abstract type AbstractTopology <: AbstractType end
-
 topology(a::AbstractTopology) = a
 num_dims(t::AbstractTopology) = length(reference_topologies(t))-1
 num_faces(t::AbstractTopology,d) = length(face_reference_id(t,d))
-
-abstract type AbstractFaceTopology <: AbstractTopology end
 
 struct FaceTopology{A} <: AbstractFaceTopology
     contents::A
@@ -111,8 +92,6 @@ end
 function face_permutation_ids(a::FaceTopology,d,D)
     face_permutation_ids(a)[d+1,D+1]
 end
-
-abstract type AbstractMeshTopology <:AbstractTopology end
 
 struct MeshTopology{A} <: AbstractMeshTopology
     contents::A

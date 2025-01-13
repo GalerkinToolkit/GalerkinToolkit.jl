@@ -1,29 +1,4 @@
 
-"""
-    abstract type AbstractQuadrature
-
-# Basic queries
-
-- [`domain`](@ref)
-- [`coordinates`](@ref)
-- [`weights`](@ref)
-- [`num_points`]
-- [`face_reference_id`](@ref)
-- [`reference_quadratures`](@ref)
-
-# Basic constructors
-
-- [`quadrature`](@ref)
-- [`duffy_quadrature`](@ref)
-- [`tensor_product_quadrature`](@ref)
-- [`node_quadrature`](@ref)
-
-# Supertype hierarchy
-
-    AbstractQuadrature <: GT.AbstractType
-"""
-abstract type AbstractQuadrature <: AbstractType end
-
 function num_points_accessor(measure::AbstractQuadrature)
     mesh = GT.mesh(measure)
     dom = GT.domain(measure)
@@ -123,8 +98,6 @@ end
 function change_of_measure(J)
     sqrt(det(transpose(J)*J))
 end
-
-abstract type AbstractFaceQuadrature <: AbstractQuadrature end
 
 function face_quadrature(;domain,coordinates,weights)
     contents = (;domain,coordinates,weights)
@@ -738,8 +711,6 @@ function strang_quadrature_5(geo::UnitSimplex{3})
     w[14] = r
     face_quadrature(;domain=geo,coordinates=x,weights=w)
 end
-
-abstract type AbstractMeshQuadrature{A} <: AbstractQuadrature end
 
 function quadrature(domain::AbstractMeshDomain,degree)
     rid_to_dom = reference_domains(domain)
