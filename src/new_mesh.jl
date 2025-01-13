@@ -7,6 +7,34 @@ num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
 num_nodes(fe::AbstractMesh) = length(node_coordinates(fe))
 num_faces(mesh::AbstractMesh) = map(length,face_reference_id(mesh))
 
+function face_offset(a)
+    D = num_dims(a)
+    offsets = zeros(Int,D+1)
+    for d in 1:D
+        offsets[d+1] = offsets[d] + num_faces(a,d-1)
+    end
+    offsets
+end
+function face_offset(a,d)
+    face_offset(a)[d+1]
+end
+function face_range(a,d)
+    o = face_offset(a,d)
+    o .+ (1:num_faces(a,d))
+end
+function face_range(a)
+    D = num_dims(a)
+    map(d->face_range(a,d),0:D)
+end
+#function face_dim(a,d)
+#    n = num_faces(a,d)
+#    fill(d,n)
+#end
+#function face_dim(a)
+#    D = num_dims(a)
+#    reduce(vcat,map(d->face_dim(a,d),0:D))
+#end
+
 function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     groups = physical_faces(m,d)
     if haskey(groups,physical_name)
@@ -379,6 +407,21 @@ function replace_workspace(mesh::Mesh,workspace)
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 workspace,
+               )
+    Mesh(contents)
+end
+
+function replace_node_coordinates(mesh::Mesh,node_coordinates)
+    contents = (;
+                node_coordinates,
+                face_nodes=face_nodes(mesh),
+                face_reference_id=face_reference_id(mesh),
+                reference_spaces=reference_spaces(mesh),
+                periodic_nodes=periodic_nodes(mesh),
+                physical_faces=physical_faces(mesh),
+                outward_normals=outward_normals(mesh),
+                is_cell_complex=Val(is_cell_complex(mesh)),
+                workspace=workspace(mesh),
                )
     Mesh(contents)
 end

@@ -774,9 +774,18 @@ domain(a::LagrangeFaceSpace) = a.contents.domain
 order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
 space_type(fe::LagrangeFaceSpace) = fe.contents.space_type
-lib_to_user_nodes(fe::LagrangeFaceSpace) = fe.contents.lib_to_user_nodes
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
+
+function lib_to_user_nodes(fe::LagrangeFaceSpace)
+    if val_parameter(fe.contents.lib_to_user_nodes) === :default
+        nnodes = num_nodes(fe)
+        Ti = int_type(options(fe))
+        collect(Ti.(1:nnodes))
+    else
+        fe.contents.lib_to_user_nodes
+    end
+end
 
 function monomial_exponents(a::LagrangeFaceSpace)
     range_per_dir = map(k->0:k,order_per_dir(a))

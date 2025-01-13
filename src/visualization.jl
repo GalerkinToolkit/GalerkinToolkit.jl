@@ -100,7 +100,7 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
             vnode_prev = vnode + 1
         end
         vcell_to_vnodes = JaggedArray(vcell_to_vnodes_data,vcell_to_vnodes_ptrs)
-        vchain = GT.chain(
+        vchain = GT.chain(;
                         node_coordinates = vnode_to_coords,
                         face_nodes = vcell_to_vnodes,
                         face_reference_id = vcell_to_vrefid,
@@ -116,15 +116,15 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
     refid_to_refmesh = map(refid_to_refface) do ref_face
         if order === nothing && refinement === nothing
             # Use the given cells as visualization cells
-            mesh_from_reference_face(ref_face)
+            complexify(ref_face)
         elseif order !== nothing && refinement === nothing
             # Use cells of given order as visualization cells
-            geo = geometry(ref_face)
-            ref_face_ho = lagrange_mesh_face(geo,order)
-            mesh_from_reference_face(ref_face_ho)
+            geo = GT.domain(ref_face)
+            ref_face_ho = lagrange_space(geo,order)
+            complexify(ref_face_ho)
         elseif order === nothing && refinement !== nothing
             # Use linear sub-cells with $refinement per direction per direction
-            geom = geometry(ref_face)
+            geom = GT.deomain(ref_face)
             refine_reference_geometry(geom,refinement)
         else
             error("order and refinement kw-arguments can not be given at the same time")
@@ -136,7 +136,7 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
     end
     refid_to_scell_to_snodes = map(refmesh->face_nodes(refmesh,dim),refid_to_refmesh)
     refid_to_scell_to_srefid = map(refmesh->face_reference_id(refmesh,dim),refid_to_refmesh)
-    refid_to_srefid_to_oid = map(refmesh->map(objectid,reference_spaces(refmesh,dim)),refid_to_refmesh)
+    refid_to_srefid_to_oid = map(refmesh->collect(map(objectid,reference_spaces(refmesh,dim))),refid_to_refmesh)
     refid_to_srefid_to_vrefface = map(refmesh->reference_spaces(refmesh,dim),refid_to_refmesh)
     refid_to_snode_to_coords = map(node_coordinates,refid_to_refmesh)
     node_to_coords = node_coordinates(mesh)
@@ -488,12 +488,12 @@ end
 function node_data(mesh::AbstractMesh)
     nnodes = num_nodes(mesh)
     dict = Dict{String,Vector{Int32}}()
-    for group in physical_nodes(mesh;merge_dims=Val(true))
-        name,nodes = group
-        node_mask = zeros(Int32,nnodes)
-        node_mask[nodes] .= 1
-        dict[name] = node_mask
-    end
+    #for group in physical_nodes(mesh;merge_dims=Val(true))
+    #    name,nodes = group
+    #    node_mask = zeros(Int32,nnodes)
+    #    node_mask[nodes] .= 1
+    #    dict[name] = node_mask
+    #end
     #dict["__LOCAL_NODE__"] = collect(1:nnodes)
     dict
 end
@@ -611,13 +611,13 @@ function shrink(plt::Plot;scale=0.75)
             end
         end
     end
-    new_mesh = GT.mesh_from_arrays(
-            newnode_to_x,
-            face_newnodes,
-            face_reference_id(mesh),
-            reference_spaces(mesh);
+    new_mesh = GT.mesh(;
+            node_coordinates = newnode_to_x,
+            face_nodes = face_newnodes,
+            face_reference_id = face_reference_id(mesh),
+            reference_spaces = reference_spaces(mesh),
             physical_faces = physical_faces(mesh), # TODO propagate also periodic nodes??
-            outwards_normals = outwards_normals(mesh)
+            outward_normals = outward_normals(mesh)
            )
     newnode_data = Dict{String,Any}()
     for (k,node_to_val) in node_data(plt)
@@ -645,7 +645,7 @@ end
 
 function plot(domain::AbstractDomain;kwargs...)
     mesh = GT.mesh(domain)
-    d = GT.face_dim(domain)
+    d = GT.num_dims(domain)
     domface_to_face = GT.faces(domain)
     vismesh = GT.visualization_mesh(mesh,d,domface_to_face;kwargs...)
     node_data = Dict{String,Any}()
@@ -747,7 +747,7 @@ end
 
 function reference_coordinates(plt::Plot)
     domain = GT.reference_domain(plt.cache.domain)
-    d = GT.face_dim(domain)
+    d = GT.num_dims(domain)
     domface_to_face = GT.faces(domain)
     mesh = GT.mesh(domain)
     vmesh, vglue = GT.visualization_mesh(plt,glue=true)
@@ -804,8 +804,8 @@ function vtk_args end
 function vtk_args! end
 function vtk_physical_faces end
 function vtk_physical_faces! end
-function vtk_physical_nodes end
-function vtk_physical_nodes! end
+#function vtk_physical_nodes end
+#function vtk_physical_nodes! end
 function vtk_mesh_cell end
 function vtk_mesh_cell! end
 function translate_vtk_data end
