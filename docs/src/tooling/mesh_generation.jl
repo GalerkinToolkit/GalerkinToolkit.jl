@@ -106,7 +106,7 @@ domain = (0,1,2,3)
 cells_per_dir = (10,10)
 parts_per_dir = (2,2)
 parts = LinearIndices((prod(parts_per_dir),))
-pmesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
+pmesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
 Makie.plot(pmesh;color=GT.FaceData("__OWNER__"),strokecolor=:blue)
 FileIO.save(joinpath(@__DIR__,"fig_mg_pmesh.png"),Makie.current_figure()) # hide
 
@@ -147,17 +147,17 @@ FileIO.save(joinpath(@__DIR__,"fig_mg_pmesh_a.png"),Makie.current_figure()) # hi
 
 order = 1
 triangle = GT.unit_simplex(Val(2))
-triangle3 = GT.lagrange_mesh_face(triangle,order)
+triangle3 = GT.lagrange_space(triangle,order)
 node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
 cell_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
 cell_to_type = [1,1,1]
 type_to_refcell = [triangle3]
-chain = GT.chain_from_arrays(
-        node_to_coords,
-        cell_to_nodes,
-        cell_to_type,
-        type_to_refcell)
-mesh = GT.mesh_from_chain(chain)
+chain = GT.chain(;
+        node_coordinates = node_to_coords,
+        face_nodes = cell_to_nodes,
+        face_reference_id = cell_to_type,
+        reference_spaces = type_to_refcell)
+mesh = GT.mesh(chain)
 Makie.plot(mesh,color=:pink,strokecolor=:blue)
 FileIO.save(joinpath(@__DIR__,"fig_mg_mfa.png"),Makie.current_figure()) # hide
 
@@ -166,16 +166,16 @@ FileIO.save(joinpath(@__DIR__,"fig_mg_mfa.png"),Makie.current_figure()) # hide
 # Now, include also a square element
 
 square = GT.unit_n_cube(Val(2))
-square4 = GT.lagrange_mesh_face(square,order)
+square4 = GT.lagrange_space(square,order)
 cell_to_nodes = [[1,2,3,4],[2,4,5]]
 cell_to_type = [2,1]
 type_to_refcell = (triangle3,square4)
-chain = GT.chain_from_arrays(
-        node_to_coords,
-        cell_to_nodes,
-        cell_to_type,
-        type_to_refcell)
-mesh = GT.mesh_from_chain(chain)
+chain = GT.chain(;
+        node_coordinates = node_to_coords,
+        face_nodes = cell_to_nodes,
+        face_reference_id = cell_to_type,
+        reference_spaces = type_to_refcell)
+mesh = GT.mesh(chain)
 Makie.plot(mesh,color=:pink,strokecolor=:blue)
 FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_2.png"),Makie.current_figure()) # hide
 
@@ -190,9 +190,9 @@ FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_2.png"),Makie.current_figure()) # hide
 # triangles, segments, and vertices.
 
 segment = GT.unit_simplex(Val(1))
-segment2 = GT.lagrange_mesh_face(segment,order)
+segment2 = GT.lagrange_space(segment,order)
 vertex = GT.unit_simplex(Val(0))
-vertex1 = GT.lagrange_mesh_face(vertex,order)
+vertex1 = GT.lagrange_space(vertex,order)
 node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
 face2_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
 face2_to_type = [1,1,1]
@@ -203,7 +203,11 @@ face0_to_type = [1,1]
 face_to_nodes = [face0_to_nodes,face1_to_nodes,face2_to_nodes]
 face_to_type = [face0_to_type,face1_to_type,face2_to_type]
 type_to_refcell = ([vertex1],[segment2],[triangle3])
-mesh = GT.mesh_from_arrays(node_to_coords,face_to_nodes,face_to_type,type_to_refcell)
+mesh = GT.mesh(
+            node_coordinates = node_to_coords,
+            face_nodes = face_to_nodes,
+            face_reference_id = face_to_type,
+            reference_spaces = type_to_refcell)
 Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))
 FileIO.save(joinpath(@__DIR__,"fig_mg_mfa_3.png"),Makie.current_figure()) # hide
 

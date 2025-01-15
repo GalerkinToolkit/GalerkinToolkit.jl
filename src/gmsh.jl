@@ -155,7 +155,8 @@ function mesh_from_gmsh_module(;complexify=true)
             refdfaces = (refdfaces...,refface)
         end
         if refdfaces == ()
-            refdfaces = reference_spaces(boundary(first(first(my_reference_spaces))),d)
+            meshd = GT.complexify(first(first(my_reference_spaces)))
+            refdfaces = GT.reference_spaces(meshd,d)
         end
         my_reference_spaces = (refdfaces,my_reference_spaces...)
     end
