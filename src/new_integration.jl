@@ -34,6 +34,13 @@ function reference_quadratures(measure::Measure)
     refid_to_quad
 end
 
+function face_reference_id(m::Measure)
+    domain = GT.domain(m)
+    mesh = GT.mesh(domain)
+    d = GT.num_dims(domain)
+    face_reference_id(mesh,d)
+end
+
 function coordinates(measure::Measure)
     domain = GT.domain(measure)
     coordinates(measure,domain)
@@ -355,4 +362,26 @@ end
 
 function Base.:/(int::Integral,v::Number)
     (1/v)*int
+end
+
+function quadrature(m::Measure)
+    mesh_quadrature(;
+        domain=domain(m),
+        reference_quadratures = reference_quadratures(m),
+        face_reference_id = face_reference_id(m)
+       )
+end
+
+function num_points_accessor(measure::Measure)
+    num_points_accessor(quadrature(measure))
+end
+
+function coordinate_accessor(measure::Measure)
+    coordinate_accessor(quadrature(measure))
+end
+function jacobian_accessor(measure::Measure)
+    jacobian_accessor(quadrature(measure))
+end
+function weight_accessor(measure::Measure)
+    weight_accessor(quadrature(measure))
 end

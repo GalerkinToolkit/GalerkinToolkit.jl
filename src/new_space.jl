@@ -2084,3 +2084,156 @@ end
 function dual_basis_quantity(a::CartesianProductSpace,field)
     error("Not implemented yet. Not needed in practice.")
 end
+
+function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::Measure)
+    mesh = measure.mesh
+    dom = measure.domain
+    @assert !is_reference_domain(dom)
+    d = num_dims(dom)
+    @assert num_dims(domain(space)) == d
+    # TODO assumes same reference elems for integration and for interpolation
+    rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(space)) do point_to_x, refface
+        tabulator(refface)(f,point_to_x)
+    end
+    face_to_rid = face_reference_id(mesh,d)
+    sface_to_face = faces(dom)
+    function face_point_dof_s(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        tab = rid_to_tab[rid]
+        function point_dof_s(point,J=nothing)
+            function dof_s(dof)
+                tab[point,dof]
+            end
+        end
+    end
+end
+
+function shape_function_accessor(f::typeof(ForwardDiff.gradient),space::AbstractSpace,measure::Measure)
+    mesh = measure.mesh
+    dom = measure.domain
+    @assert !is_reference_domain(dom)
+    d = num_dims(dom)
+    @assert num_dims(domain(space)) == d
+    rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(space)) do point_to_x, refface
+        tabulator(refface)(f,point_to_x)
+    end
+    rid_to_dof_to_phys = map(rid_to_tab) do tab
+        T = eltype(tab)
+        ndofs = size(tab,2)
+        # This assumes that the jacobian is a square matrix
+        zeros(T,ndofs)
+    end
+    face_to_rid = face_reference_id(mesh,d)
+    sface_to_face = faces(dom)
+    function face_point_dof_s(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        tab = rid_to_tab[rid]
+        dof_to_phys = rid_to_dof_to_phys[rid]
+        ndofs = length(dof_to_phys)
+        function point_dof_s(point,J)
+            # NB you cannot evaluate this at more than one point at once
+            for dof in 1:ndofs
+                dof_to_phys[dof] = transpose(J)\tab[point,dof]
+            end
+            function dof_s(dof)
+                dof_to_phys[dof]
+            end
+        end
+    end
+end
+
+function dofs_accessor(space::AbstractSpace,dom::AbstractDomain)
+    @assert num_fields(space) == 1
+    d = num_dims(dom)
+    dom2 = domain(space)
+    @assert num_dims(dom2) == d
+    sface_to_face = faces(dom)
+    face_to_rface = inverse_faces(dom)
+    rface_to_dofs = face_dofs(space)
+    function face_to_dofs(sface)
+        face = sface_to_face[sface]
+        rface = face_to_rface[face]
+        dofs = rface_to_dofs[rface]
+        dofs
+    end
+end
+
+function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+    dom = domain(measure)
+    space = GT.space(uh)
+    d = num_dims(dom)
+    dom2 = domain(space)
+    @assert num_dims(dom2) == d
+    sface_to_face = faces(dom)
+    face_to_rface = inverse_faces(dom)
+    rface_to_dofs = face_dofs(space)
+    rface_to_rid = face_reference_id(space)
+    free_vals = free_values(uh)
+    diri_vals = dirichlet_values(uh)
+    face_point_dof_s = shape_function_accessor(f,space,measure)
+    function face_point_val(sface)
+        face = sface_to_face[sface]
+        rface = face_to_rface[face]
+        dofs = rface_to_dofs[rface]
+        rid = rface_to_rid[rface]
+        point_dof_s = face_point_dof_s(sface)
+        ndofs = length(dofs)
+        function point_val(point,J)
+            dof_s = point_dof_s(point,J)
+            sum(1:ndofs) do i
+                dof = dofs[i]
+                s = dof_s(i)
+                if dof > 0
+                    v = free_vals[dof]
+                else
+                    v = diri_vals[-dof]
+                end
+                v*s
+            end
+        end
+    end
+end
+
+function dirichlet_accessor(uh::DiscreteField,dom::AbstractDomain)
+    space = GT.space(uh)
+    d = num_dims(dom)
+    dom2 = domain(space)
+    @assert num_dims(dom2) == d
+    sface_to_face = faces(dom)
+    face_to_rface = inverse_faces(dom)
+    rface_to_dofs = face_dofs(space)
+    rid_to_u = map(reference_spaces(space)) do fe
+        T = eltype(dirichlet_values(uh))
+        zeros(T,num_dofs(fe))
+    end
+    rface_to_rid = face_reference_id(space)
+    diri_vals = dirichlet_values(uh)
+    function face_dirichlet!(sface)
+        face = sface_to_face[sface]
+        rface = face_to_rface[face]
+        dofs = rface_to_dofs[rface]
+        rid = rface_to_rid[rface]
+        u = rid_to_u[rid]
+        fill!(u,zero(eltype(u)))
+        for (i,dof) in enumerate(dofs)
+            if dof < 0
+                u[i] = diri_vals[-dof]
+            end
+        end
+        function dirichlet!(A,b)
+            m,n = size(A)
+            z = zero(eltype(b))
+            for i in 1:m
+                bi = z
+                for j in 1:n
+                    bi += A[i,j]*u[j]
+                end
+                b[i] -= bi
+            end
+        end
+    end
+end

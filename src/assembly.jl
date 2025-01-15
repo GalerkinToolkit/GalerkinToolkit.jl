@@ -830,6 +830,133 @@ function vector_allocation(vector_strategy,space_test,domains...)
     b_alloc = vector_strategy.allocate(b_counter,b_setup)
 end
 
+function allocate_vector(
+        ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
+        vector_strategy = monolithic_vector_assembly_strategy(),
+    ) where T
+    setup = vector_strategy.init(GT.free_dofs(space_test),T)
+    counter = vector_strategy.counter(setup)
+    @assert num_fields(space_test) == 1
+    field_test = 1
+    for domain in domains
+        face_dofs = dofs_accessor(space_test,domain)
+        nfaces = num_faces(domain)
+        for face in 1:nfaces
+            dofs = face_dofs(face)
+            for dof_test in dofs
+                counter = vector_strategy.count(counter,setup,dof_test,field_test)
+            end
+        end
+    end
+    coo = vector_strategy.allocate(counter,setup)
+    counter_ref = Ref(vector_strategy.counter(setup))
+    data = (;setup,coo,counter_ref,vector_strategy)
+    VectorAllocation(data)
+end
+
+struct VectorAllocation{A} <: AbstractType
+    data::A
+end
+
+function reset!(alloc::VectorAllocation)
+    (;counter_ref,setup,vector_strategy) = alloc.data
+    counter_ref[] = vector_strategy.counter(setup)
+    alloc
+end
+
+function contribute!(alloc::VectorAllocation,b,dofs_test,field_test=1)
+    (;setup,coo,counter_ref,vector_strategy) = alloc.data
+    counter = counter_ref[]
+    for (i,dof_test) in enumerate(dofs_test)
+        counter = vector_strategy.set!(coo,counter,setup,b[i],dof_test,field_test)
+    end
+    counter_ref[] = counter
+    alloc
+end
+
+function compress(alloc::VectorAllocation;reuse=Val(false))
+    (;setup,coo,vector_strategy) = alloc.data
+    b,cache = vector_strategy.compress(coo,setup)
+    if val_parameter(reuse)
+        b,cache
+    else
+        b
+    end
+end
+
+function compress!(alloc::VectorAllocation,A,A_cache)
+    (;setup,coo,vector_strategy) = alloc.data
+    vector_strategy.compress!(A,A_cache,coo,setup)
+    A
+end
+
+function allocate_matrix(
+        ::Type{T},space_test::AbstractSpace,space_trial,domains::AbstractDomain...;
+        matrix_strategy = monolithic_matrix_assembly_strategy(),
+    ) where T
+    setup = matrix_strategy.init(GT.free_dofs(space_test),GT.free_dofs(space_trial),T)
+    counter = matrix_strategy.counter(setup)
+    @assert num_fields(space_test) == 1
+    @assert num_fields(space_trial) == 1
+    field_test = 1
+    field_trial = 1
+    for domain in domains
+        face_dofs_test = dofs_accessor(space_test,domain)
+        face_dofs_trial = dofs_accessor(space_trial,domain)
+        nfaces = num_faces(domain)
+        for face in 1:nfaces
+            dofs_test = face_dofs_test(face)
+            dofs_trial = face_dofs_trial(face)
+            for dof_test in dofs_test
+                for dof_trial in dofs_trial
+                    counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+                end
+            end
+        end
+    end
+    coo = matrix_strategy.allocate(counter,setup)
+    counter_ref = Ref(matrix_strategy.counter(setup))
+    data = (;setup,coo,counter_ref,matrix_strategy)
+    MatrixAllocation(data)
+end
+
+struct MatrixAllocation{A} <: AbstractType
+    data::A
+end
+
+function reset!(alloc::MatrixAllocation)
+    (;counter_ref,setup,matrix_strategy) = alloc.data
+    counter_ref[] = matrix_strategy.counter(setup)
+    alloc
+end
+
+function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
+    (;setup,coo,counter_ref,matrix_strategy) = alloc.data
+    counter = counter_ref[]
+    for (i,dof_test) in enumerate(dofs_test)
+        for (j,dof_trial) in enumerate(dofs_trial)
+            counter = matrix_strategy.set!(coo,counter,setup,b[i,j],dof_test,dof_trial,field_test,field_trial)
+        end
+    end
+    counter_ref[] = counter
+    alloc
+end
+
+function compress(alloc::MatrixAllocation;reuse=Val(false))
+    (;setup,coo,matrix_strategy) = alloc.data
+    b,cache = matrix_strategy.compress(coo,setup)
+    if val_parameter(reuse)
+        b,cache
+    else
+        b
+    end
+end
+
+function compress!(alloc::MatrixAllocation,A,A_cache)
+    (;setup,coo,matrix_strategy) = alloc.data
+    matrix_strategy.compress!(A,A_cache,coo,setup)
+    A
+end
 
 #function system_assembler(uhd::DiscreteField,space_trial,space_test,domains...;
 #        vector_strategy=monolithic_vector_assembly_strategy(),

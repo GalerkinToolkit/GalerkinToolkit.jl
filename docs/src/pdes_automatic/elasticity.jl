@@ -30,7 +30,7 @@ const λ = (E*ν)/((1+ν)*(1-2*ν))
 const μ = E/(2*(1+ν))
 σ(ε) = λ*tr(ε)*one(ε) + 2*μ*ε
 order = 2
-V = GT.lagrange_space(Ω,order;shape=(D,),dirichlet_boundary=Γ)
+V = GT.lagrange_space(Ω,order;tensor_size=Val((D,)),dirichlet_boundary=Γ)
 uhd = GT.dirichlet_field(Float64,V)
 dΩ = GT.measure(Ω,2*order)
 ∇ = ForwardDiff.jacobian

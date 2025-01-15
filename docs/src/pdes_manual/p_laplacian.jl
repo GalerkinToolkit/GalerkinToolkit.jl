@@ -88,7 +88,7 @@ function setup_nonlinear_problem(state)
     (;V,Ω,T,f,uh) = example
 
     #Allocate auxiliary face matrix and vector
-    n = maximum(map(GT.num_dofs,GT.reference_fes(V)))
+    n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
     Auu = zeros(T,n,n)
     bu = zeros(T,n)
 
