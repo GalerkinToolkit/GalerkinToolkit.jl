@@ -36,14 +36,4 @@ include("quantity.jl")
 include("visualization.jl")
 include("assembly.jl")
 
-#include("mesh.jl")
-#include("p_mesh.jl")
-#include("symbolics.jl")
-#include("domain.jl")
-#include("integration.jl")
-#include("interpolation.jl")
-#include("assembly.jl")
-#include("visualization.jl")
-#include("helpers.jl")
-
 end # module
