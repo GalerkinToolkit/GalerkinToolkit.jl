@@ -1,6 +1,6 @@
 
 
-domain(space::LagrangeMeshSpace,field) = domain(space)
+domain(space::AbstractSpace,field) = domain(space)
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
@@ -1468,81 +1468,62 @@ function reference_spaces(space::LagrangeMeshSpace)
     ctype_to_reffe
 end
 
-#TODO
-#function face_nodes(a::LagrangeMeshSpace)
-#    major = :component
-#    shape = SCALAR_SHAPE
-#    dirichlet_boundary = nothing
-#    workspace = nothing
-#    V = LagrangeMeshSpace(
-#                      a.domain,
-#                      a.order,
-#                      a.conformity,
-#                      dirichlet_boundary,
-#                      a.space,
-#                      major,
-#                      shape,
-#                      workspace,
-#                     )
-#    face_dofs(V)
-#end
+function face_nodes(a::LagrangeMeshSpace)
+    V = lagrange_space(
+                       domain(a),
+                       order(a);
+                       conformity = conformity(a),
+                       space_type = space_type(a))
 
-#TODO
-#function node_coordinates(a::LagrangeMeshSpace)
-#    major = :component
-#    shape = SCALAR_SHAPE
-#    dirichlet_boundary = nothing
-#    workspace = nothing
-#    V = LagrangeMeshSpace(
-#                      a.domain,
-#                      a.order,
-#                      a.conformity,
-#                      dirichlet_boundary,
-#                      a.space,
-#                      major,
-#                      shape,
-#                      workspace,
-#                     )
-#    vrid_to_reffe = reference_spaces(V)
-#    vface_to_vrid = face_reference_id(V)
-#    domain = a.domain
-#    mesh = GT.mesh(domain)
-#    d = num_dims(domain)
-#    mrid_to_refface = reference_spaces(mesh,d)
-#    mface_to_mrid = face_reference_id(mesh,d)
-#    vface_to_mface = faces(domain)
-#    nvfaces = length(vface_to_vrid)
-#    vface_to_nodes = face_dofs(V)
-#    nnodes = length(free_dofs(V))
-#    mnode_to_x = node_coordinates(mesh)
-#    T = eltype(mnode_to_x)
-#    z = zero(T)
-#    node_to_x = zeros(T,nnodes)
-#    mface_to_mnodes = face_nodes(mesh,d)
-#    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
-#        map(mrid_to_refface) do refface
-#            tabulator(refface)(value,node_coordinates(reffe))
-#        end
-#    end
-#    for vface in 1:nvfaces
-#        vrid = vface_to_vrid[vface]
-#        mface = vface_to_mface[vface]
-#        mrid = mface_to_mrid[mface]
-#        tab = vrid_mrid_tabulator[vrid][mrid]
-#        mnodes = mface_to_mnodes[mface]
-#        nlnodes,nlmnodes = size(tab)
-#        nodes = vface_to_nodes[vface]
-#        for lnode in 1:nlnodes
-#            x = z
-#            for lmnode in 1:nlmnodes
-#                x += tab[lnode,lmnode]*mnode_to_x[mnodes[lmnode]]
-#            end
-#            node = nodes[lnode]
-#            node_to_x[node] = x
-#        end
-#    end
-#    node_to_x
-#end
+    face_dofs(V)
+end
+
+function node_coordinates(a::LagrangeMeshSpace)
+    V = lagrange_space(
+                       GT.domain(a),
+                       GT.order(a);
+                       conformity = GT.conformity(a),
+                       space_type = GT.space_type(a))
+    vrid_to_reffe = reference_spaces(V)
+    vface_to_vrid = face_reference_id(V)
+    domain = GT.domain(a)
+    mesh = GT.mesh(domain)
+    d = num_dims(domain)
+    mrid_to_refface = reference_spaces(mesh,d)
+    mface_to_mrid = face_reference_id(mesh,d)
+    vface_to_mface = faces(domain)
+    nvfaces = length(vface_to_vrid)
+    vface_to_nodes = face_dofs(V)
+    nnodes = length(free_dofs(V))
+    mnode_to_x = node_coordinates(mesh)
+    T = eltype(mnode_to_x)
+    z = zero(T)
+    node_to_x = zeros(T,nnodes)
+    mface_to_mnodes = face_nodes(mesh,d)
+    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
+        map(mrid_to_refface) do refface
+            tabulator(refface)(value,node_coordinates(reffe))
+        end
+    end
+    for vface in 1:nvfaces
+        vrid = vface_to_vrid[vface]
+        mface = vface_to_mface[vface]
+        mrid = mface_to_mrid[mface]
+        tab = vrid_mrid_tabulator[vrid][mrid]
+        mnodes = mface_to_mnodes[mface]
+        nlnodes,nlmnodes = size(tab)
+        nodes = vface_to_nodes[vface]
+        for lnode in 1:nlnodes
+            x = z
+            for lmnode in 1:nlmnodes
+                x += tab[lnode,lmnode]*mnode_to_x[mnodes[lmnode]]
+            end
+            node = nodes[lnode]
+            node_to_x[node] = x
+        end
+    end
+    node_to_x
+end
 
 #TODO these would provably need loop over cells
 #function node_dofs(space::LagrangeMeshSpace)
@@ -1557,51 +1538,42 @@ function dirichlet_dof_node(space::LagrangeMeshSpace)
     free_and_dirichlet_dof_node(space)[2]
 end
 
-#function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
-#    T = Float64
-#    D = num_ambient_dims(space.domain)
-#    major = :component
-#    shape = SCALAR_SHAPE
-#    dirichlet_boundary = nothing
-#    workspace = nothing
-#    V = LagrangeMeshSpace(
-#                      space.domain,
-#                      space.order,
-#                      space.conformity,
-#                      dirichlet_boundary,
-#                      space.space,
-#                      major,
-#                      shape,
-#                      workspace,
-#                     )
-#    face_to_nodes = GT.face_dofs(V)
-#    face_to_dofs = GT.face_dofs(space)
-#    nfree = length(free_dofs(space))
-#    ndiri = length(dirichlet_dofs(space))
-#    free_dof_to_node = zeros(Int32,nfree)
-#    diri_dof_to_node = zeros(Int32,ndiri)
-#    rid_to_lnode_to_ldofs = map(node_dofs,reference_spaces(space))
-#    face_to_rid = face_reference_id(space)
-#    nfaces = length(face_to_rid)
-#    for face in 1:nfaces
-#        nodes = face_to_nodes[face]
-#        dofs = face_to_dofs[face]
-#        rid = face_to_rid[face]
-#        lnode_to_ldofs = rid_to_lnode_to_ldofs[rid]
-#        for (lnode,node) in enumerate(nodes)
-#            ldofs = lnode_to_ldofs[lnode]
-#            for ldof in ldofs
-#                dof = dofs[ldof]
-#                if dof < 0
-#                    diri_dof_to_node[-dof] = node
-#                else
-#                    free_dof_to_node[dof] = node
-#                end
-#            end
-#        end
-#    end
-#    free_dof_to_node, diri_dof_to_node
-#end
+function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
+    T = Float64
+    D = num_ambient_dims(GT.domain(space))
+    V = lagrange_space(
+                       GT.domain(space),
+                       GT.order(space);
+                       conformity = GT.conformity(space),
+                       space_type = GT.space_type(space))
+    face_to_nodes = GT.face_dofs(V)
+    face_to_dofs = GT.face_dofs(space)
+    nfree = length(free_dofs(space))
+    ndiri = length(dirichlet_dofs(space))
+    free_dof_to_node = zeros(Int32,nfree)
+    diri_dof_to_node = zeros(Int32,ndiri)
+    rid_to_lnode_to_ldofs = map(node_dofs,reference_spaces(space))
+    face_to_rid = face_reference_id(space)
+    nfaces = length(face_to_rid)
+    for face in 1:nfaces
+        nodes = face_to_nodes[face]
+        dofs = face_to_dofs[face]
+        rid = face_to_rid[face]
+        lnode_to_ldofs = rid_to_lnode_to_ldofs[rid]
+        for (lnode,node) in enumerate(nodes)
+            ldofs = lnode_to_ldofs[lnode]
+            for ldof in ldofs
+                dof = dofs[ldof]
+                if dof < 0
+                    diri_dof_to_node[-dof] = node
+                else
+                    free_dof_to_node[dof] = node
+                end
+            end
+        end
+    end
+    free_dof_to_node, diri_dof_to_node
+end
 
 function raviart_thomas_space(domain::AbstractFaceDomain,order)
     workspace = rt_setup((;domain,order))

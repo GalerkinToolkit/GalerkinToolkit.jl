@@ -18,14 +18,6 @@ using Test
     @testset "Space" begin include("new_space_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
-    #@testset "Core" begin include("core_tests.jl") end
-    #@testset "Complexify" begin include("complexify_tests.jl") end
-    #@testset "Geometry" begin include("geometry_tests.jl") end
-    #@testset "Domain" begin include("domain_tests.jl") end
-    #@testset "Integration" begin include("integration_tests.jl") end
-    #@testset "Interpolation" begin include("interpolation_tests.jl") end
-    #@testset "Assembly" begin include("assembly_tests.jl") end
-    #@testset "Visualization" begin include("visualization_tests.jl") end
 end
 
 end # module

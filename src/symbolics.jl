@@ -1301,7 +1301,7 @@ function map_unit_normal(J,n)
     Jt = transpose(J)
     pinvJt = transpose(inv(Jt*J)*Jt)
     v = pinvJt*n
-    m = sqrt(inner(v,v))
+    m = sqrt(v⋅v)
     if m < eps()
         return zero(v)
     else
