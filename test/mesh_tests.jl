@@ -5,7 +5,7 @@ import StaticArrays as SA
 using Test
 using LinearAlgebra
 
-using InteractiveUtils
+#using InteractiveUtils
 
 #@code_warntype GT.unit_simplex(Val(3))
 

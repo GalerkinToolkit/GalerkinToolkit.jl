@@ -4,7 +4,7 @@ import GalerkinToolkit as GT
 import StaticArrays as SA
 using Test
 
-using InteractiveUtils
+#using InteractiveUtils
 
 spx0 = GT.unit_simplex(0)
 spx1 = GT.unit_simplex(1)

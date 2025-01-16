@@ -1,7 +1,7 @@
 module HelpersTests
 
 import GalerkinToolkit as GT
-using InteractiveUtils
+#using InteractiveUtils
 
 options = GT.options()
 @show GT.real_type(options)

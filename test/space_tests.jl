@@ -9,7 +9,7 @@ using BlockArrays
 using WriteVTK
 using StaticArrays
 
-using InteractiveUtils
+#using InteractiveUtils
 
 #@code_warntype GT.unit_simplex(Val(3))
 

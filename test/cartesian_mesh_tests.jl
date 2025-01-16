@@ -2,7 +2,7 @@ module CartesianMeshTests
 
 import GalerkinToolkit as GT
 
-using InteractiveUtils
+#using InteractiveUtils
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
