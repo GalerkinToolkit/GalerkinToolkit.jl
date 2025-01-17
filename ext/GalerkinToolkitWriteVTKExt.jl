@@ -3,7 +3,7 @@ module GalerkinToolkitWriteVTKExt
 using GalerkinToolkit
 import GalerkinToolkit: plot, plot!, translate_vtk_data, translate_vtk_data!, vtk_close_impl, vtk_close_impl!
 import GalerkinToolkit: vtk_points, vtk_points!, vtk_cells, vtk_cells!, vtk_args, vtk_args!
-import GalerkinToolkit: vtk_physical_faces, vtk_physical_faces!, vtk_physical_nodes, vtk_physical_nodes!
+import GalerkinToolkit: vtk_physical_faces, vtk_physical_faces! #, vtk_physical_nodes, vtk_physical_nodes!
 import GalerkinToolkit: vtk_mesh_cell, vtk_mesh_cell!
 using PartitionedArrays
 using StaticArrays
@@ -210,7 +210,7 @@ function vtk_cells(mesh,d)
     end
     face_to_nodes = GalerkinToolkit.face_nodes(mesh,d)
     face_to_refid = GalerkinToolkit.face_reference_id(mesh,d)
-    refid_refface = GalerkinToolkit.reference_faces(mesh,d)
+    refid_refface = GalerkinToolkit.reference_spaces(mesh,d)
     refid_mesh_cell = map(vtk_mesh_cell,refid_refface)
     barrirer(face_to_refid,face_to_nodes,refid_mesh_cell)
 end
@@ -276,29 +276,29 @@ function vtk_physical_faces!(vtk,mesh;physical_faces=GalerkinToolkit.physical_fa
     vtk
 end
 
-function vtk_physical_nodes!(vtk,mesh,d;physical_nodes=GalerkinToolkit.physical_nodes(mesh,d))
-    nnodes = GalerkinToolkit.num_nodes(mesh)
-    for group in physical_nodes
-        name,nodes = group
-        nodes_mask = zeros(Int,nnodes)
-        nodes_mask[nodes] .= 1
-        vtk[name,WriteVTK.VTKPointData()] = nodes_mask
-    end
-    vtk
-end
-
-function vtk_physical_nodes!(vtk,mesh;physical_nodes=GalerkinToolkit.physical_nodes(mesh))
-    D = GalerkinToolkit.num_dims(mesh)
-    for d in 0:D
-        vtk_physical_nodes!(vtk,mesh,d,physical_nodes=physical_nodes[d+1])
-    end
-    vtk
-end
+#function vtk_physical_nodes!(vtk,mesh,d;physical_nodes=GalerkinToolkit.physical_nodes(mesh,d))
+#    nnodes = GalerkinToolkit.num_nodes(mesh)
+#    for group in physical_nodes
+#        name,nodes = group
+#        nodes_mask = zeros(Int,nnodes)
+#        nodes_mask[nodes] .= 1
+#        vtk[name,WriteVTK.VTKPointData()] = nodes_mask
+#    end
+#    vtk
+#end
+#
+#function vtk_physical_nodes!(vtk,mesh;physical_nodes=GalerkinToolkit.physical_nodes(mesh))
+#    D = GalerkinToolkit.num_dims(mesh)
+#    for d in 0:D
+#        vtk_physical_nodes!(vtk,mesh,d,physical_nodes=physical_nodes[d+1])
+#    end
+#    vtk
+#end
 
 """
 """
 function vtk_mesh_cell(ref_face)
-    geom = GalerkinToolkit.geometry(ref_face)
+    geom = GalerkinToolkit.domain(ref_face)
     d = GalerkinToolkit.num_dims(geom)
     nnodes = GalerkinToolkit.num_nodes(ref_face)
     lib_to_user = GalerkinToolkit.lib_to_user_nodes(ref_face)

@@ -1,0 +1,4 @@
+module QuadratureTests
+
+end # module
+

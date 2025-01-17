@@ -117,9 +117,6 @@ macro term(expr)
     transform(expr) |> esc
 end
 
-# This is the highest-level IR in our multi-level IR
-abstract type AbstractTerm <: GT.AbstractType end
-
 index(t::AbstractTerm) = t.index
 #num_dims(t::AbstractTerm) = t.dim
 free_dims(t::AbstractTerm) = t.free_dims
@@ -863,7 +860,7 @@ function discrete_function_term(a::PhysicalMapTerm)
     dof = gensym("dummy-physical-dof")
     d = a.dim
     face_to_rid = face_reference_id(mesh(index(a)),d)
-    rid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+    rid_to_dof_to_fun = map(shape_functions,reference_spaces(mesh(index(a)),d))
     functions = reference_shape_function_term(d,rid_to_dof_to_fun,face_to_rid,dof,index(a))
     g_to_v = node_coordinates(mesh(index(a)))
     g_to_value = get_symbol!(index(a),g_to_v,"g_to_value")
@@ -1073,7 +1070,7 @@ function discrete_function_term(a::ReferenceMapTerm)
     d = a.dim
     D = a.dim_around
     dface_to_drid = face_reference_id(mesh(index(a)),d)
-    drid_to_dof_to_fun = map(shape_functions,reference_faces(mesh(index(a)),d))
+    drid_to_dof_to_fun = map(shape_functions,reference_spaces(mesh(index(a)),d))
     functions = reference_shape_function_term(d,drid_to_dof_to_fun,dface_to_drid,dof,index(a))
     dface_to_drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),d),"dface_to_drid")
     dface = face_index(index(a),d)
@@ -1087,7 +1084,7 @@ function discrete_function_term(a::ReferenceMapTerm)
     dface_to_ldfaces = get_symbol!(index(a),dface_to_ldfaces_data,"dface_to_ldfaces")
     Dface_to_ldface_to_perm = get_symbol!(index(a),GT.face_permutation_ids(topo,D,d),"Dface_to_ldface_to_perm")
     Dface_to_Drid = get_symbol!(index(a),face_reference_id(mesh(index(a)),D),"Dface_to_Drid")
-    Drid_to_refDface = reference_faces(mesh(index(a)),D)
+    Drid_to_refDface = reference_spaces(mesh(index(a)),D)
     Drid_to_ldface_perm_dof_to_x_data = map(refDface->face_node_coordinates(refDface,d),Drid_to_refDface)
     Drid_to_ldface_perm_dof_to_x = get_symbol!(index(a),Drid_to_ldface_perm_dof_to_x_data,"Drid_to_ldface_perm_dof_to_x")
     Dface_around = face_around_dummy_index(index(a),d,D)
@@ -1110,8 +1107,8 @@ function binary_call_term(f,a::ReferenceShapeFunctionTerm,b::BinaryCallTerm{type
     D = phi.dim_around
     m = mesh(index(a))
     topo = topology(m)
-    drid_to_refdface = reference_faces(m,d)
-    Drid_to_refDface = reference_faces(m,D)
+    drid_to_refdface = reference_spaces(m,d)
+    Drid_to_refDface = reference_spaces(m,D)
     # NB the TODOs below can be solved by introducing two extra nesting levels
     # TODO this assumes the same reffes for mesh and quadrature
     drid_Drid_ldface_perm_to_dof_and_point_data = map(x.rid_to_point_to_value,drid_to_refdface) do point_to_x,refdface
@@ -1190,8 +1187,8 @@ function expression(t::FaceTabulatorTerm)
     D = phi.dim_around
     m = mesh(index(a))
     topo = topology(m)
-    drid_to_refdface = reference_faces(m,d)
-    Drid_to_refDface = reference_faces(m,D)
+    drid_to_refdface = reference_spaces(m,d)
+    Drid_to_refDface = reference_spaces(m,D)
     drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),t.drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
     Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
     Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
@@ -1227,8 +1224,8 @@ function form_argument_expression(c,::FaceTabulatorTerm)
     D = phi.dim_around
     m = mesh(index(a))
     topo = topology(m)
-    drid_to_refdface = reference_faces(m,d)
-    Drid_to_refDface = reference_faces(m,D)
+    drid_to_refdface = reference_spaces(m,d)
+    Drid_to_refDface = reference_spaces(m,D)
     drid_Drid_ldface_perm_to_dof_and_point = get_symbol!(index(a),t.drid_Drid_ldface_perm_to_dof_and_point_data,"face_tabulator")
     Drid_to_dof_to_value = get_symbol!(a.index,a.rid_to_dof_to_value,"Drid_to_dof_to_f")
     Dface_to_rid = get_symbol!(a.index,a.face_to_rid,"Dface_to_Drid")
@@ -1304,7 +1301,7 @@ function map_unit_normal(J,n)
     Jt = transpose(J)
     pinvJt = transpose(inv(Jt*J)*Jt)
     v = pinvJt*n
-    m = sqrt(inner(v,v))
+    m = sqrt(v⋅v)
     if m < eps()
         return zero(v)
     else

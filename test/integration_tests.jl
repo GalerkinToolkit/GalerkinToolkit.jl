@@ -19,18 +19,18 @@ cube2 = GT.unit_n_cube(2)
 cube3 = GT.unit_n_cube(3)
 
 degree = 4
-quad = GT.default_quadrature(spx0,degree)
-quad = GT.default_quadrature(spx1,degree)
-quad = GT.default_quadrature(spx2,degree)
-quad = GT.default_quadrature(spx3,degree)
+quad = GT.quadrature(spx0,degree)
+quad = GT.quadrature(spx1,degree)
+quad = GT.quadrature(spx2,degree)
+quad = GT.quadrature(spx3,degree)
 
-quad = GT.default_quadrature(cube0,degree)
+quad = GT.quadrature(cube0,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube1,degree)
+quad = GT.quadrature(cube1,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube2,degree)
+quad = GT.quadrature(cube2,degree)
 @test sum(GT.weights(quad)) ≈ 1
-quad = GT.default_quadrature(cube3,degree)
+quad = GT.quadrature(cube3,degree)
 @test sum(GT.weights(quad)) ≈ 1
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
@@ -38,8 +38,6 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 domain = (0,2,0,2)
 cells = (8,8)
 mesh = GT.cartesian_mesh(domain,cells)
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
-GT.label_interior_faces!(mesh;physical_name="interior_faces")
 
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
@@ -57,6 +55,7 @@ int = ∫(dΩref) do q
 end
 sum(int)
 @test sum(int) ≈ 8
+
 
 int = ∫(dΩref) do q
     J = ForwardDiff.jacobian(ϕ,q)
@@ -150,6 +149,45 @@ end
 s = sum(int*1)
 @test s + 1 ≈ 1
 @test sum(int/1) + 1 ≈ 1
+
+
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+GT.label_interior_faces!(mesh;physical_name="interior_faces")
+GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
+Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+
+order = 2
+degree = 2*order
+dΩ = GT.measure(Ω,degree)
+dΓ = GT.measure(Γ,degree)
+dΛ = GT.measure(Λ,degree)
+
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+
+face_point_x = GT.coordinate_accessor(dΩ)
+face_point_J = GT.jacobian_accessor(dΩ)
+face_point_dV = GT.weight_accessor(dΩ)
+face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
+face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+
+face = 3
+point = 4
+dof = 2
+
+point_x = face_point_x(face)
+point_J = face_point_J(face)
+point_dV = face_point_dV(face)
+point_dof_s = face_point_dof_s(face)
+point_dof_∇s = face_point_dof_∇s(face)
+
+x = point_x(point)
+J = point_J(point)
+dV = point_dV(point,J)
+
 
 # Parallel
 

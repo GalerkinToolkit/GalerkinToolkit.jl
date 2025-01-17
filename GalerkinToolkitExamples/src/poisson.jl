@@ -218,7 +218,7 @@ function export_results(state)
     T = Float64
     z = zero(T)
 
-    rid_to_reffe = GT.reference_fes(V)
+    rid_to_reffe = GT.reference_spaces(V)
     plt = GT.plot(Ω;refinement=4)
     vis_mesh, vis_glue = GT.visualization_mesh(plt,glue=Val(true))
     n_vis_nodes = GT.num_nodes(vis_mesh)
@@ -538,7 +538,7 @@ function setup_integration(state)
     mesh = params[:mesh]
     dΩ = GT.measure(Ω,integration_degree)
     D = GT.num_dims(mesh)
-    rid_to_refface = GT.reference_faces(mesh,D)
+    rid_to_refface = GT.reference_spaces(mesh,D)
     rid_to_refquad = GT.reference_quadratures(dΩ)
     rid_to_cache_dΩ = map(rid_to_refface,rid_to_refquad) do refface,refquad
             x = GT.coordinates(refquad)
@@ -564,7 +564,7 @@ function setup_interpolation(state)
     interpolation_degree = params[:interpolation_degree]
     mesh = params[:mesh]
     V = GT.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
-    rid_to_reffe = GT.reference_fes(V)
+    rid_to_reffe = GT.reference_spaces(V)
     rid_to_refquad = GT.reference_quadratures(dΩ)
     T = Float64
     D = GT.num_dims(mesh)
