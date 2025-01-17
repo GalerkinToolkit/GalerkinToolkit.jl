@@ -34,8 +34,8 @@ g2 = GT.analytical_field(x->StaticArrays.SVector(0,0),Ω)
 g = GT.piecewiese_field(g1,g2)
 Γ = GT.piecewiese_domain(Γ1,Γ2)
 order = 2
-V = GT.lagrange_space(Ω,order;space=:Q,shape=(D,),dirichlet_boundary=Γ)
-Q = GT.lagrange_space(Ω,order-1;space=:P,dirichlet_boundary=GT.last_dof())
+V = GT.lagrange_space(Ω,order;space_type=:Q,tensor_size=Val((D,)),dirichlet_boundary=Γ)
+Q = GT.lagrange_space(Ω,order-1;space_type=:P,dirichlet_boundary=GT.last_dof())
 VxQ = V × Q
 u_field, p_field = 1,2
 uhph_dirichlet = GT.dirichlet_field(Float64,VxQ)

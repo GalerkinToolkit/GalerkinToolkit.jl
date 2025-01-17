@@ -31,7 +31,7 @@ Info    : Done reading &#39;/home/runner/work/GalerkinToolkit.jl/GalerkinToolkit
 cells_per_dir = (10,10)
 parts_per_dir = (2,2)
 parts = LinearIndices((prod(parts_per_dir),))
-pmesh = GT.cartesian_mesh(domain,cells_per_dir;parts_per_dir,parts)
+pmesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
 Makie.plot(pmesh;color=GT.FaceData(&quot;__OWNER__&quot;),strokecolor=:blue)</code></pre><p><img src="../fig_mg_pmesh.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO Maybe a different API for parts<em>per</em>dir and parts? TODO Maybe a different API for GT.FaceData(&quot;<strong>OWNER</strong>&quot;)</p></div></div><p>Generate a mesh on a single machine (using Gmsh in this case), partition it using Metis into 4 parts, and visualize it.</p><pre><code class="language-julia hljs">np = 4
 parts = LinearIndices((np,))
 pmesh = PA.map_main(parts) do parts
@@ -47,32 +47,32 @@ Info    : 1151 nodes
 Info    : 3937 elements
 Info    : Done reading &#39;/home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/build/tooling/../../../assets/mesh1.msh&#39;</code></pre><p><img src="../fig_mg_pmesh_a.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><ul><li>TODO <code>color=GT.FaceData(&quot;__PART__&quot;)</code> not working</li><li>TODO better syntax for <code>color=GT.FaceData(&quot;__PART__&quot;)</code> ?</li></ul></div></div><h2 id="Meshes-from-arrays"><a class="docs-heading-anchor" href="#Meshes-from-arrays">Meshes from arrays</a><a id="Meshes-from-arrays-1"></a><a class="docs-heading-anchor-permalink" href="#Meshes-from-arrays" title="Permalink"></a></h2><p>Generate a mesh of three triangles from the arrays describing node coordinates and cell connectivity.</p><pre><code class="language-julia hljs">order = 1
 triangle = GT.unit_simplex(Val(2))
-triangle3 = GT.lagrange_mesh_face(triangle,order)
+triangle3 = GT.lagrange_space(triangle,order)
 node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
 cell_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
 cell_to_type = [1,1,1]
 type_to_refcell = [triangle3]
-chain = GT.chain_from_arrays(
-        node_to_coords,
-        cell_to_nodes,
-        cell_to_type,
-        type_to_refcell)
-mesh = GT.mesh_from_chain(chain)
+chain = GT.chain(;
+        node_coordinates = node_to_coords,
+        face_nodes = cell_to_nodes,
+        face_reference_id = cell_to_type,
+        reference_spaces = type_to_refcell)
+mesh = GT.mesh(chain)
 Makie.plot(mesh,color=:pink,strokecolor=:blue)</code></pre><p><img src="../fig_mg_mfa.png" alt/></p><p>Now, include also a square element</p><pre><code class="language-julia hljs">square = GT.unit_n_cube(Val(2))
-square4 = GT.lagrange_mesh_face(square,order)
+square4 = GT.lagrange_space(square,order)
 cell_to_nodes = [[1,2,3,4],[2,4,5]]
 cell_to_type = [2,1]
 type_to_refcell = (triangle3,square4)
-chain = GT.chain_from_arrays(
-        node_to_coords,
-        cell_to_nodes,
-        cell_to_type,
-        type_to_refcell)
-mesh = GT.mesh_from_chain(chain)
+chain = GT.chain(;
+        node_coordinates = node_to_coords,
+        face_nodes = cell_to_nodes,
+        face_reference_id = cell_to_type,
+        reference_spaces = type_to_refcell)
+mesh = GT.mesh(chain)
 Makie.plot(mesh,color=:pink,strokecolor=:blue)</code></pre><p><img src="../fig_mg_mfa_2.png" alt/></p><div class="admonition is-warning"><header class="admonition-header">Warning</header><div class="admonition-body"><p>TODO visualization not working properly when more than one element type present</p></div></div><p>Generate a mesh that includes cells of different dimensions, i.e., triangles, segments, and vertices.</p><pre><code class="language-julia hljs">segment = GT.unit_simplex(Val(1))
-segment2 = GT.lagrange_mesh_face(segment,order)
+segment2 = GT.lagrange_space(segment,order)
 vertex = GT.unit_simplex(Val(0))
-vertex1 = GT.lagrange_mesh_face(vertex,order)
+vertex1 = GT.lagrange_space(vertex,order)
 node_to_coords = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
 face2_to_nodes = [[1,2,3],[2,3,4],[2,4,5]]
 face2_to_type = [1,1,1]
@@ -83,6 +83,10 @@ face0_to_type = [1,1]
 face_to_nodes = [face0_to_nodes,face1_to_nodes,face2_to_nodes]
 face_to_type = [face0_to_type,face1_to_type,face2_to_type]
 type_to_refcell = ([vertex1],[segment2],[triangle3])
-mesh = GT.mesh_from_arrays(node_to_coords,face_to_nodes,face_to_type,type_to_refcell)
+mesh = GT.mesh(
+            node_coordinates = node_to_coords,
+            face_nodes = face_to_nodes,
+            face_reference_id = face_to_type,
+            reference_spaces = type_to_refcell)
 Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))</code></pre><p><img src="../fig_mg_mfa_3.png" alt/></p><p>Now, generate all low-dimensional objects</p><pre><code class="language-julia hljs">mesh = GT.complexify(mesh)
-Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))</code></pre><p><img src="../fig_mg_mfa_4.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../pdes_manual/p_laplacian/">« p-Laplacian</a><a class="docs-footer-nextpage" href="../../reference/">Introduction »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Tuesday 31 December 2024 09:34">Tuesday 31 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+Makie.plot(mesh,color=:pink,strokecolor=:blue,shrink=0.8,dim=(0:2))</code></pre><p><img src="../fig_mg_mfa_4.png" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../pdes_manual/p_laplacian/">« p-Laplacian</a><a class="docs-footer-nextpage" href="../../reference/">Introduction »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Friday 17 January 2025 11:41">Friday 17 January 2025</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

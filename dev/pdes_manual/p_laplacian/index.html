@@ -48,7 +48,7 @@ end</code></pre><p>Define the algebraic non-linear problem object</p><pre><code 
     (;V,Ω,T,f,uh) = example
 
     #Allocate auxiliary face matrix and vector
-    n = maximum(map(GT.num_dofs,GT.reference_fes(V)))
+    n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
     Auu = zeros(T,n,n)
     bu = zeros(T,n)
 
@@ -193,13 +193,13 @@ end</code></pre><pre class="documenter-example-output"><code class="nohighlight 
 end</code></pre><p>Run it for a 2d case</p><pre><code class="language-julia hljs">file = joinpath(@__DIR__,&quot;p_laplacian_2d_manual.gif&quot;)
 main(;domain=(0,1,0,1),cells=(10,10),file)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">          iterations             residual             solution
    current     target    current     target    current     target
-         0       1000   1.63e+01   1.00e-08  4.94e-324   0.00e+00
-         1       1000   4.07e+00   1.00e-08   4.91e-01   0.00e+00
-         2       1000   1.02e+00   1.00e-08   2.42e-01   0.00e+00
-         3       1000   2.53e-01   1.00e-08   1.17e-01   0.00e+00
-         4       1000   6.81e-02   1.00e-08   5.33e-02   0.00e+00
-         5       1000   2.56e-02   1.00e-08   5.83e-02   0.00e+00
-         6       1000   5.63e-03   1.00e-08   2.37e-02   0.00e+00
-         7       1000   4.94e-04   1.00e-08   7.43e-03   0.00e+00
-         8       1000   4.94e-06   1.00e-08   5.79e-04   0.00e+00
-         9       1000   4.78e-10   1.00e-08   5.62e-06   0.00e+00</code></pre><p><img src="../p_laplacian_2d_manual.gif" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../poisson/">« Laplace</a><a class="docs-footer-nextpage" href="../../tooling/mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Tuesday 31 December 2024 09:34">Tuesday 31 December 2024</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+         0       1000   1.50e+01   1.00e-08  6.93e-310   0.00e+00
+         1       1000   3.76e+00   1.00e-08   4.93e-01   0.00e+00
+         2       1000   9.38e-01   1.00e-08   2.44e-01   0.00e+00
+         3       1000   2.34e-01   1.00e-08   1.18e-01   0.00e+00
+         4       1000   6.21e-02   1.00e-08   5.58e-02   0.00e+00
+         5       1000   3.79e-02   1.00e-08   5.33e-02   0.00e+00
+         6       1000   5.88e-03   1.00e-08   2.20e-02   0.00e+00
+         7       1000   2.95e-04   1.00e-08   4.88e-03   0.00e+00
+         8       1000   8.53e-07   1.00e-08   2.55e-04   0.00e+00
+         9       1000   7.24e-12   1.00e-08   7.30e-07   0.00e+00</code></pre><p><img src="../p_laplacian_2d_manual.gif" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../poisson/">« Laplace</a><a class="docs-footer-nextpage" href="../../tooling/mesh_generation/">Mesh generation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Friday 17 January 2025 11:41">Friday 17 January 2025</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
