@@ -147,3 +147,159 @@ abstract type AbstractTerm <: GT.AbstractType end
 # A quantity representing a field on a domain
 abstract type AbstractField <: AbstractQuantity end
 
+"""
+"""
+function num_dims end
+
+"""
+"""
+function is_axis_aligned end
+
+"""
+"""
+function is_simplex end
+
+"""
+"""
+function is_n_cube end
+
+"""
+"""
+function is_unit_n_cube end
+
+"""
+"""
+function is_unitary end
+
+"""
+"""
+function bounding_box end
+
+"""
+"""
+function vertex_permutations end
+
+"""
+"""
+function faces end
+
+"""
+"""
+function inverse_faces end
+
+"""
+"""
+function geometries end
+
+"""
+"""
+function is_boundary end
+
+"""
+"""
+function face_around end
+
+"""
+"""
+function domain end
+
+"""
+"""
+function node_coordinates end
+
+"""
+"""
+function face_nodes end
+
+"""
+"""
+function face_reference_id end
+
+"""
+"""
+function reference_spaces end
+
+"""
+"""
+function periodic_nodes end
+
+"""
+"""
+function physical_faces end
+
+"""
+"""
+function outward_normals end
+
+"""
+"""
+function coordinates end
+
+"""
+"""
+function weights end
+
+"""
+"""
+function reference_quadratures end
+
+"""
+"""
+function node_quadrature end
+
+"""
+"""
+function num_dofs end
+
+"""
+"""
+function interior_nodes end
+
+"""
+"""
+function num_nodes end
+
+"""
+"""
+function face_dofs end
+
+"""
+"""
+function interior_nodes_permutations end
+
+"""
+"""
+function geometry_own_dofs end
+
+"""
+"""
+function geometry_own_dofs_permutations end
+
+"""
+"""
+function geometry_interior_nodes end
+
+"""
+"""
+function geometry_interior_nodes_permutations end
+
+"""
+"""
+function geometry_nodes end
+
+"""
+"""
+function geometry_nodes_permutations end
+
+"""
+"""
+function face_incidence end
+
+"""
+"""
+function face_permutation_ids end
+
+"""
+"""
+function reference_topologies end
+

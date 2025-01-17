@@ -765,6 +765,10 @@ end
 options(fe::AbstractFaceSpace) = options(domain(fe))
 num_dims(fe::AbstractFaceSpace) = num_dims(domain(fe))
 
+"""
+"""
+function lagrange_space end
+
 const LagrangeFaceDomain = Union{UnitNCube,UnitSimplex}
 
 function lagrange_space(domain::LagrangeFaceDomain, order;
@@ -1574,6 +1578,10 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
     end
     free_dof_to_node, diri_dof_to_node
 end
+
+"""
+"""
+function raviart_thomas_space end
 
 function raviart_thomas_space(domain::AbstractFaceDomain,order)
     workspace = rt_setup((;domain,order))
