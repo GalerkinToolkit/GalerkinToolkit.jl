@@ -90,32 +90,44 @@ end
 function new_coordinate_quantity(q::AbstractQuadrature,point::NewAbstractTerm)
     new_quantity() do opts
         @assert domain(q) == domain(opts)
-        domain_face = GT.domain_face(opts)
-        mesh_face_rid = face_reference_id(q)
-        rid_point_coordinate = map(coordinates,reference_quadratures(q))
         mesh_face = MeshFaceTerm(domain,domain_face)
-        CoordinateTerm(domain(q),rid_point_coordinate,mesh_face_rid,point,mesh_face)
+        CoordinateTerm(q,point,mesh_face)
     end
 end
 
-struct CoordinateTerm{A,B,C,D,E} <: NewAbstractTerm
-    domain::A
-    rid_point_coordinate::B
-    mesh_face_rid::C
-    point::D
-    mesh_face::E
+struct CoordinateTerm{A,B,C} <: NewAbstractTerm
+    quadrature::A
+    point::B
+    mesh_face::C
 end
 
 function expression!(runtime,t::CoordinateTerm)
-    rid_point_coordinate = compile_symbol!(runtime,t.rid_point_coordinate)
-    mesh_face_rid = compile_symbol!(runtime,t.mesh_face_rid)
+    q = t.quadrature
+    rid_point_coordinate_data = map(coordinates,reference_quadratures(q))
+    mesh_face_rid_data = face_reference_id(q)
+    rid_point_coordinate = compile_symbol!(runtime,rid_point_coordinate_data)
+    mesh_face_rid = compile_symbol!(runtime,mesh_face_rid_data)
     point = expression!(runtime,t.point)
     mesh_face = expression!(runtime,t.mesh_face)
+    mesh = GT.mesh(GT.domain(q))
     if is_physical_domain(t.domain)
-        phi = expression!(runtime,new_physical_map_term(domain,mesh_face))
+        d = num_dims(GT.domain(q))
+        rid_tab_data = map(rid_point_coordinate_data,reference_spaces(mesh,d)) do point_to_x, refface
+            tabulator(refface)(value,point_to_x)
+        end
+        rid_tab = compile_symbol!(runtime,rid_tab_data)
+        node_x = compile_symbol!(runtime,node_coordinates(mesh))
+        mesh_face_nodes = compile_symbol!(runtime,face_nodes(mesh,d))
         @term begin
-            ref_x = $rid_point_coordinate[$mesh_face_rid[$mesh_face]]
-            x = $phi(ref_x)
+            rid = $mesh_face_reference_id[$mesh_face]
+            tab = $rid_tab[rid]
+            dof_node = $mesh_face_nodes[mesh_face]
+            ndofs = length(dof_node)
+            sum(1:ndofs) do dof
+                node = dof_node[dof]
+                x = $node_x[node]
+                tab[$point,dof]*x
+            end
         end
     else
         @term begin
@@ -140,73 +152,86 @@ end
 function new_weight_quantity(q::AbstractQuadrature,point::NewAbstractTerm)
     new_quantity() do opts
         @assert domain(q) == domain(opts)
-        domain_face = GT.domain_face(opts)
-        mesh_face_rid = face_reference_id(q)
-        rid_point_weight = map(weights,reference_quadratures(q))
         mesh_face = MeshFaceTerm(domain,domain_face)
-        WeightTerm(domain(q),rid_point_weight,mesh_face_rid,point,mesh_face)
+        WeightTerm(q,point,mesh_face)
     end
 end
 
-struct WeightTerm{A,B,C,D,E} <: NewAbstractTerm
-    domain::A
-    rid_point_weight::B
-    mesh_face_rid::C
-    point::D
-    mesh_face::E
+struct WeightTerm{A,B,C} <: NewAbstractTerm
+    quadrature::A
+    point::B
+    mesh_face::C
 end
 
 function expression!(runtime,t::WeightTerm)
-    rid_point_weight = compile_symbol!(runtime,t.rid_point_weight)
-    mesh_face_rid = compile_symbol!(runtime,t.mesh_face_rid)
+    q = t.quadrature
+    rid_point_coordinate_data = map(coordinates,reference_quadratures(q))
+    mesh_face_rid_data = face_reference_id(q)
+    rid_point_weight = compile_symbol!(runtime,map(weights,reference_quadratures(q)))
+    mesh_face_rid = compile_symbol!(runtime,mesh_face_rid_data)
     point = expression!(runtime,t.point)
     mesh_face = expression!(runtime,t.mesh_face)
+    mesh = GT.mesh(GT.domain(q))
     if is_physical_domain(t.domain)
-        phi = expression!(runtime,new_physical_map_term(domain,mesh_face))
+        d = num_dims(GT.domain(q))
+        rid_tab_data = map(rid_point_coordinate_data,reference_spaces(mesh,d)) do point_to_x, refface
+            tabulator(refface)(ForwardDiff.gradient,point_to_x)
+        end
+        rid_tab = compile_symbol!(runtime,rid_tab_data)
+        node_x = compile_symbol!(runtime,node_coordinates(mesh))
+        mesh_face_nodes = compile_symbol!(runtime,face_nodes(mesh,d))
         @term begin
-            ref_w = $rid_point_weight[$mesh_face_rid[$mesh_face]]
-            J = ForwardDiff.jacobian($phi,ref_x)
-            change_of_measure(J)*ref_w
+            rid = $mesh_face_reference_id[$mesh_face]
+            tab = $rid_tab[rid]
+            dof_node = $mesh_face_nodes[mesh_face]
+            ndofs = length(dof_node)
+            J = sum(1:ndofs) do dof
+                node = dof_node[dof]
+                x = $node_x[node]
+                outer(x,tab[$point,dof])
+            end
+            w = $rid_point_weight[rid][$point]
+            w*change_of_measure(J)
         end
     else
-        quote
+        @term begin
             $rid_point_weight[$mesh_face_rid[$mesh_face]]
         end
     end
 end
 
-function new_physical_map_term(domain::AbstractDomain,mesh_face::NewAbstractTerm)
-    mesh = GT.mesh(domain)
-    num_dims = GT.num_dims(domain)
-    NewPhysicalMapTerm(mesh,num_dims,mesh_face)
-end
-
-struct NewPhysicalMapTerm{A,B,C} <: NewAbstractTerm
-    mesh::A
-    num_dims::B
-    mesh_face::C
-end
-
-function expression!(runtime,t::NewPhysicalMapTerm)
-    mesh = t.mesh
-    d = t.num_dims
-    mesh_face_reference_id = compile_symbol!(runtime,face_reference_id(mesh,d))
-    rid_dof_shape_fun = compile_symbol!(runtime,map(shape_functions,reference_spaces(mesh,d)))
-    mesh_face_nodes = compile_symbol!(runtime,face_nodes(mesh,d))
-    node_x = compile_symbol!(runtime,node_coordinates(mesh))
-    @term begin
-        rid = $mesh_face_reference_id[$mesh_face]
-        dof_shape_fun = $rid_dof_shape_fun[rid]
-        dof_node = $mesh_face_nodes[mesh_face]
-        ndofs = length(dof_node)
-        y -> sum(1:ndofs) do dof
-            shape_fun = dof_shape_fun[dof]
-            node = dof_node[dof]
-            x = $node_x[node]
-            shape_fun(y)*x
-        end
-    end
-end
+#function new_physical_map_term(domain::AbstractDomain,mesh_face::NewAbstractTerm)
+#    mesh = GT.mesh(domain)
+#    num_dims = GT.num_dims(domain)
+#    NewPhysicalMapTerm(mesh,num_dims,mesh_face)
+#end
+#
+#struct NewPhysicalMapTerm{A,B,C} <: NewAbstractTerm
+#    mesh::A
+#    num_dims::B
+#    mesh_face::C
+#end
+#
+#function expression!(runtime,t::NewPhysicalMapTerm)
+#    mesh = t.mesh
+#    d = t.num_dims
+#    mesh_face_reference_id = compile_symbol!(runtime,face_reference_id(mesh,d))
+#    rid_dof_shape_fun = compile_symbol!(runtime,map(shape_functions,reference_spaces(mesh,d)))
+#    mesh_face_nodes = compile_symbol!(runtime,face_nodes(mesh,d))
+#    node_x = compile_symbol!(runtime,node_coordinates(mesh))
+#    @term begin
+#        rid = $mesh_face_reference_id[$mesh_face]
+#        dof_shape_fun = $rid_dof_shape_fun[rid]
+#        dof_node = $mesh_face_nodes[mesh_face]
+#        ndofs = length(dof_node)
+#        y -> sum(1:ndofs) do dof
+#            shape_fun = dof_shape_fun[dof]
+#            node = dof_node[dof]
+#            x = $node_x[node]
+#            shape_fun(y)*x
+#        end
+#    end
+#end
 
 function integrate(f,measure::NewMeasure)
     point = index_term(:point)
