@@ -301,3 +301,27 @@ function compile_symbol!(runtime,val,name="";prefix=gensym)
     get!(runtime,val,prefix(name))
 end
 
+#int = ∫(α,dΩ)
+#f = generate_sum(int,α)
+#f(α)
+#
+#int = ∫(dummy_α,dΩ)
+#f = generate_sum(int,dummy_α)
+#f(α)
+#
+# Let us go with this
+#int = α -> ∫(α,dΩ)
+#f = generate_sum(int,α_prototype)
+#f(α)
+
+# and this
+#int = () -> ∫(α,dΩ)
+#f = generate_sum(int)
+#f()
+
+#int = ∫(α,dΩ)
+#f = generate_sum(int)
+#f()
+
+
+
