@@ -35,5 +35,6 @@ include("quadrature.jl")
 include("quantity.jl")
 include("visualization.jl")
 include("assembly.jl")
+include("new_ir.jl")
 
 end # module
