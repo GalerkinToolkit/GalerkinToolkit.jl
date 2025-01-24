@@ -4,12 +4,12 @@ using Literate
 
 src_jl = joinpath(@__DIR__,"src","src_jl")
 src_md = joinpath(@__DIR__,"src","src_md")
-#rm(src_md,force=true,recursive=true)
+rm(src_md,force=true,recursive=true)
 mkpath(src_md)
 
 codefence = "```julia" => "```"
 for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
-    Literate.markdown(joinpath(src_jl,file_jl),src_md;codefence)
+    Literate.markdown(joinpath(src_jl,file_jl),src_md)#;codefence)
 end
 
 

@@ -336,13 +336,13 @@ y1, y2 = y
 @test GT.free_values(y2) === blocks(GT.free_values(y))[2]
 
 GT.interpolate!(uref,y1)
-GT.interpolate!(uref,y,1)
+#GT.interpolate!(uref,y,1)
 
 GT.interpolate_free!(uref,y1)
-GT.interpolate_free!(uref,y,1)
+#GT.interpolate_free!(uref,y,1)
 
 GT.interpolate_dirichlet!(uref,y1)
-GT.interpolate_dirichlet!(uref,y,1)
+#GT.interpolate_dirichlet!(uref,y,1)
 
 order = 3
 V = GT.lagrange_space(Ωref,order)

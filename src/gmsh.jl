@@ -223,7 +223,7 @@ function reference_face_from_gmsh_eltype(eltype)
     if eltype == 1
         order = 1
         geom = unit_n_cube(Val(1))
-        lib_to_gmsh = :defalut#[1,2]
+        lib_to_gmsh = :default#[1,2]
     elseif eltype == 2
         order = 1
         geom = unit_simplex(Val(2))
