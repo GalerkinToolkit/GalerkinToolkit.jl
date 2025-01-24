@@ -2,28 +2,41 @@ using GalerkinToolkit
 using Documenter
 using Literate
 
+src_jl = joinpath(@__DIR__,"src","src_jl")
+src_md = joinpath(@__DIR__,"src","src_md")
+rm(src_md,force=true,recursive=true)
+mkpath(src_md)
+
 codefence = "```julia" => "```"
-src_dir = joinpath(@__DIR__,"src") 
-pdes_dir = joinpath(src_dir,"pdes_automatic") 
-pdes = ["poisson","p_laplacian","elasticity","stokes"]
-for pde in pdes
-    file_jl = joinpath(pdes_dir,pde*".jl")
-    Literate.markdown(file_jl,pdes_dir)#;codefence)
-end
-assembly_dir = joinpath(src_dir,"pdes_manual") 
-assembly = ["poisson","p_laplacian"]
-for pde in assembly
-    file_jl = joinpath(assembly_dir,pde*".jl")
-    Literate.markdown(file_jl,assembly_dir)#;codefence)
-end
-tooling_dir = joinpath(src_dir,"tooling") 
-tooling = ["mesh_generation"]
-for pde in tooling
-    file_jl = joinpath(tooling_dir,pde*".jl")
-    Literate.markdown(file_jl,tooling_dir)#;codefence)
+for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
+    Literate.markdown(joinpath(src_jl,file_jl),src_md)#;codefence)
 end
 
+
 DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
+
+tutorials_pages = [
+    "tutorial_intro_to_fem.md",
+]
+tutorials_pages = map(p->joinpath("src_md",p),tutorials_pages)
+tutorials = ["tutorials.md",tutorials_pages...]
+
+examples_pages = [
+    "example_hello_world.md",
+    "example_hello_world_manual.md",
+    "example_poisson_equation.md",
+    "example_p_laplacian.md",
+]
+examples_pages = map(p->joinpath("src_md",p),examples_pages)
+examples = ["examples.md",examples_pages...]
+
+manual_pages = [
+          "getting_started.md",
+          "for_developers.md"
+         ]
+manual_pages = map(p->joinpath("manual",p),manual_pages)
+manual = ["manual.md",manual_pages...]
+
 
 makedocs(;
     modules=[GalerkinToolkit],
@@ -35,21 +48,11 @@ makedocs(;
         assets=String[],
     ),
     pages=[
-        "Home" => "index.md",
-        "Users guide" => "users_guide.md",
-        "Developers guide" => "developers_guide.md",
-        "Examples" => [
-                       "Introduction" => "examples.md",
-                       "PDEs (automatic assembly)"=> map(pde->"pdes_automatic/$(pde).md",pdes),
-                       "PDEs (manual assembly)" => map(pde->"pdes_manual/$(pde).md",assembly),
-                       "Tooling" => map(pde->"tooling/$(pde).md",tooling),
-                      ],
-        "API reference" =>[
-                       "Introduction" => "reference.md",
-                       "Mesh" => "reference/mesh.md",
-                       "Integration" => "reference/integration.md",
-                       "Interpolation" => "reference/interpolation.md",
-                      ],
+        "index.md",
+        "Tutorials" => tutorials,
+        "Examples" => examples,
+        "Manual" => manual,
+        "reference.md",
         "refindex.md",
     ],
 )

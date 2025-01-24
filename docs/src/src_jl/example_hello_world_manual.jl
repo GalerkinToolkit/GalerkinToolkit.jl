@@ -1,4 +1,4 @@
-# # Laplace
+# # Hello, World! (manual assembly)
 #
 # ## Problem statement
 #
@@ -227,5 +227,6 @@ main(domain=(0,1,0,1),cells=(10,10))
 # Run it for a 3d case
 
 main(domain=(0,1,0,1,0,1),cells=(10,10,10))
+
 
 

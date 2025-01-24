@@ -1,4 +1,4 @@
-# # Laplace
+# # Hello, World!
 #
 # ## Problem statement
 #
@@ -14,9 +14,6 @@
 # \right.
 # ```
 # with $f=0$ and $g(x)=\text{sum}(x)$.
-#
-#
-# ## Numerical scheme
 #
 # ## Implementation
 #
@@ -175,5 +172,4 @@ Program.main(domain=(0,1,0,1),cells=(10,10))
 # Run it for a 3d case
 
 Program.main(domain=(0,1,0,1,0,1),cells=(10,10,10))
-
 

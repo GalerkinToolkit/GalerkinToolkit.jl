@@ -1,6 +1,6 @@
 
 
-domain(space::AbstractSpace,field) = domain(space)
+#domain(space::AbstractSpace,field) = domain(space)
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
@@ -17,25 +17,27 @@ function max_local_dofs(space::AbstractSpace)
 end
 
 
-function free_dofs(a::AbstractSpace,field)
-    @assert field == 1
-    free_dofs(a)
-end
+#function free_dofs(a::AbstractSpace,field)
+#    @assert field == 1
+#    free_dofs(a)
+#end
 
 function free_dofs(a::AbstractSpace)
     nfree = length(first(free_and_dirichlet_dofs(a)))
     Base.OneTo(nfree)
 end
 
-function dirichlet_dofs(a::AbstractSpace,field)
-    @assert field == 1
-    dirichlet_dofs(a)
-end
+#function dirichlet_dofs(a::AbstractSpace,field)
+#    @assert field == 1
+#    dirichlet_dofs(a)
+#end
 
 function dirichlet_dofs(a::AbstractSpace)
     ndiri = length(last(free_and_dirichlet_dofs(a)))
     Base.OneTo(ndiri)
 end
+
+workspace(space::AbstractSpace) = nothing
 
 function setup_space(space::AbstractSpace)
     if GT.workspace(space) !== nothing
@@ -57,10 +59,10 @@ function face_dofs(space::AbstractSpace)
     state.cell_to_dofs # TODO rename face_dofs ?
 end
 
-function face_dofs(space::AbstractSpace,field)
-    @assert field == 1
-    face_dofs(space)
-end
+#function face_dofs(space::AbstractSpace,field)
+#    @assert field == 1
+#    face_dofs(space)
+#end
 
 function free_and_dirichlet_dofs(V::AbstractSpace)
     if workspace(V) !== nothing
@@ -776,6 +778,7 @@ function lagrange_space(domain::LagrangeFaceDomain, order;
         lib_to_user_nodes = :default,
         major = Val(:component),
         tensor_size = Val(:scalar),
+        dirichlet_boundary = nothing,
     )
 
 
@@ -787,7 +790,9 @@ function lagrange_space(domain::LagrangeFaceDomain, order;
                space_type,
                lib_to_user_nodes,
                major,
-               tensor_size)
+               tensor_size,
+               dirichlet_boundary,
+              )
 end
 
 function default_space_type(geom::UnitNCube)
@@ -805,6 +810,7 @@ function lagrange_face_space(;
         lib_to_user_nodes,
         major,
         tensor_size,
+        dirichlet_boundary,
     )
     contents = (;
         domain,
@@ -812,7 +818,9 @@ function lagrange_face_space(;
         space_type,
         lib_to_user_nodes,
         major,
-        tensor_size)
+        tensor_size,
+        dirichlet_boundary,
+       )
     LagrangeFaceSpace(contents)
 end
 
@@ -826,6 +834,7 @@ order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
 space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
+dirichlet_boundary(fe::LagrangeFaceSpace) = fe.contents.dirichlet_boundary
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
     if val_parameter(fe.contents.lib_to_user_nodes) === :default
@@ -835,6 +844,18 @@ function lib_to_user_nodes(fe::LagrangeFaceSpace)
     else
         fe.contents.lib_to_user_nodes
     end
+end
+
+function reference_spaces(fe::LagrangeFaceSpace)
+    (fe,)
+end
+
+function face_reference_id(fe::LagrangeFaceSpace)
+    [1]
+end
+
+function conformity(fe::LagrangeFaceSpace)
+    :default
 end
 
 function monomial_exponents(a::LagrangeFaceSpace)
@@ -2034,41 +2055,41 @@ function domain(a::CartesianProductSpace)
     end
 end
 
-function domain(a::CartesianProductSpace,field)
-    GT.domain(GT.field(a,field))
-end
+#function domain(a::CartesianProductSpace,field)
+#    GT.domain(GT.field(a,field))
+#end
 
 function face_dofs(a::CartesianProductSpace)
     error("Not implemented, not needed in practice")
 end
 
-function face_dofs(a::CartesianProductSpace,field)
-    face_dofs(a.spaces[field])
-end
+#function face_dofs(a::CartesianProductSpace,field)
+#    face_dofs(a.spaces[field])
+#end
 
 function free_dofs(a::CartesianProductSpace)
     nfields = GT.num_fields(a)
     map(1:nfields) do field
-        free_dofs(a,field)
+        free_dofs(GT.field(a,field))
     end |> BRange
 end
 
-function free_dofs(a::CartesianProductSpace,field)
-    f = GT.field(a,field)
-    free_dofs(f)
-end
+#function free_dofs(a::CartesianProductSpace,field)
+#    f = GT.field(a,field)
+#    free_dofs(f)
+#end
 
 function dirichlet_dofs(a::CartesianProductSpace)
     nfields = GT.num_fields(a)
     map(1:nfields) do field
-        dirichlet_dofs(a,field)
+        dirichlet_dofs(GT.field(a,field))
     end |> BRange
 end
 
-function dirichlet_dofs(a::CartesianProductSpace,field)
-    f = GT.field(a,field)
-    dirichlet_dofs(f)
-end
+#function dirichlet_dofs(a::CartesianProductSpace,field)
+#    f = GT.field(a,field)
+#    dirichlet_dofs(f)
+#end
 
 function form_argument_quantity(a::CartesianProductSpace,axis)
     fields = ntuple(identity,GT.num_fields(a))

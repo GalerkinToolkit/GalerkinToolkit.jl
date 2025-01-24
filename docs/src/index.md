@@ -20,15 +20,5 @@ This package follows a new approach to implement finite-element methods based on
 !!! warn
     TODO elaborary more
 
-## How to get started
-
-For users:
-
-- Read the [Examples](@ref) section to learn how the different pieces of the library work together in different scenarios.
-- Do you want more info about a specific function, macro, or data type? Read the docstrings in the [API reference](@ref).
-
-For developers:
-
-- Read the [Developers guide](@ref).
 
 

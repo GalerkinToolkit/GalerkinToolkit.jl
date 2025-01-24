@@ -726,24 +726,30 @@ domain(plt::Union{Plot,PPlot}) = plt.cache.domain
 
 function coordinates(plt::Union{Plot,PPlot})
     domain = plt |> GT.domain
-    GT.coordinates(plt,domain)
-end
-
-function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
-    GT.reference_coordinates(plt)
-end
-
-function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
-    domain_phys = plt |> GT.domain
-    d = num_dims(domain(plt))
-    phi = physical_map(mesh(domain(plt)),d)
     q = GT.reference_coordinates(plt)
+    if is_reference_domain(domain)
+        return q
+    end
+    d = num_dims(GT.domain(plt))
+    phi = physical_map(GT.mesh(GT.domain(plt)),d)
     phi(q)
-    #domain_ref = domain_phys |> reference_domain
-    #phi = GT.domain_map(domain_ref,domain_phys)
-    #q = GT.reference_coordinates(plt)
-    #phi(q)
 end
+
+#function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
+#    GT.reference_coordinates(plt)
+#end
+#
+#function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
+#    domain_phys = plt |> GT.domain
+#    d = num_dims(domain(plt))
+#    phi = physical_map(mesh(domain(plt)),d)
+#    q = GT.reference_coordinates(plt)
+#    phi(q)
+#    #domain_ref = domain_phys |> reference_domain
+#    #phi = GT.domain_map(domain_ref,domain_phys)
+#    #q = GT.reference_coordinates(plt)
+#    #phi(q)
+#end
 
 function reference_coordinates(plt::Plot)
     domain = GT.reference_domain(plt.cache.domain)

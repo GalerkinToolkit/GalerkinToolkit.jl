@@ -41,9 +41,21 @@ function face_reference_id(m::Measure)
     face_reference_id(mesh,d)
 end
 
-function coordinates(measure::Measure)
+function coordinates(measure::Measure;reference=is_reference_domain(GT.domain(measure)))
     domain = GT.domain(measure)
-    coordinates(measure,domain)
+    mesh = GT.mesh(domain)
+    d = GT.num_dims(domain)
+    face_to_refid = GT.face_reference_id(mesh,d)
+    domface_to_face = GT.faces(domain)
+    refid_to_quad = reference_quadratures(measure)
+    refid_to_coords = map(GT.coordinates,refid_to_quad)
+    prototype = first(GT.coordinates(first(refid_to_quad)))
+    x = point_quantity(refid_to_coords,domain;reference=true)
+    if reference
+        return x
+    end
+    ϕ = GT.physical_map(GT.mesh(domain),GT.num_dims(domain))
+    ϕ(x)
 end
 
 #function coordinates(measure::Measure{<:PMesh})
@@ -52,29 +64,44 @@ end
 #    GT.quantity(term) 
 #end
 
-function coordinates(measure::Measure,domain::ReferenceDomain)
+#function coordinates(measure::Measure,domain::ReferenceDomain)
+#    mesh = GT.mesh(domain)
+#    d = GT.num_dims(domain)
+#    face_to_refid = GT.face_reference_id(mesh,d)
+#    domface_to_face = GT.faces(domain)
+#    refid_to_quad = reference_quadratures(measure)
+#    refid_to_coords = map(GT.coordinates,refid_to_quad)
+#    prototype = first(GT.coordinates(first(refid_to_quad)))
+#
+#    point_quantity(refid_to_coords,domain;reference=true)
+#end
+#
+#function coordinates(measure::Measure,domain::PhysicalDomain)
+#    Ω = domain
+#    Ωref = GT.reference_domain(Ω)
+#    ϕ = GT.physical_map(mesh(Ω),num_dims(Ω))
+#    x = GT.coordinates(measure,Ωref)
+#    ϕ(x)
+#end
+
+function weights(measure::Measure;reference=is_reference_domain(GT.domain(measure)))
+    domain = GT.domain(measure)
     mesh = GT.mesh(domain)
     d = GT.num_dims(domain)
     face_to_refid = GT.face_reference_id(mesh,d)
     domface_to_face = GT.faces(domain)
     refid_to_quad = reference_quadratures(measure)
-    refid_to_coords = map(GT.coordinates,refid_to_quad)
-    prototype = first(GT.coordinates(first(refid_to_quad)))
-
-    point_quantity(refid_to_coords,domain;reference=true)
-end
-
-function coordinates(measure::Measure,domain::PhysicalDomain)
-    Ω = domain
-    Ωref = GT.reference_domain(Ω)
-    ϕ = GT.physical_map(mesh(Ω),num_dims(Ω))
-    x = GT.coordinates(measure,Ωref)
-    ϕ(x)
-end
-
-function weights(measure::Measure)
-    domain = GT.domain(measure)
-    weights(measure,domain)
+    refid_to_ws = map(GT.weights,refid_to_quad)
+    prototype = first(GT.weights(first(refid_to_quad)))
+    w = point_quantity(refid_to_ws,domain;reference=true)
+    if reference
+        return w
+    end
+    x = GT.coordinates(measure;reference=true)
+    ϕ = GT.physical_map(GT.mesh(domain),GT.num_dims(domain))
+    J = ForwardDiff.jacobian(ϕ,x)
+    dV = GT.call(change_of_measure,J)
+    GT.call(*,w,dV)
 end
 
 #function weights(measure::Measure{<:PMesh})
@@ -85,41 +112,41 @@ end
 #    GT.quantity(term,prototype,domain)
 #end
 
-function weights(measure::Measure,domain::ReferenceDomain)
-    mesh = GT.mesh(domain)
-    d = GT.num_dims(domain)
-    face_to_refid = GT.face_reference_id(mesh,d)
-    domface_to_face = GT.faces(domain)
-    refid_to_quad = reference_quadratures(measure)
-    refid_to_ws = map(GT.weights,refid_to_quad)
-    prototype = first(GT.weights(first(refid_to_quad)))
-    point_quantity(refid_to_ws,domain;reference=true)
-    #GT.quantity() do index
-    #    domface = face_index(index,d)
-    #    point = point_index(index)
-    #    domface_to_face_sym = get_symbol!(index,domface_to_face,gensym("domface_to_face"))
-    #    face_to_refid_sym = get_symbol!(index,face_to_refid,gensym("face_to_refid"))
-    #    refid_to_ws_sym = get_symbol!(index,refid_to_ws,gensym("refid_to_ws"))
-    #    expr = @term begin
-    #        face = $domface_to_face_sym[$domface]
-    #        ws = $refid_to_ws_sym[$face_to_refid_sym[face]]
-    #        ws[$point]
-    #    end
-    #    expr_term(d,expr,prototype,index)
-    #end
-end
+#function weights(measure::Measure,domain::ReferenceDomain)
+#    mesh = GT.mesh(domain)
+#    d = GT.num_dims(domain)
+#    face_to_refid = GT.face_reference_id(mesh,d)
+#    domface_to_face = GT.faces(domain)
+#    refid_to_quad = reference_quadratures(measure)
+#    refid_to_ws = map(GT.weights,refid_to_quad)
+#    prototype = first(GT.weights(first(refid_to_quad)))
+#    point_quantity(refid_to_ws,domain;reference=true)
+#    #GT.quantity() do index
+#    #    domface = face_index(index,d)
+#    #    point = point_index(index)
+#    #    domface_to_face_sym = get_symbol!(index,domface_to_face,gensym("domface_to_face"))
+#    #    face_to_refid_sym = get_symbol!(index,face_to_refid,gensym("face_to_refid"))
+#    #    refid_to_ws_sym = get_symbol!(index,refid_to_ws,gensym("refid_to_ws"))
+#    #    expr = @term begin
+#    #        face = $domface_to_face_sym[$domface]
+#    #        ws = $refid_to_ws_sym[$face_to_refid_sym[face]]
+#    #        ws[$point]
+#    #    end
+#    #    expr_term(d,expr,prototype,index)
+#    #end
+#end
 
-function weights(measure::Measure,domain::PhysicalDomain)
-    Ω = domain
-    Ωref = GT.reference_domain(Ω)
-    ϕ = GT.physical_map(mesh(Ω),num_dims(Ω))
-    w = GT.weights(measure,Ωref)
-    x = GT.coordinates(measure,Ωref)
-    J = ForwardDiff.jacobian(ϕ,x)
-    # J = GT.call(ForwardDiff.jacobian,ϕ,x)
-    dV = GT.call(change_of_measure,J)
-    GT.call(*,w,dV)
-end
+#function weights(measure::Measure,domain::PhysicalDomain)
+#    Ω = domain
+#    Ωref = GT.reference_domain(Ω)
+#    ϕ = GT.physical_map(mesh(Ω),num_dims(Ω))
+#    w = GT.weights(measure,Ωref)
+#    x = GT.coordinates(measure,Ωref)
+#    J = ForwardDiff.jacobian(ϕ,x)
+#    # J = GT.call(ForwardDiff.jacobian,ϕ,x)
+#    dV = GT.call(change_of_measure,J)
+#    GT.call(*,w,dV)
+#end
 
 function num_points(measure::Measure)
     domain = GT.domain(measure)
