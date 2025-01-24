@@ -28,7 +28,6 @@ FileIO.save(joinpath(@__DIR__,"fig_poisson_eq_0.png"),Makie.current_figure()) # 
 # Define domains and visualize them
 
 Ω = GT.interior(mesh)
-
 Makie.plot(Ω,color=:pink)
 FileIO.save(joinpath(@__DIR__,"fig_poisson_eq_1.png"),Makie.current_figure()) # hide
 
