@@ -1,2 +1,3 @@
 include("make_defs.jl")
-Make.main(;debug=false)
+Make.main(;debug=true)
+

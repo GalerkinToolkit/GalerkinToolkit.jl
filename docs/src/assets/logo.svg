@@ -15,7 +15,7 @@
    version="1.1"
    id="svg8"
    inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)"
-   sodipodi:docname="logo_src.svg">
+   sodipodi:docname="logo.svg">
   <defs
      id="defs2" />
   <sodipodi:namedview
@@ -26,8 +26,8 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.49497475"
-     inkscape:cx="109.62378"
-     inkscape:cy="-155.96707"
+     inkscape:cx="-253.02098"
+     inkscape:cy="-164.04829"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -48,7 +48,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -58,7 +58,7 @@
      id="layer1"
      transform="translate(-671.97906,-174.17165)">
     <path
-       style="opacity:1;fill:#cccccc;fill-opacity:0.6142857;stroke:none;stroke-width:0.1;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:stroke fill markers"
+       style="opacity:1;fill:#d8d8d8;fill-opacity:0.89999998;stroke:none;stroke-width:0.1;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;paint-order:stroke fill markers"
        d="M 674.47897,176.67167 V 324.31846 H 895.99671 V 176.67167 Z m 85.81647,20.58996 h 53.12595 v 53.25877 h -53.12595 z m -32.36029,27.3141 39.5211,70.56829 -78.90888,-0.10491 z m 122.27366,14.23839 a 27.78125,27.78125 0 0 1 27.78125,27.78125 27.78125,27.78125 0 0 1 -27.78125,27.78125 27.78125,27.78125 0 0 1 -27.78124,-27.78125 27.78125,27.78125 0 0 1 27.78124,-27.78125 z"
        id="rect828-3"
        inkscape:connector-curvature="0" />
