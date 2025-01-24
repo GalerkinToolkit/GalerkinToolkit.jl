@@ -17,6 +17,7 @@ DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); re
 
 examples_pages = [
     "example_hello_world.md",
+    "example_hello_world_manual.md",
 ]
 examples_pages = map(p->joinpath("src_md",p),examples_pages)
 examples = ["examples.md",examples_pages...]
