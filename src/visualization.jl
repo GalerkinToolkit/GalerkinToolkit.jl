@@ -730,8 +730,8 @@ function coordinates(plt::Union{Plot,PPlot})
     if is_reference_domain(domain)
         return q
     end
-    d = num_dims(domain(plt))
-    phi = physical_map(mesh(domain(plt)),d)
+    d = num_dims(GT.domain(plt))
+    phi = physical_map(GT.mesh(GT.domain(plt)),d)
     phi(q)
 end
 

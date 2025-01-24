@@ -2,7 +2,24 @@ using GalerkinToolkit
 using Documenter
 using Literate
 
+codefence = "```julia" => "```"
+src_jl = joinpath(@__DIR__,"src","src_jl")
+src_md = joinpath(@__DIR__,"src","src_md")
+rm(src_md,force=true,recursive=true)
+mkpath(src_md)
+
+for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
+    Literate.markdown(joinpath(src_jl,file_jl),src_md)#;codefence)
+end
+
+
 DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
+
+examples_pages = [
+    "example_hello_world.md",
+]
+examples_pages = map(p->joinpath("src_md",p),examples_pages)
+examples = ["examples.md",examples_pages...]
 
 makedocs(;
     modules=[GalerkinToolkit],
@@ -16,7 +33,7 @@ makedocs(;
     pages=[
         "index.md",
         "tutorials.md",
-        "examples.md",
+        "Examples" => examples,
         "manual.md",
         "reference.md",
         "refindex.md",
