@@ -1,5 +1,22 @@
 # # Poisson equation
 #
+# ## Problem statement
+
+#  Find the scalar field $u$ such that
+#
+# ```math
+# \left\lbrace
+# \begin{aligned}
+# -\Delta u = f  \ &\text{in} \ \Omega,\\
+# u = g \ &\text{on}\ \Gamma_{\rm D},\\
+# \nabla u\cdot n = h \ &\text{on}\  \Gamma_{\rm N},\\
+# \nabla u\cdot n = 0 \ &\text{elsewhere on}\  \partial \Omega,\\
+# \end{aligned}
+# \right.
+# ```
+#  being $n$ the outwards unit normal vector to $\partial\Omega$. In this example, we chose $f(x) = 1$, $g(x) = 2$, and $h(x)=3$. The variable $x$ is the position vector $x=(x_1,x_2,x_3)$.  The computational domains are defined in the mesh file `model.msh`. The domain $\Omega$ is represented by the 3D faces in this mesh. The domain $\Gamma_{\rm D}$ is represented by the physical group named `"sides"` and $\Gamma_{\rm N}$ is the union of the physical groups named `"circle"`, `"triangle"`, and `"square"`.  To solve this PDE, we use a conventional Galerkin finite element method with conforming Lagrangian FE spaces.
+
+# ## Implementation
 
 # Load dependencies form Julia stdlib.
 
