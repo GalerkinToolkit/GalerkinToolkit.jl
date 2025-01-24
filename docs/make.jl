@@ -15,12 +15,26 @@ end
 
 DocMeta.setdocmeta!(GalerkinToolkit, :DocTestSetup, :(using GalerkinToolkit); recursive=true)
 
+tutorials_pages = [
+    "tutorial_intro_to_fem.md",
+]
+tutorials_pages = map(p->joinpath("src_md",p),tutorials_pages)
+tutorials = ["tutorials.md",tutorials_pages...]
+
 examples_pages = [
     "example_hello_world.md",
     "example_hello_world_manual.md",
 ]
 examples_pages = map(p->joinpath("src_md",p),examples_pages)
 examples = ["examples.md",examples_pages...]
+
+manual_pages = [
+          "getting_started.md",
+          "for_developers.md"
+         ]
+manual_pages = map(p->joinpath("manual",p),manual_pages)
+manual = ["manual.md",manual_pages...]
+
 
 makedocs(;
     modules=[GalerkinToolkit],
@@ -33,9 +47,9 @@ makedocs(;
     ),
     pages=[
         "index.md",
-        "tutorials.md",
+        "Tutorials" => tutorials,
         "Examples" => examples,
-        "manual.md",
+        "Manual" => manual,
         "reference.md",
         "refindex.md",
     ],
