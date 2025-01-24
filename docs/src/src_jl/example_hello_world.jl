@@ -3,7 +3,7 @@
 # ## Problem statement
 #
 # In this example, we show how to solve the "Hello, world" PDE example:
-# the Poisson equation on the unit square with Dirichlet boundary conditions.
+# the Poisson equation on the unit hyper-cube $\Omega  =[0,1]^d$, $d\in\{2,3\}$, with Dirichlet boundary conditions.
 #
 # ```math
 # \left\lbrace
@@ -13,8 +13,11 @@
 # \end{aligned}
 # \right.
 # ```
-# with $f=0$ and $g(x)=\text{sum}(x)$.
-#
+# with $f=0$ and $g(x)=\text{sum}(x)$. In this case, we know that the solution is $u=g$ which allows us to check that we solve the
+# problem correctly, by integration an error norm.
+
+#  To solve this PDE, we use a conventional Galerkin finite element (FE) method with conforming Lagrangian FE spaces (see, e.g., [1] for specific details on this formulation).
+
 # ## Implementation
 #
 # Load dependencies form Julia stdlib.
@@ -165,11 +168,14 @@ end
 
 end # module
 
-# Run it for a 2d case
+# Run it for a 2d case.
 
 Program.main(domain=(0,1,0,1),cells=(10,10))
 
-# Run it for a 3d case
+# Run it for a 3d case.
 
 Program.main(domain=(0,1,0,1,0,1),cells=(10,10,10))
 
+# ## References
+#
+# [1] C. Johnson. *Numerical Solution of Partial Differential Equations by the Finite Element Method*. Dover Publications, 2009.

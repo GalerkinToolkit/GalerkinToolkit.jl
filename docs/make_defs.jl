@@ -53,6 +53,7 @@ function main(;debug=false)
                       "example_hello_world_manual.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
+                      "example_stokes.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
     examples = ["examples.md",examples_pages...]

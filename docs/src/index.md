@@ -2,7 +2,7 @@
 CurrentModule = GalerkinToolkit
 ```
 
-# GalerkinToolkit
+# Home
 
 ## What
 
