@@ -53,6 +53,7 @@ FileIO.save(joinpath(@__DIR__,"fig_poisson_eq_3.png"),Makie.current_figure()) # 
 f = GT.analytical_field(x->1.0,Ω)
 g = GT.analytical_field(x->2.0,Ω)
 h = GT.analytical_field(x->3.0,Ω)
+nothing # hide
 
 # Define the interpolation space.
 

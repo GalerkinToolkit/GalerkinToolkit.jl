@@ -35,7 +35,7 @@ function face_constant_field(data,dom::AbstractDomain)
     Field(q2,dom)
 end
 
-function piecewiese_field(fields::AbstractQuantity...)
+function piecewise_field(fields::AbstractQuantity...)
     PiecewiseField(fields)
 end
 
@@ -48,7 +48,7 @@ function domain(u::PiecewiseField)
     PiecewiseDomain(domains)
 end
 
-function piecewiese_domain(domains::AbstractDomain...)
+function piecewise_domain(domains::AbstractDomain...)
     PiecewiseDomain(domains)
 end
 
