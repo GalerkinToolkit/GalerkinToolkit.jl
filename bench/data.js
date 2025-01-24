@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1737113437617,
+  "lastUpdate": 1737718171722,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -764,6 +764,36 @@ window.BENCHMARK_DATA = {
             "value": 719683460,
             "unit": "ns",
             "extra": "gctime=28009101\nmemory=450845120\nallocs=15304790\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4d84589d5388cc842b6b3dba7c0e0864b97f6fa5",
+          "message": "Merge pull request #171 from GalerkinToolkit/refactor\n\nNew documentation layout",
+          "timestamp": "2025-01-24T12:26:01+01:00",
+          "tree_id": "07e28d8a712a48ff03b1f49e8025080f2f9e8635",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/4d84589d5388cc842b6b3dba7c0e0864b97f6fa5"
+        },
+        "date": 1737718171382,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 703160543,
+            "unit": "ns",
+            "extra": "gctime=28328082\nmemory=450845120\nallocs=15304790\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
