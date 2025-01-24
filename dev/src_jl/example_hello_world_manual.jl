@@ -1,6 +1,7 @@
 # # Hello, World! (manual assembly)
 #
 # ## Problem statement
+# We solve the same problem as in the [Hello, World!](@ref) example, but in this case we explicitly write the numerical integration loops.
 #
 # ## Implementation
 
