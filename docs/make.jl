@@ -2,12 +2,12 @@ using GalerkinToolkit
 using Documenter
 using Literate
 
-codefence = "```julia" => "```"
 src_jl = joinpath(@__DIR__,"src","src_jl")
 src_md = joinpath(@__DIR__,"src","src_md")
 rm(src_md,force=true,recursive=true)
 mkpath(src_md)
 
+codefence = "```julia" => "```"
 for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
     Literate.markdown(joinpath(src_jl,file_jl),src_md)#;codefence)
 end
@@ -24,6 +24,7 @@ tutorials = ["tutorials.md",tutorials_pages...]
 examples_pages = [
     "example_hello_world.md",
     "example_hello_world_manual.md",
+    "example_poisson_equation.md",
 ]
 examples_pages = map(p->joinpath("src_md",p),examples_pages)
 examples = ["examples.md",examples_pages...]
