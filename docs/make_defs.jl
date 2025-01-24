@@ -68,7 +68,7 @@ function main(;debug=false)
     makedocs(;
              modules=[GalerkinToolkit],
              authors="Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors",
-             sitename="GalerkinToolkit",
+             sitename="GalerkinToolkit.jl",
              format=Documenter.HTML(;
                                     prettyurls=get(ENV, "CI", "false") == "true",
                                     canonical="https://GalerkinToolkit.github.io/GalerkinToolkit.jl",
