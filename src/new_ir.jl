@@ -1,10 +1,9 @@
-
 abstract type NewAbstractTerm <: AbstractType end
 
 """
 Creates a term representing a placeholder for a (face,point,dof) index.
 """
-function index_term(name="index";prefix=gensym,int_type::Type{T}) where T
+function index_term(name="index";prefix=gensym,int_type::Type{T}=Int) where T
     IndexTerm(T,prefix(name))
 end
 
@@ -21,7 +20,7 @@ end
 
 This is used to create the argument of functions converting quantities to terms
 """
-function term_options(;domain,domain_face=index_term(:domain_face))
+function term_options(domain;domain_face=index_term(:domain_face))
     contents = (;domain,domain_face)
     TermOptions(contents)
 end
@@ -47,6 +46,11 @@ function term(q::NewQuantity,opt::TermOptions)
     q.term(opt)
 end
 
+# if it is not a quantity, then process as a constant
+function term(q, opt::TermOptions)
+    NewConstantTerm(q)
+end
+
 function new_constant_quantity(value)
     new_quantity() do opts
         NewConstantTerm(value)
@@ -62,35 +66,35 @@ function expression!(runtime,t::NewConstantTerm)
     value
 end
 
-#function call(f,args::NewAbstractQuantity...)
+# function call(f,args::NewAbstractQuantity...)
 #    new_quantity() do opts
 #        args_term = map(arg->term(arg,opts),args)
 #        CallTerm(f,args_term)
 #    end
-#end
-#
-#struct CallTerm{A,B} <: NewAbstractTerm
+# end
+
+# struct CallTerm{A,B} <: NewAbstractTerm
 #    callee::A
 #    args::B
-#end
+# end
 
-#function (f::NewAbstractQuantity)(x::NewAbstractQuantity)
+# function (f::NewAbstractQuantity)(x::NewAbstractQuantity)
 #    new_quantity() do opts
 #        x_term = term(x,opts)
 #        f_term = term(f,opts)
 #        EvaluateTerm(f_term,x_term)
 #    end
-#end
+# end
 #
-#struct EvaluateTerm{A,B} <: NewAbstractTerm
+# struct EvaluateTerm{A,B} <: NewAbstractTerm
 #    callee::A
 #    arg::B
-#end
+# end
 
 function new_coordinate_quantity(q::AbstractQuadrature,point::NewAbstractTerm)
     new_quantity() do opts
         @assert domain(q) == domain(opts)
-        mesh_face = MeshFaceTerm(domain,domain_face)
+        mesh_face = MeshFaceTerm(domain(opts),domain_face(opts))
         CoordinateTerm(q,point,mesh_face)
     end
 end
@@ -110,7 +114,7 @@ function expression!(runtime,t::CoordinateTerm)
     point = expression!(runtime,t.point)
     mesh_face = expression!(runtime,t.mesh_face)
     mesh = GT.mesh(GT.domain(q))
-    if is_physical_domain(t.domain)
+    if is_physical_domain(t.mesh_face.domain)
         d = num_dims(GT.domain(q))
         rid_tab_data = map(rid_point_coordinate_data,reference_spaces(mesh,d)) do point_to_x, refface
             tabulator(refface)(value,point_to_x)
@@ -131,7 +135,7 @@ function expression!(runtime,t::CoordinateTerm)
         end
     else
         @term begin
-            $rid_point_coordinate[$mesh_face_rid[$mesh_face]]
+            $rid_point_coordinate[$mesh_face_rid[$mesh_face]][$point]
         end
     end
 end
@@ -152,7 +156,7 @@ end
 function new_weight_quantity(q::AbstractQuadrature,point::NewAbstractTerm)
     new_quantity() do opts
         @assert domain(q) == domain(opts)
-        mesh_face = MeshFaceTerm(domain,domain_face)
+        mesh_face = MeshFaceTerm(domain(opts),domain_face(opts))
         WeightTerm(q,point,mesh_face)
     end
 end
@@ -172,7 +176,7 @@ function expression!(runtime,t::WeightTerm)
     point = expression!(runtime,t.point)
     mesh_face = expression!(runtime,t.mesh_face)
     mesh = GT.mesh(GT.domain(q))
-    if is_physical_domain(t.domain)
+    if is_physical_domain(t.mesh_face.domain)
         d = num_dims(GT.domain(q))
         rid_tab_data = map(rid_point_coordinate_data,reference_spaces(mesh,d)) do point_to_x, refface
             tabulator(refface)(ForwardDiff.gradient,point_to_x)
@@ -181,21 +185,21 @@ function expression!(runtime,t::WeightTerm)
         node_x = compile_symbol!(runtime,node_coordinates(mesh))
         mesh_face_nodes = compile_symbol!(runtime,face_nodes(mesh,d))
         @term begin
-            rid = $mesh_face_reference_id[$mesh_face]
+            rid = $mesh_face_rid[$mesh_face]
             tab = $rid_tab[rid]
-            dof_node = $mesh_face_nodes[mesh_face]
+            dof_node = $mesh_face_nodes[$mesh_face]
             ndofs = length(dof_node)
             J = sum(1:ndofs) do dof
                 node = dof_node[dof]
                 x = $node_x[node]
-                outer(x,tab[$point,dof])
+                outer(x,tab[$point,dof]) 
             end
             w = $rid_point_weight[rid][$point]
             w*change_of_measure(J)
         end
     else
         @term begin
-            $rid_point_weight[$mesh_face_rid[$mesh_face]]
+            $rid_point_weight[$mesh_face_rid[$mesh_face]][$point]
         end
     end
 end
@@ -233,17 +237,101 @@ end
 #    end
 #end
 
+# TODO: copied from integration.jl.
+struct NewMeasure{A,B,C,D} <: GT.AbstractType
+    mesh::A
+    quadrature_rule::B
+    domain::C
+    degree::D
+end
+domain(a::NewMeasure) = a.domain
+# quadrature_rule(a::NewMeasure) = a.quadrature_rule
+mesh(a::NewMeasure) = a.mesh
+# degree(a::NewMeasure) = a.degree
+
+
+function new_measure(dom::AbstractDomain,degree)
+    new_measure(quadrature,dom,degree)
+end
+
+function new_measure(f,dom::AbstractDomain,degree)
+    mesh = GT.mesh(dom)
+    NewMeasure(mesh,f,dom,degree)
+end
+
+function reference_quadratures(measure::NewMeasure)
+    domain = GT.domain(measure)
+    mesh = GT.mesh(domain)
+    d = GT.num_dims(domain)
+    drefid_refdface = GT.reference_spaces(mesh,d)
+    refid_to_quad = map(drefid_refdface) do refdface
+        geo = GT.domain(refdface)
+        measure.quadrature_rule(geo,measure.degree)
+    end
+    refid_to_quad
+end
+
+function face_reference_id(m::NewMeasure)
+    domain = GT.domain(m)
+    mesh = GT.mesh(domain)
+    d = GT.num_dims(domain)
+    face_reference_id(mesh,d)
+end
+
+function quadrature(m::NewMeasure)
+    mesh_quadrature(;
+        domain=domain(m),
+        reference_quadratures = reference_quadratures(m),
+        face_reference_id = face_reference_id(m)
+       )
+end
+
+# copy end
+
+struct NumPointsTerm{A, B} <: NewAbstractTerm
+    quadrature::A
+    mesh_face::B
+end
+
+
+function num_points(q::AbstractQuadrature, opts::TermOptions) # TODO: make it a quantity or a term?
+    mesh_face = MeshFaceTerm(domain(opts),domain_face(opts))
+    NumPointsTerm(q, mesh_face)
+end
+
+
+
+function expression!(runtime,t::NumPointsTerm)
+    q = t.quadrature
+    rid_point_coordinate_data = map(coordinates,reference_quadratures(q))
+    mesh_face_rid_data = face_reference_id(q)
+    rid_point_weight = compile_symbol!(runtime,map(weights,reference_quadratures(q)))
+    mesh_face_rid = compile_symbol!(runtime,mesh_face_rid_data)
+    # point = expression!(runtime,t.point)
+    mesh_face = expression!(runtime,t.mesh_face)
+    mesh = GT.mesh(GT.domain(q))
+
+    @term begin
+        ws = $rid_point_weight[$mesh_face_rid[$mesh_face]]
+        length(ws)
+    end
+
+end
+
+
 function integrate(f,measure::NewMeasure)
     point = index_term(:point)
-    x = new_coordinate_quantity(measure,point)
-    dV = new_weight_quantity(measure,point)
+    q = quadrature(measure)
+    x = new_coordinate_quantity(q,point)
+    dV = new_weight_quantity(q,point)
     fx = f(x)
     domain = GT.domain(measure)
     domain_face = index_term(:domain_face)
     opts = term_options(domain;domain_face)
     dV_term = term(dV,opts)
     fx_term = term(fx,opts)
-    contribution = IntegralTerm(fx_term,dV_term,domain_face,point)
+    num_points_term = num_points(q, opts)
+    contribution = IntegralTerm(measure,fx_term,dV_term,domain_face,point,num_points_term)
     contributions = (contribution,)
     NewIntegral(contributions)
 end
@@ -257,6 +345,8 @@ struct IntegralTerm{A,B,C,D,E,F} <: NewAbstractTerm
     num_points::F
 end
 
+measure(t::IntegralTerm) = t.measure
+
 function expression(t::NewAbstractTerm)
     runtime = IdDict{Any,Symbol}()
     expr = expression!(runtime,t)
@@ -264,8 +354,8 @@ function expression(t::NewAbstractTerm)
 end
 
 function expression!(runtime,t::IntegralTerm)
-    domain_face = t.domain_face
-    point = t.point
+    domain_face = expression!(runtime, t.domain_face)
+    point = expression!(runtime, t.point)
     fx = expression!(runtime,t.integrand)
     w = expression!(runtime,t.weight)
     npoints = expression!(runtime,t.num_points)
@@ -282,14 +372,20 @@ struct NewIntegral{A}  <: AbstractType
 end
 contributions(a::NewIntegral) = a.contributions
 
-function sum(int::NewIntegral)
+function Base.sum(int::NewIntegral) # TODO: syntax
     f = generate_sum(int)
     f()
 end
 
+function generate_sum(f::Function, params...)
+    @assert length(params) == 0
+    int = f(params...)
+    generate_sum(int, params...)
+end
+
 function generate_sum(int::NewIntegral,params...)
     fs = map(c->generate_sum(c,params...),contributions(int))
-    params2... -> begin
+    (params2...) -> begin
         sum(f->f(params2...),fs)
     end
 end
@@ -316,7 +412,7 @@ end
 
 function unpack_runtime_argument(runtime,arg)
     expr = Expr(:block)
-    for k in Base.values(index.data.dict) |> collect |> sort
+    for k in Base.values(runtime) |> collect |> sort
         push!(expr.args,:($k = $arg.$k))
     end
     expr
