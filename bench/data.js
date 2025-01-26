@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1737738515664,
+  "lastUpdate": 1737880138162,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -854,6 +854,36 @@ window.BENCHMARK_DATA = {
             "value": 704248542,
             "unit": "ns",
             "extra": "gctime=27210822.5\nmemory=450845136\nallocs=15304791\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b2f2c1ab3351f12cb43562a75ad94ffb2ad5f91d",
+          "message": "Merge pull request #174 from GalerkinToolkit/refactor\n\nMinor in docs",
+          "timestamp": "2025-01-26T09:25:16+01:00",
+          "tree_id": "7f212ce52bbb11c8a9301bc0daab9bee2a69df5e",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/b2f2c1ab3351f12cb43562a75ad94ffb2ad5f91d"
+        },
+        "date": 1737880137278,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 699733826,
+            "unit": "ns",
+            "extra": "gctime=27117438.5\nmemory=450845120\nallocs=15304790\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
