@@ -253,37 +253,37 @@ function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
 end
 
-function interpolate!(f,u::DiscreteField,field)
-    interpolate!(f,u,nothing,field)
-end
+#function interpolate!(f,u::DiscreteField,field)
+#    interpolate!(f,u,nothing,field)
+#end
 
 function interpolate_free!(f,u::DiscreteField)
     interpolate!(f,u,FREE)
 end
 
-function interpolate_free!(f,u::DiscreteField,field)
-    interpolate!(f,u,FREE,field)
-end
+#function interpolate_free!(f,u::DiscreteField,field)
+#    interpolate!(f,u,FREE,field)
+#end
 
 function interpolate_dirichlet!(f,u::DiscreteField)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
     interpolate!(f,u,DIRICHLET)
 end
 
-function interpolate_dirichlet!(f,u::DiscreteField,field)
-    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
-    interpolate!(f,u,DIRICHLET,field)
-end
+#function interpolate_dirichlet!(f,u::DiscreteField,field)
+#    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
+#    interpolate!(f,u,DIRICHLET,field)
+#end
 
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
     interpolate_impl!(f,u,free_or_diri)
 end
 
-function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
-    ui = GT.field(u,field)
-    interpolate_impl!(f,ui,free_or_diri)
-    u
-end
+#function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
+#    ui = GT.field(u,field)
+#    interpolate_impl!(f,ui,free_or_diri)
+#    u
+#end
 
 function interpolate_impl!(f,u,free_or_diri;location=1)
     free_vals = GT.free_values(u)

@@ -34,7 +34,8 @@ Q = GT.lagrange_space(Ω,order-1;space_type=:P,dirichlet_boundary=GT.last_dof())
 VxQ = V × Q
 u_field, p_field = 1,2
 uhph_dirichlet = GT.dirichlet_field(Float64,VxQ)
-GT.interpolate_dirichlet!(g,uhph_dirichlet,u_field)
+uhd = GT.field(uhph_dirichlet,u_field)
+GT.interpolate_dirichlet!(g,uhd)
 dΩ = GT.measure(Ω,2*order)
 ∇ = ForwardDiff.jacobian
 div(u,x) = tr(∇(u,x))
