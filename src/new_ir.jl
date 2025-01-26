@@ -301,6 +301,24 @@ end
 
 
 
+struct ParamTerm{A} <: NewAbstractTerm
+    name::Symbol
+    prototype::A
+end
+
+function new_param_quantity(value)
+    name = gensym("param")
+    new_quantity() do opts
+        ParamTerm(name,value) 
+    end
+end
+
+
+function expression!(runtime, t::ParamTerm)
+    get!(runtime,t.name,t.name) # use a unique name for each param term
+    t.name
+end
+
 function expression!(runtime,t::NumPointsTerm)
     q = t.quadrature
     rid_point_coordinate_data = map(coordinates,reference_quadratures(q))
@@ -378,9 +396,9 @@ function Base.sum(int::NewIntegral) # TODO: syntax
 end
 
 function generate_sum(f::Function, params...)
-    @assert length(params) == 0
-    int = f(params...)
-    generate_sum(int, params...)
+    param_quantities = map((x -> (typeof(x) <: NewAbstractQuantity) ? x : new_param_quantity(x)), params)
+    int = f(param_quantities...)
+    generate_sum(int, param_quantities...)
 end
 
 function generate_sum(int::NewIntegral,params...)
@@ -391,19 +409,29 @@ function generate_sum(int::NewIntegral,params...)
 end
 
 function generate_sum(ir0::IntegralTerm,params::NewAbstractQuantity...)
-    @assert length(params) == 0
+    # @assert length(params) == 0
     #ir1 = optimize(ir0)
     #ir2 = lower(ir1)
     #ir3 = optimize()
-    #domain = GT.domain(ir0)
-    #domain_face = ir0.domain_face
-    #opts = term_options(domain;domain_face)
-    #params_terms = map(param -> term(params,opts),params)
+
     expr, runtime = expression(ir0)
-    f = eval(expr)
+    
+    dom = GT.domain(ir0.measure)
+    dom_face = ir0.domain_face
+    opts = term_options(dom;domain_face=dom_face)
+    param_terms = map(param -> term(param,opts), params)
+    param_term_exprs = map(x -> x.name, param_terms)
     arg = runtime_argument(runtime)
+
+    f = eval(expr) # TODO: how can we use the prototype of params?
+
     nfaces = num_faces(domain(measure(ir0)))
-    () -> sum(domain_face -> invokelatest(f,domain_face,arg), 1:nfaces)
+    (params2...) -> begin 
+        newarg = (;arg..., (zip(param_term_exprs, params2))...)
+
+        sum(domain_face -> invokelatest(f,domain_face,newarg), 1:nfaces)
+    end
+    
 end
 
 function runtime_argument(runtime)
