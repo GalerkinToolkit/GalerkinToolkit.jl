@@ -51,8 +51,8 @@ pgk> add LiveServer
 
 ### Quick build
 
-The standard build takes a long time since it runs several examples.
-This delay makes this approach impractical to write documentation,
+The standard build takes a long time since it runs the Julia files in `docs/src/src_jl` containing finite element code.
+This delay makes this build approach impractical to write documentation,
 since one needs to build the docs often to check the
 final result.
 
