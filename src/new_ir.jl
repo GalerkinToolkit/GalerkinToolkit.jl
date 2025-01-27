@@ -1,121 +1,139 @@
 abstract type NewAbstractTerm <: AbstractType end
 
-"""
-This is used to create the argument of functions converting quantities to terms
-"""
-function term_options(domain;domain_face=:domain_face)
-    contents = (;domain,domain_face)
-    TermOptions(contents)
-end
-
-struct TermOptions{A}
-    contents::A
-end
-
-domain(t::TermOptions) = t.contents.domain
-domain_face(t::TermOptions) = t.contents.domain_face
+#"""
+#This is used to create the argument of functions converting quantities to terms
+#"""
+#function term_options(domain;domain_face=:domain_face)
+#    contents = (;domain,domain_face)
+#    TermOptions(contents)
+#end
+#
+#struct TermOptions{A}
+#    contents::A
+#end
+#
+#domain(t::TermOptions) = t.contents.domain
+#domain_face(t::TermOptions) = t.contents.domain_face
 
 abstract type NewAbstractQuantity <: AbstractType end
 
-function new_quantity(term)
-    NewQuantity(term)
+function new_quantity(term;name=nothing,workspace=nothing)
+    NewQuantity(term,name,workspace)
 end
 
-struct NewQuantity{A} <: NewAbstractQuantity
+struct NewQuantity{A,B,C} <: NewAbstractQuantity
     term::A
+    name::B
+    workspace::C
 end
 
-function term(q::NewQuantity,opt::TermOptions)
-    q.term(opt)
+function name(m::NewQuantity)
+    @assert m.name !== nothing
+    m.name
 end
 
-function uniform_quantity(value)
-    new_quantity() do opts
-        UniformTerm(value)
+function term(q::NewQuantity,dom)
+    q.term(dom)
+end
+
+function uniform_quantity(value;name=gensym("uniform"))
+    new_quantity(;name,workspace=value) do opts
+        UniformTerm(name)
     end
 end
 
 struct UniformTerm{A} <: NewAbstractTerm
-    value::A
+    name::A
 end
 
-function generate_body(t::UniformTerm,param_to_symbol,domain_face)
-    param_to_symbol[t.value]
+function generate_body(t::UniformTerm,name_to_symbol,domain_face)
+    t2 = name_to_symbol[t.name]
+    :($t2.workspace)
 end
 
-struct NumPointsTerm{A,B} <: NewAbstractTerm
-    quadrature::A
-    domain_face::B
+struct NumPointsTerm{A} <: NewAbstractTerm
+    measure::A
 end
 
-function generate_body(t::NumPointsTerm,param_to_symbol,domain_face)
-    quadrature = param_to_symbol[t.quadrature]
+function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
+    measure = name_to_symbol[t.measure.name]
     @term begin
-        face_npoints = GT.num_points_accessor($quadrature)
+        face_npoints = GT.num_points_accessor($measure)
         face_npoints($domain_face)
     end
 end
 
-struct WeightTerm{A,B,C} <: NewAbstractTerm
-    quadrature::A
-    domain_face::B
-    point::C
+struct WeightTerm{A,B} <: NewAbstractTerm
+    measure::A
+    point::B
 end
 
-function generate_body(t::WeightTerm,param_to_symbol,domain_face)
-    quadrature = param_to_symbol[t.quadrature]
+function generate_body(t::WeightTerm,name_to_symbol,domain_face)
+    measure = name_to_symbol[t.measure.name]
     point = t.point
     @term begin
-        face_point_J = GT.jacobian_accessor($quadrature)
-        face_point_w = GT.weight_accessor($quadrature)
+        face_point_J = GT.jacobian_accessor($measure)
+        face_point_w = GT.weight_accessor($measure)
         J = face_point_J($domain_face)($point)
         face_point_w($domain_face)($point,J)
     end
 end
 
-function coordinate_quantity(quadrature::AbstractQuadrature,point)
-    new_quantity() do opts
-        domain_face = GT.domain_face(opts)
-        CoordinateTerm(quadrature,domain_face,point)
+function new_measure(domain,degree;name=gensym("quadrature"))
+    q = quadrature(domain,degree)
+    NewMeasure(q,name)
+end
+
+struct NewMeasure{A,B}
+    quadrature::A
+    name::B
+end
+
+domain(m::NewMeasure) = domain(m.quadrature)
+name(m::NewMeasure) = m.name
+weight_accessor(m::NewMeasure) = weight_accessor(m.quadrature)
+jacobian_accessor(m::NewMeasure) = jacobian_accessor(m.quadrature)
+coordinate_accessor(m::NewMeasure) = coordinate_accessor(m.quadrature)
+num_points_accessor(m::NewMeasure) = num_points_accessor(m.quadrature)
+
+function coordinate_quantity(measure::NewMeasure,point)
+    new_quantity(;name) do dom
+        @assert dom == domain(measure)
+        CoordinateTerm(measure,point)
     end
 end
 
-struct CoordinateTerm{A,B,C} <: NewAbstractTerm
-    quadrature::A
-    domain_face::B
-    point::C
+struct CoordinateTerm{A,B} <: NewAbstractTerm
+    measure::A
+    point::B
 end
 
-function contribution(f,quadrature::AbstractQuadrature)
-    domain_face = :domain_face
+function contribution(f,measure::NewMeasure)
     point = :point
-    x = coordinate_quantity(quadrature,point)
+    x = coordinate_quantity(measure,point)
     fx = f(x)
-    weight = WeightTerm(quadrature,domain_face,point)
-    num_points = NumPointsTerm(quadrature,domain_face)
-    domain = GT.domain(weight.quadrature)
-    opts = term_options(domain;domain_face)
-    integrand = term(fx,opts)
+    weight = WeightTerm(measure,point)
+    num_points = NumPointsTerm(measure)
+    domain = GT.domain(measure)
+    integrand = term(fx,domain)
     ContributionTerm(
                      integrand,
                      weight,
-                     domain_face,
                      point,
                      num_points, )
 end
 
-struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
+struct ContributionTerm{A,B,C,D} <: NewAbstractTerm
     integrand::A
     weight::B
-    domain_face::C # remains free. Not sure if we need it
-    point::D # gets reduced
-    num_points::E
+    point::C # gets reduced
+    num_points::D
 end
 
-function generate_body(t::ContributionTerm,param_to_symbol,domain_face)
-    integrand_expr = generate_body(t.integrand,param_to_symbol,domain_face)
-    weight_expr = generate_body(t.weight,param_to_symbol,domain_face)
-    num_points_expr = generate_body(t.num_points,param_to_symbol,domain_face)
+function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
+    integrand_expr = generate_body(t.integrand,name_to_symbol,domain_face)
+    weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
+    num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
     quote
         sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
@@ -123,12 +141,12 @@ function generate_body(t::ContributionTerm,param_to_symbol,domain_face)
 end
 
 function generate(t::NewAbstractTerm,params...)
-    itr = [ p=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
+    itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     @show symbols = map(last,itr)
-    param_to_symbol = IdDict(itr )
-    display(param_to_symbol)
+    name_to_symbol = Dict(itr)
+    display(name_to_symbol)
     domain_face = :dummy_domain_face
-    expr = generate_body(t,param_to_symbol,domain_face)
+    expr = generate_body(t,name_to_symbol,domain_face)
     quote
         ($(symbols...),) -> begin
             $domain_face -> begin

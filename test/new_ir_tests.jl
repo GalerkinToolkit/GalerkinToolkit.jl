@@ -16,20 +16,17 @@ mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
 degree = 3
-dΩ = GT.quadrature(Ω,degree)
+dΩ = GT.new_measure(Ω,degree)
 
-v = 1.0
-α = GT.uniform_quantity(v)
-# TODO what if we want this as another different argument
-#α3 = GT.uniform_quantity(v)
+α = GT.uniform_quantity(1.0)
 
 int = GT.contribution(x->α,dΩ)
 
-expr = GT.generate(int,v,dΩ)
+expr = GT.generate(int,α,dΩ)
 
 f = eval(expr)
 
-@time domain_face_v = f(v,dΩ)
+@time domain_face_v = f(α,dΩ)
 
 domain_face = 2
 v = domain_face_v(domain_face)
@@ -37,7 +34,8 @@ v = domain_face_v(domain_face)
 s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
 @show s
 
-@time domain_face_v = f(2.0,dΩ)
+α = GT.uniform_quantity(2.0)
+@time domain_face_v = f(α,dΩ)
 s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
 @show s
 
@@ -47,11 +45,12 @@ mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
 degree = 3
-dΩ = GT.quadrature(Ω,degree)
+dΩ = GT.new_measure(Ω,degree)
 
-@time domain_face_v = f(10.0,dΩ)
+@time domain_face_v = f(α,dΩ)
 s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
 @show s
+
 
 
 #Ωref = GT.interior(mesh;is_reference_domain=true)
