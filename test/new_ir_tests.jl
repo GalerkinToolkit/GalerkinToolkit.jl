@@ -51,6 +51,9 @@ dΩ = GT.new_measure(Ω,degree)
 s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
 @show s
 
+#face_point_J
+#face_point_w 
+#loop over faces, loop over pointsm and and up the output of face_point_w(face)(point,J)
 
 
 #Ωref = GT.interior(mesh;is_reference_domain=true)
