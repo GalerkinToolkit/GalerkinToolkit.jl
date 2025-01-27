@@ -29,16 +29,14 @@ f = eval(expr)
 @time domain_face_v = f(α,dΩ)
 
 domain_face = 2
-v = domain_face_v(domain_face)
-@show v
 domain_face_v(1)
-@time s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
 
 α = GT.uniform_quantity(2.0)
 @time domain_face_v = f(α,dΩ)
 domain_face_v(1)
-@time s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
 
 domain = (0,1,0,1)
@@ -51,7 +49,7 @@ dΩ = GT.new_measure(Ω,degree)
 
 @time domain_face_v = f(α,dΩ)
 domain_face_v(1)
-@time s = sum(domain_face->domain_face_v(domain_face), 1:GT.num_faces(Ω))
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
 
 #face_point_J
