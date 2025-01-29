@@ -27,6 +27,10 @@ struct NewQuantity{A,B,C} <: NewAbstractQuantity
     workspace::C
 end
 
+function workspace(m::NewQuantity)
+    m.workspace
+end
+
 function name(m::NewQuantity)
     @assert m.name !== nothing
     m.name

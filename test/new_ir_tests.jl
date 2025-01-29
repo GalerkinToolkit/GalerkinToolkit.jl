@@ -7,11 +7,32 @@ using GalerkinToolkit: ∫
 using LinearAlgebra
 import ForwardDiff
 using AbstractTrees
+
+function hand_written_baseline(α,dΩ)
+    v = GT.workspace(α)
+    face_point_dV = GT.weight_accessor(dΩ)
+    face_point_J = GT.jacobian_accessor(dΩ)
+    face_npoints = GT.num_points_accessor(dΩ)
+    nfaces = GT.num_faces(GT.domain(dΩ))
+    s = zero(v)
+    for face in 1:nfaces
+        point_dV = face_point_dV(face)
+        point_J = face_point_J(face)
+        npoints = face_npoints(face)
+        for point in 1:npoints
+            J = point_J(point)
+            dV = point_dV(point,J)
+            s += v*dV
+        end
+    end
+    s
+end
+
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
-
-domain = (0,2,0,2)
-cells = (8,8)
+n = 30
+domain = (0,2,0,2,0,2)
+cells = (n,n,n)
 mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
@@ -19,6 +40,27 @@ degree = 3
 dΩ = GT.new_measure(Ω,degree)
 
 α = GT.uniform_quantity(1.0)
+
+@time v = hand_written_baseline(α,dΩ)
+@time v = hand_written_baseline(α,dΩ)
+@test v ≈ 8
+
+#using InteractiveUtils
+#@code_warntype hand_written_baseline(α,dΩ)
+
+int = GT.contribution(x->α,dΩ)
+
+expr = GT.generate(int,α,dΩ)
+
+f = eval(expr)
+
+domain_face_v = f(α,dΩ)
+
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
+
+@test s ≈ 8
+
 
 int = GT.contribution(x->α,dΩ)
 
