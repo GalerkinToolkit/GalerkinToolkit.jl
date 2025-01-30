@@ -30,7 +30,7 @@ end
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
-n = 30
+n = 10
 domain = (0,2,0,2,0,2)
 cells = (n,n,n)
 mesh = GT.cartesian_mesh(domain,cells)
@@ -51,8 +51,9 @@ dΩ = GT.new_measure(Ω,degree)
 int = GT.contribution(x->α,dΩ)
 
 expr = GT.generate(int,α,dΩ)
+#display(expr)
 
-f = eval(expr)
+f = GT.evaluate(expr)
 
 domain_face_v = f(α,dΩ)
 
@@ -66,7 +67,7 @@ int = GT.contribution(x->α,dΩ)
 
 expr = GT.generate(int,α,dΩ)
 
-f = eval(expr)
+f = GT.evaluate(expr)
 
 @time domain_face_v = f(α,dΩ)
 
@@ -99,20 +100,20 @@ domain_face_v(1)
 #loop over faces, loop over pointsm and and up the output of face_point_w(face)(point,J)
 
 #expr = :(sum(i->i*sum(j->i*j),a:sum(k->b*k,r)))
-expr = :(sum(k->(b+c)*k,r))
-display(expr)
-block = GT.statements(expr)
-display(block)
-
-expr = :(sum(k->(b+sum(i->(b+i+k),r))*k,r))
-display(expr)
-block = GT.statements(expr)
-display(block)
-
-expr = :(sum(i->i*sum(j->i*j),a:sum(k->b*k,r)))
-display(expr)
-block = GT.statements(expr)
-display(block)
+#expr = :(sum(k->(b+c)*k,r))
+#display(expr)
+#block = GT.statements(expr)
+#display(block)
+#
+#expr = :(sum(k->(b+sum(i->(b+i+k),r))*k,r))
+#display(expr)
+#block = GT.statements(expr)
+#display(block)
+#
+#expr = :(sum(i->i*sum(j->i*j),a:sum(k->b*k,r)))
+#display(expr)
+#block = GT.statements(expr)
+#display(block)
 
 
 

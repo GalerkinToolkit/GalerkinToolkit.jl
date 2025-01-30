@@ -52,7 +52,7 @@ end
 
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    :($t2.workspace)
+    :(workspace($t2))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
@@ -62,7 +62,7 @@ end
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     @term begin
-        face_npoints = GT.num_points_accessor($measure)
+        face_npoints = num_points_accessor($measure)
         face_npoints($domain_face)
     end
 end
@@ -75,11 +75,8 @@ end
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     point = t.point
-    @term begin
-        face_point_J = GT.jacobian_accessor($measure)
-        face_point_w = GT.weight_accessor($measure)
-        J = face_point_J($domain_face)($point)
-        face_point_w($domain_face)($point,J)
+    quote
+        weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
     end
 end
 
@@ -146,18 +143,26 @@ end
 
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
-    @show symbols = map(last,itr)
+    symbols = map(last,itr)
     name_to_symbol = Dict(itr)
-    display(name_to_symbol)
     domain_face = :dummy_domain_face
     expr = generate_body(t,name_to_symbol,domain_face)
-    quote
-        ($(symbols...),) -> begin
-            $domain_face -> begin
-                $expr
-            end
+    fun_expr = quote
+        $domain_face -> begin
+            $expr
         end
     end
+    fun_expr = MacroTools.striplines(fun_expr)
+    fun_block = statements(fun_expr)
+    quote
+        ($(symbols...),) -> begin
+            $fun_block
+        end
+    end
+end
+
+function evaluate(expr)
+    eval(expr)
 end
 
 function statements(node)
@@ -190,17 +195,28 @@ function statements(node)
             end
             hash_scope[hash] = scope
             return [scope]
+        elseif node isa Number
+            scope = root
+            rank = 1 + scope_rank[scope]
+            hash_rank[hash] = rank
+            scope_rank[scope] = rank
+            var = Symbol("var_$(scope)_$(rank)")
+            assignment = :($var = $node)
+            block = scope_block[scope]
+            push!(block.args,assignment)
+            hash_scope[hash] = scope
+            return [root]
         elseif node isa Expr
-            if node.head === :call
+            if node.head === :call || node.head ===  :block
                 if haskey(hash_rank,hash)
                     if hash_rank[hash] !== temporary
-                        return nothing
+                        return [hash_scope[hash]]
                     else
                         error("Graph has cycles! This is not possible.")
                     end
                 end
                 hash_rank[hash] = temporary
-                args = node.args[2:end]
+                args = node.args
                 scopes_nested = map(visit,args)
                 scopes = reduce(vcat,scopes_nested)
                 scopes = unique(scopes)
@@ -219,8 +235,8 @@ function statements(node)
                     arg_rank = hash_rank[arg_hash]
                     arg_var = Symbol("var_$(arg_scope)_$(arg_rank)")
                 end
-                op = node.args[1]
-                expr = Expr(:call,op,args_var...)
+                #op = node.args[1]
+                expr = Expr(node.head,args_var...)
                 assignment = :($var = $expr)
                 block = scope_block[scope]
                 push!(block.args,assignment)
@@ -248,19 +264,34 @@ function statements(node)
                 block = scope_block[scope]
                 push!(block.args,assignment)
                 return scopes
-            elseif node.head === :block
-                args = node.args
-                scopes_nested = map(visit,args)
-                scopes = reduce(vcat,scopes_nested)
-                scopes = unique(scopes)
-                return scopes
+            #elseif node.head === :block
+            #    args = node.args
+            #    scopes_nested = map(visit,args)
+            #    scopes = reduce(vcat,scopes_nested)
+            #    scopes = unique(scopes)
+            #    scope = argmax(scope->scope_level[scope],scopes)
+            #    hash_scope[hash] = scope
+            #    rank = 1 + scope_rank[scope]
+            #    hash_rank[hash] = rank
+            #    scope_rank[scope] = rank
+            #    var = Symbol("var_$(scope)_$(rank)")
+            #    expr = Expr(:block,node.args[1],block)
+            #    assignment = :($var = $expr)
+            #    block = scope_block[scope]
+            #    push!(block.args,assignment)
+            #    return scopes
             else
-                error()
+                @show node
+                dump(node)
+                @show typeof(node)
+                error("A")
             end
         elseif node isa LineNumberNode
             return [root]
         else
-            error()
+            @show node
+            @show typeof(node)
+            error("B")
         end
     end
     visit(node)
