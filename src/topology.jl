@@ -93,7 +93,7 @@ function face_permutation_ids(a::FaceTopology,d,D)
     face_permutation_ids(a)[d+1,D+1]
 end
 
-struct MeshTopology{A} <: AbstractMeshTopology
+struct MeshTopology{A} <: AbstractTopology
     contents::A
 end
 

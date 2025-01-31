@@ -1,7 +1,23 @@
-"""
+@doc raw"""
     abstract type AbstractDomain <: AbstractType end
 
-Abstract type representing the geometry of a single mesh face, typically one of the reference faces.
+Abstract type representing a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$.
+Domains are defined using an underlying computational mesh.
+
+See also [`AbstractMesh`](@ref).
+
+# Level
+
+Beginner
+
+# Basic constructors
+
+- [`unit_simplex`](@ref)
+- [`unit_n_cube`](@ref)
+- [`domain`](@ref)
+- [`interior`](@ref)
+- [`boundary`](@ref)
+- [`skeleton`](@ref)
 
 # Basic queries
 
@@ -24,19 +40,52 @@ Abstract type representing the geometry of a single mesh face, typically one of 
 - [`is_boundary`](@ref)
 - [`face_around`](@ref)
 
+"""
+abstract type AbstractDomain <: AbstractType end
+
+"""
+    abstract type AbstractFaceDomain <: AbstractDomain end
+
+A domain defined on a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
+
+# Level
+
+Advanced
+
 # Basic constructors
 
 - [`unit_simplex`](@ref)
 - [`unit_n_cube`](@ref)
-- [`domain`](@ref)
 
 """
-abstract type AbstractDomain <: AbstractType end
-
 abstract type AbstractFaceDomain <: AbstractDomain end
 
-"""
-    abstract type AbstractMesh
+@doc raw"""
+    abstract type AbstractMesh <: AbstractType end
+
+Abstract type representing a triangulation of a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$,
+plus metadata useful in finite element computations, such as physical groups for imposing boundary conditions.
+
+See also [`AbstractChain`](@ref).
+
+# Notation
+
+Each of of the elements of the triangulation is referred to as a `face`. A mesh can contain faces of different dimensions.
+A mesh might or might not represent a cell complex (all possible low dimensional faces are present in the mesh), but
+it is often assumed that it represents a cell complex.
+
+# Level
+
+Beginner
+
+# Basic constructors
+
+- [`mesh`](@ref)
+- [`mesh_from_gmsh`](@ref)
+- [`mesh_from_space`](@ref)
+- [`cartesian_mesh`](@ref)
+- [`complexify`](@ref)
+- [`simplexify`](@ref)
 
 # Basic queries
 
@@ -48,16 +97,40 @@ abstract type AbstractFaceDomain <: AbstractDomain end
 - [`physical_faces`](@ref)
 - [`outward_normals`](@ref)
 
-# Basic constructors
-
-- [`mesh`](@ref)
-- [`mesh_from_gmsh`](@ref)
-- [`cartesian_mesh`](@ref)
-
 """
-abstract type AbstractMesh end
+abstract type AbstractMesh <: AbstractType end
 
-abstract type AbstractChain <: AbstractType end
+#@doc raw"""
+#    abstract type AbstractChain <: AbstractType end
+#
+#
+#Similar to a mesh, but only containing faces of a single dimension.
+#
+#Note that this type does not implement the [`AbstractMesh`](@ref) interface. The meaning of face related quantities is different.
+#One can recover a mesh using [`mesh_from_chain`](@ref) if needed.
+#
+#See also [`AbstractMesh`](@ref).
+#
+## Level
+#
+#Intermediate
+#
+## Basic constructors
+#
+#- [`chain`](@ref)
+#
+## Basic queries
+#
+#- [`node_coordinates`](@ref)
+#- [`face_nodes`](@ref)
+#- [`face_reference_id`](@ref)
+#- [`reference_spaces`](@ref)
+#- [`periodic_nodes`](@ref)
+#- [`physical_faces`](@ref)
+#- [`outward_normals`](@ref)
+#
+#"""
+#abstract type AbstractChain <: AbstractType end
 
 """
     abstract type AbstractTopology
@@ -76,9 +149,9 @@ abstract type AbstractChain <: AbstractType end
 """
 abstract type AbstractTopology <: AbstractType end
 
+"""
+"""
 abstract type AbstractFaceTopology <: AbstractTopology end
-
-abstract type AbstractMeshTopology <:AbstractTopology end
 
 """
     abstract type AbstractSpace <: AbstractType end
@@ -148,60 +221,249 @@ abstract type AbstractTerm <: GT.AbstractType end
 abstract type AbstractField <: AbstractQuantity end
 
 """
+    num_dims(x)
+
+Return the parametric dimension of `x`.
+
+See also [`num_ambient_dims`](@ref), [`num_codims`](@ref).
+
+# Level
+
+Beginner
 """
 function num_dims end
 
 """
+    num_ambient_dims(x)
+
+Return the ambient dimension where object `x` lives.
+
+See also [`num_codims`](@ref), [`num_dims`](@ref).
+
+# Level
+
+Beginner
+"""
+function num_ambient_dims end
+
+"""
+    num_codims(x)
+
+Return `num_ambient_dims(x)-num_dims(x)`.
+
+See also [`num_ambient_dims`](@ref), [`num_dims`](@ref).
+
+# Level
+
+Beginner
+"""
+function num_codims end
+
+num_codims(x) = num_ambient_dims(x) - num_dims(x)
+
+"""
+    is_axis_aligned(x)
+
+True if `x` is a unit simplex or a unit cube.
+
+# Level
+
+Advanced
 """
 function is_axis_aligned end
 
 """
+    is_simplex(x)
+
+True if `x` is a simplex.
+
+See also [`is_n_cube`](@ref), [`is_unit_simplex`](@ref), [`is_unit_n_cube`](@ref).
+
+# Level
+
+Intermediate
 """
 function is_simplex end
 
 """
+    is_n_cube(x)
+
+True if `x` is a n-cube (hypercube).
+
+See also [`is_simplex`](@ref), [`is_unit_simplex`](@ref), [`is_unit_n_cube`](@ref).
+
+# Level
+
+Intermediate
 """
 function is_n_cube end
 
 """
+    is_unit_n_cube(x)
+
+True if `x` is a unit n-cube.
+
+See also [`is_n_cube`](@ref), [`is_unit_simplex`](@ref), [`is_simplex`](@ref).
+
+# Level
+
+Intermediate
 """
 function is_unit_n_cube end
 
 """
+    is_unit_simplex(x)
+
+True if `x` is a unit simplex.
+
+See also [`is_n_cube`](@ref), [`is_unit_n_cube`](@ref), [`is_simplex`](@ref).
+
+# Level
+
+Intermediate
+"""
+function is_unit_simplex end
+
+"""
+    is_unitary(x)
+
+True `bounding_box(x)` coincides with a unit n-cube.
+
+# Level
+
+Advanced
 """
 function is_unitary end
 
 """
+    p0,p1 = bounding_box(x)
+
+Return a tuple of two vectors, where the vectors `p0` and `p1`
+define the span of the bounding box of `x`.
+
+# Level
+
+Intermediate
 """
 function bounding_box end
 
 """
-"""
-function vertex_permutations end
+    geometries(x,d)
+    geometries(x,Val(d))
 
-"""
-"""
-function faces end
+Return a vector of domains representing the geometrical entities of `x` of dimension `d`. The returned domains
+and `x` are defined in the same mesh. That is, `faces(geometries(x,1)[1])` are the face ids in `mesh(x)` representing the
+first edge of `x`.
 
-"""
-"""
-function inverse_faces end
+# Notation
 
-"""
+`geometries(x,Val(0))` returns the vertices of `x`.
+`geometries(x,Val(1))` returns the edges of `x`.
+`geometries(x,Val(d))` returns the `d`-faces of `x`.
+
+# Level
+
+Advanced
 """
 function geometries end
 
 """
+    vertex_permutations(x)
+
+Return a list of permutations representing the admissible re-labelings of the vertices
+of `x`.
+
+# Level
+
+Advanced
+"""
+function vertex_permutations end
+
+"""
+    faces(x)
+
+Return the subset of face ids in `mesh(x)` of dimension `num_dims(x)` defining the domain `x`.
+This is effectively the map from domain face id to mesh face id.
+
+See also [`inverse_faces`](@ref).
+
+# Level
+
+Intermediate
+"""
+function faces end
+
+"""
+    inverse_faces(x)
+
+Return the inverse integer of `faces(x)`. This is effectively the map from mesh face id to domain face id.
+
+See also [`faces`](@ref).
+
+# Level
+
+Intermediate
+"""
+function inverse_faces end
+
+"""
+    is_boundary(x)
+
+True if `x` represent an (internal) boundary. Faces in an internal boundary "point" to only of the two faces around of a dimension higher.
+
+See also [`face_around`](@ref).
+
+# Level
+
+Intermediate
 """
 function is_boundary end
 
 """
+    face_around(x)
+
+Return 1 or 2 if `is_boundary(x)` or `nothing` otherwise. It represents which of the two faces around is considered in an (internal) 
+boundary `x`. 
+
+Note: This function will eventually return a vector of integers.
+
+# Level
+
+Intermediate
 """
 function face_around end
 
 """
 """
+function mesh_from_space end
+
+"""
+"""
+function mesh_from_chain end
+
+"""
+"""
+function complexify end
+
+"""
+"""
+function simplexify end
+
+"""
+"""
 function domain end
+
+"""
+"""
+function boundary end
+
+"""
+"""
+function interior end
+
+"""
+"""
+function skeleton end
 
 """
 """

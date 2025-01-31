@@ -470,49 +470,12 @@ function physical_names(mesh;merge_dims=Val(false))
     reduce(union,d_to_names)
 end
 
-num_dims(m::AbstractChain) = num_dims(domain(first(reference_spaces(m))))
-num_ambient_dims(m::AbstractChain) = length(eltype(node_coordinates(m)))
-options(m::AbstractChain) = options(first(reference_spaces(m)))
-num_faces(m::AbstractChain) = length(face_reference_id(m))
-
-"""
-"""
-function mesh(chain::AbstractChain)
-    D = num_dims(chain)
-    cell_nodes = face_nodes(chain)
-    cell_reference_id = face_reference_id(chain)
-    reference_cells = reference_spaces(chain)
-    node_coords = node_coordinates(chain)
-    face_to_nodes = Vector{typeof(cell_nodes)}(undef,D+1)
-    face_to_refid = Vector{typeof(cell_reference_id)}(undef,D+1)
-    for d in 0:D-1
-        face_to_nodes[d+1] = Vector{Int}[]
-        face_to_refid[d+1] = Int[]
-    end
-    face_to_nodes[end] = cell_nodes
-    face_to_refid[end] = cell_reference_id
-    ref_cell = first(reference_cells)
-    ref_faces = reference_spaces(complexify(ref_cell))
-    refid_to_refface = push(ref_faces[1:end-1],reference_cells)
-    cell_groups = physical_faces(chain)
-    groups = [ typeof(cell_groups)() for d in 0:D]
-    groups[end] = cell_groups
-    pnodes = periodic_nodes(chain)
-    onormals = outward_normals(chain)
-    GT.mesh(;
-      node_coordinates = node_coords,
-      face_nodes = face_to_nodes,
-      face_reference_id = face_to_refid,
-      reference_spaces = refid_to_refface,
-      periodic_nodes = pnodes,
-      physical_faces = groups,
-      outward_normals = onormals)
-end
-
-struct Chain{A} <: AbstractChain
+struct Chain{A} <: AbstractMesh
     contents::A
 end
 
+"""
+"""
 function chain(;
         node_coordinates,
         face_nodes,
@@ -535,11 +498,46 @@ function chain(;
 end
 
 node_coordinates(m::Chain) = m.contents.node_coordinates
-face_nodes(m::Chain) = m.contents.face_nodes
-face_reference_id(m::Chain) = m.contents.face_reference_id
-reference_spaces(m::Chain) = m.contents.reference_spaces
-physical_faces(m::Chain) = m.contents.physical_faces
+
+function face_nodes(m::Chain)
+    D = num_dims(m)
+    T = typeof(m.contents.face_nodes)
+    d_face_nodes = Vector{T}(undef,D+1)
+    for d in 0:D
+        d_face_nodes[d+1] = Vector{Int}[]
+    end
+    d_face_nodes[end] = m.contents.face_nodes
+    d_face_nodes
+end
+
+function face_reference_id(m::Chain)
+    D = num_dims(m)
+    T = typeof(m.contents.face_reference_id)
+    face_to_refid = Vector{T}(undef,D+1)
+    for d in 0:D
+        face_to_refid[d+1] = Int[]
+    end
+    face_to_refid[end] = m.contents.face_reference_id
+    face_to_refid
+end
+
+function reference_spaces(m::Chain)
+    reference_cells = m.contents.reference_spaces
+    ref_cell = first(reference_cells)
+    ref_faces = reference_spaces(complexify(ref_cell))
+    refid_to_refface = push(ref_faces[1:end-1],reference_cells)
+end
+
+function physical_faces(m::Chain)
+    D = num_dims(m)
+    cell_groups = m.contents.physical_faces
+    groups = [ typeof(cell_groups)() for d in 0:D]
+    groups[end] = cell_groups
+    groups
+end
+
 periodic_nodes(m::Chain) = m.contents.periodic_nodes
+
 outward_normals(m::Chain) = m.contents.outward_normals
 
 function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
@@ -554,3 +552,51 @@ function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
           outward_normals=outward_normals(mesh),
          )
 end
+
+#num_dims(m::AbstractChain) = num_dims(domain(first(reference_spaces(m))))
+#num_ambient_dims(m::AbstractChain) = length(eltype(node_coordinates(m)))
+#options(m::AbstractChain) = options(first(reference_spaces(m)))
+#num_faces(m::AbstractChain) = length(face_reference_id(m))
+
+"""
+"""
+function mesh(chain::Chain)
+    #D = num_dims(chain)
+    #cell_nodes = face_nodes(chain)
+    #cell_reference_id = face_reference_id(chain)
+    #reference_cells = reference_spaces(chain)
+    #node_coords = node_coordinates(chain)
+    #face_to_nodes = Vector{typeof(cell_nodes)}(undef,D+1)
+    #face_to_refid = Vector{typeof(cell_reference_id)}(undef,D+1)
+    #for d in 0:D-1
+    #    face_to_nodes[d+1] = Vector{Int}[]
+    #    face_to_refid[d+1] = Int[]
+    #end
+    #face_to_nodes[end] = cell_nodes
+    #face_to_refid[end] = cell_reference_id
+    #ref_cell = first(reference_cells)
+    #ref_faces = reference_spaces(complexify(ref_cell))
+    #refid_to_refface = push(ref_faces[1:end-1],reference_cells)
+    #cell_groups = physical_faces(chain)
+    #groups = [ typeof(cell_groups)() for d in 0:D]
+    #groups[end] = cell_groups
+    #pnodes = periodic_nodes(chain)
+    #onormals = outward_normals(chain)
+    #GT.mesh(;
+    #  node_coordinates = node_coords,
+    #  face_nodes = face_to_nodes,
+    #  face_reference_id = face_to_refid,
+    #  reference_spaces = refid_to_refface,
+    #  periodic_nodes = pnodes,
+    #  physical_faces = groups,
+    #  outward_normals = onormals)
+    GT.mesh(;
+            node_coordinates = node_coordinates(chain),
+            face_nodes = face_nodes(chain),
+            face_reference_id = face_reference_id(chain),
+            reference_spaces = reference_spaces(chain),
+            periodic_nodes = periodic_nodes(chain),
+            physical_faces = physical_faces(chain),
+            outward_normals = outward_normals(chain))
+end
+
