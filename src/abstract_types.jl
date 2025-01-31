@@ -22,6 +22,8 @@ Beginner
 # Basic queries
 
 - [`num_dims`](@ref)
+- [`num_ambient_dims`](@ref)
+- [`num_codims`](@ref)
 - [`is_axis_aligned`](@ref)
 - [`is_simplex`](@ref)
 - [`is_n_cube`](@ref)
@@ -33,9 +35,6 @@ Beginner
 - [`mesh`](@ref)
 - [`faces`](@ref)
 - [`inverse_faces`](@ref)
-- [`geometries`](@ref)
-- [`topology`](@ref)
-- [`geometries`](@ref)
 - [`options`](@ref)
 - [`is_boundary`](@ref)
 - [`face_around`](@ref)
@@ -89,6 +88,8 @@ Beginner
 # Basic queries
 
 - [`num_dims`](@ref)
+- [`num_ambient_dims`](@ref)
+- [`num_codims`](@ref)
 - [`num_faces`](@ref)
 - [`num_nodes`](@ref)
 - [`node_coordinates`](@ref)
@@ -97,6 +98,7 @@ Beginner
 - [`reference_spaces`](@ref)
 - [`periodic_nodes`](@ref)
 - [`physical_faces`](@ref)
+- [`geometries`](@ref)
 - [`outward_normals`](@ref)
 
 """
@@ -155,21 +157,26 @@ Basic
 
 # Basic queries
 
-[`domain`](@ref)
-[`num_dofs`](@ref)
-[`num_nodes`](@ref)
-[`face_dofs`](@ref)
-[`face_nodes`](@ref)
-[`face_reference_id`](@ref)
-[`reference_spaces`](@ref)
-[`interior_nodes`](@ref)
-[`interior_nodes_permutations`](@ref)
-[`geometry_own_dofs`](@ref)
-[`geometry_own_dofs_permutations`](@ref)
-[`geometry_interior_nodes`](@ref)
-[`geometry_interior_nodes_permutations`](@ref)
-[`geometry_nodes`](@ref)
-[`geometry_nodes_permutations`](@ref)
+- [`domain`](@ref)
+- [`num_dofs`](@ref)
+- [`face_dofs`](@ref)
+- [`face_nodes`](@ref)
+- [`face_reference_id`](@ref)
+- [`reference_spaces`](@ref)
+- [`geometry_own_dofs`](@ref)
+- [`geometry_own_dofs_permutations`](@ref)
+
+# Additional queries
+
+For spaces, used as reference spaces in [`AbstractMesh`](@ref) specializations.
+
+- [`num_nodes`](@ref)
+- [`interior_nodes`](@ref)
+- [`interior_nodes_permutations`](@ref)
+- [`geometry_interior_nodes`](@ref)
+- [`geometry_interior_nodes_permutations`](@ref)
+- [`geometry_nodes`](@ref)
+- [`geometry_nodes_permutations`](@ref)
 """
 abstract type AbstractSpace <: AbstractType end
 
@@ -192,7 +199,7 @@ abstract type AbstractFaceSpace <: AbstractSpace end
 - [`domain`](@ref)
 - [`coordinates`](@ref)
 - [`weights`](@ref)
-- [`num_points`]
+- [`num_points`](@ref)
 - [`face_reference_id`](@ref)
 - [`reference_quadratures`](@ref)
 
@@ -260,6 +267,20 @@ Beginner
 function num_codims end
 
 num_codims(x) = num_ambient_dims(x) - num_dims(x)
+
+"""
+    num_faces(x)
+    num_faces(x,d)
+
+Return the number of faces  of dimension `d` in `mesh(x)`.
+If `d` is omitted, return a vector with the number of faces in each dimension,
+starting from dimension 0 up to `num_dims(x)`.
+
+# Level
+
+Beginner
+"""
+function num_faces end
 
 """
     is_axis_aligned(x)
@@ -352,14 +373,14 @@ function bounding_box end
     geometries(x,Val(d))
 
 Return a vector of domains representing the geometrical entities of `x` of dimension `d`. The returned domains
-and `x` are defined in the same mesh. That is, `faces(geometries(x,1)[1])` are the face ids in `mesh(x)` representing the
-first edge of `x`.
+and `x` are defined on the same mesh. That is, `faces(geometries(x,1)[2])` are the face ids in `mesh(x)` representing the
+second edge of `x`.
 
 # Notation
 
-`geometries(x,Val(0))` returns the vertices of `x`.
-`geometries(x,Val(1))` returns the edges of `x`.
-`geometries(x,Val(d))` returns the `d`-faces of `x`.
+`geometries(x,Val(0))` are referred to as the vertices of `x`.
+`geometries(x,Val(1))` are referred to as the edges of `x`.
+`geometries(x,Val(d))` are referred to as the `d`-faces of `x`.
 
 # Level
 
@@ -396,7 +417,8 @@ function faces end
 """
     inverse_faces(x)
 
-Return the inverse integer of `faces(x)`. This is effectively the map from mesh face id to domain face id.
+Return the inverse integer mas of `faces(x)`. This is effectively the map from mesh face id to domain face id.
+Mesh faces not present in the domain, receive an invalid index id.
 
 See also [`faces`](@ref).
 
@@ -423,7 +445,7 @@ function is_boundary end
     face_around(x)
 
 Return an integer that allows to break ties when faces in `x` need to point to faces around of one dimension higher.
-Return nothing otherwise.
+Return nothing if `x` does not break such ties.
 
 Note: This function will eventually return a vector of integers.
 
@@ -438,18 +460,32 @@ function face_around end
 
 Return the mesh induced by `space`. For instance, a (high order) Lagrange space can be interpreted as a mesh
 using this function.
+
+# Level
+
+Advanced
 """
 function mesh_from_space end
 
 """
-"""
-function mesh_from_chain end
+    complexify(x)
 
-"""
+Convert `x` into a mesh representing a cell complex.
+
+# Level
+
+Intermediate
 """
 function complexify end
 
 """
+    simplexify(x)
+
+Convert `x` into a mesh made of simplex cells.
+
+# Level
+
+Intermediate
 """
 function simplexify end
 
@@ -470,6 +506,9 @@ function interior end
 function skeleton end
 
 """
+    node_coordinates(x)
+
+Return the vector of node coordinates associated with `x.
 """
 function node_coordinates end
 
@@ -514,6 +553,15 @@ function reference_quadratures end
 function node_quadrature end
 
 """
+    num_dofs(x)
+
+Return the number of degrees of freedom of `x`.
+
+See also [`num_nodes`](@ref).
+
+# Level
+
+Beginner
 """
 function num_dofs end
 
@@ -522,8 +570,30 @@ function num_dofs end
 function interior_nodes end
 
 """
+    num_nodes(x)
+
+Return the number of nodes of `x`.
+
+See also [`num_dofs`](@ref).
+
+# Level
+
+Beginner
 """
 function num_nodes end
+
+"""
+    num_points(x)
+
+Return the number of integration points in `x`.
+
+See also [`num_nodes`](@ref).
+
+# Level
+
+Beginner
+"""
+function num_points end
 
 """
 """
@@ -558,6 +628,7 @@ function geometry_nodes end
 function geometry_nodes_permutations end
 
 """
+    face_incidence(x,d)
 """
 function face_incidence end
 
@@ -566,6 +637,20 @@ function face_incidence end
 function face_permutation_ids end
 
 """
+    reference_topologies(x)
+    reference_topologies(x,d)
+    reference_topologies(x,Val(d))
+
+Return the list (a vector or a tuple) of reference topologies in `x` of dimension `d`.
+If the second argument is omitted,
+return a tuple with the reference topologies in each dimension,
+starting from dimension 0 up to `num_dims(x)`.
+
+See also [`face_reference_id`](@ref).
+
+# Level
+
+Intermediate
 """
 function reference_topologies end
 
