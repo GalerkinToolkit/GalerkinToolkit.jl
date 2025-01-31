@@ -570,11 +570,6 @@ function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
          )
 end
 
-#num_dims(m::AbstractChain) = num_dims(domain(first(reference_spaces(m))))
-#num_ambient_dims(m::AbstractChain) = length(eltype(node_coordinates(m)))
-#options(m::AbstractChain) = options(first(reference_spaces(m)))
-#num_faces(m::AbstractChain) = length(face_reference_id(m))
-
 """
 """
 function mesh(chain::Chain)

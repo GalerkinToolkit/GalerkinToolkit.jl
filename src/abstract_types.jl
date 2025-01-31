@@ -66,8 +66,6 @@ abstract type AbstractFaceDomain <: AbstractDomain end
 Abstract type representing a triangulation of a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$,
 plus metadata useful in finite element computations, such as physical groups for imposing boundary conditions.
 
-See also [`AbstractChain`](@ref).
-
 # Notation
 
 Each of of the elements of the triangulation is referred to as a `face`. A mesh can contain faces of different dimensions.
@@ -103,38 +101,6 @@ Beginner
 
 """
 abstract type AbstractMesh <: AbstractType end
-
-#@doc raw"""
-#    abstract type AbstractChain <: AbstractType end
-#
-#
-#Similar to a mesh, but only containing faces of a single dimension.
-#
-#Note that this type does not implement the [`AbstractMesh`](@ref) interface. The meaning of face related quantities is different.
-#One can recover a mesh using [`mesh_from_chain`](@ref) if needed.
-#
-#See also [`AbstractMesh`](@ref).
-#
-## Level
-#
-#Intermediate
-#
-## Basic constructors
-#
-#- [`chain`](@ref)
-#
-## Basic queries
-#
-#- [`node_coordinates`](@ref)
-#- [`face_nodes`](@ref)
-#- [`face_reference_id`](@ref)
-#- [`reference_spaces`](@ref)
-#- [`periodic_nodes`](@ref)
-#- [`physical_faces`](@ref)
-#- [`outward_normals`](@ref)
-#
-#"""
-#abstract type AbstractChain <: AbstractType end
 
 """
     abstract type AbstractTopology
