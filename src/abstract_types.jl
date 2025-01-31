@@ -81,6 +81,7 @@ Beginner
 # Basic constructors
 
 - [`mesh`](@ref)
+- [`chain`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`mesh_from_space`](@ref)
 - [`cartesian_mesh`](@ref)
@@ -89,6 +90,9 @@ Beginner
 
 # Basic queries
 
+- [`num_dims`](@ref)
+- [`num_faces`](@ref)
+- [`num_nodes`](@ref)
 - [`node_coordinates`](@ref)
 - [`face_nodes`](@ref)
 - [`face_reference_id`](@ref)
@@ -135,26 +139,53 @@ abstract type AbstractMesh <: AbstractType end
 """
     abstract type AbstractTopology
 
+Abstract type representing the incidence relations in a cell complex.
+
+See also [`AbstractFaceTopology`](@ref).
+
+# Level
+
+Intermediate
+
+# Basic constructors
+
+- [`topology`](@ref)
+
 # Basic queries
+
 - [`face_incidence`](@ref)
 - [`face_reference_id`](@ref)
 - [`face_permutation_ids`](@ref)
 - [`reference_topologies`](@ref)
 - [`vertex_permutations`](@ref)
 
-# Basic constructors
-
-- [`topology`](@ref)
-
 """
 abstract type AbstractTopology <: AbstractType end
 
 """
+abstract type AbstractFaceTopology <: AbstractTopology end
+
+Like [`AbstractTopology`](@ref), but for a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
+
+# Level
+
+Advanced
 """
 abstract type AbstractFaceTopology <: AbstractTopology end
 
 """
     abstract type AbstractSpace <: AbstractType end
+
+Abstract type representing a finite element space.
+
+# Level
+
+Basic
+
+# Basic constructors
+
+[`lagrange_space`](@ref)
+[`raviart_thomas_space`](@ref)
 
 # Basic queries
 
@@ -173,15 +204,18 @@ abstract type AbstractFaceTopology <: AbstractTopology end
 [`geometry_interior_nodes_permutations`](@ref)
 [`geometry_nodes`](@ref)
 [`geometry_nodes_permutations`](@ref)
-
-# Basic constructors
-
-[`lagrange_space`](@ref)
-[`raviart_thomas_space`](@ref)
-
 """
 abstract type AbstractSpace <: AbstractType end
 
+"""
+abstract type AbstractFaceSpace <: AbstractSpace end
+
+Like [`AbstractSpace`](@ref), but for a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
+
+# Level
+
+Advanced
+"""
 abstract type AbstractFaceSpace <: AbstractSpace end
 
 """
@@ -422,8 +456,8 @@ function is_boundary end
 """
     face_around(x)
 
-Return 1 or 2 if `is_boundary(x)` or `nothing` otherwise. It represents which of the two faces around is considered in an (internal) 
-boundary `x`. 
+Return an integer that allows to break ties when faces in `x` need to point to faces around of one dimension higher.
+Return nothing otherwise.
 
 Note: This function will eventually return a vector of integers.
 
@@ -434,6 +468,10 @@ Intermediate
 function face_around end
 
 """
+    mesh_from_space(space)
+
+Return the mesh induced by `space`. For instance, a (high order) Lagrange space can be interpreted as a mesh
+using this function.
 """
 function mesh_from_space end
 

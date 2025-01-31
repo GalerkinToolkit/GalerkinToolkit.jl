@@ -6,6 +6,15 @@ options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
 num_faces(m::AbstractMesh,d) = length(face_reference_id(m,d))
 num_nodes(fe::AbstractMesh) = length(node_coordinates(fe))
 num_faces(mesh::AbstractMesh) = map(length,face_reference_id(mesh))
+face_nodes(m::AbstractMesh,d) = face_nodes(m)[d+1]
+face_reference_id(m::AbstractMesh,d) = face_reference_id(m)[d+1]
+reference_spaces(m::AbstractMesh,d) = reference_spaces(m)[d+1]
+physical_faces(m::AbstractMesh,d) = physical_faces(m)[d+1]
+geometry_names(m::AbstractMesh,d) = geometry_names(m)[d+1]
+
+function geometries(m::AbstractMesh,d)
+    map(name->domain(m,d;physical_names=[name]),geometry_names(m,d))
+end
 
 function face_offset(a)
     D = num_dims(a)
@@ -77,14 +86,14 @@ end
 function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
     face_around=nothing,
-    is_reference_domain=Val(false)
+    is_reference_domain=Val(false),
+    physical_names=[label_faces_in_dim!(mesh,d)],
     )
-    physical_name = label_faces_in_dim!(mesh,d)
     mesh_domain(;
         mesh,
         mesh_id,
         num_dims=Val(val_parameter(d)),
-        physical_names=[physical_name],
+        physical_names,
         is_reference_domain)
 end
 
@@ -381,6 +390,7 @@ function mesh(;
         periodic_nodes = default_periodic_nodes(reference_spaces),
         physical_faces = default_physical_faces(reference_spaces),
         outward_normals = nothing,
+        geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
         workspace = nothing,
     )
@@ -392,6 +402,7 @@ function mesh(;
                 periodic_nodes,
                 physical_faces,
                 outward_normals,
+                geometry_names,
                 is_cell_complex,
                 workspace,
                )
@@ -405,6 +416,7 @@ function replace_workspace(mesh::Mesh,workspace)
                 face_reference_id=face_reference_id(mesh),
                 reference_spaces=reference_spaces(mesh),
                 periodic_nodes=periodic_nodes(mesh),
+                geometry_names=geometry_names(mesh),
                 physical_faces=physical_faces(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
@@ -421,6 +433,7 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
                 reference_spaces=reference_spaces(mesh),
                 periodic_nodes=periodic_nodes(mesh),
                 physical_faces=physical_faces(mesh),
+                geometry_names=geometry_names(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 workspace=workspace(mesh),
@@ -468,6 +481,10 @@ function physical_names(mesh;merge_dims=Val(false))
         return d_to_names
     end
     reduce(union,d_to_names)
+end
+
+function geometry_names(a::Mesh)
+    a.contents.geometry_names
 end
 
 struct Chain{A} <: AbstractMesh
