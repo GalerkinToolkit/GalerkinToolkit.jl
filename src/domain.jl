@@ -15,8 +15,6 @@ function is_unit_n_cube(geo::AbstractDomain)
     is_n_cube(geo) && is_unitary(geo)
 end
 
-"""
-"""
 function is_unit_simplex(geo::AbstractDomain)
     is_simplex(geo) && is_unitary(geo)
 end
