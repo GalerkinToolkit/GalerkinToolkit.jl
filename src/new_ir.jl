@@ -17,14 +17,15 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
-function new_quantity(term;name=nothing,workspace=nothing)
-    NewQuantity(term,name,workspace)
+function new_quantity(term;name=nothing,workspace=nothing,children=nothing)
+    NewQuantity(term,name,workspace,children)
 end
 
-struct NewQuantity{A,B,C} <: NewAbstractQuantity
+struct NewQuantity{A,B,C,D} <: NewAbstractQuantity
     term::A
     name::B
     workspace::C
+    children::D # quantity childrens, find all leaf nodes of a quantity to locate all possible (default) params
 end
 
 function workspace(m::NewQuantity)
@@ -41,7 +42,7 @@ function term(q::NewQuantity,dom)
 end
 
 function uniform_quantity(value;name=gensym("uniform"))
-    new_quantity(;name,workspace=value) do opts
+    new_quantity(;name,workspace=value,children=nothing) do opts
         UniformTerm(name)
     end
 end
@@ -116,19 +117,36 @@ function contribution(f,measure::NewMeasure)
     weight = WeightTerm(measure,point)
     num_points = NumPointsTerm(measure)
     domain = GT.domain(measure)
+
     integrand = term(fx,domain)
+    # TODO: optimize integrand term with a new IR
+
+    all_params = Dict()
+    function get_params!(q::NewQuantity, params)
+        if q.name !== nothing
+            params[q.name] = q
+        elseif q.children !== nothing
+            map(x -> get_params!(x, params), q.children)
+        end
+    end
+
+    get_params!(fx, all_params)
+    all_params[measure.name] = measure
+
     ContributionTerm(
                      integrand,
                      weight,
                      point,
-                     num_points, )
+                     num_points, 
+                     all_params)
 end
 
-struct ContributionTerm{A,B,C,D} <: NewAbstractTerm
+struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
     integrand::A
     weight::B
     point::C # gets reduced
     num_points::D
+    params::E # the expected params (uniform quantity, measure, ...) from the user after compilation
 end
 
 function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
@@ -137,6 +155,7 @@ function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
     quote
+        # TODO: sum as an IR. sum -> loop?
         sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
     end
 end
@@ -145,7 +164,20 @@ function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
     name_to_symbol = Dict(itr)
+
+    free_params = Dict{Symbol, Any}()
+    if isa(t, ContributionTerm)
+        for (k, v) in t.params
+            if !haskey(name_to_symbol, k)
+                sym = gensym("free_param")
+                free_params[k] = (sym, v)
+                name_to_symbol[k] = sym
+            end
+        end
+    end
+
     domain_face = :dummy_domain_face
+    # TODO: another place to include a layer of IR
     expr = generate_body(t,name_to_symbol,domain_face)
     fun_expr = quote
         $domain_face -> begin
@@ -154,7 +186,14 @@ function generate(t::NewAbstractTerm,params...)
     end
     fun_expr = MacroTools.striplines(fun_expr)
     fun_block = statements(fun_expr)
+
+    free_expr = Expr(:block)
+    for (_, (k, v)) in free_params
+        push!(free_expr.args, :($k = $v))
+    end
+
     quote
+        $free_expr
         ($(symbols...),) -> begin
             $fun_block
         end
