@@ -51,9 +51,57 @@ struct UniformTerm{A} <: NewAbstractTerm
     name::A
 end
 
+
+struct NewLambdaExpr{A, B} # store 
+    arg::A
+    body::B
+end
+
+# struct NewOpExpr{A, B} 
+#     op::A
+#     args::B
+# end
+
+struct NewCallExpr{A, B} 
+    caller::A
+    args::B
+end
+
+struct NewReduceExpr{A, B} # TODO: add op type other than +? 
+    body::A
+    loop::B
+end
+
+struct NewMapExpr{A, B} 
+    body::A
+    loop::B
+end
+
+lower(expr::NewLambdaExpr) = begin
+    
+    Expr(:->, lower(expr.arg), lower(expr.body)) # TODO: can we find the statements of a innermost lambda and then take it as a whole? Then we only need 2 scopes per iteration
+end
+
+lower(expr::NewReduceExpr) = begin
+    Expr(:call, :sum, lower(expr.body), lower(expr.loop)) # TODO: need prototype to write loops
+end
+
+lower(expr::NewCallExpr) = begin
+    args = map(lower, expr.args)
+    Expr(:call, lower(expr.caller), args...)
+end
+
+lower(expr) = expr
+# lambda, reduce, call
+
+# struct NewSymbol{A}
+#     name::A
+# end
+
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    :(workspace($t2))
+    NewCallExpr(:workspace, [t2]) # function or symbol or NewSymbol struct? can we capture it in advance?
+    # :(workspace($t2))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
@@ -62,10 +110,12 @@ end
 
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
-    @term begin
-        face_npoints = num_points_accessor($measure)
-        face_npoints($domain_face)
-    end
+    face_points = NewCallExpr(:num_points_accessor, [measure])
+    NewCallExpr(face_points, [domain_face])
+    # @term begin
+    #     face_npoints = num_points_accessor($measure)
+    #     face_npoints($domain_face)
+    # end
 end
 
 struct WeightTerm{A,B} <: NewAbstractTerm
@@ -76,9 +126,12 @@ end
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     point = t.point
-    quote
-        weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
-    end
+    w = NewCallExpr(NewCallExpr(:weight_accessor, [measure]), [domain_face]) # TODO: find a better design to construct it
+    J = NewCallExpr(NewCallExpr(:jacobian_accessor, [measure]), [domain_face])
+    NewCallExpr(w, [point, NewCallExpr(J, [point])])
+    # quote
+    #     weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
+    # end
 end
 
 function new_measure(domain,degree;name=gensym("quadrature"))
@@ -154,10 +207,13 @@ function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
     num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
-    quote
-        # TODO: sum as an IR. sum -> loop?
-        sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
-    end
+
+    op = NewLambdaExpr(point, NewCallExpr(:*, [integrand_expr, weight_expr]))
+    NewReduceExpr(op, NewCallExpr(:(:), [1, num_points_expr]))
+    # quote
+    #     # TODO: sum as an IR. sum -> loop?
+    #     sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
+    # end
 end
 
 function generate(t::NewAbstractTerm,params...)
@@ -177,13 +233,18 @@ function generate(t::NewAbstractTerm,params...)
     end
 
     domain_face = :dummy_domain_face
-    # TODO: another place to include a layer of IR
+    
     expr = generate_body(t,name_to_symbol,domain_face)
-    fun_expr = quote
-        $domain_face -> begin
-            $expr
-        end
-    end
+    expr = NewLambdaExpr(domain_face, expr)
+
+    fun_expr = lower(expr)
+    
+
+    # fun_expr = quote
+    #     $domain_face -> begin
+    #         $expr
+    #     end
+    # end
     fun_expr = MacroTools.striplines(fun_expr)
     fun_block = statements(fun_expr)
 
