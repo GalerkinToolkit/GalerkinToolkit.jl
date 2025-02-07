@@ -15,17 +15,22 @@ abstract type NewAbstractTerm <: AbstractType end
 #domain(t::TermOptions) = t.contents.domain
 #domain_face(t::TermOptions) = t.contents.domain_face
 
+# TODO:
+# 1. terms with domain as metadata +
+# 2. transform input quantity to term when the user generate the function +
+# 3. only allow uniform quantity and measure as args (ub from the user side. )
+# 4. all args need a name
+# 5. prototypes?
 abstract type NewAbstractQuantity <: AbstractType end
 
-function new_quantity(term;name=nothing,workspace=nothing,children=nothing)
-    NewQuantity(term,name,workspace,children)
+function new_quantity(term;name=nothing,workspace=nothing)
+    NewQuantity(term,name,workspace)
 end
 
-struct NewQuantity{A,B,C,D} <: NewAbstractQuantity
+struct NewQuantity{A,B,C} <: NewAbstractQuantity
     term::A
     name::B
     workspace::C
-    children::D # quantity childrens, find all leaf nodes of a quantity to locate all possible (default) params
 end
 
 function workspace(m::NewQuantity)
@@ -42,80 +47,44 @@ function term(q::NewQuantity,dom)
 end
 
 function uniform_quantity(value;name=gensym("uniform"))
-    new_quantity(;name,workspace=value,children=nothing) do opts
-        UniformTerm(name)
+    new_quantity(;name,workspace=value) do opts
+        UniformTerm(name, value)
     end
 end
 
-struct UniformTerm{A} <: NewAbstractTerm
+struct UniformTerm{A, B} <: NewAbstractTerm
     name::A
+    value::B
+    # domain::C
 end
 
-
-struct NewLambdaExpr{A, B} # store 
-    arg::A
-    body::B
+function domain(t::UniformTerm)
+    nothing
 end
 
-# struct NewOpExpr{A, B} 
-#     op::A
-#     args::B
-# end
-
-struct NewCallExpr{A, B} 
-    caller::A
-    args::B
+function value(t::UniformTerm)
+    t.value
 end
-
-struct NewReduceExpr{A, B} # TODO: add op type other than +? 
-    body::A
-    loop::B
-end
-
-struct NewMapExpr{A, B} 
-    body::A
-    loop::B
-end
-
-lower(expr::NewLambdaExpr) = begin
-    
-    Expr(:->, lower(expr.arg), lower(expr.body)) # TODO: can we find the statements of a innermost lambda and then take it as a whole? Then we only need 2 scopes per iteration
-end
-
-lower(expr::NewReduceExpr) = begin
-    Expr(:call, :sum, lower(expr.body), lower(expr.loop)) # TODO: need prototype to write loops
-end
-
-lower(expr::NewCallExpr) = begin
-    args = map(lower, expr.args)
-    Expr(:call, lower(expr.caller), args...)
-end
-
-lower(expr) = expr
-# lambda, reduce, call
-
-# struct NewSymbol{A}
-#     name::A
-# end
 
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    NewCallExpr(:workspace, [t2]) # function or symbol or NewSymbol struct? can we capture it in advance?
-    # :(workspace($t2))
+    :(value($t2))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
     measure::A
 end
 
+function domain(t::NumPointsTerm)
+    domain(t.measure)
+end
+
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
-    face_points = NewCallExpr(:num_points_accessor, [measure])
-    NewCallExpr(face_points, [domain_face])
-    # @term begin
-    #     face_npoints = num_points_accessor($measure)
-    #     face_npoints($domain_face)
-    # end
+    @term begin
+        face_npoints = num_points_accessor($measure)
+        face_npoints($domain_face)
+    end
 end
 
 struct WeightTerm{A,B} <: NewAbstractTerm
@@ -123,15 +92,17 @@ struct WeightTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
+function domain(t::WeightTerm)
+    domain(t.measure)
+end
+
+
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     point = t.point
-    w = NewCallExpr(NewCallExpr(:weight_accessor, [measure]), [domain_face]) # TODO: find a better design to construct it
-    J = NewCallExpr(NewCallExpr(:jacobian_accessor, [measure]), [domain_face])
-    NewCallExpr(w, [point, NewCallExpr(J, [point])])
-    # quote
-    #     weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
-    # end
+    quote
+        weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
+    end
 end
 
 function new_measure(domain,degree;name=gensym("quadrature"))
@@ -163,6 +134,11 @@ struct CoordinateTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
+function domain(t::CoordinateTerm)
+    domain(t.measure)
+end
+
+
 function contribution(f,measure::NewMeasure)
     point = :point
     x = coordinate_quantity(measure,point)
@@ -170,36 +146,19 @@ function contribution(f,measure::NewMeasure)
     weight = WeightTerm(measure,point)
     num_points = NumPointsTerm(measure)
     domain = GT.domain(measure)
-
     integrand = term(fx,domain)
-    # TODO: optimize integrand term with a new IR
-
-    all_params = Dict()
-    function get_params!(q::NewQuantity, params)
-        if q.name !== nothing
-            params[q.name] = q
-        elseif q.children !== nothing
-            map(x -> get_params!(x, params), q.children)
-        end
-    end
-
-    get_params!(fx, all_params)
-    all_params[measure.name] = measure
-
     ContributionTerm(
                      integrand,
                      weight,
                      point,
-                     num_points, 
-                     all_params)
+                     num_points, )
 end
 
-struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
+struct ContributionTerm{A,B,C,D} <: NewAbstractTerm
     integrand::A
     weight::B
     point::C # gets reduced
     num_points::D
-    params::E # the expected params (uniform quantity, measure, ...) from the user after compilation
 end
 
 function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
@@ -207,62 +166,90 @@ function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
     num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
-
-    op = NewLambdaExpr(point, NewCallExpr(:*, [integrand_expr, weight_expr]))
-    NewReduceExpr(op, NewCallExpr(:(:), [1, num_points_expr]))
-    # quote
-    #     # TODO: sum as an IR. sum -> loop?
-    #     sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
-    # end
+    quote
+        sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
+    end
 end
 
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
     name_to_symbol = Dict(itr)
+    
+    # find all leaf terms 
+    name_to_captured_data = Dict()
+    function capture!(a::ContributionTerm)
+        capture!(a.integrand)
+        capture!(a.weight)
+        capture!(a.num_points)
+    end
+    function capture!(a::Union{CoordinateTerm, WeightTerm, NumPointsTerm})
+        name = a.measure.name
+        if !haskey(name_to_symbol, name)
+            name_to_captured_data[name] = a.measure
+        end
+    end
+    function capture!(a::UniformTerm)
+        name = a.name
+        if !haskey(name_to_symbol, name)
+            name_to_captured_data[name] = a
+        end
+    end
+    capture!(t)
 
-    free_params = Dict{Symbol, Any}()
-    if isa(t, ContributionTerm)
-        for (k, v) in t.params
-            if !haskey(name_to_symbol, k)
-                sym = gensym("free_param")
-                free_params[k] = (sym, v)
-                name_to_symbol[k] = sym
+    # update name_to_symbol and generate captured data symbols
+    captured_data = []
+    captured_data_symbols = []
+    for (i, (k, v)) in enumerate(name_to_captured_data)
+        sym = Symbol("captured_arg_$i")
+        name_to_symbol[k] = sym 
+        push!(captured_data, v)
+        push!(captured_data_symbols, sym)
+    end
+
+    # generate body and optimize
+    domain_face = :dummy_domain_face
+    expr = generate_body(t,name_to_symbol,domain_face)
+    fun_expr = quote
+        $domain_face -> begin
+            $expr
+        end
+    end
+    fun_expr = MacroTools.striplines(fun_expr)
+    fun_block = statements(fun_expr) # TODO: multi-layer IR
+    
+
+    # result = default_args -> ( user_args -> (xxxx) )
+    # evaluate returns a function result(captured data)
+    result = quote
+        ($(captured_data_symbols...), ) -> begin
+            ($(symbols...), ) -> begin
+                $fun_block
             end
         end
     end
-
-    domain_face = :dummy_domain_face
-    
-    expr = generate_body(t,name_to_symbol,domain_face)
-    expr = NewLambdaExpr(domain_face, expr)
-
-    fun_expr = lower(expr)
-    
-
-    # fun_expr = quote
-    #     $domain_face -> begin
-    #         $expr
-    #     end
-    # end
-    fun_expr = MacroTools.striplines(fun_expr)
-    fun_block = statements(fun_expr)
-
-    free_expr = Expr(:block)
-    for (_, (k, v)) in free_params
-        push!(free_expr.args, :($k = $v))
-    end
-
-    quote
-        $free_expr
-        ($(symbols...),) -> begin
-            $fun_block
-        end
-    end
+    (result, captured_data)
 end
 
-function evaluate(expr)
-    eval(expr)
+
+function evaluate(expr_and_captured)
+    expr, captured_data = expr_and_captured
+    f = eval(expr)
+    f = Base.invokelatest(f, captured_data...)
+
+    # convert input quantity to term
+    (args..., ) -> begin
+        args = map(args) do p
+            if p isa NewMeasure 
+                p
+            elseif p isa NewQuantity
+                term(p, nothing)
+            else
+                error("param $p is not a uniform quantity or a measure")
+            end
+        end
+        f(args...)
+    end
 end
 
 function statements(node)
