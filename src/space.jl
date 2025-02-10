@@ -22,9 +22,12 @@ end
 #    free_dofs(a)
 #end
 
-function free_dofs(a::AbstractSpace)
-    nfree = length(first(free_and_dirichlet_dofs(a)))
-    Base.OneTo(nfree)
+function free_dofs(V::AbstractSpace)
+    if workspace(V) !== nothing
+        return workspace(V).free_dofs
+    end
+    state = generate_dof_ids(V)
+    state.free_dofs
 end
 
 #function dirichlet_dofs(a::AbstractSpace,field)
@@ -32,9 +35,12 @@ end
 #    dirichlet_dofs(a)
 #end
 
-function dirichlet_dofs(a::AbstractSpace)
-    ndiri = length(last(free_and_dirichlet_dofs(a)))
-    Base.OneTo(ndiri)
+function dirichlet_dofs(V::AbstractSpace)
+    if workspace(V) !== nothing
+        return workspace(V).dirichlet_dofs
+    end
+    state = generate_dof_ids(V)
+    state.dirichlet_dofs_dofs
 end
 
 workspace(space::AbstractSpace) = nothing
@@ -45,9 +51,10 @@ function setup_space(space::AbstractSpace)
     end
     state = generate_dof_ids(space)
     face_dofs = state.cell_to_dofs
-    free_and_dirichlet_dofs = state.free_and_dirichlet_dofs
+    free_dofs = state.free_dofs
+    dirichlet_dofs = state.dirichlet_dofs
     dirichlet_dof_location = state.dirichlet_dof_location
-    workspace = (;face_dofs,free_and_dirichlet_dofs,dirichlet_dof_location)
+    workspace = (;face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
     replace_workspace(space,workspace)
 end
 
@@ -64,13 +71,13 @@ end
 #    face_dofs(space)
 #end
 
-function free_and_dirichlet_dofs(V::AbstractSpace)
-    if workspace(V) !== nothing
-        return workspace(V).free_and_dirichlet_dofs
-    end
-    state = generate_dof_ids(V)
-    state.free_and_dirichlet_dofs
-end
+#function free_and_dirichlet_dofs(V::AbstractSpace)
+#    if workspace(V) !== nothing
+#        return workspace(V).free_and_dirichlet_dofs
+#    end
+#    state = generate_dof_ids(V)
+#    state.free_and_dirichlet_dofs
+#end
 
 function dirichlet_dof_location(V::AbstractSpace)
     if workspace(V) !== nothing
@@ -327,9 +334,10 @@ end
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
     (;ndofs,cell_to_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
     dirichlet_dof_location = zeros(Int32,0)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    free_dofs = Base.OneTo(ndofs)
+    dirichlet_dofs = Base.OneTo(0)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
@@ -382,7 +390,9 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     data .= f.(data)
     ndiri = length(last(free_and_dirichlet_dofs))
     dirichlet_dof_location = ones(Int32,ndiri)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    free_dofs = Base.OneTo(n_free_dofs)
+    dirichlet_dofs = Base.OneTo(ndiri)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location)
 end
 
 function generate_dof_ids_step_2(space,state,q::AbstractField)
@@ -468,7 +478,9 @@ function generate_dof_ids_step_2(space,state,q::AbstractField)
     data .= f.(data)
     ndiri = length(last(free_and_dirichlet_dofs))
     dirichlet_dof_location = ones(Int32,ndiri)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    free_dofs = Base.OneTo(n_free_dofs)
+    dirichlet_dofs = Base.OneTo(ndiri)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDomain)
@@ -526,7 +538,10 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     data = cell_to_dofs.data
     data .= f.(data)
     dirichlet_dof_location = dof_to_location[last(free_and_dirichlet_dofs)]
-    (;cell_to_dofs, free_and_dirichlet_dofs, dirichlet_dof_location)
+    free_dofs = Base.OneTo(n_free_dofs)
+    ndiri = length(last(free_and_dirichlet_dofs))
+    dirichlet_dofs = Base.OneTo(ndiri)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
 function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
@@ -620,7 +635,9 @@ function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
     data .= f.(data)
     ndiri = length(last(free_and_dirichlet_dofs))
     dirichlet_dof_location = ones(Int32,ndiri)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    free_dofs = Base.OneTo(n_free_dofs)
+    dirichlet_dofs = Base.OneTo(ndiri)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
 struct LastDof end
@@ -648,7 +665,9 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::LastDof)
     data .= f.(data)
     ndiri = length(last(free_and_dirichlet_dofs))
     dirichlet_dof_location = ones(Int32,ndiri)
-    (;cell_to_dofs, free_and_dirichlet_dofs,dirichlet_dof_location)
+    free_dofs = Base.OneTo(n_free_dofs)
+    dirichlet_dofs = Base.OneTo(ndiri)
+    (;cell_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
 function reference_face_own_dofs(space::AbstractSpace,d)
