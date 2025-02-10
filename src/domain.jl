@@ -420,7 +420,7 @@ function simplexify(geo::UnitSimplex)
     mesh(geo)
 end
 
-abstract type AbstractMeshDomain{A} <: AbstractDomain end
+abstract type AbstractMeshDomain{A} <: AbstractDomain{A} end
 
 function face_reference_id(a::AbstractMeshDomain)
     d = num_dims(a)

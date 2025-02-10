@@ -318,9 +318,10 @@ function generate_dof_ids_step_1(space)
             end
         end
     end
+    dof_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(ndofs,))
     (;ndofs,cell_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
-     cell_to_ctype,cell_to_Dface)
+     cell_to_ctype,cell_to_Dface,dof_local_indices)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
@@ -1437,11 +1438,12 @@ function lagrange_mesh_space(;
         tensor_size,
         workspace,
        )
-    LagrangeMeshSpace(contents)
+    LagrangeMeshSpace(mesh(domain),contents)
 end
 
-struct LagrangeMeshSpace{A} <: AbstractSpace
-    contents::A
+struct LagrangeMeshSpace{A,B} <: AbstractSpace{A}
+    mesh::A
+    contents::B
 end
 
 conformity(space::LagrangeMeshSpace) = space.contents.conformity
@@ -1463,7 +1465,7 @@ function replace_workspace(space::LagrangeMeshSpace,workspace)
         tensor_size = space.contents.tensor_size,
         workspace,
        )
-    LagrangeMeshSpace(contents)
+    LagrangeMeshSpace(space.mesh,contents)
 end
 
 function face_reference_id(space::LagrangeMeshSpace)
@@ -1609,7 +1611,7 @@ function raviart_thomas_space(domain::AbstractFaceDomain,order)
     RaviartThomasFaceSpace(domain,order,workspace)
 end
 
-struct RaviartThomasFaceSpace{A,B,C} <: AbstractSpace
+struct RaviartThomasFaceSpace{A,B,C} <: AbstractFaceSpace
     domain::A
     order::B
     workspace::C
@@ -1881,6 +1883,7 @@ function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformi
     end
     workspace = nothing
     RaviartThomasMeshSpace(
+        mesh,
         domain,
         order,
         conformity,
@@ -1890,7 +1893,8 @@ function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformi
         workspace) |> setup_space
 end
 
-struct RaviartThomasMeshSpace{A,B,C,D,E,F} <: AbstractSpace
+struct RaviartThomasMeshSpace{M,A,B,C,D,E,F} <: AbstractSpace{M}
+    mesh::M
     domain::A
     order::B
     conformity::Symbol
@@ -1910,6 +1914,7 @@ workspace(a::RaviartThomasMeshSpace) = a.workspace
 
 function replace_workspace(space::RaviartThomasMeshSpace,workspace)
     GT.RaviartThomasMeshSpace(
+        space.mesh,
         space.domain,
         space.order,
         space.conformity,
@@ -2006,10 +2011,12 @@ function sign_flip_accessor(space::RaviartThomasMeshSpace)
 end
 
 function cartesian_product(spaces::AbstractSpace...)
-    CartesianProductSpace(spaces)
+    mesh = GT.mesh(first(spaces))
+    CartesianProductSpace(mesh,spaces)
 end
 
-struct CartesianProductSpace{A} <: GT.AbstractSpace
+struct CartesianProductSpace{M,A} <: GT.AbstractSpace{M}
+    mesh::M
     spaces::A
 end
 
@@ -2266,3 +2273,5 @@ function dirichlet_accessor(uh::DiscreteField,dom::AbstractDomain)
         end
     end
 end
+
+
