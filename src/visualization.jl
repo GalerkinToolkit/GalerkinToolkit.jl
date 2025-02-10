@@ -482,6 +482,11 @@ function face_data(mesh::AbstractMesh,d)
         dict[name] = face_mask
     end
     #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
+    faceids = face_local_indices(mesh,d)
+    part = part_id(faceids)
+    dict["__OWNER__"] = local_to_owner(faceids)
+    dict["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+    dict["__PART__"] = fill(part,ndfaces)
     dict
 end
 
@@ -495,6 +500,11 @@ function node_data(mesh::AbstractMesh)
     #    dict[name] = node_mask
     #end
     #dict["__LOCAL_NODE__"] = collect(1:nnodes)
+    nodeids = node_local_indices(mesh)
+    part = part_id(nodeids)
+    dict["__OWNER__"] = local_to_owner(nodeids)
+    dict["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+    dict["__PART__"] = fill(part,nnodes)
     dict
 end
 
@@ -503,39 +513,37 @@ function face_data(mesh::AbstractMesh)
     map(d->face_data(mesh,d),0:D)
 end
 
-function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
-    facedata = face_data(mesh,d)
-    faceids = face_indices(ids,d)
-    part = part_id(faceids)
-    nfaces = local_length(faceids)
-    facedata["__OWNER__"] = local_to_owner(faceids)
-    facedata["__IS_LOCAL__"] = local_to_owner(faceids) .== part
-    facedata["__PART__"] = fill(part,nfaces)
-    #facedata["__GLOBAL_DFACE__"] = local_to_global(faceids)
-    facedata
-end
-
-function face_data(mesh::AbstractMesh,ids::PMeshLocalIds)
-    D = num_dims(mesh)
-    map(d->face_data(mesh,ids,d),0:D)
-end
-
-function node_data(mesh::AbstractMesh,ids::PMeshLocalIds)
-    nodedata = node_data(mesh)
-    nodeids = node_indices(ids)
-    part = part_id(nodeids)
-    nfaces = local_length(nodeids)
-    nodedata["__OWNER__"] = local_to_owner(nodeids)
-    nodedata["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
-    nodedata["__PART__"] = fill(part,nfaces)
-    #nodedata["__GLOBAL_NODE__"] = local_to_global(nodeids)
-    nodedata
-end
+#function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
+#    facedata = face_data(mesh,d)
+#    faceids = face_indices(ids,d)
+#    part = part_id(faceids)
+#    nfaces = local_length(faceids)
+#    facedata["__OWNER__"] = local_to_owner(faceids)
+#    facedata["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+#    facedata["__PART__"] = fill(part,nfaces)
+#    #facedata["__GLOBAL_DFACE__"] = local_to_global(faceids)
+#    facedata
+#end
+#
+#function face_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+#    D = num_dims(mesh)
+#    map(d->face_data(mesh,ids,d),0:D)
+#end
+#
+#function node_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+#    nodedata = node_data(mesh)
+#    nodeids = node_indices(ids)
+#    part = part_id(nodeids)
+#    nfaces = local_length(nodeids)
+#    nodedata["__OWNER__"] = local_to_owner(nodeids)
+#    nodedata["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+#    nodedata["__PART__"] = fill(part,nfaces)
+#    #nodedata["__GLOBAL_NODE__"] = local_to_global(nodeids)
+#    nodedata
+#end
 
 function plot(pmesh::PMesh)
-    plts = map(partition(pmesh),index_partition(pmesh)) do mesh,ids
-        Plot(mesh,face_data(mesh,ids),node_data(mesh,ids))
-    end
+    plts = map(plot,partition(pmesh))
     PPlot(plts)
 end
 

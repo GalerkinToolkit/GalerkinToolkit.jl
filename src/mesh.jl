@@ -329,11 +329,11 @@ function simplexify_generate_tface_to_face(
     tface_to_face
 end
 
-function restrict(mesh::AbstractMesh,args...)
-    restrict_mesh(mesh,args...)
+function restrict(mesh::AbstractMesh,args...;kwargs...)
+    restrict_mesh(mesh,args...;kwargs...)
 end
 
-function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     nnodes = num_nodes(mesh)
     node_to_lnode = zeros(Int32,nnodes)
     node_to_lnode[lnode_to_node] = 1:length(lnode_to_node)
@@ -372,7 +372,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         reference_spaces = reference_spaces(mesh),
         physical_faces = lgroups_mesh,
         periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
-        outward_normals = lnormals
+        outward_normals = lnormals,
+        kwargs...
         )
 
     lmesh
@@ -392,6 +393,8 @@ function mesh(;
         outward_normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
+        node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
+        face_local_indices = [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
     )
     contents = (;
@@ -404,6 +407,8 @@ function mesh(;
                 outward_normals,
                 geometry_names,
                 is_cell_complex,
+                node_local_indices,
+                face_local_indices,
                 workspace,
                )
     mesh = Mesh(contents)
@@ -420,6 +425,8 @@ function replace_workspace(mesh::Mesh,workspace)
                 physical_faces=physical_faces(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
+                node_local_indices=node_local_indices(mesh),
+                face_local_indices=face_local_indices(mesh),
                 workspace,
                )
     Mesh(contents)
@@ -436,6 +443,8 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
                 geometry_names=geometry_names(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
+                node_local_indices=node_local_indices(mesh),
+                face_local_indices=face_local_indices(mesh),
                 workspace=workspace(mesh),
                )
     Mesh(contents)
@@ -453,6 +462,10 @@ physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
 workspace(m::Mesh) = m.contents.workspace
+
+node_local_indices(m::Mesh) = m.contents.node_local_indices
+face_local_indices(m::Mesh) = m.contents.face_local_indices
+face_local_indices(m::Mesh,d) = m.contents.face_local_indices[d+1]
 
 function default_physical_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]

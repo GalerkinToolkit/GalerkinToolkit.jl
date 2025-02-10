@@ -1,23 +1,23 @@
 
-struct PMesh{A,B,C,D} <: GT.AbstractType
+struct PMesh{A,B} <: GT.AbstractType
     mesh_partition::A
-    node_partition::B
-    face_partition::C
-    partition_strategy::D
+    partition_strategy::B
 end
 partition_strategy(a) = a.partition_strategy
 PartitionedArrays.partition(m::PMesh) = m.mesh_partition
-face_partition(a::PMesh,d) = a.face_partition[d+1]
-node_partition(a::PMesh) = a.node_partition
-function index_partition(a::PMesh)
-    function setup(nodes,faces...)
-        PMeshLocalIds(nodes,faces)
-    end
-    map(setup,a.node_partition,a.face_partition...)
-end
+
+face_partition(a::PMesh,d) = map(mesh->face_local_indices(mesh,d),a.mesh_partition)
+node_partition(a::PMesh) = map(node_local_indices,a.mesh_partition)
+
+#function index_partition(a::PMesh)
+#    function setup(nodes,faces...)
+#        PMeshLocalIds(nodes,faces)
+#    end
+#    map(setup,a.node_partition,a.face_partition...)
+#end
 
 function num_nodes(mesh::PMesh)
-    length(PRange(mesh.node_partition))
+    length(PRange(node_partition(mesh)))
 end
 
 function num_faces(mesh::PMesh)
@@ -26,11 +26,11 @@ function num_faces(mesh::PMesh)
 end
 
 function num_faces(mesh::PMesh,d)
-    length(PRange(mesh.face_partition[d+1]))
+    length(PRange(face_partition(mesh,d)))
 end
 
 function num_dims(mesh::PMesh)
-    length(mesh.face_partition) - 1
+    PartitionedArrays.getany(map(num_dims,mesh.mesh_partition))
 end
 
 function num_ambient_dims(mesh::PMesh)
@@ -54,7 +54,7 @@ end
 
 function node_coordinates(pmesh::PMesh)
     data = map(GT.node_coordinates,pmesh.mesh_partition)
-    PVector(data,pmesh.node_partition)
+    PVector(data,node_partition(pmesh))
 end
 
 function face_nodes(mesh::PMesh)
@@ -63,8 +63,15 @@ function face_nodes(mesh::PMesh)
 end
 
 function face_nodes(pmesh::PMesh,d)
-    data = map(mesh->GT.face_nodes(mesh,d),pmesh.mesh_partition)
-    PVector(data,pmesh.face_partition[d+1])
+    data = map(pmesh.mesh_partition) do mesh
+        face_to_nodes = GT.face_nodes(mesh,d)
+        face_to_gnodes = JaggedArray(copy(face_to_nodes))
+        node_to_gnode = local_to_global(node_local_indices(mesh))
+        data = face_to_gnodes.data
+        data .= (node->node_to_gnode[node]).(data)
+        face_to_gnodes
+    end
+    PVector(data,face_partition(pmesh,d))
 end
 
 function face_reference_id(mesh::PMesh)
@@ -74,7 +81,7 @@ end
 
 function face_reference_id(pmesh::PMesh,d)
     data = map(mesh->GT.face_reference_id(mesh,d),pmesh.mesh_partition)
-    PVector(data,pmesh.face_partition[d+1])
+    PVector(data,face_partition(pmesh,d))
 end
 
 function reference_spaces(mesh::PMesh)
@@ -134,12 +141,12 @@ function label_boundary_faces!(mesh::PMesh;physical_name="boundary")
     mesh
 end
 
-struct PMeshLocalIds{A,B} <: GT.AbstractType
-    node_indices::A
-    face_indices::B
-end
-node_indices(a::PMeshLocalIds) = a.node_indices
-face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
+#struct PMeshLocalIds{A,B} <: GT.AbstractType
+#    node_indices::A
+#    face_indices::B
+#end
+#node_indices(a::PMeshLocalIds) = a.node_indices
+#face_indices(a::PMeshLocalIds,d) = a.face_indices[d+1]
 
 function partition_mesh(mesh,np;
     partition_strategy=GT.partition_strategy(),
@@ -160,20 +167,33 @@ function partition_mesh(mesh,np;
 end
 
 function scatter_mesh(pmeshes_on_main;source=MAIN)
-    snd = map_main(pmeshes_on_main;main=source) do pmesh
-        map(tuple,pmesh.mesh_partition,pmesh.node_partition,map(tuple,pmesh.face_partition...))
-    end
+    snd = map_main(partition,pmeshes_on_main;main=source)
     rcv = scatter(snd;source)
-    mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
-    face_partition = face_partition_array |> tuple_of_arrays
+    mesh_partition = rcv
     np = length(snd)
     snd2 = map_main(pmeshes_on_main;main=source) do pmesh
         fill(partition_strategy(pmesh),np)
     end
     rcv2 = scatter(snd2)
     partition_strategy_mesh = PartitionedArrays.getany(rcv2)
-    PMesh(mesh_partition,node_partition,face_partition,partition_strategy_mesh)
+    PMesh(mesh_partition,partition_strategy_mesh)
 end
+
+#function scatter_mesh(pmeshes_on_main;source=MAIN)
+#    snd = map_main(pmeshes_on_main;main=source) do pmesh
+#        map(tuple,pmesh.mesh_partition,pmesh.node_partition,map(tuple,pmesh.face_partition...))
+#    end
+#    rcv = scatter(snd;source)
+#    mesh_partition, node_partition, face_partition_array = rcv |> tuple_of_arrays
+#    face_partition = face_partition_array |> tuple_of_arrays
+#    np = length(snd)
+#    snd2 = map_main(pmeshes_on_main;main=source) do pmesh
+#        fill(partition_strategy(pmesh),np)
+#    end
+#    rcv2 = scatter(snd2)
+#    partition_strategy_mesh = PartitionedArrays.getany(rcv2)
+#    PMesh(mesh_partition,node_partition,face_partition,partition_strategy_mesh)
+#end
 
 function partition_mesh_nodes(node_to_color,parts,mesh,graph,partition_strategy,renumber)
     ghost_layers = partition_strategy.ghost_layers
@@ -234,18 +254,27 @@ function partition_mesh_nodes(node_to_color,parts,mesh,graph,partition_strategy,
         end
         lface_to_face_mesh = map(local_to_global,local_faces)
         lnode_to_node_mesh = local_to_global(local_nodes)
-        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
-        lmesh, local_nodes, Tuple(local_faces)
+        node_local_indices = local_nodes
+        face_local_indices = Tuple(local_faces)
+        node_local_indices, face_local_indices, (;lnode_to_node_mesh,lface_to_face_mesh)
     end
-    mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
+    node_partition, face_partition_array, paux = map(setup,parts) |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
     if renumber
         node_partition = renumber_partition(node_partition)
         face_partition = map(renumber_partition,face_partition)
     end
+    face_partition_array = array_of_tuples(face_partition)
+    mesh_partition = map(parts,node_partition,face_partition_array,paux) do part,local_nodes,local_faces,aux
+        node_local_indices = local_nodes
+        face_local_indices = local_faces
+        (;lnode_to_node_mesh,lface_to_face_mesh) = aux
+        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh;node_local_indices,face_local_indices)
+        lmesh
+    end
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
+    pmesh = PMesh(mesh_partition,partition_strategy)
     pmesh
 end
 
@@ -332,21 +361,30 @@ function partition_mesh_cells(cell_to_color,parts,mesh,graph,partition_strategy,
         own = OwnIndices(nnodes,part,onode_to_node)
         ghost = GhostIndices(nnodes,hnode_to_node,hnode_to_color)
         local_nodes = OwnAndGhostIndices(own,ghost)
-        lnode_to_node_mesh = local_to_global(local_nodes)
         lface_to_face_mesh = map(local_to_global,local_faces)
-        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh)
-        lmesh, local_nodes, Tuple(local_faces)
+        lnode_to_node_mesh = local_to_global(local_nodes)
+        node_local_indices = local_nodes
+        face_local_indices = Tuple(local_faces)
+        node_local_indices, face_local_indices, (;lnode_to_node_mesh,lface_to_face_mesh)
     end
-    mesh_partition, node_partition, face_partition_array = map(setup,parts) |> tuple_of_arrays
+    node_partition, face_partition_array, paux = map(setup,parts) |> tuple_of_arrays
     face_partition = face_partition_array |> tuple_of_arrays
     if renumber
         node_partition = renumber_partition(node_partition)
         face_partition = map(renumber_partition,face_partition)
     end
+    face_partition_array = array_of_tuples(face_partition)
+    mesh_partition = map(parts,node_partition,face_partition_array,paux) do part,local_nodes,local_faces,aux
+        node_local_indices = local_nodes
+        face_local_indices = local_faces
+        (;lnode_to_node_mesh,lface_to_face_mesh) = aux
+        lmesh = restrict_mesh(mesh,lnode_to_node_mesh,lface_to_face_mesh;node_local_indices,face_local_indices)
+        lmesh
+    end
     # TODO here we have the opportunity to provide the parts rcv
     assembly_graph(node_partition)
     map(assembly_graph,face_partition)
-    pmesh = PMesh(mesh_partition,node_partition,face_partition,partition_strategy)
+    pmesh = PMesh(mesh_partition,partition_strategy)
     pmesh
 end
 
