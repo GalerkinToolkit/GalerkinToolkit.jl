@@ -266,10 +266,6 @@ function refine_reference_geometry(geo,resolution)
     end
 end
 
-
-
-
-
 struct Plot{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B

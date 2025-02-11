@@ -8,8 +8,45 @@ using LinearAlgebra
 using BlockArrays
 using WriteVTK
 using StaticArrays
+using PartitionedArrays
 
 #using InteractiveUtils
+
+domain = (0,1,0,1)
+cells_per_dir = (4,4)
+parts_per_dir = (2,2)
+np = prod(parts_per_dir)
+parts = DebugArray(LinearIndices((np,)))
+mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
+
+Ω = GT.interior(mesh)
+
+# TODO
+#map(partition(Ω)) do dom
+#    imesh = GT.mesh(dom)
+#    ids = GT.face_local_indices(imesh,2)
+#    local_to_owner(ids)
+#end |> display
+#vtk_grid("pdom",Ω) |> close
+
+order = 1
+
+V = GT.lagrange_space(Ω,order)
+
+@test GT.face_dofs(V) isa PVector
+
+#map(partition(GT.free_dofs(V))) do ids
+#    display(local_to_owner(ids))
+#end
+
+map(partition(V)) do space
+    display(GT.face_dofs(space))
+end
+
+
+
+
+
 
 #@code_warntype GT.unit_simplex(Val(3))
 

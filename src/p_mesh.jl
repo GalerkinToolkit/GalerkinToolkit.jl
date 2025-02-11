@@ -1,11 +1,13 @@
 
-struct PMesh{A,B} <: GT.AbstractType
+struct PMesh{A,B} <: GT.AbstractPMesh
     mesh_partition::A
     partition_strategy::B
 end
 partition_strategy(a) = a.partition_strategy
 PartitionedArrays.partition(m::PMesh) = m.mesh_partition
 
+# TODO implement faces() and nodes() that return PRange. Rename the current faces to mesh_faces
+# and the inverse_faces to domain_faces
 face_partition(a::PMesh,d) = map(mesh->face_local_indices(mesh,d),a.mesh_partition)
 node_partition(a::PMesh) = map(node_local_indices,a.mesh_partition)
 

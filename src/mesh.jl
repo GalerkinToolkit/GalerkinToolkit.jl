@@ -55,6 +55,14 @@ function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     physical_name
 end
 
+function label_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
+    p_mesh = partition(m)
+    foreach(p_mesh) do mesh
+        label_faces_in_dim!(mesh,d;physical_name)
+    end
+    physical_name
+end
+
 function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
     d = D-1

@@ -44,6 +44,10 @@ Beginner
 """
 abstract type AbstractMesh <: AbstractType end
 
+"""
+"""
+abstract type AbstractPMesh <: AbstractMesh end
+
 @doc raw"""
     abstract type AbstractDomain{A} <: AbstractType end
 
