@@ -1518,7 +1518,7 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
     end
     p_domain = partition(GT.domain(pspace))
     pdirichlet_boundary = GT.dirichlet_boundary(pspace)
-    if dirichlet_boundary isa AbstractDomain
+    if pdirichlet_boundary isa AbstractDomain
         p_dirichlet_boundary = partition(GT.dirichlet_boundary(pspace))
         map(p_domain,p_dirichlet_boundary) do domain, dirichlet_boundary
             lagrange_space(
@@ -2411,6 +2411,7 @@ function setup_space(space::AbstractSpace{<:PMesh})
     p_dof_partition = map(state->state.dof_local_indices,p_state_3)
     p_dof_isfree = map(state->state.dof_isfree,p_state_3)
     gdof_isfree = PVector(p_dof_isfree,p_dof_partition)
+    wait(consistent!(gdof_isfree))
     gdof_isdiri = .!(gdof_isfree)
     free_gdof_dof, gdof_free_dof = find_local_indices(gdof_isfree)
     diri_gdof_dof, gdof_diri_dof = find_local_indices(gdof_isdiri)
@@ -2612,6 +2613,51 @@ function setup_space_local_step_3_2(state,dirichlet_boundary::Nothing)
     (;ndofs,space) = state
     dof_isfree = fill(true,ndofs)
     dof_location = fill(1,ndofs)
+    (;dof_isfree,dof_location,state...)
+end
+
+function setup_space_local_step_3_2(state,dirichlet_boundary::AbstractDomain)
+    (;ndofs,cell_dofs,space) = state
+    domain = space |> GT.domain
+    D = GT.num_dims(domain)
+    cell_Dface = domain |> GT.faces
+    mesh = domain |> GT.mesh
+    topology = mesh |> GT.topology
+    ctype_reference_fe = space |> GT.reference_spaces
+    cell_ctype = space |> GT.face_reference_id
+    d_ctype_ldface_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_reference_fe),0:D)
+    d_Dface_dfaces = map(d->face_incidence(topology,D,d),0:D)
+    dof_isfree = fill(true,ndofs)
+    dof_location = fill(1,ndofs)
+    N = GT.num_dims(dirichlet_boundary)
+    nNfaces = num_faces(topology,N)
+    Nface_tag = zeros(Int32,nNfaces)
+    mesh = dirichlet_boundary |> GT.mesh
+    Nface_tag[GT.faces(dirichlet_boundary)] .= 1
+    ncells = length(cell_dofs)
+    let d = N
+        Dface_dfaces = d_Dface_dfaces[d+1]
+        ctype_ldface_ldofs = d_ctype_ldface_dofs[d+1]
+        for cell in 1:ncells
+            ctype = cell_ctype[cell]
+            Dface = cell_Dface[cell]
+            ldof_dof = cell_dofs[cell]
+            ldface_dface = Dface_dfaces[Dface]
+            ldface_ldofs = ctype_ldface_ldofs[ctype]
+            nldfaces = length(ldface_dface)
+            dofs = cell_dofs[cell]
+            for ldface in 1:nldfaces
+                ldofs = ldface_ldofs[ldface]
+                dface = ldface_dface[ldface]
+                Nface = dface
+                tag = Nface_tag[Nface]
+                if tag == 0
+                    continue
+                end
+                dof_isfree[view(dofs,ldofs)] .= false
+            end
+        end
+    end
     (;dof_isfree,dof_location,state...)
 end
 

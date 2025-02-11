@@ -10,7 +10,7 @@ using WriteVTK
 using StaticArrays
 using PartitionedArrays
 
-#using InteractiveUtils
+using InteractiveUtils
 
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
@@ -20,6 +20,11 @@ parts = DebugArray(LinearIndices((np,)))
 mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
 
 Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+Λ = GT.skeleton(mesh)
+
+#vtk_grid("pgamma",Γ) |> close
+#vtk_grid("plam",Λ) |> close
 
 # TODO
 #map(partition(Ω)) do dom
@@ -31,7 +36,7 @@ mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
 
 order = 1
 
-V = GT.lagrange_space(Ω,order)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
 @test GT.face_dofs(V) isa PVector
 
@@ -42,9 +47,6 @@ V = GT.lagrange_space(Ω,order)
 map(partition(V)) do space
     display(GT.face_dofs(space))
 end
-
-
-
 
 
 

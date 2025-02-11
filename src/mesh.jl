@@ -77,6 +77,39 @@ function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACE
     physical_name
 end
 
+function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
+    D = num_dims(pmesh)
+    d = D - 1
+    vals = map(partition(pmesh)) do mesh
+        topo = topology(mesh)
+        nfaces = num_faces(topo,d)
+        face_to_v = zeros(Int32,nfaces)
+        cell_to_faces = face_incidence(topo,D,d)
+        ncells = num_faces(topo,D)
+        cell_ids = face_local_indices(mesh,D)
+        cell_to_owner = local_to_owner(cell_ids)
+        part = part_id(cell_ids)
+        for cell in 1:ncells
+            owner = cell_to_owner[cell]
+            if part != owner
+                continue
+            end
+            faces = cell_to_faces[cell]
+            for face in faces
+                face_to_v[face] += 1
+            end
+        end
+        face_to_v
+    end
+    ids = face_partition(pmesh, d)
+    v = PVector(vals,ids)
+    assemble!(v) |> wait
+    map(partition(pmesh),vals) do mesh, face_to_v
+       physical_faces(mesh,d)[physical_name] = findall(i->i==2,face_to_v)
+    end
+    physical_name
+end
+
 function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
     d = D-1
@@ -88,6 +121,39 @@ function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACE
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==1,face_to_cells)
     groups[physical_name] = faces
+    physical_name
+end
+
+function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
+    D = num_dims(pmesh)
+    d = D - 1
+    vals = map(partition(pmesh)) do mesh
+        topo = topology(mesh)
+        nfaces = num_faces(topo,d)
+        face_to_v = zeros(Int32,nfaces)
+        cell_to_faces = face_incidence(topo,D,d)
+        ncells = num_faces(topo,D)
+        cell_ids = face_local_indices(mesh,D)
+        cell_to_owner = local_to_owner(cell_ids)
+        part = part_id(cell_ids)
+        for cell in 1:ncells
+            owner = cell_to_owner[cell]
+            if part != owner
+                continue
+            end
+            faces = cell_to_faces[cell]
+            for face in faces
+                face_to_v[face] += 1
+            end
+        end
+        face_to_v
+    end
+    ids = face_partition(pmesh, d)
+    v = PVector(vals,ids)
+    assemble!(v) |> wait
+    map(partition(pmesh),vals) do mesh, face_to_v
+       physical_faces(mesh,d)[physical_name] = findall(i->i==1,face_to_v)
+    end
     physical_name
 end
 
