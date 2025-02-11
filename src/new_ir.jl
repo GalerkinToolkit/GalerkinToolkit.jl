@@ -15,12 +15,7 @@ abstract type NewAbstractTerm <: AbstractType end
 #domain(t::TermOptions) = t.contents.domain
 #domain_face(t::TermOptions) = t.contents.domain_face
 
-# TODO:
-# 1. terms with domain as metadata +
-# 2. transform input quantity to term when the user generate the function +
-# 3. only allow uniform quantity and measure as args (ub from the user side. )
-# 4. all args need a name
-# 5. prototypes?
+
 abstract type NewAbstractQuantity <: AbstractType end
 
 function new_quantity(term;name=nothing,workspace=nothing)
