@@ -18,7 +18,7 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
-function new_quantity(term;name=nothing,workspace=nothing)
+function new_quantity(term;name=nothing)
     NewQuantity(term,name)
 end
 
@@ -38,7 +38,7 @@ function term(q::NewQuantity,dom)
 end
 
 function uniform_quantity(value;name=gensym("uniform"))
-    new_quantity(;name,workspace=value) do opts
+    new_quantity(;name) do opts
         UniformTerm(name, value, opts)
     end
 end
