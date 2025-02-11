@@ -24,18 +24,14 @@ abstract type NewAbstractTerm <: AbstractType end
 abstract type NewAbstractQuantity <: AbstractType end
 
 function new_quantity(term;name=nothing,workspace=nothing)
-    NewQuantity(term,name,workspace)
+    NewQuantity(term,name)
 end
 
-struct NewQuantity{A,B,C} <: NewAbstractQuantity
+struct NewQuantity{A,B} <: NewAbstractQuantity
     term::A
     name::B
-    workspace::C
 end
 
-function workspace(m::NewQuantity)
-    m.workspace
-end
 
 function name(m::NewQuantity)
     @assert m.name !== nothing
@@ -48,18 +44,18 @@ end
 
 function uniform_quantity(value;name=gensym("uniform"))
     new_quantity(;name,workspace=value) do opts
-        UniformTerm(name, value)
+        UniformTerm(name, value, opts)
     end
 end
 
-struct UniformTerm{A, B} <: NewAbstractTerm
+struct UniformTerm{A, B, C} <: NewAbstractTerm
     name::A
     value::B
-    # domain::C
+    domain::C
 end
 
 function domain(t::UniformTerm)
-    nothing
+    t.domain
 end
 
 function value(t::UniformTerm)
@@ -234,10 +230,10 @@ end
 
 function evaluate(expr_and_captured)
     expr, captured_data = expr_and_captured
-    f = eval(expr)
-    f = Base.invokelatest(f, captured_data...)
+    f1 = eval(expr)
+    f2 = Base.invokelatest(f1, captured_data...)
 
-    # convert input quantity to term
+    # convert input from quantity to term
     (args..., ) -> begin
         args = map(args) do p
             if p isa NewMeasure 
@@ -248,7 +244,7 @@ function evaluate(expr_and_captured)
                 error("param $p is not a uniform quantity or a measure")
             end
         end
-        f(args...)
+        f2(args...)
     end
 end
 

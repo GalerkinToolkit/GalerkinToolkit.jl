@@ -9,7 +9,7 @@ import ForwardDiff
 using AbstractTrees
 
 function hand_written_baseline(α,dΩ)
-    v = GT.workspace(α)
+    v = GT.term(α, nothing).value
     face_point_dV = GT.weight_accessor(dΩ)
     face_point_J = GT.jacobian_accessor(dΩ)
     face_npoints = GT.num_points_accessor(dΩ)
@@ -72,15 +72,35 @@ f = GT.evaluate(expr)
 @time domain_face_v = f(α,dΩ)
 
 domain_face = 2
-domain_face_v(1)
+sum(domain_face_v, 1:1)
 @time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
 
+
+expr_partial_param = GT.generate(int, α)
+f_partial_param = GT.evaluate(expr_partial_param)
+
 α = GT.uniform_quantity(2.0)
+domain_face_v = f_partial_param(α)
+sum(domain_face_v, 1:1)
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
+@test s ≈ 16
+
+
 @time domain_face_v = f(α,dΩ)
 domain_face_v(1)
 @time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
+@test s ≈ 16
+
+
+expr_noparam = GT.generate(int)
+f_noparam = GT.evaluate(expr_noparam)
+domain_face_v = f_noparam()
+sum(domain_face_v, 1:1)
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
+@test s ≈ 8
+
 
 domain = (0,1,0,1)
 cells = (2,2)
@@ -91,9 +111,10 @@ degree = 3
 dΩ = GT.new_measure(Ω,degree)
 
 @time domain_face_v = f(α,dΩ)
-domain_face_v(1)
+sum(domain_face_v, 1:1)
 @time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @show s
+@test s ≈ 2
 
 #face_point_J
 #face_point_w 
