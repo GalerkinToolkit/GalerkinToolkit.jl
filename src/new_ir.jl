@@ -65,9 +65,9 @@ end
 
 function lower(t::IndexTerm)
     array = lower(t.array)
-    index = t.index
-    :(($array)[$index])
-    # Expr(:(->), lower(t.args), lower(t.body))
+    index = lower(t.index)
+    # :(($array)[$index])
+    Expr(:ref, array, index)
 end
 
 
@@ -96,14 +96,18 @@ function (f::NewAbstractQuantity)(x::NewAbstractQuantity...)
     end
 end
 
-function Base.getindex(a::NewAbstractQuantity, b::Int)
+function Base.getindex(a::NewAbstractQuantity, b)
+    if !(b isa NewAbstractQuantity)
+        index = uniform_quantity(b)
+    else
+        index = b
+    end
 
     new_quantity(;) do opts
-        array = term(a, opts)
-        index = b # assuming b is a literal number. or otherwise do a map over (b isa NewAbstractQuantity) ? term(b, opts) : b
-
-        proto = prototype(array)[index]
-        IndexTerm(array, index, proto)
+        array_term = term(a, opts)
+        index_term = term(index, opts)
+        proto = prototype(array_term)[1]
+        IndexTerm(array_term, index_term, proto)
     end
 end
 
@@ -145,7 +149,7 @@ end
 
 
 function generate_body(t::IndexTerm,name_to_symbol,domain_face)
-    IndexTerm(generate_body(t.array, name_to_symbol, domain_face), t.index, t.prototype)
+    IndexTerm(generate_body(t.array, name_to_symbol, domain_face), generate_body(t.index, name_to_symbol, domain_face), t.prototype)
 end
 
 
@@ -345,6 +349,7 @@ end
 
 function capture!(a::IndexTerm, name_to_symbol, name_to_captured_data)
     capture!(a.array, name_to_symbol, name_to_captured_data)
+    capture!(a.index, name_to_symbol, name_to_captured_data)
 end
 
 
@@ -567,16 +572,64 @@ for op in (:+,:-,:*,:/,:\,:^)
 end
 
 
-# macro contribution(expr, measure)
-#     function build(expr)
-#         expr
-#     end
 
-#     new_expr = build(expr)
+function to_quantity(q::NewAbstractQuantity)
+    q
+end
 
-#     # Expr(:call, contribution, esc(new_expr), esc(measure))
-#     :($contribution($(esc(new_expr)), $(esc(measure))))
-# end
+function to_quantity(t)
+    uniform_quantity(t)
+end
+
+macro contribution(expr, measure)
+    expr = MacroTools.striplines(expr)
+    function to_quantities(expr, symbol_set)
+        if expr in symbol_set
+            expr 
+        else
+            :($to_quantity($expr))
+        end
+    end
+
+    function push_symbols!(symbol_set, symbols)
+        if symbols isa Symbol
+            push!(symbol_set, symbols)
+        else
+            map(symbols) do s
+                push_symbols!(symbol_set, s)                
+            end
+        end
+    end
+
+    function delete_symbols!(symbol_set, symbols)
+        if symbols isa Symbol
+            delete!(symbol_set, symbols)
+        else
+            map(symbols) do s
+                delete_symbols!(symbol_set, s)                
+            end
+        end
+    end
+
+    function to_quantities(expr::Expr, symbol_set)
+        if expr.head === :(->)
+            push_symbols!(symbol_set, expr.args[1])
+        end
+
+        result = Expr(expr.head, map(x -> to_quantities(x, symbol_set), expr.args)...)
+
+        if expr.head === :(->)
+            delete_symbols!(symbol_set, expr.args[1])
+        end
+        result 
+    end
+
+    lambda_symbols = Set{Symbol}()
+    new_expr = to_quantities(expr, lambda_symbols)
+    # Expr(:call, contribution, esc(new_expr), esc(measure))
+    result = :($contribution($new_expr, $measure))
+    esc(result)
+end
 
 #struct NewIntegral{A}  <: AbstractType
 #    contributions::A
