@@ -18,13 +18,93 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
+
+struct LeafTerm{A, B}  <: NewAbstractTerm
+    value::A
+    prototype::B
+end
+
+struct CallTerm{A, B, C}  <: NewAbstractTerm
+    callee::A
+    args::B
+    prototype::C
+end
+
+struct IndexTerm{A, B, C}  <: NewAbstractTerm
+    array::A
+    index::B
+    prototype::C
+end
+
+struct LambdaTerm{A, B, C}  <: NewAbstractTerm
+    body::A
+    args::B
+    prototype::C
+end
+
+prototype(t::LeafTerm) = t.prototype
+prototype(t::CallTerm) = t.prototype
+prototype(t::LambdaTerm) = t.prototype
+prototype(t::IndexTerm) = t.prototype
+
+
+function lower(t::LeafTerm)
+    t.value
+end
+
+function lower(t::CallTerm)
+    args = map(lower, t.args)
+    Expr(:call, lower(t.callee), args...)
+end
+
+
+function lower(t::LambdaTerm)
+    Expr(:(->), lower(t.args), lower(t.body))
+end
+
+
+function lower(t::IndexTerm)
+    array = lower(t.array)
+    index = t.index
+    :(($array)[$index])
+    # Expr(:(->), lower(t.args), lower(t.body))
+end
+
+
+
 function new_quantity(term;name=nothing)
     NewQuantity(term,name)
 end
 
+
 struct NewQuantity{A,B} <: NewAbstractQuantity
     term::A
     name::B
+end
+
+
+function (f::NewAbstractQuantity)(x::NewAbstractQuantity...)
+    # name = gensym("call")
+    new_quantity(;) do opts
+        callee = term(f, opts)
+        args = map(x) do arg
+            term(arg, opts)
+        end
+        prototype_callee = prototype(callee)
+        prototype_args = map(prototype, args)
+        CallTerm(callee, args, prototype_callee(prototype_args...))
+    end
+end
+
+function Base.getindex(a::NewAbstractQuantity, b::Int)
+
+    new_quantity(;) do opts
+        array = term(a, opts)
+        index = b # assuming b is a literal number. or otherwise do a map over (b isa NewAbstractQuantity) ? term(b, opts) : b
+
+        proto = prototype(array)[index]
+        IndexTerm(array, index, proto)
+    end
 end
 
 
@@ -49,9 +129,9 @@ struct UniformTerm{A, B, C} <: NewAbstractTerm
     domain::C
 end
 
-function domain(t::UniformTerm)
-    t.domain
-end
+domain(t::UniformTerm) = t.domain
+prototype(t::UniformTerm) = t.value
+
 
 function value(t::UniformTerm)
     t.value
@@ -59,23 +139,42 @@ end
 
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    :(value($t2))
+    CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
+    # :(value($t2))
+end
+
+
+function generate_body(t::IndexTerm,name_to_symbol,domain_face)
+    IndexTerm(generate_body(t.array, name_to_symbol, domain_face), t.index, t.prototype)
+end
+
+
+function generate_body(t::CallTerm,name_to_symbol,domain_face)
+    callee = generate_body(t.callee, name_to_symbol, domain_face)
+    args = map(t.args) do arg 
+        generate_body(arg, name_to_symbol, domain_face)
+    end
+    CallTerm(callee, args, prototype(t))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
     measure::A
 end
 
-function domain(t::NumPointsTerm)
-    domain(t.measure)
-end
+prototype(a::NumPointsTerm) = 0
+domain(t::NumPointsTerm) = domain(t.measure)
+
 
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
-    @term begin
-        face_npoints = num_points_accessor($measure)
-        face_npoints($domain_face)
-    end
+    
+    face_points = CallTerm(LeafTerm(:num_points_accessor, num_points_accessor), [LeafTerm(measure, t.measure)], x -> prototype(t))
+    CallTerm(face_points, [LeafTerm(domain_face, 1)], prototype(t))
+
+    # @term begin
+    #     face_npoints = num_points_accessor($measure)
+    #     face_npoints($domain_face)
+    # end
 end
 
 struct WeightTerm{A,B} <: NewAbstractTerm
@@ -83,17 +182,34 @@ struct WeightTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
-function domain(t::WeightTerm)
-    domain(t.measure)
-end
+domain(t::WeightTerm) = domain(t.measure)
+prototype(a::WeightTerm) = 0.0
 
 
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     point = t.point
-    quote
-        weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
-    end
+        
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 0)
+
+    m = GT.mesh(t.measure.quadrature)
+    x = node_coordinates(m)[1]
+    jacobian_prototype = x * transpose(x)
+
+    weight_func_0 = CallTerm(LeafTerm(:weight_accessor, weight_accessor), [measure_term], x -> ( (y1, y2) -> 0.0))
+    weight_func = CallTerm(weight_func_0, [domain_face_term], ((y1, y2) -> 0.0))
+
+    jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
+    jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
+    jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
+
+    CallTerm(weight_func, [point_term, jacobian_result], prototype(t))
+
+    # quote
+    #     weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
+    # end
 end
 
 function new_measure(domain,degree;name=gensym("quadrature"))
@@ -108,13 +224,14 @@ end
 
 domain(m::NewMeasure) = domain(m.quadrature)
 name(m::NewMeasure) = m.name
+mesh(m::NewMeasure) = mesh(m.quadrature)
 weight_accessor(m::NewMeasure) = weight_accessor(m.quadrature)
 jacobian_accessor(m::NewMeasure) = jacobian_accessor(m.quadrature)
 coordinate_accessor(m::NewMeasure) = coordinate_accessor(m.quadrature)
 num_points_accessor(m::NewMeasure) = num_points_accessor(m.quadrature)
 
 function coordinate_quantity(measure::NewMeasure,point)
-    new_quantity(;name) do dom
+    new_quantity(;) do dom
         @assert dom == domain(measure)
         CoordinateTerm(measure,point)
     end
@@ -125,8 +242,34 @@ struct CoordinateTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
-function domain(t::CoordinateTerm)
-    domain(t.measure)
+domain(t::CoordinateTerm) = domain(t.measure)
+
+# TODO: check prototype of coordinate
+prototype(t::CoordinateTerm) = begin
+    dom = domain(t.measure)
+    mesh = GT.mesh(t.measure.quadrature)
+    node_to_x = node_coordinates(mesh)
+    node_to_x[1]
+end
+
+
+function generate_body(t::CoordinateTerm,name_to_symbol,domain_face)
+    # coordinate_accessor($measure)($domain_face)($point)
+
+    measure = name_to_symbol[t.measure.name]
+    point = t.point
+
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 0)
+
+    m = GT.mesh(t.measure.quadrature)
+    prototype_point = node_coordinates(m)[1]
+
+
+    point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
+    point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
+    CallTerm(point_func, [point_term], prototype_point)
 end
 
 
@@ -142,24 +285,34 @@ function contribution(f,measure::NewMeasure)
                      integrand,
                      weight,
                      point,
-                     num_points, )
+                     num_points, 
+                     prototype(integrand))
 end
 
-struct ContributionTerm{A,B,C,D} <: NewAbstractTerm
+struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
     integrand::A
     weight::B
     point::C # gets reduced
     num_points::D
+    prototype::E
 end
+
+prototype(t::ContributionTerm) = t.prototype
+
 
 function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     integrand_expr = generate_body(t.integrand,name_to_symbol,domain_face)
     weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
     num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
-    quote
-        sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
-    end
+
+    l_body = CallTerm(LeafTerm(:*, *), [integrand_expr, weight_expr], prototype(integrand_expr))
+    l = LambdaTerm(l_body, LeafTerm(point, 1), x -> prototype(integrand_expr))
+    range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), num_points_expr], 1:1)
+    CallTerm(LeafTerm(:(sum), sum), [l, range], prototype(t))
+    # quote
+    #     sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
+    # end
 end
 
 
@@ -180,6 +333,18 @@ function capture!(a::UniformTerm, name_to_symbol, name_to_captured_data)
     if !haskey(name_to_symbol, name)
         name_to_captured_data[name] = a
     end
+end
+
+function capture!(a::CallTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.callee, name_to_symbol, name_to_captured_data)
+    map(a.args) do arg
+        capture!(arg, name_to_symbol, name_to_captured_data)
+    end
+end
+
+
+function capture!(a::IndexTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.array, name_to_symbol, name_to_captured_data)
 end
 
 
@@ -205,14 +370,17 @@ function generate(t::NewAbstractTerm,params...)
 
     # generate body and optimize
     domain_face = :dummy_domain_face
-    expr = generate_body(t,name_to_symbol,domain_face)
+    exprterm = generate_body(t,name_to_symbol,domain_face)
+    expr = lower(exprterm)
+    # TODO: transform to statements and lower later
+
     fun_expr = quote
         $domain_face -> begin
             $expr
         end
     end
     fun_expr = MacroTools.striplines(fun_expr)
-    fun_block = statements(fun_expr) # TODO: multi-layer IR
+    fun_block = statements(fun_expr)
     
 
     # result = default_args -> ( user_args -> (xxxx) )
@@ -290,7 +458,7 @@ function statements(node)
             hash_scope[hash] = scope
             return [root]
         elseif node isa Expr
-            if node.head === :call || node.head ===  :block
+            if node.head === :call || node.head ===  :block || node.head ===  :ref
                 if haskey(hash_rank,hash)
                     if hash_rank[hash] !== temporary
                         return [hash_scope[hash]]
@@ -381,8 +549,34 @@ function statements(node)
     scope_block[root]
 end
 
+function call(f::NewAbstractQuantity, args::NewAbstractQuantity...)
+    f(args...)
+end
+
+function call(f, args::NewAbstractQuantity...)
+    f_quantity = GT.uniform_quantity(f) # TODO: uniform quantity or a constant? It will create many captured terms
+    f_quantity(args...)
+end
+
+for op in (:+,:-,:*,:/,:\,:^)
+    @eval begin
+        (Base.$op)(a::NewAbstractQuantity,b::NewAbstractQuantity) = call(Base.$op,a,b)
+        (Base.$op)(a::Number,b::NewAbstractQuantity) = call(Base.$op,GT.uniform_quantity(a),b)
+        (Base.$op)(a::NewAbstractQuantity,b::Number) = call(Base.$op,a,GT.uniform_quantity(b))
+    end
+end
 
 
+# macro contribution(expr, measure)
+#     function build(expr)
+#         expr
+#     end
+
+#     new_expr = build(expr)
+
+#     # Expr(:call, contribution, esc(new_expr), esc(measure))
+#     :($contribution($(esc(new_expr)), $(esc(measure))))
+# end
 
 #struct NewIntegral{A}  <: AbstractType
 #    contributions::A
