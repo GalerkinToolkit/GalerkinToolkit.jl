@@ -162,6 +162,27 @@ function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     end
 end
 
+
+
+function capture!(a::ContributionTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.integrand, name_to_symbol, name_to_captured_data)
+    capture!(a.weight, name_to_symbol, name_to_captured_data)
+    capture!(a.num_points, name_to_symbol, name_to_captured_data)
+end
+function capture!(a::Union{CoordinateTerm, WeightTerm, NumPointsTerm}, name_to_symbol, name_to_captured_data)
+    name = a.measure.name
+    if !haskey(name_to_symbol, name)
+        name_to_captured_data[name] = a.measure
+    end
+end
+function capture!(a::UniformTerm, name_to_symbol, name_to_captured_data)
+    name = a.name
+    if !haskey(name_to_symbol, name)
+        name_to_captured_data[name] = a
+    end
+end
+
+
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
@@ -169,24 +190,8 @@ function generate(t::NewAbstractTerm,params...)
     
     # find all leaf terms 
     name_to_captured_data = Dict()
-    function capture!(a::ContributionTerm)
-        capture!(a.integrand)
-        capture!(a.weight)
-        capture!(a.num_points)
-    end
-    function capture!(a::Union{CoordinateTerm, WeightTerm, NumPointsTerm})
-        name = a.measure.name
-        if !haskey(name_to_symbol, name)
-            name_to_captured_data[name] = a.measure
-        end
-    end
-    function capture!(a::UniformTerm)
-        name = a.name
-        if !haskey(name_to_symbol, name)
-            name_to_captured_data[name] = a
-        end
-    end
-    capture!(t)
+
+    capture!(t, name_to_symbol, name_to_captured_data)
 
     # update name_to_symbol and generate captured data symbols
     captured_data = []
