@@ -15,21 +15,18 @@ abstract type NewAbstractTerm <: AbstractType end
 #domain(t::TermOptions) = t.contents.domain
 #domain_face(t::TermOptions) = t.contents.domain_face
 
+
 abstract type NewAbstractQuantity <: AbstractType end
 
-function new_quantity(term;name=nothing,workspace=nothing)
-    NewQuantity(term,name,workspace)
+function new_quantity(term;name=nothing)
+    NewQuantity(term,name)
 end
 
-struct NewQuantity{A,B,C} <: NewAbstractQuantity
+struct NewQuantity{A,B} <: NewAbstractQuantity
     term::A
     name::B
-    workspace::C
 end
 
-function workspace(m::NewQuantity)
-    m.workspace
-end
 
 function name(m::NewQuantity)
     @assert m.name !== nothing
@@ -41,22 +38,36 @@ function term(q::NewQuantity,dom)
 end
 
 function uniform_quantity(value;name=gensym("uniform"))
-    new_quantity(;name,workspace=value) do opts
-        UniformTerm(name)
+    new_quantity(;name) do opts
+        UniformTerm(name, value, opts)
     end
 end
 
-struct UniformTerm{A} <: NewAbstractTerm
+struct UniformTerm{A, B, C} <: NewAbstractTerm
     name::A
+    value::B
+    domain::C
+end
+
+function domain(t::UniformTerm)
+    t.domain
+end
+
+function value(t::UniformTerm)
+    t.value
 end
 
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    :(workspace($t2))
+    :(value($t2))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
     measure::A
+end
+
+function domain(t::NumPointsTerm)
+    domain(t.measure)
 end
 
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
@@ -71,6 +82,11 @@ struct WeightTerm{A,B} <: NewAbstractTerm
     measure::A
     point::B
 end
+
+function domain(t::WeightTerm)
+    domain(t.measure)
+end
+
 
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
@@ -109,6 +125,11 @@ struct CoordinateTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
+function domain(t::CoordinateTerm)
+    domain(t.measure)
+end
+
+
 function contribution(f,measure::NewMeasure)
     point = :point
     x = coordinate_quantity(measure,point)
@@ -141,10 +162,48 @@ function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     end
 end
 
+
+
+function capture!(a::ContributionTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.integrand, name_to_symbol, name_to_captured_data)
+    capture!(a.weight, name_to_symbol, name_to_captured_data)
+    capture!(a.num_points, name_to_symbol, name_to_captured_data)
+end
+function capture!(a::Union{CoordinateTerm, WeightTerm, NumPointsTerm}, name_to_symbol, name_to_captured_data)
+    name = a.measure.name
+    if !haskey(name_to_symbol, name)
+        name_to_captured_data[name] = a.measure
+    end
+end
+function capture!(a::UniformTerm, name_to_symbol, name_to_captured_data)
+    name = a.name
+    if !haskey(name_to_symbol, name)
+        name_to_captured_data[name] = a
+    end
+end
+
+
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
     name_to_symbol = Dict(itr)
+    
+    # find all leaf terms 
+    name_to_captured_data = Dict()
+
+    capture!(t, name_to_symbol, name_to_captured_data)
+
+    # update name_to_symbol and generate captured data symbols
+    captured_data = []
+    captured_data_symbols = []
+    for (i, (k, v)) in enumerate(name_to_captured_data)
+        sym = Symbol("captured_arg_$i")
+        name_to_symbol[k] = sym 
+        push!(captured_data, v)
+        push!(captured_data_symbols, sym)
+    end
+
+    # generate body and optimize
     domain_face = :dummy_domain_face
     expr = generate_body(t,name_to_symbol,domain_face)
     fun_expr = quote
@@ -153,16 +212,40 @@ function generate(t::NewAbstractTerm,params...)
         end
     end
     fun_expr = MacroTools.striplines(fun_expr)
-    fun_block = statements(fun_expr)
-    quote
-        ($(symbols...),) -> begin
-            $fun_block
+    fun_block = statements(fun_expr) # TODO: multi-layer IR
+    
+
+    # result = default_args -> ( user_args -> (xxxx) )
+    # evaluate returns a function result(captured data)
+    result = quote
+        ($(captured_data_symbols...), ) -> begin
+            ($(symbols...), ) -> begin
+                $fun_block
+            end
         end
     end
+    (result, captured_data)
 end
 
-function evaluate(expr)
-    eval(expr)
+
+function evaluate(expr_and_captured)
+    expr, captured_data = expr_and_captured
+    f1 = eval(expr)
+    f2 = Base.invokelatest(f1, captured_data...)
+
+    # convert input from quantity to term
+    (args..., ) -> begin
+        args = map(args) do p
+            if p isa NewMeasure 
+                p
+            elseif p isa NewQuantity
+                term(p, nothing)
+            else
+                error("param $p is not a uniform quantity or a measure")
+            end
+        end
+        f2(args...)
+    end
 end
 
 function statements(node)
