@@ -19,39 +19,51 @@ abstract type NewAbstractTerm <: AbstractType end
 abstract type NewAbstractQuantity <: AbstractType end
 
 
-struct LeafTerm{A, B}  <: NewAbstractTerm
+@auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
     value::A
     prototype::B
 end
 
-struct CallTerm{A, B, C}  <: NewAbstractTerm
+@auto_hash_equals cache=true fields=(callee, args) struct CallTerm{A, B, C}  <: NewAbstractTerm
     callee::A
     args::B
     prototype::C
 end
 
-struct IndexTerm{A, B, C}  <: NewAbstractTerm
+@auto_hash_equals cache=true fields=(array, index) struct IndexTerm{A, B, C}  <: NewAbstractTerm
     array::A
     index::B
     prototype::C
 end
 
-struct LambdaTerm{A, B, C}  <: NewAbstractTerm
+@auto_hash_equals cache=true fields=(body, args) struct LambdaTerm{A, B, C}  <: NewAbstractTerm
     body::A
     args::B
     prototype::C
+end
+
+struct StatementTerm{A, B, C} <: NewAbstractTerm
+    lhs::A 
+    rhs::B
+    prototype::C
+end
+
+struct BlockTerm{A} <: NewAbstractTerm
+    statements::A
 end
 
 prototype(t::LeafTerm) = t.prototype
 prototype(t::CallTerm) = t.prototype
 prototype(t::LambdaTerm) = t.prototype
 prototype(t::IndexTerm) = t.prototype
-
+prototype(t::StatementTerm) = t.prototype
+prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
 
 function lower(t::LeafTerm)
     t.value
 end
 
+# TODO: find better way to create terms and julia expressions
 function lower(t::CallTerm)
     args = map(lower, t.args)
     Expr(:call, lower(t.callee), args...)
@@ -70,12 +82,27 @@ function lower(t::IndexTerm)
     Expr(:ref, array, index)
 end
 
+function lower(t::StatementTerm)
+    lhs = lower(t.lhs)
+    rhs = lower(t.rhs)
+    Expr(:(=), lhs, rhs)
+end
 
+
+function lower(t::BlockTerm)
+    exprs = map(lower, t.statements)
+    Expr(:block, exprs...)
+end
 
 function new_quantity(term;name=nothing)
     NewQuantity(term,name)
 end
 
+function constant_quantity(v)
+    new_quantity(;) do opts 
+        LeafTerm(v, v)
+    end
+end
 
 struct NewQuantity{A,B} <: NewAbstractQuantity
     term::A
@@ -84,7 +111,6 @@ end
 
 
 function (f::NewAbstractQuantity)(x::NewAbstractQuantity...)
-    # name = gensym("call")
     new_quantity(;) do opts
         callee = term(f, opts)
         args = map(x) do arg
@@ -96,9 +122,9 @@ function (f::NewAbstractQuantity)(x::NewAbstractQuantity...)
     end
 end
 
-function Base.getindex(a::NewAbstractQuantity, b)
+function Base.getindex(a::NewAbstractQuantity, b) # TODO: higher-dimensional indexing
     if !(b isa NewAbstractQuantity)
-        index = uniform_quantity(b)
+        index = constant_quantity(b)
     else
         index = b
     end
@@ -352,6 +378,12 @@ function capture!(a::IndexTerm, name_to_symbol, name_to_captured_data)
     capture!(a.index, name_to_symbol, name_to_captured_data)
 end
 
+function capture!(a::LeafTerm, name_to_symbol, name_to_captured_data)
+end
+
+function generate_body(t::LeafTerm,name_to_symbol,domain_face)
+    t
+end
 
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
@@ -375,21 +407,15 @@ function generate(t::NewAbstractTerm,params...)
 
     # generate body and optimize
     domain_face = :dummy_domain_face
-    exprterm = generate_body(t,name_to_symbol,domain_face)
-    expr = lower(exprterm)
-    # TODO: transform to statements and lower later
-
-    fun_expr = quote
-        $domain_face -> begin
-            $expr
-        end
-    end
-    fun_expr = MacroTools.striplines(fun_expr)
-    fun_block = statements(fun_expr)
+    domain_face_term = LeafTerm(domain_face, 1)
+    term_l2 = generate_body(t,name_to_symbol,domain_face)
+    term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
+    term_l3 = statements(term_l2_wrapped)
     
+    
+    expr = lower(term_l3)
+    fun_block = expr
 
-    # result = default_args -> ( user_args -> (xxxx) )
-    # evaluate returns a function result(captured data)
     result = quote
         ($(captured_data_symbols...), ) -> begin
             ($(symbols...), ) -> begin
@@ -397,7 +423,7 @@ function generate(t::NewAbstractTerm,params...)
             end
         end
     end
-    (result, captured_data)
+    (MacroTools.striplines(result), captured_data)
 end
 
 
@@ -421,153 +447,114 @@ function evaluate(expr_and_captured)
     end
 end
 
+# TODO: keep hash_scope but make an error check
 function statements(node)
-    level = Ref(0)
     root = :root
     scope_level = Dict{Symbol,Int}()
-    scope_level[root] = level[]
-    hash_scope = Dict{UInt,Symbol}()
-    temporary = -1
-    hash_rank = Dict{UInt,Int}()
+    scope_level[root] = 0
+    hash_scopes = Dict{UInt,Array{Symbol}}() # TODO: bitmap? 
     scope_rank = Dict{Symbol,Int}()
     scope_rank[root] = 0
-    scope_block = Dict(root=>Expr(:block))
-    function visit(node)
+    hash_expr = Dict{UInt, Any}()
+    scope_block = Dict(root=>BlockTerm([]))
+    # keywords = Set([:sum, :(:)])
+    function visit(node, depth = 0) # assume there is no graph cycles
         hash = Base.hash(node)
-        if node isa Symbol
-            if haskey(scope_level,node)
-                scope = node
-            elseif haskey(hash_rank,hash)
-                scope = root
-            else
-                scope = root
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                assignment = :($var = $node)
-                block = scope_block[scope]
-                push!(block.args,assignment)
-            end
-            hash_scope[hash] = scope
-            return [scope]
-        elseif node isa Number
-            scope = root
-            rank = 1 + scope_rank[scope]
-            hash_rank[hash] = rank
-            scope_rank[scope] = rank
-            var = Symbol("var_$(scope)_$(rank)")
-            assignment = :($var = $node)
-            block = scope_block[scope]
-            push!(block.args,assignment)
-            hash_scope[hash] = scope
-            return [root]
-        elseif node isa Expr
-            if node.head === :call || node.head ===  :block || node.head ===  :ref
-                if haskey(hash_rank,hash)
-                    if hash_rank[hash] !== temporary
-                        return [hash_scope[hash]]
-                    else
-                        error("Graph has cycles! This is not possible.")
-                    end
-                end
-                hash_rank[hash] = temporary
-                args = node.args
-                scopes_nested = map(visit,args)
-                scopes = reduce(vcat,scopes_nested)
-                scopes = unique(scopes)
-                scope = argmax(scope->scope_level[scope],scopes)
-                hash_scope[hash] = scope
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                args_var = map(args) do arg
-                    if haskey(scope_level,arg)
-                        return arg
-                    end
-                    arg_hash = Base.hash(arg)
-                    arg_scope = hash_scope[arg_hash]
-                    arg_rank = hash_rank[arg_hash]
-                    arg_var = Symbol("var_$(arg_scope)_$(arg_rank)")
-                end
-                #op = node.args[1]
-                expr = Expr(node.head,args_var...)
-                assignment = :($var = $expr)
-                block = scope_block[scope]
-                push!(block.args,assignment)
-                return scopes
-            elseif node.head === :(->)
-                scope = node.args[1]
-                body = node.args[2]
-                old_level = level[]
-                level[] += 1
-                scope_level[scope] = level[]
-                scope_rank[scope] = 0
-                block = Expr(:block)
-                scope_block[scope] = block
-                scopes = visit(body)
-                level[] = old_level
-                scopes = setdiff(scopes,[scope])
-                scope = argmax(scope->scope_level[scope],scopes)
-                hash_scope[hash] = scope
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                expr = Expr(:(->),node.args[1],block)
-                assignment = :($var = $expr)
-                block = scope_block[scope]
-                push!(block.args,assignment)
-                return scopes
-            #elseif node.head === :block
-            #    args = node.args
-            #    scopes_nested = map(visit,args)
-            #    scopes = reduce(vcat,scopes_nested)
-            #    scopes = unique(scopes)
-            #    scope = argmax(scope->scope_level[scope],scopes)
-            #    hash_scope[hash] = scope
-            #    rank = 1 + scope_rank[scope]
-            #    hash_rank[hash] = rank
-            #    scope_rank[scope] = rank
-            #    var = Symbol("var_$(scope)_$(rank)")
-            #    expr = Expr(:block,node.args[1],block)
-            #    assignment = :($var = $expr)
-            #    block = scope_block[scope]
-            #    push!(block.args,assignment)
-            #    return scopes
-            else
-                @show node
-                dump(node)
-                @show typeof(node)
-                error("A")
-            end
-        elseif node isa LineNumberNode
-            return [root]
-        else
-            @show node
-            @show typeof(node)
-            error("B")
+        if haskey(hash_scopes, hash)
+            return hash_scopes[hash]
         end
+        if node isa LeafTerm
+            scopes = [root]
+            hash_expr[hash] = node
+            hash_scopes[hash] = scopes 
+            return scopes
+        elseif (node isa CallTerm) || (node isa IndexTerm)
+            args = (node isa CallTerm) ? (node.callee, node.args...) : (node.array, node.index)
+            scopes_nested = map(args) do arg
+                visit(arg, depth)
+            end
+            scopes = reduce(vcat,scopes_nested) |> unique
+            scope = argmax(x->scope_level[x],scopes)
+            hash_scopes[hash] = scopes
+            rank = 1 + scope_rank[scope]
+            scope_rank[scope] = rank
+
+            var = Symbol("var_$(scope)_$(rank)")
+            var_term = LeafTerm(var, prototype(node))
+            hash_expr[hash] = var_term 
+            args_var = map(args) do arg
+                arg_hash = Base.hash(arg)
+                hash_expr[arg_hash]
+            end
+
+            expr = (node isa CallTerm) ? CallTerm(args_var[1], args_var[2:end], prototype(node)) : IndexTerm(args_var[1], args_var[2], prototype(node))
+            assignment = StatementTerm(var_term, expr, prototype(node))
+            block = scope_block[scope]
+            push!(block.statements, assignment)
+            return scopes
+            # TODO: check if is sum?
+            
+        elseif node isa LambdaTerm
+            body = node.body
+            args = node.args
+            scope = args.value
+            scope_level[scope] = depth + 1
+            scope_rank[scope] = 0
+            block = BlockTerm([])
+            scope_block[scope] = block
+
+            scope_hash = Base.hash(args)
+            hash_expr[scope_hash] = args
+            hash_scopes[scope_hash] = [scope]
+
+            scopes = visit(body, depth + 1)
+            if length(block.statements) == 0 # at least 1 statement
+                arg_hash = Base.hash(body)
+                arg_var = hash_expr[arg_hash]
+                
+                push!(block.statements, StatementTerm(LeafTerm(gensym(), prototype(body)), arg_var, prototype(body)))
+            end
+            scopes = setdiff(scopes,[scope])
+            scope = argmax(scope->scope_level[scope],scopes)
+            hash_scopes[hash] = scopes
+            rank = 1 + scope_rank[scope]
+            scope_rank[scope] = rank
+
+            var = Symbol("var_$(scope)_$(rank)")
+            var_term = LeafTerm(var, prototype(node))
+            hash_expr[hash] = var_term
+            expr = LambdaTerm(block, node.args, x -> prototype(node))
+            assignment = StatementTerm(var_term, expr, prototype(node))
+            block = scope_block[scope]
+            push!(block.statements, assignment)
+            return scopes
+        else
+            error("node type $(typeof(node)) is not implemented!")
+        end
+
+
     end
+
     visit(node)
     scope_block[root]
 end
+
 
 function call(f::NewAbstractQuantity, args::NewAbstractQuantity...)
     f(args...)
 end
 
 function call(f, args::NewAbstractQuantity...)
-    f_quantity = GT.uniform_quantity(f) # TODO: uniform quantity or a constant? It will create many captured terms
+    f_quantity = GT.constant_quantity(f) # TODO: uniform quantity or a constant? use compile_constant_quantity
     f_quantity(args...)
 end
 
+# TODO: check if needed
 for op in (:+,:-,:*,:/,:\,:^)
     @eval begin
         (Base.$op)(a::NewAbstractQuantity,b::NewAbstractQuantity) = call(Base.$op,a,b)
-        (Base.$op)(a::Number,b::NewAbstractQuantity) = call(Base.$op,GT.uniform_quantity(a),b)
-        (Base.$op)(a::NewAbstractQuantity,b::Number) = call(Base.$op,a,GT.uniform_quantity(b))
+        (Base.$op)(a::Number,b::NewAbstractQuantity) = call(Base.$op,GT.constant_quantity(a),b)
+        (Base.$op)(a::NewAbstractQuantity,b::Number) = call(Base.$op,a,GT.constant_quantity(b))
     end
 end
 
@@ -578,9 +565,10 @@ function to_quantity(q::NewAbstractQuantity)
 end
 
 function to_quantity(t)
-    uniform_quantity(t)
+    constant_quantity(t)
 end
 
+# TODO: rename this as @qty,  and there is no necessary to maintain the lambda symbols 
 macro contribution(expr, measure)
     expr = MacroTools.striplines(expr)
     function to_quantities(expr, symbol_set)
