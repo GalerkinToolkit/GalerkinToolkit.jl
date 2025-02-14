@@ -15,6 +15,31 @@ using InteractiveUtils
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
 parts_per_dir = (2,2)
+mesh = GT.cartesian_mesh(domain,cells_per_dir)
+
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+Λ = GT.skeleton(mesh)
+F = GT.domain(mesh,1)
+
+order = 2
+
+V = GT.lagrange_space(Ω,order)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+
+V = GT.lagrange_space(Γ,order)
+
+uh = GT.rand_field(Float64,V)
+plt = GT.plot(F)
+GT.plot!(plt,uh,label="uh")
+vtk_grid("plt",plt) |> close
+
+
+V = GT.lagrange_space(Λ,order)
+
+domain = (0,1,0,1)
+cells_per_dir = (4,4)
+parts_per_dir = (2,2)
 np = prod(parts_per_dir)
 parts = DebugArray(LinearIndices((np,)))
 mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
