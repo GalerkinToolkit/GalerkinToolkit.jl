@@ -18,13 +18,125 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
+
+@auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
+    value::A
+    prototype::B
+end
+
+@auto_hash_equals cache=true fields=(callee, args) struct CallTerm{A, B, C}  <: NewAbstractTerm
+    callee::A
+    args::B
+    prototype::C
+end
+
+@auto_hash_equals cache=true fields=(array, index) struct IndexTerm{A, B, C}  <: NewAbstractTerm
+    array::A
+    index::B
+    prototype::C
+end
+
+@auto_hash_equals cache=true fields=(body, args) struct LambdaTerm{A, B, C}  <: NewAbstractTerm
+    body::A
+    args::B
+    prototype::C
+end
+
+struct StatementTerm{A, B, C} <: NewAbstractTerm
+    lhs::A 
+    rhs::B
+    prototype::C
+end
+
+struct BlockTerm{A} <: NewAbstractTerm
+    statements::A
+end
+
+prototype(t::LeafTerm) = t.prototype
+prototype(t::CallTerm) = t.prototype
+prototype(t::LambdaTerm) = t.prototype
+prototype(t::IndexTerm) = t.prototype
+prototype(t::StatementTerm) = t.prototype
+prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
+
+function lower(t::LeafTerm)
+    t.value
+end
+
+function lower(t::CallTerm)
+    args = map(lower, t.args)
+    :($(lower(t.callee))($(args...)))
+    # Expr(:call, lower(t.callee), args...)
+end
+
+
+function lower(t::LambdaTerm)
+    :($(lower(t.args)) -> ($(lower(t.body))))
+    # Expr(:(->), lower(t.args), lower(t.body))
+end
+
+
+function lower(t::IndexTerm)
+    array = lower(t.array)
+    index = lower(t.index)
+    :($array[$index])
+    # Expr(:ref, array, index)
+end
+
+function lower(t::StatementTerm)
+    lhs = lower(t.lhs)
+    rhs = lower(t.rhs)
+    :($lhs = $rhs)
+    # Expr(:(=), lhs, rhs)
+end
+
+
+function lower(t::BlockTerm)
+    exprs = map(lower, t.statements)
+    Expr(:block, exprs...)
+end
+
 function new_quantity(term;name=nothing)
     NewQuantity(term,name)
+end
+
+function compile_constant_quantity(v)
+    new_quantity(;) do opts 
+        LeafTerm(v, v)
+    end
 end
 
 struct NewQuantity{A,B} <: NewAbstractQuantity
     term::A
     name::B
+end
+
+
+function (f::NewAbstractQuantity)(x::NewAbstractQuantity...)
+    new_quantity(;) do opts
+        callee = term(f, opts)
+        args = map(x) do arg
+            term(arg, opts)
+        end
+        prototype_callee = prototype(callee)
+        prototype_args = map(prototype, args)
+        CallTerm(callee, args, prototype_callee(prototype_args...))
+    end
+end
+
+function Base.getindex(a::NewAbstractQuantity, b) # TODO: higher-dimensional indexing
+    if !(b isa NewAbstractQuantity)
+        index = compile_constant_quantity(b)
+    else
+        index = b
+    end
+
+    new_quantity(;) do opts
+        array_term = term(a, opts)
+        index_term = term(index, opts)
+        proto = prototype(array_term)[1]
+        IndexTerm(array_term, index_term, proto)
+    end
 end
 
 
@@ -49,9 +161,9 @@ struct UniformTerm{A, B, C} <: NewAbstractTerm
     domain::C
 end
 
-function domain(t::UniformTerm)
-    t.domain
-end
+domain(t::UniformTerm) = t.domain
+prototype(t::UniformTerm) = t.value
+
 
 function value(t::UniformTerm)
     t.value
@@ -59,23 +171,42 @@ end
 
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
-    :(value($t2))
+    CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
+    # :(value($t2))
+end
+
+
+function generate_body(t::IndexTerm,name_to_symbol,domain_face)
+    IndexTerm(generate_body(t.array, name_to_symbol, domain_face), generate_body(t.index, name_to_symbol, domain_face), t.prototype)
+end
+
+
+function generate_body(t::CallTerm,name_to_symbol,domain_face)
+    callee = generate_body(t.callee, name_to_symbol, domain_face)
+    args = map(t.args) do arg 
+        generate_body(arg, name_to_symbol, domain_face)
+    end
+    CallTerm(callee, args, prototype(t))
 end
 
 struct NumPointsTerm{A} <: NewAbstractTerm
     measure::A
 end
 
-function domain(t::NumPointsTerm)
-    domain(t.measure)
-end
+prototype(a::NumPointsTerm) = 0
+domain(t::NumPointsTerm) = domain(t.measure)
+
 
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
-    @term begin
-        face_npoints = num_points_accessor($measure)
-        face_npoints($domain_face)
-    end
+    
+    face_points = CallTerm(LeafTerm(:num_points_accessor, num_points_accessor), [LeafTerm(measure, t.measure)], x -> prototype(t))
+    CallTerm(face_points, [LeafTerm(domain_face, 1)], prototype(t))
+
+    # @term begin
+    #     face_npoints = num_points_accessor($measure)
+    #     face_npoints($domain_face)
+    # end
 end
 
 struct WeightTerm{A,B} <: NewAbstractTerm
@@ -83,17 +214,34 @@ struct WeightTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
-function domain(t::WeightTerm)
-    domain(t.measure)
-end
+domain(t::WeightTerm) = domain(t.measure)
+prototype(a::WeightTerm) = 0.0
 
 
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
     point = t.point
-    quote
-        weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
-    end
+        
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 0)
+
+    m = GT.mesh(t.measure.quadrature)
+    x = node_coordinates(m)[1]
+    jacobian_prototype = x * transpose(x)
+
+    weight_func_0 = CallTerm(LeafTerm(:weight_accessor, weight_accessor), [measure_term], x -> ( (y1, y2) -> 0.0))
+    weight_func = CallTerm(weight_func_0, [domain_face_term], ((y1, y2) -> 0.0))
+
+    jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
+    jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
+    jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
+
+    CallTerm(weight_func, [point_term, jacobian_result], prototype(t))
+
+    # quote
+    #     weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
+    # end
 end
 
 function new_measure(domain,degree;name=gensym("quadrature"))
@@ -108,13 +256,14 @@ end
 
 domain(m::NewMeasure) = domain(m.quadrature)
 name(m::NewMeasure) = m.name
+mesh(m::NewMeasure) = mesh(m.quadrature)
 weight_accessor(m::NewMeasure) = weight_accessor(m.quadrature)
 jacobian_accessor(m::NewMeasure) = jacobian_accessor(m.quadrature)
 coordinate_accessor(m::NewMeasure) = coordinate_accessor(m.quadrature)
 num_points_accessor(m::NewMeasure) = num_points_accessor(m.quadrature)
 
 function coordinate_quantity(measure::NewMeasure,point)
-    new_quantity(;name) do dom
+    new_quantity(;) do dom
         @assert dom == domain(measure)
         CoordinateTerm(measure,point)
     end
@@ -125,8 +274,33 @@ struct CoordinateTerm{A,B} <: NewAbstractTerm
     point::B
 end
 
-function domain(t::CoordinateTerm)
-    domain(t.measure)
+domain(t::CoordinateTerm) = domain(t.measure)
+
+prototype(t::CoordinateTerm) = begin
+    dom = domain(t.measure)
+    mesh = GT.mesh(t.measure.quadrature)
+    node_to_x = node_coordinates(mesh)
+    node_to_x[1]
+end
+
+
+function generate_body(t::CoordinateTerm,name_to_symbol,domain_face)
+    # coordinate_accessor($measure)($domain_face)($point)
+
+    measure = name_to_symbol[t.measure.name]
+    point = t.point
+
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 0)
+
+    m = GT.mesh(t.measure.quadrature)
+    prototype_point = node_coordinates(m)[1]
+
+
+    point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
+    point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
+    CallTerm(point_func, [point_term], prototype_point)
 end
 
 
@@ -142,24 +316,37 @@ function contribution(f,measure::NewMeasure)
                      integrand,
                      weight,
                      point,
-                     num_points, )
+                     num_points, 
+                     prototype(integrand))
 end
 
-struct ContributionTerm{A,B,C,D} <: NewAbstractTerm
+const new_∫ = contribution
+
+
+struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
     integrand::A
     weight::B
     point::C # gets reduced
     num_points::D
+    prototype::E
 end
+
+prototype(t::ContributionTerm) = t.prototype
+
 
 function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
     integrand_expr = generate_body(t.integrand,name_to_symbol,domain_face)
     weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
     num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
     point = t.point
-    quote
-        sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
-    end
+
+    l_body = CallTerm(LeafTerm(:*, *), [integrand_expr, weight_expr], prototype(integrand_expr))
+    l = LambdaTerm(l_body, LeafTerm(point, 1), x -> prototype(integrand_expr))
+    range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), num_points_expr], 1:1)
+    CallTerm(LeafTerm(:(sum), sum), [l, range], prototype(t))
+    # quote
+    #     sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
+    # end
 end
 
 
@@ -182,6 +369,25 @@ function capture!(a::UniformTerm, name_to_symbol, name_to_captured_data)
     end
 end
 
+function capture!(a::CallTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.callee, name_to_symbol, name_to_captured_data)
+    map(a.args) do arg
+        capture!(arg, name_to_symbol, name_to_captured_data)
+    end
+end
+
+
+function capture!(a::IndexTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.array, name_to_symbol, name_to_captured_data)
+    capture!(a.index, name_to_symbol, name_to_captured_data)
+end
+
+function capture!(a::LeafTerm, name_to_symbol, name_to_captured_data)
+end
+
+function generate_body(t::LeafTerm,name_to_symbol,domain_face)
+    t
+end
 
 function generate(t::NewAbstractTerm,params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
@@ -205,18 +411,15 @@ function generate(t::NewAbstractTerm,params...)
 
     # generate body and optimize
     domain_face = :dummy_domain_face
-    expr = generate_body(t,name_to_symbol,domain_face)
-    fun_expr = quote
-        $domain_face -> begin
-            $expr
-        end
-    end
-    fun_expr = MacroTools.striplines(fun_expr)
-    fun_block = statements(fun_expr) # TODO: multi-layer IR
+    domain_face_term = LeafTerm(domain_face, 1)
+    term_l2 = generate_body(t,name_to_symbol,domain_face)
+    term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
+    term_l3 = statements(term_l2_wrapped)
     
+    
+    expr = lower(term_l3)
+    fun_block = expr
 
-    # result = default_args -> ( user_args -> (xxxx) )
-    # evaluate returns a function result(captured data)
     result = quote
         ($(captured_data_symbols...), ) -> begin
             ($(symbols...), ) -> begin
@@ -224,7 +427,7 @@ function generate(t::NewAbstractTerm,params...)
             end
         end
     end
-    (result, captured_data)
+    (MacroTools.striplines(result), captured_data)
 end
 
 
@@ -248,141 +451,156 @@ function evaluate(expr_and_captured)
     end
 end
 
+function lambda_args_once!(node::LeafTerm, args)
+    return true
+end
+
+function lambda_args_once!(node::CallTerm, args)
+    all(x -> lambda_args_once!(x, args), (node.callee, node.args...))
+end
+
+function lambda_args_once!(node::IndexTerm, args)
+    all(x -> lambda_args_once!(x, args), (node.array, node.index))
+end
+
+function lambda_args_once!(node::LambdaTerm, args)
+    arg = node.args.value
+    if arg in args 
+        return false
+    end
+    push!(args, arg)
+    lambda_args_once!(node.body, args)
+end
+
+function lambda_args_once(node)
+    symbols = Set{Symbol}()
+    return lambda_args_once!(node, symbols)
+end
+
+
 function statements(node)
-    level = Ref(0)
+    @assert lambda_args_once(node) # keep hash_scope but make an error check. In some cases it will be a bug if we have a lambda function arg name more than once in the term
     root = :root
     scope_level = Dict{Symbol,Int}()
-    scope_level[root] = level[]
+    scope_level[root] = 0
     hash_scope = Dict{UInt,Symbol}()
-    temporary = -1
-    hash_rank = Dict{UInt,Int}()
     scope_rank = Dict{Symbol,Int}()
     scope_rank[root] = 0
-    scope_block = Dict(root=>Expr(:block))
-    function visit(node)
+    hash_expr = Dict{UInt, NewAbstractTerm}()
+    scope_block = Dict(root=>BlockTerm([]))
+    function visit(node, depth = 0) # if the terms here are immutable (no terms "appended" after construction) then we can assume there is no graph cycle
         hash = Base.hash(node)
-        if node isa Symbol
-            if haskey(scope_level,node)
-                scope = node
-            elseif haskey(hash_rank,hash)
-                scope = root
-            else
-                scope = root
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                assignment = :($var = $node)
-                block = scope_block[scope]
-                push!(block.args,assignment)
+        if haskey(hash_scope, hash)
+            return [hash_scope[hash]]
+        end
+        if node isa LeafTerm
+            scopes = [root]
+            hash_expr[hash] = node
+            hash_scope[hash] = root 
+            return scopes
+        elseif (node isa CallTerm) || (node isa IndexTerm)
+            args = (node isa CallTerm) ? (node.callee, node.args...) : (node.array, node.index)
+            scopes_nested = map(args) do arg
+                visit(arg, depth)
             end
+            scopes = reduce(vcat,scopes_nested) |> unique
+            scope = argmax(x->scope_level[x],scopes)
             hash_scope[hash] = scope
-            return [scope]
-        elseif node isa Number
-            scope = root
             rank = 1 + scope_rank[scope]
-            hash_rank[hash] = rank
             scope_rank[scope] = rank
+
             var = Symbol("var_$(scope)_$(rank)")
-            assignment = :($var = $node)
-            block = scope_block[scope]
-            push!(block.args,assignment)
-            hash_scope[hash] = scope
-            return [root]
-        elseif node isa Expr
-            if node.head === :call || node.head ===  :block
-                if haskey(hash_rank,hash)
-                    if hash_rank[hash] !== temporary
-                        return [hash_scope[hash]]
-                    else
-                        error("Graph has cycles! This is not possible.")
-                    end
-                end
-                hash_rank[hash] = temporary
-                args = node.args
-                scopes_nested = map(visit,args)
-                scopes = reduce(vcat,scopes_nested)
-                scopes = unique(scopes)
-                scope = argmax(scope->scope_level[scope],scopes)
-                hash_scope[hash] = scope
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                args_var = map(args) do arg
-                    if haskey(scope_level,arg)
-                        return arg
-                    end
-                    arg_hash = Base.hash(arg)
-                    arg_scope = hash_scope[arg_hash]
-                    arg_rank = hash_rank[arg_hash]
-                    arg_var = Symbol("var_$(arg_scope)_$(arg_rank)")
-                end
-                #op = node.args[1]
-                expr = Expr(node.head,args_var...)
-                assignment = :($var = $expr)
-                block = scope_block[scope]
-                push!(block.args,assignment)
-                return scopes
-            elseif node.head === :(->)
-                scope = node.args[1]
-                body = node.args[2]
-                old_level = level[]
-                level[] += 1
-                scope_level[scope] = level[]
-                scope_rank[scope] = 0
-                block = Expr(:block)
-                scope_block[scope] = block
-                scopes = visit(body)
-                level[] = old_level
-                scopes = setdiff(scopes,[scope])
-                scope = argmax(scope->scope_level[scope],scopes)
-                hash_scope[hash] = scope
-                rank = 1 + scope_rank[scope]
-                hash_rank[hash] = rank
-                scope_rank[scope] = rank
-                var = Symbol("var_$(scope)_$(rank)")
-                expr = Expr(:(->),node.args[1],block)
-                assignment = :($var = $expr)
-                block = scope_block[scope]
-                push!(block.args,assignment)
-                return scopes
-            #elseif node.head === :block
-            #    args = node.args
-            #    scopes_nested = map(visit,args)
-            #    scopes = reduce(vcat,scopes_nested)
-            #    scopes = unique(scopes)
-            #    scope = argmax(scope->scope_level[scope],scopes)
-            #    hash_scope[hash] = scope
-            #    rank = 1 + scope_rank[scope]
-            #    hash_rank[hash] = rank
-            #    scope_rank[scope] = rank
-            #    var = Symbol("var_$(scope)_$(rank)")
-            #    expr = Expr(:block,node.args[1],block)
-            #    assignment = :($var = $expr)
-            #    block = scope_block[scope]
-            #    push!(block.args,assignment)
-            #    return scopes
-            else
-                @show node
-                dump(node)
-                @show typeof(node)
-                error("A")
+            var_term = LeafTerm(var, prototype(node))
+            hash_expr[hash] = var_term 
+            args_var = map(args) do arg
+                arg_hash = Base.hash(arg)
+                hash_expr[arg_hash]
             end
-        elseif node isa LineNumberNode
-            return [root]
+
+            expr = (node isa CallTerm) ? CallTerm(args_var[1], args_var[2:end], prototype(node)) : IndexTerm(args_var[1], args_var[2], prototype(node))
+            assignment = StatementTerm(var_term, expr, prototype(node))
+            block = scope_block[scope]
+            push!(block.statements, assignment)
+            return scopes
+            # TODO: check if is sum?
+            
+        elseif node isa LambdaTerm
+            body = node.body
+            args = node.args
+            scope = args.value # assuming there is only 1 arg in LambdaTerm
+            scope_level[scope] = depth + 1
+            scope_rank[scope] = 0
+            block = BlockTerm([])
+            scope_block[scope] = block
+
+            scope_hash = Base.hash(args)
+            hash_expr[scope_hash] = args
+            hash_scope[scope_hash] = scope
+
+            scopes = visit(body, depth + 1)
+            if length(block.statements) == 0 # at least 1 statement
+                arg_hash = Base.hash(body)
+                arg_var = hash_expr[arg_hash]
+                
+                push!(block.statements, StatementTerm(LeafTerm(gensym(), prototype(body)), arg_var, prototype(body)))
+            end
+            scopes = setdiff(scopes,[scope])
+            scope = argmax(scope->scope_level[scope],scopes)
+            hash_scope[hash] = scope
+            rank = 1 + scope_rank[scope]
+            scope_rank[scope] = rank
+
+            var = Symbol("var_$(scope)_$(rank)")
+            var_term = LeafTerm(var, prototype(node))
+            hash_expr[hash] = var_term
+            expr = LambdaTerm(block, node.args, x -> prototype(node))
+            assignment = StatementTerm(var_term, expr, prototype(node))
+            block = scope_block[scope]
+            push!(block.statements, assignment)
+            return scopes
         else
-            @show node
-            @show typeof(node)
-            error("B")
+            error("node type $(typeof(node)) is not implemented!")
         end
     end
+
     visit(node)
     scope_block[root]
 end
 
 
+function call(f::NewAbstractQuantity, args::NewAbstractQuantity...)
+    f(args...)
+end
 
+function call(f, args::NewAbstractQuantity...)
+    f_quantity = GT.compile_constant_quantity(f)
+    f_quantity(args...)
+end
+
+
+function to_quantity(q::NewAbstractQuantity)
+    q
+end
+
+function to_quantity(q)
+    compile_constant_quantity(q)
+end
+
+function to_quantities(expr)
+    :($to_quantity($expr))
+end
+
+function to_quantities(expr::Expr)
+    if expr.head == :(->)
+        Expr(expr.head, expr.args[1], map(to_quantities, expr.args[2:end])...)
+    else
+        Expr(expr.head, map(to_quantities, expr.args)...)
+    end
+end
+
+macro qty(expr)
+    expr |> MacroTools.striplines |> to_quantities |> esc
+end
 
 #struct NewIntegral{A}  <: AbstractType
 #    contributions::A
