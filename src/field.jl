@@ -84,6 +84,10 @@ function allocate_values(::Type{T},dofs) where T
     Vector{T}(undef,n)
 end
 
+function allocate_values(::Type{T},dofs::PRange) where T
+    pzeros(T,dofs)
+end
+
 function allocate_values(::Type{T},dofs::BRange) where T
     map(dofs.blocks) do dofs_i
         allocate_values(T,dofs_i)

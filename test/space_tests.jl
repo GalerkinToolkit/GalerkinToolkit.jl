@@ -36,6 +36,7 @@ mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
 
 order = 1
 
+V = GT.lagrange_space(Ω,order)
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
 @test GT.face_dofs(V) isa PVector
@@ -48,6 +49,10 @@ map(partition(V)) do space
     display(GT.face_dofs(space))
 end
 
+#u = GT.analytical_field(sum,Ω)
+#T = Float64
+#uh = GT.undef_field(T,V)
+#GT.interpolate!(u,uh)
 
 
 #@code_warntype GT.unit_simplex(Val(3))
