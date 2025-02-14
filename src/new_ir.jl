@@ -63,29 +63,31 @@ function lower(t::LeafTerm)
     t.value
 end
 
-# TODO: find better way to create terms and julia expressions
 function lower(t::CallTerm)
     args = map(lower, t.args)
-    Expr(:call, lower(t.callee), args...)
+    :($(lower(t.callee))($(args...)))
+    # Expr(:call, lower(t.callee), args...)
 end
 
 
 function lower(t::LambdaTerm)
-    Expr(:(->), lower(t.args), lower(t.body))
+    :($(lower(t.args)) -> ($(lower(t.body))))
+    # Expr(:(->), lower(t.args), lower(t.body))
 end
 
 
 function lower(t::IndexTerm)
     array = lower(t.array)
     index = lower(t.index)
-    # :(($array)[$index])
-    Expr(:ref, array, index)
+    :($array[$index])
+    # Expr(:ref, array, index)
 end
 
 function lower(t::StatementTerm)
     lhs = lower(t.lhs)
     rhs = lower(t.rhs)
-    Expr(:(=), lhs, rhs)
+    :($lhs = $rhs)
+    # Expr(:(=), lhs, rhs)
 end
 
 
@@ -98,7 +100,7 @@ function new_quantity(term;name=nothing)
     NewQuantity(term,name)
 end
 
-function constant_quantity(v)
+function compile_constant_quantity(v)
     new_quantity(;) do opts 
         LeafTerm(v, v)
     end
@@ -124,7 +126,7 @@ end
 
 function Base.getindex(a::NewAbstractQuantity, b) # TODO: higher-dimensional indexing
     if !(b isa NewAbstractQuantity)
-        index = constant_quantity(b)
+        index = compile_constant_quantity(b)
     else
         index = b
     end
@@ -274,7 +276,6 @@ end
 
 domain(t::CoordinateTerm) = domain(t.measure)
 
-# TODO: check prototype of coordinate
 prototype(t::CoordinateTerm) = begin
     dom = domain(t.measure)
     mesh = GT.mesh(t.measure.quadrature)
@@ -318,6 +319,9 @@ function contribution(f,measure::NewMeasure)
                      num_points, 
                      prototype(integrand))
 end
+
+const new_∫ = contribution
+
 
 struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
     integrand::A
@@ -447,26 +451,52 @@ function evaluate(expr_and_captured)
     end
 end
 
-# TODO: keep hash_scope but make an error check
+function lambda_args_once!(node::LeafTerm, args)
+    return true
+end
+
+function lambda_args_once!(node::CallTerm, args)
+    all(x -> lambda_args_once!(x, args), (node.callee, node.args...))
+end
+
+function lambda_args_once!(node::IndexTerm, args)
+    all(x -> lambda_args_once!(x, args), (node.array, node.index))
+end
+
+function lambda_args_once!(node::LambdaTerm, args)
+    arg = node.args.value
+    if arg in args 
+        return false
+    end
+    push!(args, arg)
+    lambda_args_once!(node.body, args)
+end
+
+function lambda_args_once(node)
+    symbols = Set{Symbol}()
+    return lambda_args_once!(node, symbols)
+end
+
+
 function statements(node)
+    @assert lambda_args_once(node) # keep hash_scope but make an error check. In some cases it will be a bug if we have a lambda function arg name more than once in the term
     root = :root
     scope_level = Dict{Symbol,Int}()
     scope_level[root] = 0
-    hash_scopes = Dict{UInt,Array{Symbol}}() # TODO: bitmap? 
+    hash_scope = Dict{UInt,Symbol}()
     scope_rank = Dict{Symbol,Int}()
     scope_rank[root] = 0
-    hash_expr = Dict{UInt, Any}()
+    hash_expr = Dict{UInt, NewAbstractTerm}()
     scope_block = Dict(root=>BlockTerm([]))
-    # keywords = Set([:sum, :(:)])
-    function visit(node, depth = 0) # assume there is no graph cycles
+    function visit(node, depth = 0) # if the terms here are immutable (no terms "appended" after construction) then we can assume there is no graph cycle
         hash = Base.hash(node)
-        if haskey(hash_scopes, hash)
-            return hash_scopes[hash]
+        if haskey(hash_scope, hash)
+            return [hash_scope[hash]]
         end
         if node isa LeafTerm
             scopes = [root]
             hash_expr[hash] = node
-            hash_scopes[hash] = scopes 
+            hash_scope[hash] = root 
             return scopes
         elseif (node isa CallTerm) || (node isa IndexTerm)
             args = (node isa CallTerm) ? (node.callee, node.args...) : (node.array, node.index)
@@ -475,7 +505,7 @@ function statements(node)
             end
             scopes = reduce(vcat,scopes_nested) |> unique
             scope = argmax(x->scope_level[x],scopes)
-            hash_scopes[hash] = scopes
+            hash_scope[hash] = scope
             rank = 1 + scope_rank[scope]
             scope_rank[scope] = rank
 
@@ -497,7 +527,7 @@ function statements(node)
         elseif node isa LambdaTerm
             body = node.body
             args = node.args
-            scope = args.value
+            scope = args.value # assuming there is only 1 arg in LambdaTerm
             scope_level[scope] = depth + 1
             scope_rank[scope] = 0
             block = BlockTerm([])
@@ -505,7 +535,7 @@ function statements(node)
 
             scope_hash = Base.hash(args)
             hash_expr[scope_hash] = args
-            hash_scopes[scope_hash] = [scope]
+            hash_scope[scope_hash] = scope
 
             scopes = visit(body, depth + 1)
             if length(block.statements) == 0 # at least 1 statement
@@ -516,7 +546,7 @@ function statements(node)
             end
             scopes = setdiff(scopes,[scope])
             scope = argmax(scope->scope_level[scope],scopes)
-            hash_scopes[hash] = scopes
+            hash_scope[hash] = scope
             rank = 1 + scope_rank[scope]
             scope_rank[scope] = rank
 
@@ -531,8 +561,6 @@ function statements(node)
         else
             error("node type $(typeof(node)) is not implemented!")
         end
-
-
     end
 
     visit(node)
@@ -545,78 +573,33 @@ function call(f::NewAbstractQuantity, args::NewAbstractQuantity...)
 end
 
 function call(f, args::NewAbstractQuantity...)
-    f_quantity = GT.constant_quantity(f) # TODO: uniform quantity or a constant? use compile_constant_quantity
+    f_quantity = GT.compile_constant_quantity(f)
     f_quantity(args...)
 end
-
-# TODO: check if needed
-for op in (:+,:-,:*,:/,:\,:^)
-    @eval begin
-        (Base.$op)(a::NewAbstractQuantity,b::NewAbstractQuantity) = call(Base.$op,a,b)
-        (Base.$op)(a::Number,b::NewAbstractQuantity) = call(Base.$op,GT.constant_quantity(a),b)
-        (Base.$op)(a::NewAbstractQuantity,b::Number) = call(Base.$op,a,GT.constant_quantity(b))
-    end
-end
-
 
 
 function to_quantity(q::NewAbstractQuantity)
     q
 end
 
-function to_quantity(t)
-    constant_quantity(t)
+function to_quantity(q)
+    compile_constant_quantity(q)
 end
 
-# TODO: rename this as @qty,  and there is no necessary to maintain the lambda symbols 
-macro contribution(expr, measure)
-    expr = MacroTools.striplines(expr)
-    function to_quantities(expr, symbol_set)
-        if expr in symbol_set
-            expr 
-        else
-            :($to_quantity($expr))
-        end
+function to_quantities(expr)
+    :($to_quantity($expr))
+end
+
+function to_quantities(expr::Expr)
+    if expr.head == :(->)
+        Expr(expr.head, expr.args[1], map(to_quantities, expr.args[2:end])...)
+    else
+        Expr(expr.head, map(to_quantities, expr.args)...)
     end
+end
 
-    function push_symbols!(symbol_set, symbols)
-        if symbols isa Symbol
-            push!(symbol_set, symbols)
-        else
-            map(symbols) do s
-                push_symbols!(symbol_set, s)                
-            end
-        end
-    end
-
-    function delete_symbols!(symbol_set, symbols)
-        if symbols isa Symbol
-            delete!(symbol_set, symbols)
-        else
-            map(symbols) do s
-                delete_symbols!(symbol_set, s)                
-            end
-        end
-    end
-
-    function to_quantities(expr::Expr, symbol_set)
-        if expr.head === :(->)
-            push_symbols!(symbol_set, expr.args[1])
-        end
-
-        result = Expr(expr.head, map(x -> to_quantities(x, symbol_set), expr.args)...)
-
-        if expr.head === :(->)
-            delete_symbols!(symbol_set, expr.args[1])
-        end
-        result 
-    end
-
-    lambda_symbols = Set{Symbol}()
-    new_expr = to_quantities(expr, lambda_symbols)
-    # Expr(:call, contribution, esc(new_expr), esc(measure))
-    result = :($contribution($new_expr, $measure))
-    esc(result)
+macro qty(expr)
+    expr |> MacroTools.striplines |> to_quantities |> esc
 end
 
 #struct NewIntegral{A}  <: AbstractType
