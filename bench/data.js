@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1738394883292,
+  "lastUpdate": 1739693521730,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -914,6 +914,36 @@ window.BENCHMARK_DATA = {
             "value": 696914069,
             "unit": "ns",
             "extra": "gctime=25708775.5\nmemory=451952216\nallocs=15317119\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "503a93523bfe759eacb0c37337b8a45ece2ed130",
+          "message": "Merge pull request #177 from GalerkinToolkit/pmesh\n\nDistributed finite element spaces",
+          "timestamp": "2025-02-16T09:08:01+01:00",
+          "tree_id": "b274dc041326d826853813a15e793ac568a00800",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/503a93523bfe759eacb0c37337b8a45ece2ed130"
+        },
+        "date": 1739693521320,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 697723793,
+            "unit": "ns",
+            "extra": "gctime=28911774.5\nmemory=458406328\nallocs=15341833\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
