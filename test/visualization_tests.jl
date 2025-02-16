@@ -5,7 +5,7 @@ using GLMakie
 using WriteVTK
 using PartitionedArrays
 
-for s in  (false,true)
+for s in  (true,false)
 
     domain = (0,1,0,1,0,1)
     cells = (4,4,4)
@@ -16,14 +16,14 @@ for s in  (false,true)
     fig = Makie.plot(plt;color=:pink,strokecolor=:black)
     display(fig)
 
-
     plt = GT.simplexify(plt)
     fig = Makie.plot(plt;color=:pink,strokecolor=:black)
     display(fig)
 
     np = 2
     parts = DebugArray(LinearIndices((np,)))
-    pmesh = GT.partition_mesh(mesh,np;parts)
+    pmesh = GT.partition_mesh(mesh,np;parts,renumber=true)
+    vtk_grid("pmesh",pmesh) |> close
 
     plt = GT.plot(pmesh)
 

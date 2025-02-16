@@ -1,63 +1,3 @@
-@doc raw"""
-    abstract type AbstractDomain <: AbstractType end
-
-Abstract type representing a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$.
-Domains are defined using an underlying computational mesh.
-
-See also [`AbstractMesh`](@ref).
-
-# Level
-
-Beginner
-
-# Basic constructors
-
-- [`unit_simplex`](@ref)
-- [`unit_n_cube`](@ref)
-- [`domain`](@ref)
-- [`interior`](@ref)
-- [`boundary`](@ref)
-- [`skeleton`](@ref)
-
-# Basic queries
-
-- [`num_dims`](@ref)
-- [`num_ambient_dims`](@ref)
-- [`num_codims`](@ref)
-- [`is_axis_aligned`](@ref)
-- [`is_simplex`](@ref)
-- [`is_n_cube`](@ref)
-- [`is_unit_n_cube`](@ref)
-- [`is_unit_simplex`](@ref)
-- [`is_unitary`](@ref)
-- [`bounding_box`](@ref)
-- [`vertex_permutations`](@ref)
-- [`mesh`](@ref)
-- [`faces`](@ref)
-- [`inverse_faces`](@ref)
-- [`options`](@ref)
-- [`is_boundary`](@ref)
-- [`face_around`](@ref)
-
-"""
-abstract type AbstractDomain <: AbstractType end
-
-"""
-    abstract type AbstractFaceDomain <: AbstractDomain end
-
-A domain defined on a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
-
-# Level
-
-Advanced
-
-# Basic constructors
-
-- [`unit_simplex`](@ref)
-- [`unit_n_cube`](@ref)
-
-"""
-abstract type AbstractFaceDomain <: AbstractDomain end
 
 @doc raw"""
     abstract type AbstractMesh <: AbstractType end
@@ -105,6 +45,72 @@ Beginner
 abstract type AbstractMesh <: AbstractType end
 
 """
+"""
+abstract type AbstractPMesh <: AbstractMesh end
+
+@doc raw"""
+    abstract type AbstractDomain{A} <: AbstractType end
+
+Abstract type representing a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$.
+Domains are defined using an underlying computational mesh. `A` is an (abstract) type
+indicating on which type of mesh this domain is defined.
+
+See also [`AbstractMesh`](@ref).
+
+# Level
+
+Beginner
+
+# Basic constructors
+
+- [`unit_simplex`](@ref)
+- [`unit_n_cube`](@ref)
+- [`domain`](@ref)
+- [`interior`](@ref)
+- [`boundary`](@ref)
+- [`skeleton`](@ref)
+
+# Basic queries
+
+- [`num_dims`](@ref)
+- [`num_ambient_dims`](@ref)
+- [`num_codims`](@ref)
+- [`is_axis_aligned`](@ref)
+- [`is_simplex`](@ref)
+- [`is_n_cube`](@ref)
+- [`is_unit_n_cube`](@ref)
+- [`is_unit_simplex`](@ref)
+- [`is_unitary`](@ref)
+- [`bounding_box`](@ref)
+- [`vertex_permutations`](@ref)
+- [`mesh`](@ref)
+- [`faces`](@ref)
+- [`inverse_faces`](@ref)
+- [`options`](@ref)
+- [`is_boundary`](@ref)
+- [`face_around`](@ref)
+
+"""
+abstract type AbstractDomain{A} <: AbstractType end
+
+"""
+    abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
+
+A domain defined on a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
+
+# Level
+
+Advanced
+
+# Basic constructors
+
+- [`unit_simplex`](@ref)
+- [`unit_n_cube`](@ref)
+
+"""
+abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
+
+"""
     abstract type AbstractTopology
 
 Abstract type representing the incidence relations in a cell complex.
@@ -142,9 +148,10 @@ Advanced
 abstract type AbstractFaceTopology <: AbstractTopology end
 
 """
-    abstract type AbstractSpace <: AbstractType end
+    abstract type AbstractSpace{A} <: AbstractType end
 
-Abstract type representing a finite element space.
+Abstract type representing a finite element space.  `A` is an (abstract) type
+ indicating on which type of mesh this domain is defined.
 
 # Level
 
@@ -178,10 +185,10 @@ For spaces, used as reference spaces in [`AbstractMesh`](@ref) specializations.
 - [`geometry_nodes`](@ref)
 - [`geometry_nodes_permutations`](@ref)
 """
-abstract type AbstractSpace <: AbstractType end
+abstract type AbstractSpace{A} <: AbstractType end
 
 """
-abstract type AbstractFaceSpace <: AbstractSpace end
+abstract type AbstractFaceSpace <: AbstractSpace{AbstractMesh} end
 
 Like [`AbstractSpace`](@ref), but for a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
 
@@ -189,7 +196,7 @@ Like [`AbstractSpace`](@ref), but for a single mesh face. Typically used as help
 
 Advanced
 """
-abstract type AbstractFaceSpace <: AbstractSpace end
+abstract type AbstractFaceSpace <: AbstractSpace{AbstractMesh} end
 
 """
     abstract type AbstractQuadrature

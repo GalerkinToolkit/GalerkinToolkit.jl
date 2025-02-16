@@ -176,7 +176,7 @@ function assemble_vector_count(integral,state)
     contributions = GT.contributions(integral)
     nfields = GT.num_fields(space)
     field_to_domain = map(field->domain(GT.field(space,field)),1:nfields)
-    field_to_sDface_to_dofs = map(field->face_dofs(GT.field(space,field)),1:nfields)
+    field_to_Dface_to_dofs = map(field->face_dofs(GT.field(space,field)),1:nfields)
     field_to_Dface_to_sDface = map(inverse_faces,field_to_domain) # TODO faces or inverse_faces??
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
@@ -196,14 +196,14 @@ function assemble_vector_count(integral,state)
                     continue
                 end
                 face_to_Dfaces = face_incidence(topo,d,D)
-                sDface_to_dofs = field_to_sDface_to_dofs[field]
+                Dface_to_dofs = field_to_Dface_to_dofs[field]
                 Dfaces = face_to_Dfaces[face]
                 for Dface in Dfaces
                     sDface = Dface_to_sDface[Dface]
                     if sDface == 0
                         continue
                     end
-                    dofs = sDface_to_dofs[sDface]
+                    dofs = Dface_to_dofs[Dface]
                     for dof in dofs
                         counter = vector_strategy.count(counter,setup,dof,field)
                     end
@@ -225,7 +225,7 @@ function assemble_vector_fill!(integral,state)
     contributions = GT.contributions(integral)
     nfields = GT.num_fields(space)
     field_to_domain = map(field->domain(GT.field(space,field)),1:nfields)
-    field_to_sDface_to_dofs = map(field->face_dofs(GT.field(space,field)),1:nfields)
+    field_to_Dface_to_dofs = map(field->face_dofs(GT.field(space,field)),1:nfields)
     field_to_Dface_to_sDface = map(inverse_faces,field_to_domain)
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
@@ -270,7 +270,7 @@ function assemble_vector_fill!(integral,state)
                             continue
                         end
                         face_to_Dfaces = face_incidence(args.topo,args.d,D)
-                        sDface_to_dofs = args.field_to_sDface_to_dofs[$field]
+                        Dface_to_dofs = args.field_to_Dface_to_dofs[$field]
                         Dfaces = face_to_Dfaces[$face]
                         for ($Dface_around,Dface) in enumerate(Dfaces)
                             $(s_qty[4])
@@ -279,7 +279,7 @@ function assemble_vector_fill!(integral,state)
                             if sDface == 0
                                 continue
                             end
-                            dofs = sDface_to_dofs[sDface]
+                            dofs = Dface_to_dofs[Dface]
                             for $point in 1:npoints
                                 $(s_qty[5])
                                 for ($idof,dof) in enumerate(dofs)
@@ -297,7 +297,7 @@ function assemble_vector_fill!(integral,state)
         end
         loop! = eval(expr)
         storage = index_storage(index)
-        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_sDface_to_dofs)
+        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_Dface_to_dofs)
         counter = invokelatest(loop!,counter,args,storage)
     end
     state
@@ -372,7 +372,7 @@ function assemble_matrix_count(integral,state)
     axis_to_space = (test_space,trial_space)
     axis_to_nfields = map(num_fields,axis_to_space)
     axis_to_field_to_domain = map(space->map(field->domain(GT.field(space,field)),1:num_fields(space)),axis_to_space)
-    axis_to_field_to_sDface_to_dofs = map(space->map(field->face_dofs(GT.field(space,field)),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_Dface_to_dofs = map(space->map(field->face_dofs(GT.field(space,field)),1:num_fields(space)),axis_to_space)
     axis_to_field_to_Dface_to_sDface = map(field_to_domain->map(inverse_faces,field_to_domain),axis_to_field_to_domain) # TODO: faces or inverse_faces??
     axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
@@ -392,7 +392,7 @@ function assemble_matrix_count(integral,state)
                     continue
                 end
                 test_face_to_Dfaces = face_incidence(topo,d,test_D)
-                test_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[test][field_test]
+                test_Dface_to_dofs = axis_to_field_to_Dface_to_dofs[test][field_test]
                 test_Dfaces = test_face_to_Dfaces[face]
                 for field_trial in 1:axis_to_nfields[trial]
                     trial_Dface_to_sDface = axis_to_field_to_Dface_to_sDface[trial][field_trial]
@@ -401,20 +401,20 @@ function assemble_matrix_count(integral,state)
                         continue
                     end
                     trial_face_to_Dfaces = face_incidence(topo,d,trial_D)
-                    trial_sDface_to_dofs = axis_to_field_to_sDface_to_dofs[trial][field_trial]
+                    trial_Dface_to_dofs = axis_to_field_to_Dface_to_dofs[trial][field_trial]
                     trial_Dfaces = trial_face_to_Dfaces[face]
                     for test_Dface in test_Dfaces 
                         test_sDface = test_Dface_to_sDface[test_Dface]
                         if test_sDface == 0
                             continue
                         end
-                        test_dofs = test_sDface_to_dofs[test_sDface]
+                        test_dofs = test_Dface_to_dofs[test_Dface]
                         for trial_Dface in trial_Dfaces
                             trial_sDface = trial_Dface_to_sDface[trial_Dface]
                             if trial_sDface == 0
                                 continue
                             end
-                            trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                            trial_dofs = trial_Dface_to_dofs[trial_Dface]
                             for test_dof in test_dofs
                                 for trial_dof in trial_dofs
                                     counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial)
@@ -443,7 +443,7 @@ function assemble_matrix_fill!(integral,state)
     axis_to_space = (test_space,trial_space)
     axis_to_nfields = map(num_fields,axis_to_space)
     axis_to_field_to_domain = map(space->map(field->domain(GT.field(space,field)),1:num_fields(space)),axis_to_space)
-    axis_to_field_to_sDface_to_dofs = map(space->map(field->face_dofs(GT.field(space,field)),1:num_fields(space)),axis_to_space)
+    axis_to_field_to_Dface_to_dofs = map(space->map(field->face_dofs(GT.field(space,field)),1:num_fields(space)),axis_to_space)
     axis_to_field_to_Dface_to_sDface = map(field_to_domain->map(inverse_faces,field_to_domain),axis_to_field_to_domain) # TODO: faces or inverse_faces??
     axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
@@ -492,7 +492,7 @@ function assemble_matrix_fill!(integral,state)
                             continue
                         end
                         test_face_to_Dfaces = face_incidence(args.topo,args.d,test_D)
-                        test_sDface_to_dofs = args.axis_to_field_to_sDface_to_dofs[$test][$field_test]
+                        test_Dface_to_dofs = args.axis_to_field_to_Dface_to_dofs[$test][$field_test]
                         test_Dfaces = test_face_to_Dfaces[$face]
                         for $field_trial in 1:args.axis_to_nfields[$trial]
                             $(s_qty[4])
@@ -502,7 +502,7 @@ function assemble_matrix_fill!(integral,state)
                                 continue
                             end
                             trial_face_to_Dfaces = face_incidence(args.topo,args.d,trial_D)
-                            trial_sDface_to_dofs = args.axis_to_field_to_sDface_to_dofs[$trial][$field_trial]
+                            trial_Dface_to_dofs = args.axis_to_field_to_Dface_to_dofs[$trial][$field_trial]
                             trial_Dfaces = trial_face_to_Dfaces[$face]
                             for ($test_Dface_around,test_Dface) in enumerate(test_Dfaces)
                                 $(s_qty[5])
@@ -510,14 +510,14 @@ function assemble_matrix_fill!(integral,state)
                                 if test_sDface == 0
                                     continue
                                 end
-                                test_dofs = test_sDface_to_dofs[test_sDface]
+                                test_dofs = test_Dface_to_dofs[test_Dface]
                                 for ($trial_Dface_around,trial_Dface) in enumerate(trial_Dfaces)
                                     $(s_qty[6])
                                     trial_sDface = trial_Dface_to_sDface[trial_Dface]
                                     if trial_sDface == 0
                                         continue
                                     end
-                                    trial_dofs = trial_sDface_to_dofs[trial_sDface]
+                                    trial_dofs = trial_Dface_to_dofs[trial_Dface]
                                     fill!(b,zero(eltype(b)))
                                     for $point in 1:npoints
                                         $(s_qty[7])
@@ -544,7 +544,7 @@ function assemble_matrix_fill!(integral,state)
         end
         loop! = eval(expr)
         storage = index_storage(index)
-        args = (;d,axis_to_nfields,alloc,matrix_strategy,setup,b,topo,sface_to_face,axis_to_field_to_D,axis_to_field_to_Dface_to_sDface,axis_to_field_to_sDface_to_dofs) 
+        args = (;d,axis_to_nfields,alloc,matrix_strategy,setup,b,topo,sface_to_face,axis_to_field_to_D,axis_to_field_to_Dface_to_sDface,axis_to_field_to_Dface_to_dofs) 
         counter = invokelatest(loop!,counter,args,storage)
     end
     state

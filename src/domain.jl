@@ -420,7 +420,7 @@ function simplexify(geo::UnitSimplex)
     mesh(geo)
 end
 
-abstract type AbstractMeshDomain{A} <: AbstractDomain end
+abstract type AbstractMeshDomain{A} <: AbstractDomain{A} end
 
 function face_reference_id(a::AbstractMeshDomain)
     d = num_dims(a)
@@ -463,6 +463,7 @@ function mesh_domain(;
     is_reference_domain = Val(false),
     face_around=nothing,
     workspace=nothing,
+    setup = Val(true),
     )
 
     if val_parameter(is_reference_domain)
@@ -477,7 +478,11 @@ function mesh_domain(;
                 face_around,
                 workspace,
                )
-    constructor(mesh,contents) |> setup_domain
+    if val_parameter(setup)
+        constructor(mesh,contents) |> setup_domain
+    else
+        constructor(mesh,contents)
+    end
 end
 
 function reference_domain(domain::PhysicalDomain)
@@ -525,6 +530,33 @@ function setup_domain(domain::MeshDomain)
     inverse_faces = GT.inverse_faces(domain)
     workspace = (;faces,inverse_faces)
     replace_workspace(domain,workspace)
+end
+
+function PartitionedArrays.partition(pdomain::MeshDomain)
+    if GT.workspace(pdomain) !== nothing
+        return GT.workspace(pdomain).domain_partition
+    end
+    pmesh = GT.mesh(pdomain)
+    p_mesh = partition(pmesh)
+    domain_partition = map(p_mesh) do mesh
+        mesh_domain(;
+                    mesh,
+                    num_dims = Val(GT.num_dims(pdomain)),
+                    physical_names=GT.physical_names(pdomain),
+                    is_reference_domain = Val(is_reference_domain(pdomain)),
+                    face_around=face_around(pdomain),
+                    setup = Val(false))
+    end
+end
+
+function setup_domain(pdomain::MeshDomain{<:AbstractPMesh})
+    if GT.workspace(pdomain) !== nothing
+        return pdomain
+    end
+    p_domain = partition(pdomain)
+    domain_partition = map(setup_domain,p_domain)
+    workspace = (;domain_partition)
+    replace_workspace(pdomain,workspace)
 end
 
 function replace_workspace(domain::MeshDomain,workspace)

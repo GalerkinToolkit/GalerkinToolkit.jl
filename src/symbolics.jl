@@ -804,18 +804,21 @@ index(a::DiscreteFunctionTerm) = index(a.functions)
 
 const LinearOperators = Union{typeof(call),typeof(ForwardDiff.gradient),typeof(ForwardDiff.jacobian)}
 
+function sum_init(f,r,s)
+    sum(f,r;init=s)
+end
+
 function expression(c::BinaryCallTerm{<:LinearOperators,<:DiscreteFunctionTerm,<:Any})
     f = c.callee
     a = c.arg1
     b = c.arg2
+    s0 = zero(prototype(c))
+    s0_sym = get_symbol!(index(c),s0,"s0")
     s = expression(call(f,a.functions,b))
-    c = expression(a.coefficients)
+    v = expression(a.coefficients)
     ndofs = expression(a.ndofs)
     dof = a.dof
-    expr = @term begin
-        fun = $dof -> $c*$s
-        sum(fun,1:$ndofs)
-    end
+    expr = :(GT.sum_init($dof -> $v*$s,1:$ndofs,$(s0_sym)))
 end
 
 #function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::ReferencePointTerm)

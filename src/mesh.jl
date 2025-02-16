@@ -55,6 +55,14 @@ function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     physical_name
 end
 
+function label_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
+    p_mesh = partition(m)
+    foreach(p_mesh) do mesh
+        label_faces_in_dim!(mesh,d;physical_name)
+    end
+    physical_name
+end
+
 function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
     d = D-1
@@ -69,6 +77,39 @@ function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACE
     physical_name
 end
 
+function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
+    D = num_dims(pmesh)
+    d = D - 1
+    vals = map(partition(pmesh)) do mesh
+        topo = topology(mesh)
+        nfaces = num_faces(topo,d)
+        face_to_v = zeros(Int32,nfaces)
+        cell_to_faces = face_incidence(topo,D,d)
+        ncells = num_faces(topo,D)
+        cell_ids = face_local_indices(mesh,D)
+        cell_to_owner = local_to_owner(cell_ids)
+        part = part_id(cell_ids)
+        for cell in 1:ncells
+            owner = cell_to_owner[cell]
+            if part != owner
+                continue
+            end
+            faces = cell_to_faces[cell]
+            for face in faces
+                face_to_v[face] += 1
+            end
+        end
+        face_to_v
+    end
+    ids = face_partition(pmesh, d)
+    v = PVector(vals,ids)
+    assemble!(v) |> wait
+    map(partition(pmesh),vals) do mesh, face_to_v
+       physical_faces(mesh,d)[physical_name] = findall(i->i==2,face_to_v)
+    end
+    physical_name
+end
+
 function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
     d = D-1
@@ -80,6 +121,39 @@ function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACE
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==1,face_to_cells)
     groups[physical_name] = faces
+    physical_name
+end
+
+function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
+    D = num_dims(pmesh)
+    d = D - 1
+    vals = map(partition(pmesh)) do mesh
+        topo = topology(mesh)
+        nfaces = num_faces(topo,d)
+        face_to_v = zeros(Int32,nfaces)
+        cell_to_faces = face_incidence(topo,D,d)
+        ncells = num_faces(topo,D)
+        cell_ids = face_local_indices(mesh,D)
+        cell_to_owner = local_to_owner(cell_ids)
+        part = part_id(cell_ids)
+        for cell in 1:ncells
+            owner = cell_to_owner[cell]
+            if part != owner
+                continue
+            end
+            faces = cell_to_faces[cell]
+            for face in faces
+                face_to_v[face] += 1
+            end
+        end
+        face_to_v
+    end
+    ids = face_partition(pmesh, d)
+    v = PVector(vals,ids)
+    assemble!(v) |> wait
+    map(partition(pmesh),vals) do mesh, face_to_v
+       physical_faces(mesh,d)[physical_name] = findall(i->i==1,face_to_v)
+    end
     physical_name
 end
 
@@ -329,11 +403,11 @@ function simplexify_generate_tface_to_face(
     tface_to_face
 end
 
-function restrict(mesh::AbstractMesh,args...)
-    restrict_mesh(mesh,args...)
+function restrict(mesh::AbstractMesh,args...;kwargs...)
+    restrict_mesh(mesh,args...;kwargs...)
 end
 
-function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
+function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     nnodes = num_nodes(mesh)
     node_to_lnode = zeros(Int32,nnodes)
     node_to_lnode[lnode_to_node] = 1:length(lnode_to_node)
@@ -372,7 +446,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh)
         reference_spaces = reference_spaces(mesh),
         physical_faces = lgroups_mesh,
         periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
-        outward_normals = lnormals
+        outward_normals = lnormals,
+        kwargs...
         )
 
     lmesh
@@ -392,6 +467,8 @@ function mesh(;
         outward_normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
+        node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
+        face_local_indices = [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
     )
     contents = (;
@@ -404,6 +481,8 @@ function mesh(;
                 outward_normals,
                 geometry_names,
                 is_cell_complex,
+                node_local_indices,
+                face_local_indices,
                 workspace,
                )
     mesh = Mesh(contents)
@@ -420,6 +499,8 @@ function replace_workspace(mesh::Mesh,workspace)
                 physical_faces=physical_faces(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
+                node_local_indices=node_local_indices(mesh),
+                face_local_indices=face_local_indices(mesh),
                 workspace,
                )
     Mesh(contents)
@@ -436,6 +517,8 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
                 geometry_names=geometry_names(mesh),
                 outward_normals=outward_normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
+                node_local_indices=node_local_indices(mesh),
+                face_local_indices=face_local_indices(mesh),
                 workspace=workspace(mesh),
                )
     Mesh(contents)
@@ -453,6 +536,10 @@ physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
 workspace(m::Mesh) = m.contents.workspace
+
+node_local_indices(m::Mesh) = m.contents.node_local_indices
+face_local_indices(m::Mesh) = m.contents.face_local_indices
+face_local_indices(m::Mesh,d) = m.contents.face_local_indices[d+1]
 
 function default_physical_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]

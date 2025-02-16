@@ -19,6 +19,8 @@ mesh = GT.mesh(Ω)
 order = 2
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
+GT.num_free_dofs(V)
+GT.num_dirichlet_dofs(V)
 @test GT.num_free_dofs(V) == 1
 @test GT.num_dirichlet_dofs(V) == 8
 
