@@ -818,7 +818,7 @@ function expression(c::BinaryCallTerm{<:LinearOperators,<:DiscreteFunctionTerm,<
     v = expression(a.coefficients)
     ndofs = expression(a.ndofs)
     dof = a.dof
-    expr = :(sum_init($dof -> $v*$s,1:$ndofs,$(s0_sym)))
+    expr = :(GT.sum_init($dof -> $v*$s,1:$ndofs,$(s0_sym)))
 end
 
 #function binary_call_term(f::LinearOperators,a::DiscreteFunctionTerm,b::ReferencePointTerm)

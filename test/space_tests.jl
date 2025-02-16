@@ -10,7 +10,7 @@ using WriteVTK
 using StaticArrays
 using PartitionedArrays
 
-using InteractiveUtils
+#using InteractiveUtils
 
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
