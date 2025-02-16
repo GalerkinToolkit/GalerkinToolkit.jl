@@ -38,9 +38,10 @@ macro term(expr)
         if  expr.head === :(=)
             var = expr.args[1]
             push!(vars,var)
-        else
-            map(findvars!,expr.args)
+        # else
+        #     map(findvars!,expr.args)
         end
+        map(findvars!,expr.args) # always traverse the args. If the user write (a = b = 3) then only a is captured
         nothing
     end
     transform(a) = a
@@ -88,8 +89,8 @@ macro term(expr)
     end
     function transform_lambda(expr::Expr)
         args = map(transform,expr.args)
-        quote
-            Expr(:(->),$(args...))
+        ret = quote
+            Expr(:(->),$(args...)) # TODO: check the behavior of transform_lambda. it doesn't work when there is a lambda in terms if written as $(args...)
         end
     end
     function transform_do(expr::Expr)
@@ -1546,3 +1547,4 @@ function substitute(expr,old_new)
     old,new = old_new
     MacroTools.postwalk(ex -> ex === old ? new : ex ,expr)
 end
+

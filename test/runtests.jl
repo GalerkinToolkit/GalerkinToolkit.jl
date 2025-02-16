@@ -18,6 +18,7 @@ using Test
     @testset "Space" begin include("space_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
+    @testset "NewIR" begin include("new_ir_tests.jl") end
 end
 
 end # module

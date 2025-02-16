@@ -14,6 +14,7 @@ using Combinatorics
 using SparseArrays
 using Metis
 using Metatheory
+using AutoHashEquals: @auto_hash_equals
 import MacroTools
 import PartitionedSolvers as PS
 import AutoHashEquals
@@ -35,5 +36,6 @@ include("quadrature.jl")
 include("quantity.jl")
 include("visualization.jl")
 include("assembly.jl")
+include("new_ir.jl")
 
 end # module
