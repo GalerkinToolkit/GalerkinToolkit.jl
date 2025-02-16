@@ -101,6 +101,14 @@ sum(domain_face_v, 1:1)
 @time s = sum(domain_face_v, 1:GT.num_faces(Ω))
 @test s ≈ 8
 
+g = GT.uniform_quantity(sum)
+int = GT.new_∫(GT.@qty(x->α * sum(x) + g(x) * (x[1] + 2.0 * x[2] + 3.0 * x[3])),dΩ)
+expr_sum = GT.generate(int)
+f_sum = GT.evaluate(expr_sum)
+domain_face_v = f_sum()
+sum(domain_face_v, 1:1)
+@time s = sum(domain_face_v, 1:GT.num_faces(Ω))
+@test s ≈ 208
 
 domain = (0,1,0,1)
 cells = (2,2)
