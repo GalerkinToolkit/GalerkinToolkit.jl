@@ -52,12 +52,21 @@ struct BlockTerm{A} <: NewAbstractTerm
     statements::A
 end
 
+struct TabulatedDiscreteFieldTerm{A, B, C, D, E} <: NewAbstractTerm
+    linear_operation::A 
+    discrete_field::B 
+    point::C
+    measure::D 
+    prototype::E 
+end
+
 prototype(t::LeafTerm) = t.prototype
 prototype(t::CallTerm) = t.prototype
 prototype(t::LambdaTerm) = t.prototype
 prototype(t::IndexTerm) = t.prototype
 prototype(t::StatementTerm) = t.prototype
 prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
+prototype(t::TabulatedDiscreteFieldTerm) = t.prototype
 
 function lower(t::LeafTerm)
     t.value
@@ -103,6 +112,15 @@ end
 function compile_constant_quantity(v)
     new_quantity(;) do opts 
         LeafTerm(v, v)
+    end
+end
+
+function discrete_field_quantity(m::DiscreteField)
+    new_quantity(;) do opts
+        free_vals = GT.free_values(m)
+        diri_vals = GT.dirichlet_values(m)
+        proto = (length(free_vals) > 0) ? free_vals[1] : diri_vals[1]
+        LeafTerm(m, x -> proto)
     end
 end
 
@@ -169,6 +187,77 @@ function value(t::UniformTerm)
     t.value
 end
 
+struct NumPointsTerm{A} <: NewAbstractTerm
+    measure::A
+end
+
+prototype(a::NumPointsTerm) = 0
+domain(t::NumPointsTerm) = domain(t.measure)
+
+
+struct WeightTerm{A,B} <: NewAbstractTerm
+    measure::A
+    point::B
+end
+
+domain(t::WeightTerm) = domain(t.measure)
+prototype(a::WeightTerm) = 0.0
+
+
+struct CoordinateTerm{A,B} <: NewAbstractTerm
+    measure::A
+    point::B
+end
+
+domain(t::CoordinateTerm) = domain(t.measure)
+
+prototype(t::CoordinateTerm) = begin
+    dom = domain(t.measure)
+    mesh = GT.mesh(t.measure.quadrature)
+    node_to_x = node_coordinates(mesh)
+    node_to_x[1]
+end
+
+
+struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
+    integrand::A
+    weight::B
+    point::C # gets reduced
+    num_points::D
+    prototype::E
+end
+
+prototype(t::ContributionTerm) = t.prototype
+
+
+function rewrite_l1(t::Union{UniformTerm, LeafTerm, NumPointsTerm, WeightTerm, CoordinateTerm})
+    t
+end
+
+function rewrite_l1(t::IndexTerm)
+    IndexTerm(rewrite_l1(t.array), rewrite_l1(t.index), t.prototype)
+end
+
+
+function rewrite_l1(t::CallTerm)
+    if (t.callee isa LeafTerm) && (t.callee.value isa DiscreteField)
+        if length(t.args) == 1  &&  t.args[1] isa CoordinateTerm
+            # TODO: other operators
+            TabulatedDiscreteFieldTerm(LeafTerm(:value, value), t.callee, t.args[1].point, t.args[1].measure, t.prototype)
+        else
+            error("arg type not supported for DiscreteField calls!")
+        end
+    else
+        CallTerm(rewrite_l1(t.callee), map(rewrite_l1, t.args), t.prototype)
+    end
+end
+
+
+function rewrite_l1(t::ContributionTerm)
+    ContributionTerm(rewrite_l1(t.integrand), rewrite_l1(t.weight), t.point, rewrite_l1(t.num_points), t.prototype)
+end
+
+
 function generate_body(t::UniformTerm,name_to_symbol,domain_face)
     t2 = name_to_symbol[t.name]
     CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
@@ -189,13 +278,6 @@ function generate_body(t::CallTerm,name_to_symbol,domain_face)
     CallTerm(callee, args, prototype(t))
 end
 
-struct NumPointsTerm{A} <: NewAbstractTerm
-    measure::A
-end
-
-prototype(a::NumPointsTerm) = 0
-domain(t::NumPointsTerm) = domain(t.measure)
-
 
 function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     measure = name_to_symbol[t.measure.name]
@@ -208,14 +290,6 @@ function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
     #     face_npoints($domain_face)
     # end
 end
-
-struct WeightTerm{A,B} <: NewAbstractTerm
-    measure::A
-    point::B
-end
-
-domain(t::WeightTerm) = domain(t.measure)
-prototype(a::WeightTerm) = 0.0
 
 
 function generate_body(t::WeightTerm,name_to_symbol,domain_face)
@@ -261,26 +335,16 @@ weight_accessor(m::NewMeasure) = weight_accessor(m.quadrature)
 jacobian_accessor(m::NewMeasure) = jacobian_accessor(m.quadrature)
 coordinate_accessor(m::NewMeasure) = coordinate_accessor(m.quadrature)
 num_points_accessor(m::NewMeasure) = num_points_accessor(m.quadrature)
+discrete_field_accessor(f, uh, m::NewMeasure) = begin
+    
+    discrete_field_accessor(f, uh, m.quadrature)
+end
 
 function coordinate_quantity(measure::NewMeasure,point)
     new_quantity(;) do dom
         @assert dom == domain(measure)
         CoordinateTerm(measure,point)
     end
-end
-
-struct CoordinateTerm{A,B} <: NewAbstractTerm
-    measure::A
-    point::B
-end
-
-domain(t::CoordinateTerm) = domain(t.measure)
-
-prototype(t::CoordinateTerm) = begin
-    dom = domain(t.measure)
-    mesh = GT.mesh(t.measure.quadrature)
-    node_to_x = node_coordinates(mesh)
-    node_to_x[1]
 end
 
 
@@ -321,17 +385,6 @@ function contribution(f,measure::NewMeasure)
 end
 
 const new_∫ = contribution
-
-
-struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
-    integrand::A
-    weight::B
-    point::C # gets reduced
-    num_points::D
-    prototype::E
-end
-
-prototype(t::ContributionTerm) = t.prototype
 
 
 function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
@@ -389,7 +442,44 @@ function generate_body(t::LeafTerm,name_to_symbol,domain_face)
     t
 end
 
+# struct TabulatedDiscreteFieldTerm{A, B, C, D} <: NewAbstractTerm
+#     linear_operation::A 
+#     discrete_field::B 
+#     point::Symbol
+#     measure::C 
+#     prototype::D 
+# end
+
+function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,domain_face)
+    
+    measure = name_to_symbol[t.measure.name]
+    point = t.point
+
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 1)
+
+    m = GT.mesh(t.measure.quadrature)
+    x = node_coordinates(m)[1]
+    jacobian_prototype = x * transpose(x)
+
+
+    jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
+    jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
+    jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
+
+    # point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
+    # point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
+    # CallTerm(point_func, [point_term], prototype_point)
+
+    prototype_result = prototype(t)
+    field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, t.discrete_field, measure_term], x -> (y1, y2) -> prototype_result) # TODO: proto
+    field_func =  CallTerm(field_func_0, [domain_face_term], (y1, y2) -> prototype_result)
+    CallTerm(field_func, [point_term, jacobian_result], prototype_result)
+end
+
 function generate(t::NewAbstractTerm,params...)
+    # t: L1 (domain specific level) term
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
     name_to_symbol = Dict(itr)
@@ -412,11 +502,19 @@ function generate(t::NewAbstractTerm,params...)
     # generate body and optimize
     domain_face = :dummy_domain_face
     domain_face_term = LeafTerm(domain_face, 1)
-    term_l2 = generate_body(t,name_to_symbol,domain_face)
+    # rewrite L1 term
+    term_l1 = rewrite_l1(t)
+
+    # L2: functional level
+    term_l2 = generate_body(term_l1, name_to_symbol,domain_face)
     term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
+    
+    # L3: imperative level
     term_l3 = statements(term_l2_wrapped)
     
+    # L4: imperative level with loops
     
+    # L5: julia expression
     expr = lower(term_l3)
     fun_block = expr
 
@@ -583,7 +681,12 @@ function to_quantity(q::NewAbstractQuantity)
 end
 
 function to_quantity(q)
-    compile_constant_quantity(q)
+    if q isa DiscreteField
+        discrete_field_quantity(q)
+    else
+        compile_constant_quantity(q)
+    end
+    
 end
 
 function to_quantities(expr)
@@ -600,6 +703,70 @@ end
 
 macro qty(expr)
     expr |> MacroTools.striplines |> to_quantities |> esc
+end
+
+
+
+function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::NewMeasure)
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
+    @assert !is_reference_domain(dom)
+    d = num_dims(dom)
+    @assert num_dims(domain(space)) == d
+    # TODO assumes same reference elems for integration and for interpolation
+    rid_to_point_to_x = map(coordinates,reference_quadratures(measure.quadrature))
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(space)) do point_to_x, refface
+        tabulator(refface)(f,point_to_x)
+    end
+    face_to_rid = face_reference_id(mesh,d)
+    sface_to_face = faces(dom)
+    function face_point_dof_s(sface)
+        face = sface_to_face[sface]
+        rid = face_to_rid[face]
+        tab = rid_to_tab[rid]
+        function point_dof_s(point,J=nothing)
+            function dof_s(dof)
+                tab[point,dof]
+            end
+        end
+    end
+end
+
+
+function discrete_field_accessor(f,uh::DiscreteField,measure::NewMeasure)
+    dom = domain(measure)
+    space = GT.space(uh)
+    d = num_dims(dom)
+    dom2 = domain(space)
+    @assert num_dims(dom2) == d
+    sface_to_face = faces(dom)
+    face_to_rface = inverse_faces(dom)
+    rface_to_dofs = face_dofs(space)
+    rface_to_rid = face_reference_id(space)
+    free_vals = free_values(uh)
+    diri_vals = dirichlet_values(uh)
+    face_point_dof_s = shape_function_accessor(f,space,measure)
+    function face_point_val(sface)
+        face = sface_to_face[sface]
+        rface = face_to_rface[face]
+        dofs = rface_to_dofs[rface]
+        rid = rface_to_rid[rface]
+        point_dof_s = face_point_dof_s(sface)
+        ndofs = length(dofs)
+        function point_val(point,J)
+            dof_s = point_dof_s(point,J)
+            sum(1:ndofs) do i
+                dof = dofs[i]
+                s = dof_s(i)
+                if dof > 0
+                    v = free_vals[dof]
+                else
+                    v = diri_vals[-dof]
+                end
+                v*s
+            end
+        end
+    end
 end
 
 #struct NewIntegral{A}  <: AbstractType
