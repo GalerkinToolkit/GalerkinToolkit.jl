@@ -1459,10 +1459,10 @@ function reference_spaces(space::LagrangeMeshSpace)
     domain = space |> GT.domain
     mesh = domain |> GT.mesh
     D = domain |> GT.num_dims
-    space_type = GT.space_type(space) # TODO Ugly
     ctype_to_refface = GT.reference_spaces(mesh,D)
     ctype_to_geometry = map(GT.domain,ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
+        space_type = GT.space_type(space) # TODO Ugly
         space2 = space_type === :default ? default_space_type(geometry) : space_type
         lagrange_space(geometry,order(space);
            space_type=Val(space2),

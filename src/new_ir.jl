@@ -52,6 +52,13 @@ struct BlockTerm{A} <: NewAbstractTerm
     statements::A
 end
 
+
+struct DiscreteFieldTerm{A, B} <: NewAbstractTerm
+    discrete_field::A
+    prototype::B
+    name::Symbol
+end
+
 struct TabulatedDiscreteFieldTerm{A, B, C, D, E} <: NewAbstractTerm
     linear_operation::A 
     discrete_field::B 
@@ -67,6 +74,7 @@ prototype(t::IndexTerm) = t.prototype
 prototype(t::StatementTerm) = t.prototype
 prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
 prototype(t::TabulatedDiscreteFieldTerm) = t.prototype
+prototype(t::DiscreteFieldTerm) = t.prototype
 
 function lower(t::LeafTerm)
     t.value
@@ -115,12 +123,13 @@ function compile_constant_quantity(v)
     end
 end
 
-function discrete_field_quantity(m::DiscreteField)
-    new_quantity(;) do opts
+
+function discrete_field_quantity(m::DiscreteField, name=gensym("discrete_field"))
+    new_quantity(;name) do opts
         free_vals = GT.free_values(m)
         diri_vals = GT.dirichlet_values(m)
         proto = (length(free_vals) > 0) ? free_vals[1] : diri_vals[1]
-        LeafTerm(m, x -> proto)
+        DiscreteFieldTerm(m, x -> proto, name)
     end
 end
 
@@ -187,6 +196,10 @@ function value(t::UniformTerm)
     t.value
 end
 
+function value(t::DiscreteFieldTerm)
+    t.discrete_field
+end
+
 struct NumPointsTerm{A} <: NewAbstractTerm
     measure::A
 end
@@ -240,10 +253,11 @@ end
 
 
 function rewrite_l1(t::CallTerm)
-    if (t.callee isa LeafTerm) && (t.callee.value isa DiscreteField)
+    if (t.callee isa DiscreteFieldTerm)
         if length(t.args) == 1  &&  t.args[1] isa CoordinateTerm
             # TODO: other operators
-            TabulatedDiscreteFieldTerm(LeafTerm(:value, value), t.callee, t.args[1].point, t.args[1].measure, t.prototype)
+            TabulatedDiscreteFieldTerm(LeafTerm(:value, value), t.callee, t.args[1].point, 
+                                    t.args[1].measure, t.callee.prototype)
         else
             error("arg type not supported for DiscreteField calls!")
         end
@@ -435,6 +449,13 @@ function capture!(a::IndexTerm, name_to_symbol, name_to_captured_data)
     capture!(a.index, name_to_symbol, name_to_captured_data)
 end
 
+function capture!(a::DiscreteFieldTerm, name_to_symbol, name_to_captured_data)
+    name = a.name
+    if !haskey(name_to_symbol, name)
+        name_to_captured_data[name] = a
+    end
+end
+
 function capture!(a::LeafTerm, name_to_symbol, name_to_captured_data)
 end
 
@@ -442,13 +463,12 @@ function generate_body(t::LeafTerm,name_to_symbol,domain_face)
     t
 end
 
-# struct TabulatedDiscreteFieldTerm{A, B, C, D} <: NewAbstractTerm
-#     linear_operation::A 
-#     discrete_field::B 
-#     point::Symbol
-#     measure::C 
-#     prototype::D 
-# end
+
+function generate_body(t::DiscreteFieldTerm,name_to_symbol,domain_face)
+    t_symbol = name_to_symbol[t.name]
+    CallTerm(LeafTerm(:value, value), [LeafTerm(t_symbol, t)], prototype(t))
+end
+
 
 function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,domain_face)
     
@@ -473,7 +493,8 @@ function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,domain_face)
     # CallTerm(point_func, [point_term], prototype_point)
 
     prototype_result = prototype(t)
-    field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, t.discrete_field, measure_term], x -> (y1, y2) -> prototype_result) # TODO: proto
+    discrete_field = generate_body(t.discrete_field, name_to_symbol, domain_face)
+    field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, discrete_field, measure_term], x -> (y1, y2) -> prototype_result) # TODO: proto
     field_func =  CallTerm(field_func_0, [domain_face_term], (y1, y2) -> prototype_result)
     CallTerm(field_func, [point_term, jacobian_result], prototype_result)
 end
@@ -706,7 +727,7 @@ macro qty(expr)
 end
 
 
-
+# TODO: replace the accessors for the old Measure
 function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::NewMeasure)
     mesh = GT.mesh(measure)
     dom = GT.domain(measure)
