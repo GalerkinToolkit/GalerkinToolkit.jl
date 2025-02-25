@@ -124,7 +124,25 @@ function compile_constant_quantity(v)
 end
 
 
-function discrete_field_quantity(m::DiscreteField, name=gensym("discrete_field"))
+struct NewDiscreteField{A,B,C,D} <: GT.AbstractField
+    mesh::A
+    space::B
+    free_values::C
+    dirichlet_values::D
+    name::Symbol
+end
+
+free_values(u::NewDiscreteField) = u.free_values
+dirichlet_values(u::NewDiscreteField) = u.dirichlet_values
+mesh(u::NewDiscreteField) = u.mesh
+space(u::NewDiscreteField) = u.space
+name(u::NewDiscreteField) = u.name
+
+
+
+# TODO remove
+function discrete_field_quantity(m::NewDiscreteField)
+    name = GT.name(m)
     new_quantity(;name) do opts
         free_vals = GT.free_values(m)
         diri_vals = GT.dirichlet_values(m)
@@ -452,7 +470,7 @@ end
 function capture!(a::DiscreteFieldTerm, name_to_symbol, name_to_captured_data)
     name = a.name
     if !haskey(name_to_symbol, name)
-        name_to_captured_data[name] = a
+        name_to_captured_data[name] = a.discrete_field
     end
 end
 
@@ -466,7 +484,8 @@ end
 
 function generate_body(t::DiscreteFieldTerm,name_to_symbol,domain_face)
     t_symbol = name_to_symbol[t.name]
-    CallTerm(LeafTerm(:value, value), [LeafTerm(t_symbol, t)], prototype(t))
+    LeafTerm(t_symbol, prototype(t))
+    # CallTerm(LeafTerm(:value, value), [LeafTerm(t_symbol, t)], prototype(t))
 end
 
 
@@ -559,6 +578,8 @@ function evaluate(expr_and_captured)
     (args..., ) -> begin
         args = map(args) do p
             if p isa NewMeasure 
+                p
+            elseif p isa NewDiscreteField
                 p
             elseif p isa NewQuantity
                 term(p, nothing)
@@ -702,7 +723,7 @@ function to_quantity(q::NewAbstractQuantity)
 end
 
 function to_quantity(q)
-    if q isa DiscreteField
+    if q isa NewDiscreteField
         discrete_field_quantity(q)
     else
         compile_constant_quantity(q)
@@ -754,7 +775,7 @@ function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::
 end
 
 
-function discrete_field_accessor(f,uh::DiscreteField,measure::NewMeasure)
+function discrete_field_accessor(f,uh::NewDiscreteField,measure::NewMeasure)
     dom = domain(measure)
     space = GT.space(uh)
     d = num_dims(dom)
@@ -789,6 +810,103 @@ function discrete_field_accessor(f,uh::DiscreteField,measure::NewMeasure)
         end
     end
 end
+
+
+function new_discrete_field(space::AbstractSpace, free_values, dirichlet_values, name=gensym("discrete_field"))
+    mesh = space |> GT.mesh
+    NewDiscreteField(mesh, space, free_values, dirichlet_values, name)
+end
+
+
+function new_fill_field!(u::NewDiscreteField,z)
+    fill!(free_values(u),z)
+    fill!(dirichlet_values(u),z)
+    u
+end
+
+function new_undef_field(::Type{T},space::AbstractSpace) where T
+    free_values = allocate_values(T,GT.free_dofs(space))
+    dirichlet_values = allocate_values(T,GT.dirichlet_dofs(space))
+    new_discrete_field(space,free_values,dirichlet_values)
+end
+
+function new_fill_field(z,space::AbstractSpace)
+    u = new_undef_field(typeof(z),space)
+    new_fill_field!(u,z)
+end
+
+
+function new_zero_field(::Type{T},space::AbstractSpace) where T
+    new_fill_field(zero(T),space)
+end
+
+struct NewAnalyticalField{A,B,C} <: AbstractField
+    definition::A
+    quantity::B
+    domain::C
+end
+
+function new_analytical_field(f,dom::AbstractDomain)
+    # TODO: make a quantity of f with @qty 
+    D = num_dims(dom)
+    q = compile_constant_quantity(f)
+    NewAnalyticalField(f,q,dom)
+end
+
+
+function interpolate!(f,u::NewDiscreteField)
+    interpolate!(f,u,nothing)
+end
+
+
+function interpolate!(f,u::NewDiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
+    interpolate_impl!(f,u,free_or_diri)
+    # TODO: look into the interpolation to find performance issues
+end
+
+
+function interpolate_impl!(f,u::NewDiscreteField,free_or_diri;location=1)
+    
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
+    space = GT.space(u)
+    domain = GT.domain(space)
+
+    d = num_dims(domain)
+    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+    sface_to_face = faces(domain)
+    nfaces = GT.num_faces(domain)
+    face_to_dofs = GT.face_dofs(space)
+    
+    
+    # TODO: check correctness and type instability, do code generation with physical maps
+    face_to_nodes = face_nodes(space) # 2s
+    node_to_x = node_coordinates(space) # 5s
+    for sface in 1:nfaces
+        face = sface_to_face[sface]
+        dofs = face_to_dofs[face]
+        ndofs = length(dofs)
+        nodes = face_to_nodes[sface]
+        for fe_dof in 1:ndofs
+            node = nodes[fe_dof]
+            x = node_to_x[node]
+            gdof = dofs[fe_dof]
+            v = f.definition(x)
+            if gdof > 0
+                if free_or_diri != DIRICHLET
+                    free_vals[gdof] = v
+                end
+            else
+                diri_dof = -gdof
+                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                    diri_vals[diri_dof] = v
+                end
+            end
+        end
+    end
+    u
+end
+
 
 #struct NewIntegral{A}  <: AbstractType
 #    contributions::A
