@@ -297,7 +297,6 @@ function generate_dof_ids_step_1(space)
     d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
     d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
     d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
-    #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
     ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
@@ -1152,8 +1151,11 @@ function face_interior_nodes_from_mesh_face(fe,d)
         boundary = GT.complexify(fe)
         dface_to_lnode_to_node = GT.face_nodes(boundary,d)
         dface_to_ftype = GT.face_reference_id(boundary,d)
-        ftype_to_refdface = GT.reference_spaces(boundary,d)
-        ftype_to_lnodes = map(GT.interior_nodes,ftype_to_refdface)
+        d_ftype_to_refdface = GT.reference_spaces(boundary)
+        d_ftype_to_lnodes = map(d_ftype_to_refdface) do ftype_to_refdface
+            map(GT.interior_nodes,ftype_to_refdface)
+        end
+        ftype_to_lnodes = d_ftype_to_lnodes[d+1]
         map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
             lnodes = ftype_to_lnodes[ftype]
             Int32.(lnode_to_node[lnodes])
@@ -1181,8 +1183,11 @@ function face_interior_node_permutations_from_mesh_face(fe,d)
     else
         boundary = GT.complexify(fe)
         dface_to_ftype = GT.face_reference_id(boundary,d)
-        ftype_to_refdface = GT.reference_spaces(boundary,d)
-        ftype_to_perms = map(GT.interior_node_permutations,ftype_to_refdface)
+        d_ftype_to_refdface = GT.reference_spaces(boundary)
+        d_ftype_to_perms = map(d_ftype_to_refdface) do ftype_to_refdface
+            map(GT.interior_node_permutations,ftype_to_refdface)
+        end
+        ftype_to_perms = d_ftype_to_perms[d+1]
         map(dface_to_ftype) do ftype
             perms = ftype_to_perms[ftype]
         end
@@ -1293,9 +1298,9 @@ end
 function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
     face_to_pindex_to_inodes = face_interior_node_permutations(fe,d)
     if tensor_size(fe) === :scalar
-        return face_to_pindex_to_inodes
+        return convert(Vector{Vector{Vector{Int32}}},face_to_pindex_to_inodes)
     else
-        Tv = fe |> options |> int_type
+        Tv = Int32
         node_to_dofs = node_dofs(fe)
         face_to_inodes = face_interior_nodes(fe,d)
         face_to_idofs = face_own_dofs(fe,d)
@@ -1303,7 +1308,7 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
         ndofs = num_dofs(fe)
         dof_to_idof = zeros(Tv,ndofs)
         lis = LinearIndices(tensor_size(fe))
-        map(1:nfaces) do face
+        r = map(1:nfaces) do face
             pindex_to_inodes = face_to_pindex_to_inodes[face]
             inode_to_node = face_to_inodes[face]
             idof_to_dof = face_to_idofs[face]
@@ -1337,16 +1342,17 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
                 reduce(vcat,nested;init=Tv[])
             end
         end
+        return convert(Vector{Vector{Vector{Tv}}},r)
     end
 end
 
 function num_dofs(a::LagrangeFaceSpace)
     nnodes = num_nodes(a)
     if tensor_size(a) === :scalar
-        nnodes
+        Int(nnodes)
     else
         ndofs_per_node = prod(tensor_size(a))
-        nnodes*ndofs_per_node
+        Int(nnodes*ndofs_per_node)
     end
 end
 
