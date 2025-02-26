@@ -1612,6 +1612,16 @@ function reference_spaces(space::LagrangeMeshSpace)
     ctype_to_reffe
 end
 
+function num_nodes(a::LagrangeMeshSpace)
+    ndofs = num_free_dofs(a) + num_dirichlet_dofs(a)
+    if tensor_size(a) === :scalar
+        ncoms = 1
+    else
+        ncoms = Int(prod(tensor_size(a)))
+    end
+    div(ndofs,ncoms)
+end
+
 function face_nodes(a::LagrangeMeshSpace)
     V = lagrange_space(
                        domain(a),
@@ -1631,6 +1641,7 @@ function node_coordinates(a::LagrangeMeshSpace)
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
     domain = GT.domain(a)
+    @assert is_physical_domain(domain)
     mesh = GT.mesh(domain)
     d = num_dims(domain)
     mrid_to_refface = reference_spaces(mesh,d)
@@ -1669,10 +1680,31 @@ function node_coordinates(a::LagrangeMeshSpace)
     node_to_x
 end
 
-#TODO these would provably need loop over cells
-#function node_dofs(space::LagrangeMeshSpace)
-#end
-#
+function node_dofs(space::LagrangeMeshSpace)
+    ctype_fe = reference_spaces(space)
+    ctype_lnode_comp_ldof = map(GT.node_dofs,ctype_fe)
+    face_ctype = face_reference_id(space)
+    face_dofs = GT.face_dofs(space)
+    face_nodes = GT.face_nodes(space)
+    nnodes = num_nodes(space)
+    T = eltype(eltype(ctype_lnode_comp_ldof))
+    node_dofs = zeros(T,nnodes)
+    domain = GT.domain(space)
+    for face in faces(domain)
+        ctype = face_ctype[face]
+        lnode_comp_ldof = ctype_lnode_comp_ldof[ctype]
+        lnode_node = face_nodes[face]
+        ldof_dof = face_dofs[face]
+        nlnodes = length(lnode_node)
+        for lnode in 1:nlnodes
+            comp_ldof = lnode_comp_ldof[lnode]
+            dofs = map(ldof->ldof_dof[ldof],comp_ldof)
+            node = lnode_node[lnode]
+            node_dofs[node] = dofs
+        end
+    end
+    node_dofs
+end
 
 function free_dof_node(space::LagrangeMeshSpace)
     free_and_dirichlet_dof_node(space)[1]
