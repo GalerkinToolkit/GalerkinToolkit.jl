@@ -340,34 +340,6 @@ function interpolate_impl!(f,u,space,free_or_diri;location=1)
     u
 end
 
-function interpolate_impl!(f::AnalyticalField,u,space::LagrangeMeshSpace,free_or_diri;location=1)
-    fun = f.definition
-    free_vals = GT.free_values(u)
-    diri_vals = GT.dirichlet_values(u)
-    node_x = node_coordinates(space)
-    node_dofs = GT.node_dofs(space)
-    nnodes = num_nodes(space)
-    dirichlet_dof_location = GT.dirichlet_dof_location(space)
-    for node in 1:nnodes
-        x = node_x[node]
-        v = fun(x)
-        dofs = node_dofs[node]
-        for dof in dofs
-            if dof > 0
-                if free_or_diri != DIRICHLET
-                    free_vals[dof] = v
-                end
-            else
-                diri_dof = -dof
-                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
-                    diri_vals[diri_dof] = v
-                end
-            end
-        end
-    end
-    u
-end
-
 function interpolate_impl!(f::PiecewiseField,u,space,free_or_diri)
     for (location,field) in f.fields |> enumerate
         interpolate_impl!(field,u,space,free_or_diri;location)

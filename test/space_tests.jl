@@ -475,7 +475,7 @@ udiri = GT.piecewise_field(u1,u2,u3)
 Γdiri = GT.piecewise_domain(Γ1,Γ2,Γ3)
 
 order = 1
-V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 

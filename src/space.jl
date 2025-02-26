@@ -1641,7 +1641,6 @@ function node_coordinates(a::LagrangeMeshSpace)
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
     domain = GT.domain(a)
-    @assert is_physical_domain(domain)
     mesh = GT.mesh(domain)
     d = num_dims(domain)
     mrid_to_refface = reference_spaces(mesh,d)
@@ -1749,6 +1748,39 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
         end
     end
     free_dof_to_node, diri_dof_to_node
+end
+
+function interpolate_impl!(f::AnalyticalField,u,space::LagrangeMeshSpace,free_or_diri;location=1)
+    fun = f.definition
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
+    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+    domain = GT.domain(space)
+    @assert is_physical_domain(domain)
+    node_x = node_coordinates(space)
+    node_dofs = GT.node_dofs(space)
+    nnodes = num_nodes(space)
+    for node in 1:nnodes
+        x = node_x[node]
+        comp_v = fun(x)
+        comp_dof = node_dofs[node]
+        ncomps = length(comp_v)
+        for comp in 1:ncomps
+            dof = comp_dof[comp]
+            v = comp_v[comp]
+            if dof > 0
+                if free_or_diri != DIRICHLET
+                    free_vals[dof] = v
+                end
+            else
+                diri_dof = -dof
+                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                    diri_vals[diri_dof] = v
+                end
+            end
+        end
+    end
+    u
 end
 
 """
