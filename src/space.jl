@@ -6,16 +6,19 @@ num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 
-function max_local_dofs(space::AbstractSpace,field)
+function max_num_reference_dofs(space::AbstractSpace,field)
     rid_to_reffe = reference_spaces(GT.field(space,field))
-    map(num_dofs,rid_to_reffe) |> maximum
+    ns = Vector{Int}(undef,length(rid_to_reffe))
+    map!(num_dofs,ns,rid_to_reffe)
+    maximum(ns)
 end
 
-function max_local_dofs(space::AbstractSpace)
+function max_num_reference_dofs(space::AbstractSpace)
     nfields = num_fields(space)
-    map(field->max_local_dofs(space,field),1:nfields) |> maximum
+    ns = Vector{Int}(undef,nfields)
+    map!(field->max_num_reference_dofs(space,field),ns,1:nfields)
+    maximum(ns)
 end
-
 
 #function free_dofs(a::AbstractSpace,field)
 #    @assert field == 1
@@ -293,13 +296,18 @@ function generate_dof_ids_step_1(space)
     ctype_to_reference_fe = space |> GT.reference_spaces
     cell_to_ctype = space |> GT.face_reference_id
     d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
+    d_to_ctype_to_ldface_to_own_dofs = Vector{Vector{Vector{Vector{Int32}}}}(undef,D+1)
+    map!(d->GT.reference_face_own_dofs(space,d),d_to_ctype_to_ldface_to_own_dofs,0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = Vector{Vector{Vector{Vector{Vector{Int32}}}}}(undef,D+1)
+    map!(d->GT.reference_face_own_dof_permutations(space,d),d_to_ctype_to_ldface_to_pindex_to_perm,0:D)
     d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
-    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    d_to_ctype_to_ldface_to_dofs = Vector{Vector{Vector{Vector{Int32}}}}(undef,D+1)
+    map!(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),d_to_ctype_to_ldface_to_dofs,0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+    nctypes = length(ctype_to_reference_fe)
+    ctype_to_num_dofs = zeros(Int,nctypes)
+    map!(GT.num_dofs,ctype_to_num_dofs,ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     nDfaces = num_faces(topology,D)
     dof_offset = 0
@@ -1636,8 +1644,8 @@ function node_coordinates(a::LagrangeMeshSpace)
     V = lagrange_space(
                        GT.domain(a),
                        GT.order(a);
-                       conformity = GT.conformity(a),
-                       space_type = GT.space_type(a))
+                       conformity = Val(GT.conformity(a)),
+                       space_type = Val(GT.space_type(a)))
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
     domain = GT.domain(a)
@@ -1654,7 +1662,9 @@ function node_coordinates(a::LagrangeMeshSpace)
     z = zero(T)
     node_to_x = zeros(T,nnodes)
     mface_to_mnodes = face_nodes(mesh,d)
-    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
+    nvrids = length(vrid_to_reffe)
+    vrid_mrid_tabulator = Vector{Vector{Matrix{eltype(T)}}}(undef,nvrids)
+    map!(vrid_mrid_tabulator,vrid_to_reffe) do reffe
         map(mrid_to_refface) do refface
             tabulator(refface)(value,node_coordinates(reffe))
         end

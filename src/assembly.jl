@@ -230,7 +230,7 @@ function assemble_vector_fill!(integral,state)
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
     T = vector_strategy.scalar_type(setup)
-    b = zeros(T,max_local_dofs(space))
+    b = zeros(T,max_num_reference_dofs(space))
     for measure_and_contribution in contributions
         measure,contribution = measure_and_contribution
         domain = GT.domain(measure)
@@ -448,7 +448,7 @@ function assemble_matrix_fill!(integral,state)
     axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
     T = matrix_strategy.scalar_type(setup)
-    b = zeros(T,max_local_dofs(trial_space), max_local_dofs(test_space))
+    b = zeros(T,max_num_reference_dofs(trial_space), max_num_reference_dofs(test_space))
 
     for measure_and_contribution in contributions
         measure,contribution = measure_and_contribution
