@@ -8,8 +8,7 @@ num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 
 function max_num_reference_dofs(space::AbstractSpace,field)
     rid_to_reffe = reference_spaces(GT.field(space,field))
-    ns = Vector{Int}(undef,length(rid_to_reffe))
-    map!(num_dofs,ns,rid_to_reffe)
+    ns = map(num_dofs,rid_to_reffe)
     maximum(ns)
 end
 
@@ -302,12 +301,10 @@ function generate_dof_ids_step_1(space)
     map!(d->GT.reference_face_own_dof_permutations(space,d),d_to_ctype_to_ldface_to_pindex_to_perm,0:D)
     d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
     d_to_ctype_to_ldface_to_dofs = Vector{Vector{Vector{Vector{Int32}}}}(undef,D+1)
-    map!(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),d_to_ctype_to_ldface_to_dofs,0:D)
+    map!(d->collect(map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe)),d_to_ctype_to_ldface_to_dofs,0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    nctypes = length(ctype_to_reference_fe)
-    ctype_to_num_dofs = zeros(Int,nctypes)
-    map!(GT.num_dofs,ctype_to_num_dofs,ctype_to_reference_fe)
+    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     nDfaces = num_faces(topology,D)
     dof_offset = 0
@@ -730,7 +727,7 @@ end
 function reference_face_own_dofs(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
-    if GT.conformity(space) === :default
+    r = if GT.conformity(space) === :default
         ctype_to_ldface_to_own_ldofs
     elseif GT.conformity(space) === :L2
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
@@ -749,12 +746,13 @@ function reference_face_own_dofs(space::AbstractSpace,d)
     else
         error("This line cannot be reached")
     end
+    collect(r)
 end
 
 function reference_face_own_dof_permutations(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    if GT.conformity(space) === :default
+    r = if GT.conformity(space) === :default
         ctype_to_ldface_to_pindex_to_perm
     elseif GT.conformity(space) === :L2
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
@@ -775,6 +773,7 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
     else
         error("This line cannot be reached")
     end
+    collect(r)
 end
 
 partition_from_mask(a) = partition_from_mask(identity,a)
