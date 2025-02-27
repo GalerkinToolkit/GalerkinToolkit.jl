@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1739694959226,
+  "lastUpdate": 1740673524120,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -974,6 +974,36 @@ window.BENCHMARK_DATA = {
             "value": 721699090,
             "unit": "ns",
             "extra": "gctime=29437843\nmemory=458406328\nallocs=15341833\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0ce7097a530c4c9d741b3a43338be4dedbbfe823",
+          "message": "Merge pull request #185 from GalerkinToolkit/enhancements\n\nFixing misc type instabilities",
+          "timestamp": "2025-02-27T17:21:42+01:00",
+          "tree_id": "128cbb09f8519ac396164cfc80d8af6a78ea164f",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/0ce7097a530c4c9d741b3a43338be4dedbbfe823"
+        },
+        "date": 1740673523855,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 680371653.5,
+            "unit": "ns",
+            "extra": "gctime=25460292.5\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
