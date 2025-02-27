@@ -281,29 +281,53 @@ function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.pref
 end
 
 function generate_dof_ids(space::AbstractSpace)
-    state = generate_dof_ids_step_1(space)
+    state0 = generate_dof_ids_step_0(space)
+    state = generate_dof_ids_step_1(space,state0)
     generate_dof_ids_step_2(space,state,space |> GT.dirichlet_boundary)
 end
 
-function generate_dof_ids_step_1(space)
+function generate_dof_ids_step_0(space)
+    # This is a function barrier to help type inference
+    domain = space |> GT.domain
+    D = GT.num_dims(domain)
+    cell_to_Dface = domain |> GT.faces
+    mesh = domain |> GT.mesh
+    topology = mesh |> GT.topology
+    ctype_to_reference_fe = space |> GT.reference_spaces
+    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
+    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
+    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+    (;
+     d_to_ctype_to_ldface_to_own_dofs,
+     d_to_ctype_to_ldface_to_pindex_to_perm,
+     d_to_ctype_to_ldface_to_num_own_dofs,
+     d_to_ctype_to_ldface_to_dofs,
+     ctype_to_num_dofs
+    )
+end
+
+function generate_dof_ids_step_1(space,state0)
+    (;
+     d_to_ctype_to_ldface_to_own_dofs,
+     d_to_ctype_to_ldface_to_pindex_to_perm,
+     d_to_ctype_to_ldface_to_num_own_dofs,
+     d_to_ctype_to_ldface_to_dofs,
+     ctype_to_num_dofs
+    ) = state0
     domain = space |> GT.domain
     D = GT.num_dims(domain)
     cell_to_Dface = domain |> GT.faces
     mesh = domain |> GT.mesh
     topology = mesh |> GT.topology
     d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
-    ctype_to_reference_fe = space |> GT.reference_spaces
     cell_to_ctype = space |> GT.face_reference_id
-    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
-    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
-    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
-    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
-    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     nDfaces = num_faces(topology,D)
+    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
+    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
+    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
     dof_offset = 0
     for d in 0:D
         ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
