@@ -3,15 +3,15 @@ function monolithic_vector_assembly_strategy()
     function init(dofs,::Type{T}) where T
         n_total_dofs = length(dofs)
         offsets = [0]
-        (;offsets,n_total_dofs,T)
+        (;offsets,n_total_dofs,T_val=Val(T))
     end
     function init(block_dofs::BRange,::Type{T}) where T
         n_total_dofs = length(block_dofs)
         offsets = blocklasts(block_dofs) .- map(length,blocks(block_dofs))
-        (;offsets,n_total_dofs,T)
+        (;offsets,n_total_dofs,T_val=Val(T))
     end
     function scalar_type(setup)
-        setup.T
+        val_parameter(setup.T_val)
     end
     function counter(setup)
         0
@@ -21,7 +21,7 @@ function monolithic_vector_assembly_strategy()
     end
     function allocate(n,setup)
         Ti = Int32
-        T = setup.T
+        T = val_parameter(setup.T_val)
         I = zeros(Ti,n)
         V = zeros(T,n)
         (;I,V)
@@ -55,17 +55,17 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
         n_total_cols = length(dofs_trial)
         offsets_rows = [0]
         offsets_cols = [0]
-        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T)
+        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T_val=Val(T))
     end
     function init(dofs_test::BRange,dofs_trial,::Type{T}) where T
         n_total_rows = length(dofs_test)
         n_total_cols = length(dofs_trial)
         offsets_rows = blocklasts(dofs_test) .- map(length,blocks(dofs_test))
         offsets_cols = blocklasts(dofs_trial) .- map(length,blocks(dofs_trial))
-        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T)
+        (;offsets_rows,offsets_cols,n_total_rows,n_total_cols,T_val=Val(T))
     end
     function scalar_type(setup)
-        setup.T
+        val_parameter(setup.T_val)
     end
     function counter(setup)
         0
@@ -75,7 +75,7 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
     end
     function allocate(n,setup)
         Ti = Int32
-        T = setup.T
+        T = val_parameter(setup.T_val)
         I = zeros(Ti,n)
         J = zeros(Ti,n)
         V = zeros(T,n)
@@ -94,7 +94,7 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
         V = alloc.V
         n_total_rows = setup.n_total_rows
         n_total_cols = setup.n_total_cols
-        T = setup.T
+        T = val_parameter(setup.T_val)
         M = matrix_type === nothing ? SparseMatrixCSC{T,Int} : matrix_type
         A,cache = sparse_matrix(M,I,J,V,n_total_rows,n_total_cols;reuse=Val(true))
         (A, cache)
@@ -230,7 +230,7 @@ function assemble_vector_fill!(integral,state)
     field_to_D = map(num_dims,field_to_domain)
     counter = vector_strategy.counter(setup)
     T = vector_strategy.scalar_type(setup)
-    b = zeros(T,max_local_dofs(space))
+    b = zeros(T,max_num_reference_dofs(space))
     for measure_and_contribution in contributions
         measure,contribution = measure_and_contribution
         domain = GT.domain(measure)
@@ -448,7 +448,7 @@ function assemble_matrix_fill!(integral,state)
     axis_to_field_to_D = map(field_to_domain->map(num_dims,field_to_domain),axis_to_field_to_domain)
     counter = matrix_strategy.counter(setup)
     T = matrix_strategy.scalar_type(setup)
-    b = zeros(T,max_local_dofs(trial_space), max_local_dofs(test_space))
+    b = zeros(T,max_num_reference_dofs(trial_space), max_num_reference_dofs(test_space))
 
     for measure_and_contribution in contributions
         measure,contribution = measure_and_contribution

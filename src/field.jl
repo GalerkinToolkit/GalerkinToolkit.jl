@@ -280,7 +280,7 @@ end
 #end
 
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
-    interpolate_impl!(f,u,free_or_diri)
+    interpolate_impl!(f,u,space(u),free_or_diri)
 end
 
 #function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
@@ -289,10 +289,9 @@ end
 #    u
 #end
 
-function interpolate_impl!(f,u,free_or_diri;location=1)
+function interpolate_impl!(f,u,space,free_or_diri;location=1)
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)
-    space = GT.space(u)
     dof = gensym("fe-dof")
     sigma = GT.dual_basis_quantity(space,dof)
     face_to_dofs = GT.face_dofs(space)
@@ -341,9 +340,9 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
     u
 end
 
-function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
+function interpolate_impl!(f::PiecewiseField,u,space,free_or_diri)
     for (location,field) in f.fields |> enumerate
-        interpolate_impl!(field,u,free_or_diri;location)
+        interpolate_impl!(field,u,space,free_or_diri;location)
     end
     u
 end

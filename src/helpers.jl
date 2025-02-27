@@ -45,18 +45,17 @@ such as the mesh constructors `cartesian_mesh` and `mesh_from_gmsh`.
 In this case, the computations using the generated mesh, will use the given options by default.
 """
 function options(;
-    reference_int_type=Int16,
-    int_type=Int32,
-    global_int_type=Int,
-    real_type=Float64,
+        reference_int_type=Int16,
+        int_type=Int32,
+        global_int_type=Int,
+        real_type=Float64,
     )
-    contents = (;
-                reference_int_type=Val(reference_int_type),
-                int_type=Val(int_type),
-                global_int_type=Val(global_int_type),
-                real_type=Val(real_type),
-               )
-    Options(contents)
+    Options(
+            reference_int_type,
+            int_type,
+            global_int_type,
+            real_type,
+           )
 end
 
 options(object::AbstractType) = object.options
@@ -74,8 +73,11 @@ All properties and type parameters are private.
 - [`global_int_type`](@ref)
 - [`real_type`](@ref)
 """
-struct Options{A} <: AbstractType
-    contents::A
+struct Options{A,B,C,D} <: AbstractType
+    reference_int_type::Type{A}
+    int_type::Type{B}
+    global_int_type::Type{C}
+    real_type::Type{D}
 end
 
 """
@@ -83,26 +85,26 @@ end
 
 Return the type of the integers used to enumerate reference quantities.
 """
-reference_int_type(options::Options) = val_parameter(options.contents.reference_int_type)
+reference_int_type(options::Options) = options.reference_int_type
 
 """
     int_type(options::Options)
 
 Return the default integer type used in the computation except for reference and global quantities.
 """
-int_type(options::Options) = val_parameter(options.contents.int_type)
+int_type(options::Options) = options.int_type
 
 """
     global_int_type(options::Options)
 
 Return the type of the integers used to enumerate global quantities.
 """
-global_int_type(options::Options) = val_parameter(options.contents.global_int_type)
+global_int_type(options::Options) = options.global_int_type
 
 """
     real_type(options::Options)
 
 Return the default real type used in the computation.
 """
-real_type(options::Options) = val_parameter(options.contents.real_type)
+real_type(options::Options) = options.real_type
 

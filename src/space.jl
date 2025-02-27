@@ -6,16 +6,18 @@ num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 
-function max_local_dofs(space::AbstractSpace,field)
+function max_num_reference_dofs(space::AbstractSpace,field)
     rid_to_reffe = reference_spaces(GT.field(space,field))
-    map(num_dofs,rid_to_reffe) |> maximum
+    ns = map(num_dofs,rid_to_reffe)
+    maximum(ns)
 end
 
-function max_local_dofs(space::AbstractSpace)
+function max_num_reference_dofs(space::AbstractSpace)
     nfields = num_fields(space)
-    map(field->max_local_dofs(space,field),1:nfields) |> maximum
+    ns = Vector{Int}(undef,nfields)
+    map!(field->max_num_reference_dofs(space,field),ns,1:nfields)
+    maximum(ns)
 end
-
 
 #function free_dofs(a::AbstractSpace,field)
 #    @assert field == 1
@@ -279,30 +281,53 @@ function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.pref
 end
 
 function generate_dof_ids(space::AbstractSpace)
-    state = generate_dof_ids_step_1(space)
+    state0 = generate_dof_ids_step_0(space)
+    state = generate_dof_ids_step_1(space,state0)
     generate_dof_ids_step_2(space,state,space |> GT.dirichlet_boundary)
 end
 
-function generate_dof_ids_step_1(space)
+function generate_dof_ids_step_0(space)
+    # This is a function barrier to help type inference
+    domain = space |> GT.domain
+    D = GT.num_dims(domain)
+    cell_to_Dface = domain |> GT.faces
+    mesh = domain |> GT.mesh
+    topology = mesh |> GT.topology
+    ctype_to_reference_fe = space |> GT.reference_spaces
+    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
+    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
+    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
+    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
+    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
+    (;
+     d_to_ctype_to_ldface_to_own_dofs,
+     d_to_ctype_to_ldface_to_pindex_to_perm,
+     d_to_ctype_to_ldface_to_num_own_dofs,
+     d_to_ctype_to_ldface_to_dofs,
+     ctype_to_num_dofs
+    )
+end
+
+function generate_dof_ids_step_1(space,state0)
+    (;
+     d_to_ctype_to_ldface_to_own_dofs,
+     d_to_ctype_to_ldface_to_pindex_to_perm,
+     d_to_ctype_to_ldface_to_num_own_dofs,
+     d_to_ctype_to_ldface_to_dofs,
+     ctype_to_num_dofs
+    ) = state0
     domain = space |> GT.domain
     D = GT.num_dims(domain)
     cell_to_Dface = domain |> GT.faces
     mesh = domain |> GT.mesh
     topology = mesh |> GT.topology
     d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
-    ctype_to_reference_fe = space |> GT.reference_spaces
     cell_to_ctype = space |> GT.face_reference_id
-    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
-    d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
-    d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
-    d_to_ctype_to_ldface_to_num_own_dofs = map(d->map(ldface_to_own_dofs->length.(ldface_to_own_dofs),d_to_ctype_to_ldface_to_own_dofs[d+1]),0:D)
-    d_to_ctype_to_ldface_to_dofs = map(d->map(fe->GT.face_dofs(fe,d),ctype_to_reference_fe),0:D)
-    #d_to_ctype_to_ldface_to_pindex_to_perm = map(d->map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe),0:D)
-    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
-    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
-    ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
     ncells = length(cell_to_ctype)
     nDfaces = num_faces(topology,D)
+    d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
+    d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
+    d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
     dof_offset = 0
     for d in 0:D
         ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
@@ -359,7 +384,7 @@ function generate_dof_ids_step_1(space)
             for ldface in 1:nldfaces
                 dface = ldface_to_dface[ldface]
                 own_ldofs = ldface_to_own_ldofs[ldface]
-                dof_offset = dface_to_dof_offset[dface]
+                dof_offset = Int(dface_to_dof_offset[dface])
                 pindex_to_perm = ldface_to_pindex_to_perm[ldface]
                 pindex = ldface_to_pindex[ldface]
                 perm = pindex_to_perm[pindex]
@@ -723,7 +748,7 @@ end
 function reference_face_own_dofs(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
-    if GT.conformity(space) === :default
+    r = if GT.conformity(space) === :default
         ctype_to_ldface_to_own_ldofs
     elseif GT.conformity(space) === :L2
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
@@ -742,12 +767,13 @@ function reference_face_own_dofs(space::AbstractSpace,d)
     else
         error("This line cannot be reached")
     end
+    collect(r)
 end
 
 function reference_face_own_dof_permutations(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    if GT.conformity(space) === :default
+    r = if GT.conformity(space) === :default
         ctype_to_ldface_to_pindex_to_perm
     elseif GT.conformity(space) === :L2
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
@@ -768,6 +794,7 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
     else
         error("This line cannot be reached")
     end
+    collect(r)
 end
 
 partition_from_mask(a) = partition_from_mask(identity,a)
@@ -1095,7 +1122,7 @@ function interior_nodes(fe::LagrangeFaceSpace)
     nnodes = num_nodes(fe)
     D = num_dims(fe)
     if D == 0
-        return collect(1:nnodes)
+        return collect(Int,1:nnodes)
     else
         mesh = complexify(fe)
         node_is_touched = fill(true,nnodes)
@@ -1147,16 +1174,19 @@ end
 function face_interior_nodes_from_mesh_face(fe,d)
     D = num_dims(fe)
     if  d == D
-        [GT.interior_nodes(fe)]
+        Vector{Int32}[GT.interior_nodes(fe)]
     else
         boundary = GT.complexify(fe)
         dface_to_lnode_to_node = GT.face_nodes(boundary,d)
         dface_to_ftype = GT.face_reference_id(boundary,d)
-        ftype_to_refdface = GT.reference_spaces(boundary,d)
-        ftype_to_lnodes = map(GT.interior_nodes,ftype_to_refdface)
+        d_ftype_to_refdface = GT.reference_spaces(boundary)
+        d_ftype_to_lnodes = map(d_ftype_to_refdface) do ftype_to_refdface
+            map(GT.interior_nodes,ftype_to_refdface)
+        end
+        ftype_to_lnodes = d_ftype_to_lnodes[d+1]
         map(dface_to_ftype,dface_to_lnode_to_node) do ftype,lnode_to_node
             lnodes = ftype_to_lnodes[ftype]
-            lnode_to_node[lnodes]
+            Int32.(lnode_to_node[lnodes])
         end
     end
 end
@@ -1167,7 +1197,7 @@ function face_interior_node_permutations(fe::LagrangeFaceSpace,d)
     else
         D = num_dims(fe)
         if  d == D
-            [[ collect(1:num_interior_nodes(fe)) ]]
+            [[ collect(Int32,1:num_interior_nodes(fe)) ]]
         else
             [[ Int32[] ] for _ in 1:num_faces(mesh(domain(fe)),d)]
         end
@@ -1177,12 +1207,15 @@ end
 function face_interior_node_permutations_from_mesh_face(fe,d)
     D = num_dims(fe)
     if  d == D
-        [[ collect(1:num_interior_nodes(fe)) ]]
+        [[ collect(Int32,1:num_interior_nodes(fe)) ]]
     else
         boundary = GT.complexify(fe)
         dface_to_ftype = GT.face_reference_id(boundary,d)
-        ftype_to_refdface = GT.reference_spaces(boundary,d)
-        ftype_to_perms = map(GT.interior_node_permutations,ftype_to_refdface)
+        d_ftype_to_refdface = GT.reference_spaces(boundary)
+        d_ftype_to_perms = map(d_ftype_to_refdface) do ftype_to_refdface
+            map(GT.interior_node_permutations,ftype_to_refdface)
+        end
+        ftype_to_perms = d_ftype_to_perms[d+1]
         map(dface_to_ftype) do ftype
             perms = ftype_to_perms[ftype]
         end
@@ -1208,13 +1241,13 @@ function node_permutations_from_mesh_face(refface,interior_ho_nodes)
     geo = domain(refface)
     vertex_perms = vertex_permutations(geo)
     if length(interior_ho_nodes) == 0
-        return map(i->Int[],vertex_perms)
+        return map(i->Int32[],vertex_perms)
     end
     if length(vertex_perms) == 1
-        return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
+        return map(i->collect(Int32,1:length(interior_ho_nodes)),vertex_perms)
     end
     if order(refface) == 0 # TODO ugly. It assumes the hack above for node coordinates of faces of order 0
-        return map(i->collect(1:length(interior_ho_nodes)),vertex_perms)
+        return map(i->collect(Int32,1:length(interior_ho_nodes)),vertex_perms)
     end
     geo_mesh = mesh(geo)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
@@ -1229,7 +1262,7 @@ function node_permutations_from_mesh_face(refface,interior_ho_nodes)
     A = zeros(Float64,length(q),length(fun_node_coords))
     A = tabulator(ref_face)(value,q)
     perm_vertex_coords = similar(vertex_coords)
-    node_perms = similar(vertex_perms)
+    node_perms = similar(vertex_perms,Vector{Int32})
     for (iperm,permutation) in enumerate(vertex_perms)
         for (j,cj) in enumerate(permutation)
           perm_vertex_coords[j] = vertex_coords[cj]
@@ -1293,9 +1326,9 @@ end
 function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
     face_to_pindex_to_inodes = face_interior_node_permutations(fe,d)
     if tensor_size(fe) === :scalar
-        return face_to_pindex_to_inodes
+        return convert(Vector{Vector{Vector{Int32}}},face_to_pindex_to_inodes)
     else
-        Tv = fe |> options |> int_type
+        Tv = Int32
         node_to_dofs = node_dofs(fe)
         face_to_inodes = face_interior_nodes(fe,d)
         face_to_idofs = face_own_dofs(fe,d)
@@ -1303,7 +1336,7 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
         ndofs = num_dofs(fe)
         dof_to_idof = zeros(Tv,ndofs)
         lis = LinearIndices(tensor_size(fe))
-        map(1:nfaces) do face
+        r = map(1:nfaces) do face
             pindex_to_inodes = face_to_pindex_to_inodes[face]
             inode_to_node = face_to_inodes[face]
             idof_to_dof = face_to_idofs[face]
@@ -1337,16 +1370,17 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
                 reduce(vcat,nested;init=Tv[])
             end
         end
+        return convert(Vector{Vector{Vector{Tv}}},r)
     end
 end
 
 function num_dofs(a::LagrangeFaceSpace)
     nnodes = num_nodes(a)
     if tensor_size(a) === :scalar
-        nnodes
+        Int(nnodes)
     else
         ndofs_per_node = prod(tensor_size(a))
-        nnodes*ndofs_per_node
+        Int(nnodes*ndofs_per_node)
     end
 end
 
@@ -1464,7 +1498,7 @@ function simplexify(ref_face::LagrangeFaceSpace)
 end
 
 function lagrange_space(domain::AbstractDomain,order;
-    conformity = :default,
+    conformity = Val(:default),
     dirichlet_boundary=nothing,
     space_type = Val(:default),
     major = Val(:component),
@@ -1473,7 +1507,7 @@ function lagrange_space(domain::AbstractDomain,order;
     setup = Val(true),
     )
 
-    @assert conformity in (:default,:L2)
+    @assert val_parameter(conformity) in (:default,:L2)
 
     space = lagrange_mesh_space(;
                         domain,
@@ -1532,11 +1566,11 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
             lagrange_space(
                            domain,
                            order(pspace);
-                           conformity = conformity(pspace),
+                           conformity = Val(conformity(pspace)),
                            dirichlet_boundary,
-                           space_type = space_type(pspace),
-                           major = major(pspace),
-                           tensor_size = tensor_size(pspace),
+                           space_type = Val(space_type(pspace)),
+                           major = Val(major(pspace)),
+                           tensor_size = Val(tensor_size(pspace)),
                            setup = Val(false),
                           )
         end
@@ -1546,18 +1580,18 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
             lagrange_space(
                            domain,
                            order(pspace);
-                           conformity = conformity(pspace),
+                           conformity = Val(conformity(pspace)),
                            dirichlet_boundary = pdirichlet_boundary,
-                           space_type = space_type(pspace),
-                           major = major(pspace),
-                           tensor_size = tensor_size(pspace),
+                           space_type = Val(space_type(pspace)),
+                           major = Val(major(pspace)),
+                           tensor_size = Val(tensor_size(pspace)),
                            setup = Val(false),
                           )
         end
     end
 end
 
-conformity(space::LagrangeMeshSpace) = space.contents.conformity
+conformity(space::LagrangeMeshSpace) = val_parameter(space.contents.conformity)
 dirichlet_boundary(space::LagrangeMeshSpace) = space.contents.dirichlet_boundary
 domain(space::LagrangeMeshSpace) = space.contents.domain
 order(space::LagrangeMeshSpace) = space.contents.order
@@ -1593,17 +1627,27 @@ function reference_spaces(space::LagrangeMeshSpace)
     domain = space |> GT.domain
     mesh = domain |> GT.mesh
     D = domain |> GT.num_dims
-    space_type = GT.space_type(space) # TODO Ugly
     ctype_to_refface = GT.reference_spaces(mesh,D)
     ctype_to_geometry = map(GT.domain,ctype_to_refface)
     ctype_to_reffe = map(ctype_to_geometry) do geometry
-        space2 = space_type === :default ? default_space_type(geometry) : space_type
+        space_type = GT.space_type(space)
+        space_type_2 = space_type === :default ? default_space_type(geometry) : space_type
         lagrange_space(geometry,order(space);
-           space_type=Val(space2),
+           space_type=Val(space_type_2),
            major=Val(major(space)),
            tensor_size = Val(tensor_size(space)))
     end
     ctype_to_reffe
+end
+
+function num_nodes(a::LagrangeMeshSpace)
+    ndofs = num_free_dofs(a) + num_dirichlet_dofs(a)
+    if tensor_size(a) === :scalar
+        ncoms = 1
+    else
+        ncoms = Int(prod(tensor_size(a)))
+    end
+    div(ndofs,ncoms)
 end
 
 function face_nodes(a::LagrangeMeshSpace)
@@ -1616,33 +1660,11 @@ function face_nodes(a::LagrangeMeshSpace)
     face_dofs(V)
 end
 
-function node_coordinates(a::LagrangeMeshSpace)
-    V = lagrange_space(
-                       GT.domain(a),
-                       GT.order(a);
-                       conformity = GT.conformity(a),
-                       space_type = GT.space_type(a))
-    vrid_to_reffe = reference_spaces(V)
-    mface_to_vrid = face_reference_id(V)
-    domain = GT.domain(a)
-    mesh = GT.mesh(domain)
-    d = num_dims(domain)
-    mrid_to_refface = reference_spaces(mesh,d)
-    mface_to_mrid = face_reference_id(mesh,d)
-    vface_to_mface = faces(domain)
-    nvfaces = length(vface_to_mface)
-    mface_to_nodes = face_dofs(V)
-    nnodes = length(free_dofs(V))
-    mnode_to_x = node_coordinates(mesh)
+
+@noinline function node_coordinates_LagrangeMeshSpace_barrier!(vface_to_mface,mface_to_vrid,mface_to_mrid,vrid_mrid_tabulator,mface_to_mnodes,mface_to_nodes,mnode_to_x,node_to_x)
     T = eltype(mnode_to_x)
     z = zero(T)
-    node_to_x = zeros(T,nnodes)
-    mface_to_mnodes = face_nodes(mesh,d)
-    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
-        map(mrid_to_refface) do refface
-            tabulator(refface)(value,node_coordinates(reffe))
-        end
-    end
+    nvfaces = length(vface_to_mface)
     for vface in 1:nvfaces
         mface = vface_to_mface[vface]
         vrid = mface_to_vrid[mface]
@@ -1660,13 +1682,62 @@ function node_coordinates(a::LagrangeMeshSpace)
             node_to_x[node] = x
         end
     end
+end
+
+function node_coordinates(a::LagrangeMeshSpace)
+    V = lagrange_space(
+                       GT.domain(a),
+                       GT.order(a);
+                       conformity = Val(GT.conformity(a)),
+                       space_type = Val(GT.space_type(a)))
+    vrid_to_reffe = reference_spaces(V)
+    mface_to_vrid = face_reference_id(V)
+    domain = GT.domain(a)
+    mesh = GT.mesh(domain)
+    d = num_dims(domain)
+    mrid_to_refface = reference_spaces(mesh,d)
+    mface_to_mrid = face_reference_id(mesh,d)
+    vface_to_mface = faces(domain)
+    mface_to_nodes = face_dofs(V)
+    nnodes = length(free_dofs(V))
+    mnode_to_x = node_coordinates(mesh)
+    T = eltype(mnode_to_x)
+    node_to_x = zeros(T,nnodes)
+    mface_to_mnodes = face_nodes(mesh,d)
+    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
+        map(mrid_to_refface) do refface
+            tabulator(refface)(value,node_coordinates(reffe))
+        end
+    end
+    node_coordinates_LagrangeMeshSpace_barrier!(vface_to_mface,mface_to_vrid,mface_to_mrid,vrid_mrid_tabulator,mface_to_mnodes,mface_to_nodes,mnode_to_x,node_to_x)
     node_to_x
 end
 
-#TODO these would provably need loop over cells
-#function node_dofs(space::LagrangeMeshSpace)
-#end
-#
+function node_dofs(space::LagrangeMeshSpace)
+    ctype_fe = reference_spaces(space)
+    ctype_lnode_comp_ldof = map(GT.node_dofs,ctype_fe)
+    face_ctype = face_reference_id(space)
+    face_dofs = GT.face_dofs(space)
+    face_nodes = GT.face_nodes(space)
+    nnodes = num_nodes(space)
+    T = eltype(eltype(ctype_lnode_comp_ldof))
+    node_dofs = zeros(T,nnodes)
+    domain = GT.domain(space)
+    for face in faces(domain)
+        ctype = face_ctype[face]
+        lnode_comp_ldof = ctype_lnode_comp_ldof[ctype]
+        lnode_node = face_nodes[face]
+        ldof_dof = face_dofs[face]
+        nlnodes = length(lnode_node)
+        for lnode in 1:nlnodes
+            comp_ldof = lnode_comp_ldof[lnode]
+            dofs = map(ldof->ldof_dof[ldof],comp_ldof)
+            node = lnode_node[lnode]
+            node_dofs[node] = dofs
+        end
+    end
+    node_dofs
+end
 
 function free_dof_node(space::LagrangeMeshSpace)
     free_and_dirichlet_dof_node(space)[1]
@@ -1711,6 +1782,39 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
         end
     end
     free_dof_to_node, diri_dof_to_node
+end
+
+function interpolate_impl!(f::AnalyticalField,u,space::LagrangeMeshSpace,free_or_diri;location=1)
+    fun = f.definition
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
+    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+    domain = GT.domain(space)
+    @assert is_physical_domain(domain)
+    node_x = node_coordinates(space)
+    node_dofs = GT.node_dofs(space)
+    nnodes = num_nodes(space)
+    for node in 1:nnodes
+        x = node_x[node]
+        comp_v = fun(x)
+        comp_dof = node_dofs[node]
+        ncomps = length(comp_v)
+        for comp in 1:ncomps
+            dof = comp_dof[comp]
+            v = comp_v[comp]
+            if dof > 0
+                if free_or_diri != DIRICHLET
+                    free_vals[dof] = v
+                end
+            else
+                diri_dof = -dof
+                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+                    diri_vals[diri_dof] = v
+                end
+            end
+        end
+    end
+    u
 end
 
 """
@@ -2232,9 +2336,13 @@ function dual_basis_quantity(a::CartesianProductSpace,field)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::Measure)
-    mesh = measure.mesh
-    dom = measure.domain
+function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
+    shape_function_accessor(f,space,quadrature(measure))
+end
+
+function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::AbstractQuadrature)
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert !is_reference_domain(dom)
     d = num_dims(dom)
     @assert num_dims(domain(space)) == d
@@ -2257,9 +2365,9 @@ function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::
     end
 end
 
-function shape_function_accessor(f::typeof(ForwardDiff.gradient),space::AbstractSpace,measure::Measure)
-    mesh = measure.mesh
-    dom = measure.domain
+function shape_function_accessor(f::typeof(ForwardDiff.gradient),space::AbstractSpace,measure::AbstractQuadrature)
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert !is_reference_domain(dom)
     d = num_dims(dom)
     @assert num_dims(domain(space)) == d
@@ -2308,6 +2416,10 @@ function dofs_accessor(space::AbstractSpace,dom::AbstractDomain)
 end
 
 function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+    discrete_field_accessor(f,uh,quadrature(measure))
+end
+
+function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature)
     dom = domain(measure)
     space = GT.space(uh)
     d = num_dims(dom)
@@ -2445,7 +2557,7 @@ function setup_space_local_step_1(space)
     ncells = length(cell_ctype)
     d_n_oddofs = ntuple(D+1) do t
         d = t-1
-        dof_offset = 0
+        dof_offset = Int32(0)
         ctype_ldface_num_own_dofs = d_ctype_ldface_num_own_dofs[d+1]
         dface_dof_goffset = d_dface_dof_goffset[d+1]
         Dface_dfaces = d_Dface_dfaces[d+1]
