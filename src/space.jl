@@ -1660,36 +1660,11 @@ function face_nodes(a::LagrangeMeshSpace)
     face_dofs(V)
 end
 
-function node_coordinates(a::LagrangeMeshSpace)
-    V = lagrange_space(
-                       GT.domain(a),
-                       GT.order(a);
-                       conformity = Val(GT.conformity(a)),
-                       space_type = Val(GT.space_type(a)))
-    vrid_to_reffe = reference_spaces(V)
-    mface_to_vrid = face_reference_id(V)
-    domain = GT.domain(a)
-    mesh = GT.mesh(domain)
-    d = num_dims(domain)
-    mrid_to_refface = reference_spaces(mesh,d)
-    mface_to_mrid = face_reference_id(mesh,d)
-    vface_to_mface = faces(domain)
-    nvfaces = length(vface_to_mface)
-    mface_to_nodes = face_dofs(V)
-    nnodes = length(free_dofs(V))
-    mnode_to_x = node_coordinates(mesh)
+
+@noinline function node_coordinates_LagrangeMeshSpace_barrier!(vface_to_mface,mface_to_vrid,mface_to_mrid,vrid_mrid_tabulator,mface_to_mnodes,mface_to_nodes,mnode_to_x,node_to_x)
     T = eltype(mnode_to_x)
     z = zero(T)
-    node_to_x = zeros(T,nnodes)
-    mface_to_mnodes = face_nodes(mesh,d)
-    nvrids = length(vrid_to_reffe)
-    vrid_mrid_tabulator = Vector{Vector{Matrix{eltype(T)}}}(undef,nvrids)
-    map!(vrid_mrid_tabulator,vrid_to_reffe) do reffe
-        α = map(mrid_to_refface) do refface
-            tabulator(refface)(value,node_coordinates(reffe))
-        end
-        collect(α)
-    end
+    nvfaces = length(vface_to_mface)
     for vface in 1:nvfaces
         mface = vface_to_mface[vface]
         vrid = mface_to_vrid[mface]
@@ -1707,6 +1682,34 @@ function node_coordinates(a::LagrangeMeshSpace)
             node_to_x[node] = x
         end
     end
+end
+
+function node_coordinates(a::LagrangeMeshSpace)
+    V = lagrange_space(
+                       GT.domain(a),
+                       GT.order(a);
+                       conformity = Val(GT.conformity(a)),
+                       space_type = Val(GT.space_type(a)))
+    vrid_to_reffe = reference_spaces(V)
+    mface_to_vrid = face_reference_id(V)
+    domain = GT.domain(a)
+    mesh = GT.mesh(domain)
+    d = num_dims(domain)
+    mrid_to_refface = reference_spaces(mesh,d)
+    mface_to_mrid = face_reference_id(mesh,d)
+    vface_to_mface = faces(domain)
+    mface_to_nodes = face_dofs(V)
+    nnodes = length(free_dofs(V))
+    mnode_to_x = node_coordinates(mesh)
+    T = eltype(mnode_to_x)
+    node_to_x = zeros(T,nnodes)
+    mface_to_mnodes = face_nodes(mesh,d)
+    vrid_mrid_tabulator = map(vrid_to_reffe) do reffe
+        map(mrid_to_refface) do refface
+            tabulator(refface)(value,node_coordinates(reffe))
+        end
+    end
+    node_coordinates_LagrangeMeshSpace_barrier!(vface_to_mface,mface_to_vrid,mface_to_mrid,vrid_mrid_tabulator,mface_to_mnodes,mface_to_nodes,mnode_to_x,node_to_x)
     node_to_x
 end
 
@@ -2333,9 +2336,13 @@ function dual_basis_quantity(a::CartesianProductSpace,field)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::Measure)
-    mesh = measure.mesh
-    dom = measure.domain
+function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
+    shape_function_accessor(f,space,quadrature(measure))
+end
+
+function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::AbstractQuadrature)
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert !is_reference_domain(dom)
     d = num_dims(dom)
     @assert num_dims(domain(space)) == d
@@ -2358,9 +2365,9 @@ function shape_function_accessor(f::typeof(value),space::AbstractSpace,measure::
     end
 end
 
-function shape_function_accessor(f::typeof(ForwardDiff.gradient),space::AbstractSpace,measure::Measure)
-    mesh = measure.mesh
-    dom = measure.domain
+function shape_function_accessor(f::typeof(ForwardDiff.gradient),space::AbstractSpace,measure::AbstractQuadrature)
+    mesh = GT.mesh(measure)
+    dom = GT.domain(measure)
     @assert !is_reference_domain(dom)
     d = num_dims(dom)
     @assert num_dims(domain(space)) == d
@@ -2409,6 +2416,10 @@ function dofs_accessor(space::AbstractSpace,dom::AbstractDomain)
 end
 
 function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+    discrete_field_accessor(f,uh,quadrature(measure))
+end
+
+function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature)
     dom = domain(measure)
     space = GT.space(uh)
     d = num_dims(dom)
