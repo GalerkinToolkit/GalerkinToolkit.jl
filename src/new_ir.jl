@@ -67,14 +67,50 @@ struct TabulatedDiscreteFieldTerm{A, B, C, D, E} <: NewAbstractTerm
     prototype::E 
 end
 
-prototype(t::LeafTerm) = t.prototype
-prototype(t::CallTerm) = t.prototype
-prototype(t::LambdaTerm) = t.prototype
-prototype(t::IndexTerm) = t.prototype
-prototype(t::StatementTerm) = t.prototype
+
 prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
-prototype(t::TabulatedDiscreteFieldTerm) = t.prototype
-prototype(t::DiscreteFieldTerm) = t.prototype
+prototype(t::NewAbstractTerm) = t.prototype
+
+
+struct NewFormArgumentTerm{A, B} <: NewAbstractTerm # TODO: rename, check the type
+    space::A
+    prototype::B
+    arg::Int
+    field::Int
+    name::Symbol #TODO: is it needed?
+end
+
+struct TabulatedFormArgumentTerm{A, B, C, D} <: NewAbstractTerm # TODO: rename, check the type
+    linear_operation::A 
+    form_argument::NewFormArgumentTerm
+    point::B
+    measure::C 
+    prototype::D
+end
+
+struct OneFormTerm{A, B, C} <: NewAbstractTerm # TODO: complete
+    contribution::A
+    prototype::B
+    dof::C
+end
+
+
+
+space(t::TabulatedFormArgumentTerm) = space(t.form_argument)
+space(t::NewFormArgumentTerm) = t.space 
+
+function form_argument(space, arg::Int, field::Int) # TODO: typing
+    # arg: test or trial
+    # field: block of the global array and matrix 
+    @assert arg == 1 && field == 1 # TODO: extend from 1-form with 1 block only
+    name = gensym("form-argument-$arg-$field") # TODO: gensym or just a simple Symbol?
+    new_quantity(;name) do opts
+        NewFormArgumentTerm(space, identity, arg, field, name)
+    end
+
+end
+
+
 
 function lower(t::LeafTerm)
     t.value
@@ -260,8 +296,12 @@ end
 
 prototype(t::ContributionTerm) = t.prototype
 
+function rewrite_l1(t::OneFormTerm)
+    OneFormTerm(rewrite_l1(t.contribution), t.prototype, t.dof)
+end
 
-function rewrite_l1(t::Union{UniformTerm, LeafTerm, NumPointsTerm, WeightTerm, CoordinateTerm})
+
+function rewrite_l1(t::Union{UniformTerm, LeafTerm, NumPointsTerm, WeightTerm, CoordinateTerm, NewFormArgumentTerm})
     t
 end
 
@@ -279,6 +319,14 @@ function rewrite_l1(t::CallTerm)
         else
             error("arg type not supported for DiscreteField calls!")
         end
+    elseif t.callee isa NewFormArgumentTerm
+        if length(t.args) == 1  &&  t.args[1] isa CoordinateTerm
+            # TODO: other operators
+            TabulatedFormArgumentTerm(LeafTerm(:value, value), t.callee, t.args[1].point, 
+                                    t.args[1].measure, t.callee.prototype)
+        else
+            error("arg type not supported for DiscreteField calls!")
+        end
     else
         CallTerm(rewrite_l1(t.callee), map(rewrite_l1, t.args), t.prototype)
     end
@@ -290,28 +338,29 @@ function rewrite_l1(t::ContributionTerm)
 end
 
 
-function generate_body(t::UniformTerm,name_to_symbol,domain_face)
+function generate_body(t::UniformTerm,name_to_symbol,dummy_symbols)
     t2 = name_to_symbol[t.name]
     CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
     # :(value($t2))
 end
 
 
-function generate_body(t::IndexTerm,name_to_symbol,domain_face)
-    IndexTerm(generate_body(t.array, name_to_symbol, domain_face), generate_body(t.index, name_to_symbol, domain_face), t.prototype)
+function generate_body(t::IndexTerm,name_to_symbol,dummy_symbols)
+    IndexTerm(generate_body(t.array, name_to_symbol, dummy_symbols), generate_body(t.index, name_to_symbol, dummy_symbols), t.prototype)
 end
 
 
-function generate_body(t::CallTerm,name_to_symbol,domain_face)
-    callee = generate_body(t.callee, name_to_symbol, domain_face)
+function generate_body(t::CallTerm,name_to_symbol,dummy_symbols)
+    callee = generate_body(t.callee, name_to_symbol, dummy_symbols)
     args = map(t.args) do arg 
-        generate_body(arg, name_to_symbol, domain_face)
+        generate_body(arg, name_to_symbol, dummy_symbols)
     end
     CallTerm(callee, args, prototype(t))
 end
 
 
-function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
+function generate_body(t::NumPointsTerm,name_to_symbol,dummy_symbols)
+    (;domain_face) = dummy_symbols
     measure = name_to_symbol[t.measure.name]
     
     face_points = CallTerm(LeafTerm(:num_points_accessor, num_points_accessor), [LeafTerm(measure, t.measure)], x -> prototype(t))
@@ -324,7 +373,8 @@ function generate_body(t::NumPointsTerm,name_to_symbol,domain_face)
 end
 
 
-function generate_body(t::WeightTerm,name_to_symbol,domain_face)
+function generate_body(t::WeightTerm,name_to_symbol,dummy_symbols)
+    (;domain_face) = dummy_symbols
     measure = name_to_symbol[t.measure.name]
     point = t.point
         
@@ -380,9 +430,9 @@ function coordinate_quantity(measure::NewMeasure,point)
 end
 
 
-function generate_body(t::CoordinateTerm,name_to_symbol,domain_face)
+function generate_body(t::CoordinateTerm,name_to_symbol,dummy_symbols)
     # coordinate_accessor($measure)($domain_face)($point)
-
+    (;domain_face) = dummy_symbols
     measure = name_to_symbol[t.measure.name]
     point = t.point
 
@@ -400,7 +450,25 @@ function generate_body(t::CoordinateTerm,name_to_symbol,domain_face)
 end
 
 
-function contribution(f,measure::NewMeasure)
+# function contribution(f,measure::NewMeasure)
+#     point = :point
+#     x = coordinate_quantity(measure,point)
+#     fx = f(x)
+#     weight = WeightTerm(measure,point)
+#     num_points = NumPointsTerm(measure)
+#     domain = GT.domain(measure)
+#     integrand = term(fx,domain)
+#     ContributionTerm(
+#                      integrand,
+#                      weight,
+#                      point,
+#                      num_points, 
+#                      prototype(integrand))
+# end
+
+# const new_∫ = contribution
+function new_∫(f,measure::NewMeasure)
+    # TODO: find form arguments 
     point = :point
     x = coordinate_quantity(measure,point)
     fx = f(x)
@@ -409,20 +477,26 @@ function contribution(f,measure::NewMeasure)
     domain = GT.domain(measure)
     integrand = term(fx,domain)
     ContributionTerm(
-                     integrand,
-                     weight,
-                     point,
-                     num_points, 
-                     prototype(integrand))
+                    integrand,
+                    weight,
+                    point,
+                    num_points, 
+                    prototype(integrand))
 end
 
-const new_∫ = contribution
+
+function new_∫_1(f,measure::NewMeasure) # 1 form
+    # TODO: find form arguments?
+    contribution = new_∫(f, measure)
+    proto = contribution.prototype # TODO: cannot determine the dimensions of the local matrix, as it depends on the space selected in further steps
+    OneFormTerm(contribution, proto, nothing)
+end
 
 
-function generate_body(t::ContributionTerm,name_to_symbol,domain_face)
-    integrand_expr = generate_body(t.integrand,name_to_symbol,domain_face)
-    weight_expr = generate_body(t.weight,name_to_symbol,domain_face)
-    num_points_expr = generate_body(t.num_points,name_to_symbol,domain_face)
+function generate_body(t::ContributionTerm,name_to_symbol,dummy_symbols)
+    integrand_expr = generate_body(t.integrand,name_to_symbol,dummy_symbols)
+    weight_expr = generate_body(t.weight,name_to_symbol,dummy_symbols)
+    num_points_expr = generate_body(t.num_points,name_to_symbol,dummy_symbols)
     point = t.point
 
     l_body = CallTerm(LeafTerm(:*, *), [integrand_expr, weight_expr], prototype(integrand_expr))
@@ -477,20 +551,61 @@ end
 function capture!(a::LeafTerm, name_to_symbol, name_to_captured_data)
 end
 
-function generate_body(t::LeafTerm,name_to_symbol,domain_face)
-    t
+function capture!(a::OneFormTerm, name_to_symbol, name_to_captured_data)
+    capture!(a.contribution, name_to_symbol, name_to_captured_data)
+end
+
+function capture!(a::NewFormArgumentTerm, name_to_symbol, name_to_captured_data)
+    name = a.name 
+    if !haskey(name_to_symbol, name) # TODO: find the correct form arg
+        name_to_captured_data[name] = a
+    end
 end
 
 
-function generate_body(t::DiscreteFieldTerm,name_to_symbol,domain_face)
+function generate_body(t::LeafTerm,name_to_symbol,dummy_symbols)
+    t
+end
+
+function generate_body(t::OneFormTerm,name_to_symbol,dummy_symbols)
+    (;dofs) = dummy_symbols
+    dof_term = LeafTerm(dofs[1], dofs[1])
+    OneFormTerm(generate_body(t.contribution, name_to_symbol, dummy_symbols), t.prototype, dof_term) # TODO: array size?
+end
+
+function generate_body(t::TabulatedFormArgumentTerm,name_to_symbol,dummy_symbols)
+    # NewFormArgumentTerm not needed?
+    measure = name_to_symbol[t.measure.name]
+    point = t.point
+    (;domain_face, dofs) = dummy_symbols
+    dof = dofs[t.form_argument.arg]
+
+    measure_term = LeafTerm(measure, t.measure)
+    domain_face_term = LeafTerm(domain_face, 1)
+    point_term = LeafTerm(point, 1)
+    dof_term = LeafTerm(dof, 1)
+    
+    # space_term = CallTerm(LeafTerm(:space, space), [t.form_argument], t.form_argument.space) # TODO: term?
+    space_term = LeafTerm(gensym("space"), t.form_argument.space)
+
+    shape_func_0 = CallTerm(LeafTerm(:shape_function_accessor, shape_function_accessor), [t.linear_operation, space_term, measure_term], (x -> y -> z -> t.prototype))
+    shape_func_1 = CallTerm(shape_func_0, [domain_face_term], y -> z -> t.prototype)
+    shape_func_2 = CallTerm(shape_func_1, [point_term, LeafTerm(:nothing, nothing)], z -> t.prototype)
+    CallTerm(shape_func_2, [dof_term], t.prototype)
+
+
+end
+
+
+function generate_body(t::DiscreteFieldTerm,name_to_symbol,dummy_symbols)
     t_symbol = name_to_symbol[t.name]
     LeafTerm(t_symbol, prototype(t))
     # CallTerm(LeafTerm(:value, value), [LeafTerm(t_symbol, t)], prototype(t))
 end
 
 
-function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,domain_face)
-    
+function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,dummy_symbols)
+    (;domain_face) = dummy_symbols
     measure = name_to_symbol[t.measure.name]
     point = t.point
 
@@ -512,7 +627,7 @@ function generate_body(t::TabulatedDiscreteFieldTerm,name_to_symbol,domain_face)
     # CallTerm(point_func, [point_term], prototype_point)
 
     prototype_result = prototype(t)
-    discrete_field = generate_body(t.discrete_field, name_to_symbol, domain_face)
+    discrete_field = generate_body(t.discrete_field, name_to_symbol, dummy_symbols)
     field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, discrete_field, measure_term], x -> (y1, y2) -> prototype_result) # TODO: proto
     field_func =  CallTerm(field_func_0, [domain_face_term], (y1, y2) -> prototype_result)
     CallTerm(field_func, [point_term, jacobian_result], prototype_result)
@@ -546,7 +661,7 @@ function generate(t::NewAbstractTerm,params...)
     term_l1 = rewrite_l1(t)
 
     # L2: functional level
-    term_l2 = generate_body(term_l1, name_to_symbol,domain_face)
+    term_l2 = generate_body(term_l1, name_to_symbol,(;domain_face))
     term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
     
     # L3: imperative level
@@ -567,6 +682,61 @@ function generate(t::NewAbstractTerm,params...)
     end
     (MacroTools.striplines(result), captured_data)
 end
+
+
+function generate_1_form(field, t::NewAbstractTerm,params...)
+    # TODO: code reuse
+    itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
+    symbols = map(last,itr)
+    name_to_symbol = Dict(itr)
+    
+    # find all leaf terms 
+    name_to_captured_data = Dict()
+
+    capture!(t, name_to_symbol, name_to_captured_data)
+
+    # update name_to_symbol and generate captured data symbols
+    captured_data = []
+    captured_data_symbols = []
+    for (i, (k, v)) in enumerate(name_to_captured_data)
+        sym = Symbol("captured_arg_$i")
+        name_to_symbol[k] = sym 
+        push!(captured_data, v)
+        push!(captured_data_symbols, sym)
+    end
+
+    # generate body and optimize
+    domain_face = :dummy_domain_face
+    domain_face_term = LeafTerm(domain_face, 1)
+    dof = :dof 
+    dof_term = LeafTerm(dof, 1)
+    dummy_symbols = (; domain_face, dofs = [dof])
+    # rewrite L1 term
+    term_l1 = rewrite_l1(t)
+
+    # L2: functional level
+    term_l2 = generate_body(term_l1, name_to_symbol,dummy_symbols)
+    term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
+    
+    # L3: imperative level
+    term_l3 = statements(term_l2_wrapped)
+    
+    # L4: imperative level with loops
+    
+    # L5: julia expression
+    expr = lower(term_l3)
+    fun_block = expr
+
+    result = quote
+        ($(captured_data_symbols...), ) -> begin
+            ($(symbols...), ) -> begin
+                $fun_block
+            end
+        end
+    end
+    (MacroTools.striplines(result), captured_data)
+end
+
 
 
 function evaluate(expr_and_captured)
@@ -610,6 +780,10 @@ function lambda_args_once!(node::LambdaTerm, args)
     end
     push!(args, arg)
     lambda_args_once!(node.body, args)
+end
+
+function lambda_args_once!(node::OneFormTerm, args)
+    return lambda_args_once!(node.contribution, args)
 end
 
 function lambda_args_once(node)
@@ -664,9 +838,14 @@ function statements(node)
             return scopes
             # TODO: check if is sum?
             
-        elseif node isa LambdaTerm
-            body = node.body
-            args = node.args
+        elseif (node isa LambdaTerm) || (node isa OneFormTerm)
+            if node isa LambdaTerm
+                body = node.body
+                args = node.args
+            else
+                body = node.contribution
+                args = node.dof
+            end
             scope = args.value # assuming there is only 1 arg in LambdaTerm
             scope_level[scope] = depth + 1
             scope_rank[scope] = 0
@@ -693,7 +872,12 @@ function statements(node)
             var = Symbol("var_$(scope)_$(rank)")
             var_term = LeafTerm(var, prototype(node))
             hash_expr[hash] = var_term
-            expr = LambdaTerm(block, node.args, x -> prototype(node))
+            if node isa LambdaTerm
+                expr = LambdaTerm(block, node.args, x -> prototype(node))
+            else
+                expr = OneFormTerm(block, prototype(node), node.dof)
+            end
+
             assignment = StatementTerm(var_term, expr, prototype(node))
             block = scope_block[scope]
             push!(block.statements, assignment)
