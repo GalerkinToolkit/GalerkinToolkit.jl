@@ -1685,9 +1685,10 @@ function node_coordinates(a::LagrangeMeshSpace)
     nvrids = length(vrid_to_reffe)
     vrid_mrid_tabulator = Vector{Vector{Matrix{eltype(T)}}}(undef,nvrids)
     map!(vrid_mrid_tabulator,vrid_to_reffe) do reffe
-        map(mrid_to_refface) do refface
+        α = map(mrid_to_refface) do refface
             tabulator(refface)(value,node_coordinates(reffe))
         end
+        collect(α)
     end
     for vface in 1:nvfaces
         mface = vface_to_mface[vface]
