@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1740673524120,
+  "lastUpdate": 1740823465813,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1004,6 +1004,36 @@ window.BENCHMARK_DATA = {
             "value": 680371653.5,
             "unit": "ns",
             "extra": "gctime=25460292.5\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7d3b64f7ee1876a242cbf31ae0a88d348a748128",
+          "message": "Merge pull request #186 from GalerkinToolkit/enhancements\n\nAdded p-Laplacian example with manual assembly",
+          "timestamp": "2025-03-01T11:00:47+01:00",
+          "tree_id": "e25a2e3fc3a8ec1c1d3b19df89e1d2e40a9dceca",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/7d3b64f7ee1876a242cbf31ae0a88d348a748128"
+        },
+        "date": 1740823465519,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 666789457.5,
+            "unit": "ns",
+            "extra": "gctime=23265362.5\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
