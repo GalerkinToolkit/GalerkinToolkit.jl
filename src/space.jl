@@ -2415,6 +2415,49 @@ function dofs_accessor(space::AbstractSpace,dom::AbstractDomain)
     end
 end
 
+struct DiscreteFieldAccessor{A,B,C,D,E,F} <: AbstractAccessor
+    sface_to_face::A
+    face_to_dofs::B
+    face_to_rid::C
+    free_vals::D
+    diri_vals::E
+    face_point_dof_s::F
+end
+
+function (f::DiscreteFieldAccessor)(sface)
+    face = f.sface_to_face[sface]
+    dofs = f.face_to_dofs[face]
+    rid = f.face_to_rid[face]
+    point_dof_s = f.face_point_dof_s(sface)
+    ndofs = length(dofs)
+    function point_val(point,J)
+        dof_s = point_dof_s(point,J)
+        sum(1:ndofs) do i
+            dof = dofs[i]
+            s = dof_s(i)
+            if dof > 0
+                v = f.free_vals[dof]
+            else
+                v = f.diri_vals[-dof]
+            end
+            v*s
+        end
+    end
+end
+
+function update(f::DiscreteFieldAccessor;discrete_field)
+    uh = discrete_field
+    free_vals = free_values(uh)
+    diri_vals = dirichlet_values(uh)
+    DiscreteFieldAccessor(
+                          f.sface_to_face,
+                          f.face_to_dofs,
+                          f.face_to_rid,
+                          free_vals,
+                          diri_vals,
+                          f.face_point_dof_s)
+end
+
 function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
     discrete_field_accessor(f,uh,quadrature(measure))
 end
@@ -2431,26 +2474,13 @@ function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature
     free_vals = free_values(uh)
     diri_vals = dirichlet_values(uh)
     face_point_dof_s = shape_function_accessor(f,space,measure)
-    function face_point_val(sface)
-        face = sface_to_face[sface]
-        dofs = face_to_dofs[face]
-        rid = face_to_rid[face]
-        point_dof_s = face_point_dof_s(sface)
-        ndofs = length(dofs)
-        function point_val(point,J)
-            dof_s = point_dof_s(point,J)
-            sum(1:ndofs) do i
-                dof = dofs[i]
-                s = dof_s(i)
-                if dof > 0
-                    v = free_vals[dof]
-                else
-                    v = diri_vals[-dof]
-                end
-                v*s
-            end
-        end
-    end
+    DiscreteFieldAccessor(
+                          sface_to_face,
+                          face_to_dofs,
+                          face_to_rid,
+                          free_vals,
+                          diri_vals,
+                          face_point_dof_s)
 end
 
 function dirichlet_accessor(uh::DiscreteField,dom::AbstractDomain)

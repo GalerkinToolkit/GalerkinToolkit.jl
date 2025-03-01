@@ -205,6 +205,26 @@ end
 tol = 1e-12
 @test sqrt(err[]) < tol
 
+face_point_val = GT.update(face_point_val;discrete_field=uh)
+
+err = Ref(0.0)
+for face in 1:GT.num_faces(Ω)
+    npoints = face_npoints(face)
+    point_x = face_point_x(face)
+    point_J = face_point_J(face)
+    point_dV = face_point_dV(face)
+    point_val = face_point_val(face)
+    for point in 1:npoints
+        x = point_x(point)
+        J = point_J(point)
+        dV = point_dV(point,J)
+        val = point_val(point,J)
+        err[] += abs2(val-ufun(x))*dV
+    end
+end
+tol = 1e-12
+@test sqrt(err[]) < tol
+
 
 
 
