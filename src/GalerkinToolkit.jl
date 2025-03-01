@@ -17,6 +17,7 @@ using Metatheory
 using AutoHashEquals: @auto_hash_equals
 import MacroTools
 import PartitionedSolvers as PS
+import PartitionedSolvers: update
 import AutoHashEquals
 import AbstractTrees
 

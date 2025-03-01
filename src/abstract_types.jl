@@ -1,3 +1,8 @@
+abstract type AbstractAccessor <: Function end
+
+function Base.show(io::IO,data::GT.AbstractAccessor)
+    print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
+end
 
 @doc raw"""
     abstract type AbstractMesh <: AbstractType end
