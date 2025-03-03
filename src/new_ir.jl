@@ -97,11 +97,12 @@ struct TabulatedFormArgumentTerm{A, B, C, D, E, F} <: NewAbstractTerm # TODO: re
     prototype::F
 end
 
-struct OneFormTerm{A, B, C, D} <: NewAbstractTerm 
+struct OneFormTerm{A, B, C, D, E} <: NewAbstractTerm 
     contribution::A
     domain_face::B
     dof::C
-    prototype::D
+    local_vector::D
+    prototype::E
 end
 
 
@@ -158,6 +159,29 @@ function lower(t::BlockTerm)
     exprs = map(lower, t.statements)
     Expr(:block, exprs...)
 end
+
+
+function lower(t::OneFormTerm)
+    local_vector = lower(t.local_vector)
+    face = lower(t.domain_face)
+    ndofs = length(t.prototype)
+    body = lower(t.contribution)
+
+    # TODO: ugly, and loop-based optimization required
+    last_statement = (t.contribution isa BlockTerm) ? t.contribution.statements[end] : t.contribution 
+    last_var = (last_statement isa StatementTerm) ? last_statement.lhs : last_statement
+
+
+    last_map = :(map!($(lower(last_var)), $local_vector, 1:$ndofs))
+
+    Expr(:(->), :(($local_vector, $face)), Expr(:block, body.args..., last_map))
+
+
+    # ($local_vector, $face) -> begin
+    #      map!($body, $local_vector, 1:$ndofs)
+    # end
+end
+
 
 function new_quantity(term;name=nothing)
     NewQuantity(term,name)
@@ -310,7 +334,7 @@ end
 prototype(t::ContributionTerm) = t.prototype
 
 function rewrite_l1(t::OneFormTerm)
-    OneFormTerm(rewrite_l1(t.contribution), t.domain_face, t.dof, t.prototype)
+    OneFormTerm(rewrite_l1(t.contribution), t.domain_face, t.dof, t.local_vector, t.prototype)
 end
 
 
@@ -561,7 +585,7 @@ function generate_body(t::LeafTerm,name_to_symbol)
 end
 
 function generate_body(t::OneFormTerm,name_to_symbol)
-    OneFormTerm(generate_body(t.contribution, name_to_symbol), t.domain_face, t.dof, t.prototype) # TODO: array size?
+    OneFormTerm(generate_body(t.contribution, name_to_symbol), t.domain_face, t.dof, t.local_vector, t.prototype) # TODO: array size?
 end
 
 function generate_body(t::TabulatedFormArgumentTerm,name_to_symbol)
@@ -573,8 +597,8 @@ function generate_body(t::TabulatedFormArgumentTerm,name_to_symbol)
     domain_face_term = t.domain_face
     measure_term = LeafTerm(measure, t.measure)
     
-    # space_term = CallTerm(LeafTerm(:space, space), [t.form_argument], t.form_argument.space) # TODO: term?
-    space_term = LeafTerm(gensym("space"), t.form_argument.space)
+    form_argument_name = name_to_symbol[t.form_argument.name]
+    space_term = CallTerm(LeafTerm(:space, space), [LeafTerm(form_argument_name, t.form_argument)], t.form_argument.space) 
 
     shape_func_0 = CallTerm(LeafTerm(:shape_function_accessor, shape_function_accessor), [t.linear_operation, space_term, measure_term], (x -> y -> z -> t.prototype))
     shape_func_1 = CallTerm(shape_func_0, [domain_face_term], y -> z -> t.prototype)
@@ -699,17 +723,61 @@ function set_free_args(t::NewAbstractTerm, args::Dict)
 end
 
 
-function generate_1_form(field, int::NewAbstractTerm, params...)
-    # TODO: code reuse
+function term_num_dofs(t::NewFormArgumentTerm, arg::Int, field::Int)
+    if (t.arg == arg && t.field == field)
+        maximum(map(GT.num_dofs,GT.reference_spaces(t.space)))
+    else
+        -1
+    end
+end
+
+function terms_num_dofs(terms, arg::Int, field::Int)
+    ndofs = -1
+    for child in terms
+        if child isa NewAbstractTerm
+            ndofs = term_num_dofs(child, arg, field)
+        elseif applicable(iterate, child)
+            ndofs = terms_num_dofs(child, arg, field)
+        end
+        if ndofs > 0
+            break
+        end
+    end
+    ndofs
+end
+
+function term_num_dofs(t::NewAbstractTerm, arg::Int, field::Int)
+    ndofs = -1
+    for child_name in propertynames(t)
+        child = getproperty(t, child_name)
+        if child isa NewAbstractTerm
+            ndofs = term_num_dofs(child, arg, field)
+        elseif applicable(iterate, child)
+            ndofs = terms_num_dofs(child, arg, field)
+        end
+        if ndofs > 0
+            break
+        end
+    end
+    ndofs
+end
+
+function generate_1_form(field::Int, t::NewAbstractTerm, params...)
     @assert field == 1 # TODO: include more fields
 
+    ndofs = term_num_dofs(t, 1, field)
+    # term_ndofs = LeafTerm(ndofs, ndofs)
     dof = :dof 
     dof_term = LeafTerm(dof, 1)
     domain_face = :dummy_domain_face
     domain_face_term = LeafTerm(domain_face, 1)
+    local_vector = :b 
+    local_vector_term = LeafTerm(local_vector, fill(prototype(t), ndofs))
+    
 
-    int2 = set_free_args(int, Dict(:domain_face => domain_face_term, :dof => dof_term))
-    t = OneFormTerm(int2, domain_face_term, dof_term, prototype(t))
+    term_l1_1 = set_free_args(t, Dict(:domain_face => domain_face_term, :dof => dof_term))
+    term_l1_1_wrapped =  LambdaTerm(term_l1_1, dof_term, x -> prototype(term_l1_1))
+    term_l1_2 = OneFormTerm(term_l1_1_wrapped, domain_face_term, dof_term, local_vector_term, fill(prototype(term_l1_1), ndofs)) # a wrapper of domain face
 
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
@@ -717,7 +785,6 @@ function generate_1_form(field, int::NewAbstractTerm, params...)
     
     # find all leaf terms 
     name_to_captured_data = Dict()
-
     capture!(t, name_to_symbol, name_to_captured_data)
 
     # update name_to_symbol and generate captured data symbols
@@ -732,14 +799,13 @@ function generate_1_form(field, int::NewAbstractTerm, params...)
 
     # generate body and optimize
     # rewrite L1 term
-    term_l1 = rewrite_l1(t)
-
+    term_l1_3 = rewrite_l1(term_l1_2)
+    
     # L2: functional level
-    term_l2 = generate_body(term_l1, name_to_symbol)
-    term_l2_wrapped = LambdaTerm(term_l2, domain_face_term, x -> prototype(term_l2))
+    term_l2 = generate_body(term_l1_3, name_to_symbol)
     
     # L3: imperative level
-    term_l3 = statements(term_l2_wrapped)
+    term_l3 = statements(term_l2)
     
     # L4: imperative level with loops
     
@@ -864,7 +930,7 @@ function statements(node)
                 args = node.args
             else
                 body = node.contribution
-                args = node.dof
+                args = node.domain_face
             end
             scope = args.value # assuming there is only 1 arg in LambdaTerm
             scope_level[scope] = depth + 1
@@ -895,7 +961,7 @@ function statements(node)
             if node isa LambdaTerm
                 expr = LambdaTerm(block, node.args, x -> prototype(node))
             else
-                expr = OneFormTerm(block, node.domain_face, node.dof, prototype(node))
+                expr = OneFormTerm(block, node.domain_face, node.dof, node.local_vector , prototype(node))
             end
 
             assignment = StatementTerm(var_term, expr, prototype(node))
