@@ -2251,6 +2251,7 @@ function LinearAlgebra.:×(a::AbstractSpace,b::CartesianProductSpace)
     cartesian_product(a,b.spaces...)
 end
 
+# TODO rename to components
 function fields(a::CartesianProductSpace)
     a.spaces
 end
