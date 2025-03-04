@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1740823465813,
+  "lastUpdate": 1741077892836,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1034,6 +1034,36 @@ window.BENCHMARK_DATA = {
             "value": 666789457.5,
             "unit": "ns",
             "extra": "gctime=23265362.5\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1e8bb7ea855e0611ffa8190757b930681eb36e27",
+          "message": "Merge pull request #187 from GalerkinToolkit/enhancements\n\nMulti-field allocate_vector and allocate_matrix",
+          "timestamp": "2025-03-04T09:41:03+01:00",
+          "tree_id": "6631fad59d86d38f5aec5d53895ed99ce8f92b33",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/1e8bb7ea855e0611ffa8190757b930681eb36e27"
+        },
+        "date": 1741077891980,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 679968904.5,
+            "unit": "ns",
+            "extra": "gctime=25620302\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
