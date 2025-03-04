@@ -241,9 +241,9 @@ u1 = GT.analytical_field(x->1.0,Ω)
 u2 = GT.analytical_field(x->2.0,Ω)
 u3 = GT.analytical_field(x->3.0,Ω)
 
-# TODO better names than piecewiese_field and piecewiese_domain?
-udiri = GT.piecewiese_field(u1,u2,u3)
-Γdiri = GT.piecewiese_domain(Γ1,Γ2,Γ3)
+# TODO better names than piecewise_field and piecewise_domain?
+udiri = GT.piecewise_field(u1,u2,u3)
+Γdiri = GT.piecewise_domain(Γ1,Γ2,Γ3)
 
 order = 1
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
@@ -308,7 +308,7 @@ end
 order = 3
 m1 = GT.analytical_field(x->SVector(false,true),Γ1)
 m2 = GT.analytical_field(x->SVector(true,false),Γ2)
-m = GT.piecewiese_field(m1,m2)
+m = GT.piecewise_field(m1,m2)
 V = GT.lagrange_space(Ω,order;shape=(2,),dirichlet_boundary=m)
 
 @test V.cache.face_dofs == GT.face_dofs(V)

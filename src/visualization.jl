@@ -266,10 +266,6 @@ function refine_reference_geometry(geo,resolution)
     end
 end
 
-
-
-
-
 struct Plot{A,B,C,D} <: AbstractType
     mesh::A
     face_data::B
@@ -482,6 +478,11 @@ function face_data(mesh::AbstractMesh,d)
         dict[name] = face_mask
     end
     #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
+    faceids = face_local_indices(mesh,d)
+    part = part_id(faceids)
+    dict["__OWNER__"] = local_to_owner(faceids)
+    dict["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+    dict["__PART__"] = fill(part,ndfaces)
     dict
 end
 
@@ -495,6 +496,11 @@ function node_data(mesh::AbstractMesh)
     #    dict[name] = node_mask
     #end
     #dict["__LOCAL_NODE__"] = collect(1:nnodes)
+    nodeids = node_local_indices(mesh)
+    part = part_id(nodeids)
+    dict["__OWNER__"] = local_to_owner(nodeids)
+    dict["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+    dict["__PART__"] = fill(part,nnodes)
     dict
 end
 
@@ -503,39 +509,37 @@ function face_data(mesh::AbstractMesh)
     map(d->face_data(mesh,d),0:D)
 end
 
-function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
-    facedata = face_data(mesh,d)
-    faceids = face_indices(ids,d)
-    part = part_id(faceids)
-    nfaces = local_length(faceids)
-    facedata["__OWNER__"] = local_to_owner(faceids)
-    facedata["__IS_LOCAL__"] = local_to_owner(faceids) .== part
-    facedata["__PART__"] = fill(part,nfaces)
-    #facedata["__GLOBAL_DFACE__"] = local_to_global(faceids)
-    facedata
-end
-
-function face_data(mesh::AbstractMesh,ids::PMeshLocalIds)
-    D = num_dims(mesh)
-    map(d->face_data(mesh,ids,d),0:D)
-end
-
-function node_data(mesh::AbstractMesh,ids::PMeshLocalIds)
-    nodedata = node_data(mesh)
-    nodeids = node_indices(ids)
-    part = part_id(nodeids)
-    nfaces = local_length(nodeids)
-    nodedata["__OWNER__"] = local_to_owner(nodeids)
-    nodedata["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
-    nodedata["__PART__"] = fill(part,nfaces)
-    #nodedata["__GLOBAL_NODE__"] = local_to_global(nodeids)
-    nodedata
-end
+#function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
+#    facedata = face_data(mesh,d)
+#    faceids = face_indices(ids,d)
+#    part = part_id(faceids)
+#    nfaces = local_length(faceids)
+#    facedata["__OWNER__"] = local_to_owner(faceids)
+#    facedata["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+#    facedata["__PART__"] = fill(part,nfaces)
+#    #facedata["__GLOBAL_DFACE__"] = local_to_global(faceids)
+#    facedata
+#end
+#
+#function face_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+#    D = num_dims(mesh)
+#    map(d->face_data(mesh,ids,d),0:D)
+#end
+#
+#function node_data(mesh::AbstractMesh,ids::PMeshLocalIds)
+#    nodedata = node_data(mesh)
+#    nodeids = node_indices(ids)
+#    part = part_id(nodeids)
+#    nfaces = local_length(nodeids)
+#    nodedata["__OWNER__"] = local_to_owner(nodeids)
+#    nodedata["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+#    nodedata["__PART__"] = fill(part,nfaces)
+#    #nodedata["__GLOBAL_NODE__"] = local_to_global(nodeids)
+#    nodedata
+#end
 
 function plot(pmesh::PMesh)
-    plts = map(partition(pmesh),index_partition(pmesh)) do mesh,ids
-        Plot(mesh,face_data(mesh,ids),node_data(mesh,ids))
-    end
+    plts = map(plot,partition(pmesh))
     PPlot(plts)
 end
 
@@ -722,28 +726,81 @@ function plot_impl!(plt,term,label)
     plt
 end
 
+function quadrature(plt::Plot)
+    domain = GT.domain(plt)
+    D = num_dims(domain)
+    mesh = GT.mesh(domain)
+    vmesh, vglue = GT.visualization_mesh(plt,glue=true)
+    refid_to_snode_to_coords = vglue.reference_coordinates
+    reference_domains = GT.reference_domains(mesh,D)
+    reference_quadratures = map(reference_domains,refid_to_snode_to_coords) do dom, x
+        nx = length(x)
+        weights = fill(1/nx,nx)
+        face_quadrature(;domain=dom,coordinates=x,weights)
+    end
+    face_reference_id = GT.face_reference_id(mesh,D)
+    mesh_quadrature(;domain,face_reference_id,reference_quadratures)
+end
+
+#function plot!(plt::Plot,field::DiscreteField;label)
+#    q = GT.coordinates(plt)
+#    f_q = field(q)
+#    domain = GT.domain(plt)
+#    index = GT.generate_index(domain)
+#    t = term(f_q,index)
+#    T = typeof(prototype(t))
+#    x = quadrature(plt)
+#    vmesh  = plt.mesh
+#    nnodes = GT.num_nodes(vmesh)
+#    data = zeros(T,nnodes)
+#    nfaces = num_faces(domain)
+#    face_point_u = discrete_field_accessor(GT.value,field,x)
+#    face_point_J = jacobian_accessor(x)
+#    face_npoints = num_points_accessor(x)
+#    n = 0
+#    for face in 1:nfaces
+#        point_u = face_point_u(face)
+#        point_J = face_point_J(face)
+#        npoints = face_npoints(face)
+#        for point in npoints
+#            n += 1
+#            J = point_J(point)
+#            u = point_u(point,J)
+#            data[n] = u
+#        end
+#    end
+#    plt.node_data[label] = data
+#    plt
+#end
+
 domain(plt::Union{Plot,PPlot}) = plt.cache.domain
 
 function coordinates(plt::Union{Plot,PPlot})
     domain = plt |> GT.domain
-    GT.coordinates(plt,domain)
-end
-
-function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
-    GT.reference_coordinates(plt)
-end
-
-function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
-    domain_phys = plt |> GT.domain
-    d = num_dims(domain(plt))
-    phi = physical_map(mesh(domain(plt)),d)
     q = GT.reference_coordinates(plt)
+    if is_reference_domain(domain)
+        return q
+    end
+    d = num_dims(GT.domain(plt))
+    phi = physical_map(GT.mesh(GT.domain(plt)),d)
     phi(q)
-    #domain_ref = domain_phys |> reference_domain
-    #phi = GT.domain_map(domain_ref,domain_phys)
-    #q = GT.reference_coordinates(plt)
-    #phi(q)
 end
+
+#function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
+#    GT.reference_coordinates(plt)
+#end
+#
+#function coordinates(plt::Union{Plot,PPlot},::PhysicalDomain)
+#    domain_phys = plt |> GT.domain
+#    d = num_dims(domain(plt))
+#    phi = physical_map(mesh(domain(plt)),d)
+#    q = GT.reference_coordinates(plt)
+#    phi(q)
+#    #domain_ref = domain_phys |> reference_domain
+#    #phi = GT.domain_map(domain_ref,domain_phys)
+#    #q = GT.reference_coordinates(plt)
+#    #phi(q)
+#end
 
 function reference_coordinates(plt::Plot)
     domain = GT.reference_domain(plt.cache.domain)

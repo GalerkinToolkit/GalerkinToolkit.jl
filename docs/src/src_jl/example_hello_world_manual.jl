@@ -1,6 +1,7 @@
-# # Laplace
+# # Hello, World! (manual assembly)
 #
 # ## Problem statement
+# We solve the same problem as in the [Hello, World!](@ref) example, but in this case we explicitly write the numerical integration loops.
 #
 # ## Implementation
 
@@ -33,7 +34,7 @@ function setup_example(;domain,cells)
     GT.interpolate_dirichlet!(g,uhd)
     degree = 2*k
     dΩ = GT.measure(Ω,degree)
-    example = (;mesh,Ω,dΩ,V,uhd,T,f,g)
+    example = (;mesh,Ω,dΩ,V,uhd,f,g)
     state = (;example)
 end
 nothing # hide
@@ -122,10 +123,11 @@ nothing # hide
 function assemble_problem(state)
 
     (;example) = state
-    (;V,Ω,T,f) = example
+    (;V,Ω,f) = example
 
     #Allocate auxiliary face matrix and vector
-    n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
+    n = GT.max_num_reference_dofs(V)
+    T = Float64
     Auu = zeros(T,n,n)
     bu = zeros(T,n)
 
@@ -185,8 +187,9 @@ nothing # hide
 
 function integrate_error_norms(state)
     (;postpro,example,integration) = state
-    (;Ω,dΩ,g,T) = example
+    (;Ω,dΩ,g) = example
     #TODO add also h1 norm
+    T = Float64
     el2 = zero(T)
     for face in 1:GT.num_faces(Ω)
         npoints = integration.face_npoints(face)
@@ -227,5 +230,6 @@ main(domain=(0,1,0,1),cells=(10,10))
 # Run it for a 3d case
 
 main(domain=(0,1,0,1,0,1),cells=(10,10,10))
+
 
 

@@ -35,7 +35,7 @@ function face_constant_field(data,dom::AbstractDomain)
     Field(q2,dom)
 end
 
-function piecewiese_field(fields::AbstractQuantity...)
+function piecewise_field(fields::AbstractQuantity...)
     PiecewiseField(fields)
 end
 
@@ -48,7 +48,7 @@ function domain(u::PiecewiseField)
     PiecewiseDomain(domains)
 end
 
-function piecewiese_domain(domains::AbstractDomain...)
+function piecewise_domain(domains::AbstractDomain...)
     PiecewiseDomain(domains)
 end
 
@@ -82,6 +82,10 @@ end
 function allocate_values(::Type{T},dofs) where T
     n = length(dofs)
     Vector{T}(undef,n)
+end
+
+function allocate_values(::Type{T},dofs::PRange) where T
+    pzeros(T,dofs)
 end
 
 function allocate_values(::Type{T},dofs::BRange) where T
@@ -253,42 +257,41 @@ function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
 end
 
-function interpolate!(f,u::DiscreteField,field)
-    interpolate!(f,u,nothing,field)
-end
+#function interpolate!(f,u::DiscreteField,field)
+#    interpolate!(f,u,nothing,field)
+#end
 
 function interpolate_free!(f,u::DiscreteField)
     interpolate!(f,u,FREE)
 end
 
-function interpolate_free!(f,u::DiscreteField,field)
-    interpolate!(f,u,FREE,field)
-end
+#function interpolate_free!(f,u::DiscreteField,field)
+#    interpolate!(f,u,FREE,field)
+#end
 
 function interpolate_dirichlet!(f,u::DiscreteField)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
     interpolate!(f,u,DIRICHLET)
 end
 
-function interpolate_dirichlet!(f,u::DiscreteField,field)
-    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
-    interpolate!(f,u,DIRICHLET,field)
-end
+#function interpolate_dirichlet!(f,u::DiscreteField,field)
+#    # TODO for dirichlet we perhaps want to allow integrating on boundaries?
+#    interpolate!(f,u,DIRICHLET,field)
+#end
 
 function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
-    interpolate_impl!(f,u,free_or_diri)
+    interpolate_impl!(f,u,space(u),free_or_diri)
 end
 
-function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
-    ui = GT.field(u,field)
-    interpolate_impl!(f,ui,free_or_diri)
-    u
-end
+#function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
+#    ui = GT.field(u,field)
+#    interpolate_impl!(f,ui,free_or_diri)
+#    u
+#end
 
-function interpolate_impl!(f,u,free_or_diri;location=1)
+function interpolate_impl!(f,u,space,free_or_diri;location=1)
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)
-    space = GT.space(u)
     dof = gensym("fe-dof")
     sigma = GT.dual_basis_quantity(space,dof)
     face_to_dofs = GT.face_dofs(space)
@@ -337,9 +340,9 @@ function interpolate_impl!(f,u,free_or_diri;location=1)
     u
 end
 
-function interpolate_impl!(f::PiecewiseField,u,free_or_diri)
+function interpolate_impl!(f::PiecewiseField,u,space,free_or_diri)
     for (location,field) in f.fields |> enumerate
-        interpolate_impl!(field,u,free_or_diri;location)
+        interpolate_impl!(field,u,space,free_or_diri;location)
     end
     u
 end

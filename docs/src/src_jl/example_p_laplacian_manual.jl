@@ -1,22 +1,9 @@
-# # p-Laplacian
+# # p-Laplacian (manual assembly)
 #
 # ## Problem statement
 #
-# Solve the following p-Laplacian equation on the unit square,
+# We solve the same problem as in the [p-Laplacian](@ref) example, but in this case we explicitly write the numerical integration loops.
 #
-# ```math
-# \left\lbrace
-# \begin{aligned}
-# -\nabla \cdot \left( |\nabla u|^{q-2} \ \nabla u \right) = f\ &\text{in}\ \Omega,\\
-# u = g \ &\text{on}\ \partial\Omega,\\
-# \end{aligned}
-# \right.
-# ```
-# with $f=1$ and $g=0$ and $q=3$.
-#
-# Solve it with a piece-wise bi-linear Lagrange interpolation, and visualize the result.
-#
-
 # ## Implementation
 #
 # Load dependencies form Julia stdlib.
@@ -32,14 +19,19 @@ import GLMakie as Makie
 
 # Setup the objects defining this example
 
-function setup_example(;domain,cells,file)
-    mesh = GT.cartesian_mesh(domain,cells)
-    dirichlet_tag = "dirichlet"
-    GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
+function setup_example(;file)
+    assets_dir = normpath(joinpath(@__DIR__,"..","..","..","assets"))
+    msh_file = joinpath(assets_dir,"model.msh")
+    mesh = GT.mesh_from_gmsh(msh_file)
+    dirichlet_0_names = ["sides"]
+    dirichlet_1_names = ["circle", "triangle", "square"]
     Ω = GT.interior(mesh)
-    Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
-    g = GT.analytical_field(x->0,Ω)
-    f = GT.analytical_field(x->1,Ω)
+    Γ0 = GT.boundary(mesh;physical_names=dirichlet_0_names)
+    Γ1 = GT.boundary(mesh;physical_names=dirichlet_1_names)
+    Γd = GT.piecewise_domain(Γ0,Γ1)
+    g0 = GT.analytical_field(x->-1.0,Ω)
+    g1 = GT.analytical_field(x->1.0,Ω)
+    g = GT.piecewise_field(g0,g1)
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
     T = Float64
@@ -47,7 +39,7 @@ function setup_example(;domain,cells,file)
     GT.interpolate_dirichlet!(g,uh)
     degree = 2*k
     dΩ = GT.measure(Ω,degree)
-    example = (;mesh,Ω,dΩ,V,uh,T,f,g,file)
+    example = (;mesh,Ω,dΩ,V,uh,T,g,file)
     state = (;example)
 end
 nothing # hide
@@ -73,9 +65,7 @@ function setup_interpolation_accessors(state)
     face_dofs = GT.dofs_accessor(V,Ω)
     face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
     face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
-    face_point_∇uh = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
-    interpolation = (;
-        face_dofs,face_point_dof_s,face_point_dof_∇s,face_point_∇uh)
+    interpolation = (;face_dofs,face_point_dof_s,face_point_dof_∇s)
     (;interpolation,state...)
 end
 nothing # hide
@@ -85,10 +75,16 @@ nothing # hide
 function setup_nonlinear_problem(state)
 
     (;example) = state
-    (;V,Ω,T,f,uh) = example
+    (;V,Ω,dΩ,T,uh) = example
+
+    #Get initial guess
+    x = GT.free_values(uh)
+
+    #Create accessor for the field gradient
+    face_point_∇uh = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
 
     #Allocate auxiliary face matrix and vector
-    n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
+    n = GT.max_num_reference_dofs(V)
     Auu = zeros(T,n,n)
     bu = zeros(T,n)
 
@@ -98,51 +94,66 @@ function setup_nonlinear_problem(state)
 
     #Fill in residual and jacobian according to the initial state
     allocs = (;A_alloc,b_alloc,Auu,bu)
-    fill_residual_and_jacobian!(state,allocs) # Defined later
+    fill_residual_and_jacobian!(state,allocs,face_point_∇uh) # Defined later
 
     #Compress matrix and vector into the final format
     b,b_cache = GT.compress(b_alloc;reuse=Val(true))
     A,A_cache = GT.compress(A_alloc;reuse=Val(true))
 
-    #Get initial guess
-    x0 = GT.free_values(uh)
-
-    workspace = nothing
-    problem = PS.nonlinear_problem(x0,b,A,workspace) do p
-
-        #Get the current solution vector
-        x = PS.solution(p)
-
-        #Build the current solution field
-        GT.solution_field!(uh,x)
-
-        #Fill in residual and Jacobian
-        fill_residual_and_jacobian!(state,allocs)
-
-        #In-place compression of matrix and vector
-        GT.compress!(b_alloc,b,b_cache)
-        GT.compress!(A_alloc,A,A_cache)
-
-        #Update the nonlinear problem object
-        #Here, we computed the residual and Jacobian simultaneously,
-        #but this API also allows to compute them separately.
-        if PS.residual(p) !== nothing
-            p = PS.update(p,residual=b)
-        end
-        if PS.jacobian(p) !== nothing
-            p = PS.update(p,jacobian=A)
-        end
-
-        p
-    end
+    #Build the nonlinear problem object
+    workspace = (;state,face_point_∇uh,allocs,b,b_cache,A,A_cache)
+    problem = PS.nonlinear_problem(update_problem,x,b,A,workspace)
 
     (;problem,state...)
 end
 nothing # hide
 
+# Non-linear problem update function.
+# The input problem is in an inconsistent state:
+# `residual(problem)` and `jacobian(problem)` are not synchronized
+# with `solution(problem)`. The goal of this function is to update
+# the residual and jacobian for the current solution guess.
+function update_problem(problem)
+
+    #Unpack workspace
+    (;state,face_point_∇uh,allocs,b,b_cache,A,A_cache) = PS.workspace(problem)
+    (;A_alloc,b_alloc,Auu,bu) = allocs
+    (;example) = state
+    (;uh) = example
+
+    #Get the current solution vector
+    x = PS.solution(problem)
+
+    #Build the current solution field
+    uh = GT.solution_field(uh,x)
+
+    #Update the accessor
+    face_point_∇uh = GT.update(face_point_∇uh,discrete_field=uh)
+
+    #Fill in residual and Jacobian
+    fill_residual_and_jacobian!(state,allocs,face_point_∇uh)
+
+    #In-place compression of matrix and vector
+    GT.compress!(b_alloc,b,b_cache)
+    GT.compress!(A_alloc,A,A_cache)
+
+    #Update the nonlinear problem object
+    #Here, we computed the residual and Jacobian simultaneously,
+    #but this API also allows to compute them separately.
+    if PS.residual(problem) !== nothing
+        problem = PS.update(problem,residual=b)
+    end
+    if PS.jacobian(problem) !== nothing
+        problem = PS.update(problem,jacobian=A)
+    end
+
+    problem
+end
+nothing # hide
+
 # Assembly loop
 
-function fill_residual_and_jacobian!(state,allocs)
+function fill_residual_and_jacobian!(state,allocs,face_point_∇uh)
     (;A_alloc,b_alloc,Auu,bu) = allocs
     (;example) = state
     (;Ω,) = example
@@ -155,7 +166,7 @@ function fill_residual_and_jacobian!(state,allocs)
     for face in 1:GT.num_faces(Ω)
 
         #Compute face tensors
-        dofs = face_tensors!(Auu,bu,face,state) # Defined later
+        dofs = face_tensors!(Auu,bu,face,state,face_point_∇uh) # Defined later
 
         #Add face contribution to global allocation
         GT.contribute!(b_alloc,bu,dofs)
@@ -167,10 +178,9 @@ nothing # hide
 
 # Compute local Jacobian and residual
 
-function face_tensors!(Auu,bu,face,state)
+function face_tensors!(Auu,bu,face,state,face_point_∇uh)
 
     (;example,integration,interpolation) = state
-    (;f) = example
 
     #Define flux and its derivative
     q = 3
@@ -179,12 +189,10 @@ function face_tensors!(Auu,bu,face,state)
 
     #Get quantities at current face
     npoints = integration.face_npoints(face)
-    point_x = integration.face_point_x(face)
     point_J = integration.face_point_J(face)
     point_dV = integration.face_point_dV(face)
-    point_dof_s = interpolation.face_point_dof_s(face)
     point_dof_∇s = interpolation.face_point_dof_∇s(face)
-    point_∇uh = interpolation.face_point_∇uh(face)
+    point_∇uh = face_point_∇uh(face)
     dofs = interpolation.face_dofs(face)
 
     #Reset face matrix and vector
@@ -195,19 +203,15 @@ function face_tensors!(Auu,bu,face,state)
     for point in 1:npoints
 
         #Get quantities at current integration point
-        x = point_x(point)
-        fx = f.definition(x)
         J = point_J(point)
         dV = point_dV(point,J)
-        dof_s = point_dof_s(point)
         dof_∇s = point_dof_∇s(point,J)
         ∇uh = point_∇uh(point,J)
 
         #Fill in face matrix and vector
         for (i,dofi) in enumerate(dofs)
-            v = dof_s(i)
             ∇v = dof_∇s(i)
-            bu[i] += (flux(∇uh)⋅∇v - fx*v)*dV
+            bu[i] += flux(∇uh)⋅∇v*dV
             for (j,dofj) in enumerate(dofs)
                 ∇du = dof_∇s(j)
                 Auu[i,j] += dflux(∇du,∇uh)⋅∇v*dV
@@ -254,11 +258,9 @@ nothing # hide
 
 # Run it for a 2d case
 
-file = joinpath(@__DIR__,"p_laplacian_2d_manual.gif")
-main(;domain=(0,1,0,1),cells=(10,10),file)
+file = joinpath(@__DIR__,"p_laplacian_manual.gif")
+main(;file)
 nothing # hide
 
-# ![](p_laplacian_2d_manual.gif)
-
-
+# ![](p_laplacian_manual.gif)
 

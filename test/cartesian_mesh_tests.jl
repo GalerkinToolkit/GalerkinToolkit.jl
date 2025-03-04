@@ -17,4 +17,8 @@ mesh = GT.cartesian_mesh(domain,cells,simplexify=true)
 mesh = GT.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 mesh = GT.cartesian_mesh(domain,cells)
 
+mesh = GT.cartesian_mesh(domain,cells)
+GT.geometry_names(mesh)
+doms = GT.geometries(mesh,1)
+
 end #module

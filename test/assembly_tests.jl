@@ -7,8 +7,70 @@ using Test
 import ForwardDiff
 using LinearAlgebra
 using AbstractTrees
+import WriteVTK
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
+
+Ω = GT.unit_n_cube(Val(2))
+mesh = GT.mesh(Ω)
+Γdiri = GT.boundary(mesh)
+@test GT.num_faces(Ω) == 1
+
+order = 2
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+V² = V × V
+GT.allocate_vector(Float64,V²,Ω)
+GT.allocate_matrix(Float64,V²,V²,Ω)
+
+GT.num_free_dofs(V)
+GT.num_dirichlet_dofs(V)
+@test GT.num_free_dofs(V) == 1
+@test GT.num_dirichlet_dofs(V) == 8
+
+u = GT.analytical_field(sum,Ω)
+uhd = GT.dirichlet_field(Float64,V)
+GT.interpolate_dirichlet!(u,uhd)
+uh = GT.zero_field(Float64,V)
+GT.interpolate_free!(u,uh)
+
+# This returns the dofs on 1-faces, but in this context it is expected to return
+# the dofs on faces on field component 1
+GT.face_dofs(V,1)
+
+#plt = GT.plot(Ω,refinement=20)
+#GT.plot!(plt,u;label="u")
+#GT.plot!(plt,uhd;label="uhd")
+#GT.plot!(plt,uh;label="uh")
+#WriteVTK.vtk_grid("check",plt) |> WriteVTK.close
+
+display(GT.face_dofs(V))
+
+degree = 2*order
+dΩ = GT.measure(Ω,degree)
+
+∇(u,q) = ForwardDiff.gradient(u,q)
+
+a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
+l(v) = 0
+
+p = GT.linear_problem(uhd,a,l)
+
+A = PS.matrix(p)
+display(A)
+b = PS.rhs(p)
+x = A\b
+uh = GT.solution_field(uhd,x)
+
+eh(q) = u(q) - uh(q)
+∇eh(q) = ∇(u,q) - ∇(uh,q)
+
+tol = 1.e-10
+
+el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
+@test el2 < tol
 
 domain = (0,1,0,1)
 cells = (4,4)
@@ -127,6 +189,26 @@ x = A\b
 uh = GT.solution_field(uhd,x)
 
 face_point_val = GT.discrete_field_accessor(GT.value,uh,dΩ)
+
+err = Ref(0.0)
+for face in 1:GT.num_faces(Ω)
+    npoints = face_npoints(face)
+    point_x = face_point_x(face)
+    point_J = face_point_J(face)
+    point_dV = face_point_dV(face)
+    point_val = face_point_val(face)
+    for point in 1:npoints
+        x = point_x(point)
+        J = point_J(point)
+        dV = point_dV(point,J)
+        val = point_val(point,J)
+        err[] += abs2(val-ufun(x))*dV
+    end
+end
+tol = 1e-12
+@test sqrt(err[]) < tol
+
+face_point_val = GT.update(face_point_val;discrete_field=uh)
 
 err = Ref(0.0)
 for face in 1:GT.num_faces(Ω)
