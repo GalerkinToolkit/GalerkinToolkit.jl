@@ -22,6 +22,21 @@ V² = V × V
 GT.allocate_vector(Float64,V²,Ω)
 GT.allocate_matrix(Float64,V²,V²,Ω)
 
+alloc = GT.allocate_vector(Float64,V,Ω;free_or_dirichlet=GT.FREE)
+GT.contribute!(alloc,[1,2],[-1,1])
+b = GT.compress(alloc)
+@test length(b) == GT.num_free_dofs(V)
+
+alloc = GT.allocate_vector(Float64,V,Ω;free_or_dirichlet=GT.DIRICHLET)
+GT.contribute!(alloc,[1,2],[-1,1])
+b = GT.compress(alloc)
+@test length(b) == GT.num_dirichlet_dofs(V)
+
+alloc = GT.allocate_matrix(Float64,V,V,Ω;free_or_dirichlet=(GT.FREE,GT.DIRICHLET))
+GT.contribute!(alloc,zeros(2,2),[-1,1],[1,-1])
+A = GT.compress(alloc)
+@test size(A) == (GT.num_free_dofs(V),GT.num_dirichlet_dofs(V))
+
 GT.num_free_dofs(V)
 GT.num_dirichlet_dofs(V)
 @test GT.num_free_dofs(V) == 1

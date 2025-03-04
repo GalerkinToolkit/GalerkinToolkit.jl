@@ -16,8 +16,14 @@ function monolithic_vector_assembly_strategy()
     function counter(setup)
         0
     end
-    function count(n,setup,i,field_i)
-        n+1
+    function count(n,setup,i,field_i,free_or_diri)
+        if free_or_diri == FREE && i>0
+            n+=1
+        end
+        if free_or_diri == DIRICHLET && i<0
+            n+=1
+        end
+        n
     end
     function allocate(n,setup)
         Ti = Int32
@@ -26,10 +32,17 @@ function monolithic_vector_assembly_strategy()
         V = zeros(T,n)
         (;I,V)
     end
-    function set!(alloc,n,setup,v,i,field)
-        n += 1
-        alloc.I[n] = i+setup.offsets[field]
-        alloc.V[n] = v
+    function set!(alloc,n,setup,v,i,field,free_or_diri)
+        if free_or_diri == FREE && i>0
+            n+=1
+            alloc.I[n] = i+setup.offsets[field]
+            alloc.V[n] = v
+        end
+        if free_or_diri == DIRICHLET && i<0
+            n+=1
+            alloc.I[n] = setup.offsets[field]-i
+            alloc.V[n] = v
+        end
         n
     end
     function compress(alloc,setup)
@@ -70,8 +83,20 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
     function counter(setup)
         0
     end
-    function count(n,setup,i,j,field_i,field_j)
-        n+1
+    function count(n,setup,i,j,field_i,field_j,free_or_diri_i,free_or_diri_j)
+        if free_or_diri_i == FREE && free_or_diri_j == FREE && i>0 && j>0
+            n+=1
+        end
+        if free_or_diri_i == FREE && free_or_diri_j == DIRICHLET && i>0 && j<0
+            n+=1
+        end
+        if free_or_diri_i == DIRICHLET && free_or_diri_j == FREE && i<0 && j>0
+            n+=1
+        end
+        if free_or_diri_i == DIRICHLET && free_or_diri_j == DIRICHLET && i<0 && j<0
+            n+=1
+        end
+        n
     end
     function allocate(n,setup)
         Ti = Int32
@@ -81,11 +106,31 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
         V = zeros(T,n)
         (;I,J,V)
     end
-    function set!(alloc,n,setup,v,i,j,field_i,field_j)
-        n += 1
-        alloc.I[n] = i+setup.offsets_rows[field_i]
-        alloc.J[n] = j+setup.offsets_cols[field_j]
-        alloc.V[n] = v
+    function set!(alloc,n,setup,v,i,j,field_i,field_j,free_or_diri_i,free_or_diri_j)
+        if free_or_diri_i == FREE && free_or_diri_j == FREE && i>0 && j>0
+            n+=1
+            alloc.I[n] = i+setup.offsets_rows[field_i]
+            alloc.J[n] = j+setup.offsets_cols[field_j]
+            alloc.V[n] = v
+        end
+        if free_or_diri_i == FREE && free_or_diri_j == DIRICHLET && i>0 && j<0
+            n+=1
+            alloc.I[n] = i+setup.offsets_rows[field_i]
+            alloc.J[n] = setup.offsets_cols[field_j]-j
+            alloc.V[n] = v
+        end
+        if free_or_diri_i == DIRICHLET && free_or_diri_j == FREE && i<0 && j>0
+            n+=1
+            alloc.I[n] = setup.offsets_rows[field_i]-i
+            alloc.J[n] = j+setup.offsets_cols[field_j]
+            alloc.V[n] = v
+        end
+        if free_or_diri_i == DIRICHLET && free_or_diri_j == DIRICHLET && i<0 && j<0
+            n+=1
+            alloc.I[n] = setup.offsets_rows[field_i]-i
+            alloc.J[n] = setup.offsets_cols[field_j]-j
+            alloc.V[n] = v
+        end
         n
     end
     function compress(alloc,setup)
@@ -205,7 +250,7 @@ function assemble_vector_count(integral,state)
                     end
                     dofs = Dface_to_dofs[Dface]
                     for dof in dofs
-                        counter = vector_strategy.count(counter,setup,dof,field)
+                        counter = vector_strategy.count(counter,setup,dof,field,FREE)
                     end
                 end
             end
@@ -287,7 +332,7 @@ function assemble_vector_fill!(integral,state)
                                 end
                             end
                             for ($idof,dof) in enumerate(dofs)
-                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field)
+                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field,FREE)
                             end
                         end
                     end
@@ -417,7 +462,7 @@ function assemble_matrix_count(integral,state)
                             trial_dofs = trial_Dface_to_dofs[trial_Dface]
                             for test_dof in test_dofs
                                 for trial_dof in trial_dofs
-                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial)
+                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial,FREE,FREE)
                                 end
                             end
                         end
@@ -530,7 +575,7 @@ function assemble_matrix_fill!(integral,state)
                                     end
                                     for ($idof_test, dof_test) in enumerate(test_dofs)
                                         for ($idof_trial, dof_trial) in enumerate(trial_dofs)
-                                            counter = args.matrix_strategy.set!(args.alloc,counter,args.setup,b[$idof_test, $idof_trial],dof_test,dof_trial,$field_test,$field_trial)
+                                            counter = args.matrix_strategy.set!(args.alloc,counter,args.setup,b[$idof_test, $idof_trial],dof_test,dof_trial,$field_test,$field_trial,FREE,FREE)
                                         end
                                     end
                                 end
@@ -813,23 +858,23 @@ function nonlinear_ode(
     end
 end
 
-# TODO It is being used currently?
-function vector_allocation(vector_strategy,space_test,domains...)
-    b_setup = vector_strategy.init(GT.free_dofs(space_test),T)
-    b_counter = vector_strategy.counter(b_setup)
-    for domain in domains
-        for field in 1:nfields
-            for sface in 1:nsfaces
-                for face_around in 1:nfaces_around
-                    for dof in dofs
-                        b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
-                    end
-                end
-            end
-        end
-    end
-    b_alloc = vector_strategy.allocate(b_counter,b_setup)
-end
+## TODO It is being used currently?
+#function vector_allocation(vector_strategy,space_test,domains...)
+#    b_setup = vector_strategy.init(GT.free_dofs(space_test),T)
+#    b_counter = vector_strategy.counter(b_setup)
+#    for domain in domains
+#        for field in 1:nfields
+#            for sface in 1:nsfaces
+#                for face_around in 1:nfaces_around
+#                    for dof in dofs
+#                        b_counter = vector_strategy.count(b_counter,b_setup,dof_test,field_test)
+#                    end
+#                end
+#            end
+#        end
+#    end
+#    b_alloc = vector_strategy.allocate(b_counter,b_setup)
+#end
 
 #function allocate_vector(
 #        ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
@@ -892,8 +937,9 @@ function allocate_vector(
         ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
         vector_strategy = monolithic_vector_assembly_strategy(),
         block_coupling = map(domain->fill(true,num_fields(space_test)),domains),
+        free_or_dirichlet=FREE,
     ) where T
-    setup = vector_strategy.init(GT.free_dofs(space_test),T)
+    setup = vector_strategy.init(GT.dofs(space_test,free_or_dirichlet),T)
     counter = vector_strategy.counter(setup)
     counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_to_mask
         fields_test = ntuple(identity,Val(num_fields(space_test)))
@@ -905,7 +951,7 @@ function allocate_vector(
                 for face in 1:nfaces
                     dofs = face_dofs(face)
                     for dof_test in dofs
-                        counter2 = vector_strategy.count(counter2,setup,dof_test,field_test)
+                        counter2 = vector_strategy.count(counter2,setup,dof_test,field_test,free_or_dirichlet)
                     end
                 end
             end
@@ -914,7 +960,7 @@ function allocate_vector(
     end
     coo = vector_strategy.allocate(counter,setup)
     counter_ref = Ref(vector_strategy.counter(setup))
-    data = (;setup,coo,counter_ref,vector_strategy)
+    data = (;setup,coo,counter_ref,vector_strategy,free_or_dirichlet)
     VectorAllocation(data)
 end
 
@@ -970,10 +1016,10 @@ function reset!(alloc::VectorAllocation)
 end
 
 function contribute!(alloc::VectorAllocation,b,dofs_test,field_test=1)
-    (;setup,coo,counter_ref,vector_strategy) = alloc.data
+    (;setup,coo,counter_ref,vector_strategy,free_or_dirichlet) = alloc.data
     counter = counter_ref[]
     for (i,dof_test) in enumerate(dofs_test)
-        counter = vector_strategy.set!(coo,counter,setup,b[i],dof_test,field_test)
+        counter = vector_strategy.set!(coo,counter,setup,b[i],dof_test,field_test,free_or_dirichlet)
     end
     counter_ref[] = counter
     alloc
@@ -1029,8 +1075,9 @@ function allocate_matrix(
         ::Type{T},space_test::AbstractSpace,space_trial,domains::AbstractDomain...;
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         block_coupling = map(domain->fill(true,num_fields(space_test),num_fields(space_trial)),domains),
+        free_or_dirichlet = (FREE,FREE)
     ) where T
-    setup = matrix_strategy.init(GT.free_dofs(space_test),GT.free_dofs(space_trial),T)
+    setup = matrix_strategy.init(GT.dofs(space_test,free_or_dirichlet[1]),GT.dofs(space_trial,free_or_dirichlet[2]),T)
     counter = matrix_strategy.counter(setup)
     counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_trial_to_mask
         field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
@@ -1047,7 +1094,7 @@ function allocate_matrix(
                         dofs_trial = face_dofs_trial(face)
                         for dof_test in dofs_test
                             for dof_trial in dofs_trial
-                                counter3 = matrix_strategy.count(counter3,setup,dof_test,dof_trial,field_test,field_trial)
+                                counter3 = matrix_strategy.count(counter3,setup,dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
                             end
                         end
                     end
@@ -1058,7 +1105,7 @@ function allocate_matrix(
     end
     coo = matrix_strategy.allocate(counter,setup)
     counter_ref = Ref(matrix_strategy.counter(setup))
-    data = (;setup,coo,counter_ref,matrix_strategy)
+    data = (;setup,coo,counter_ref,matrix_strategy,free_or_dirichlet)
     MatrixAllocation(data)
 end
 
@@ -1073,11 +1120,11 @@ function reset!(alloc::MatrixAllocation)
 end
 
 function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
-    (;setup,coo,counter_ref,matrix_strategy) = alloc.data
+    (;setup,coo,counter_ref,matrix_strategy,free_or_dirichlet) = alloc.data
     counter = counter_ref[]
     for (i,dof_test) in enumerate(dofs_test)
         for (j,dof_trial) in enumerate(dofs_trial)
-            counter = matrix_strategy.set!(coo,counter,setup,b[i,j],dof_test,dof_trial,field_test,field_trial)
+            counter = matrix_strategy.set!(coo,counter,setup,b[i,j],dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
         end
     end
     counter_ref[] = counter
