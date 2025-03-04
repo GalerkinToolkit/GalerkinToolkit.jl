@@ -813,6 +813,7 @@ function nonlinear_ode(
     end
 end
 
+# TODO It is being used currently?
 function vector_allocation(vector_strategy,space_test,domains...)
     b_setup = vector_strategy.init(GT.free_dofs(space_test),T)
     b_counter = vector_strategy.counter(b_setup)
@@ -830,22 +831,85 @@ function vector_allocation(vector_strategy,space_test,domains...)
     b_alloc = vector_strategy.allocate(b_counter,b_setup)
 end
 
+#function allocate_vector(
+#        ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
+#        vector_strategy = monolithic_vector_assembly_strategy(),
+#    ) where T
+#    setup = vector_strategy.init(GT.free_dofs(space_test),T)
+#    counter = vector_strategy.counter(setup)
+#    @assert num_fields(space_test) == 1
+#    field_test = 1
+#    for domain in domains
+#        face_dofs = dofs_accessor(space_test,domain)
+#        nfaces = num_faces(domain)
+#        for face in 1:nfaces
+#            dofs = face_dofs(face)
+#            for dof_test in dofs
+#                counter = vector_strategy.count(counter,setup,dof_test,field_test)
+#            end
+#        end
+#    end
+#    coo = vector_strategy.allocate(counter,setup)
+#    counter_ref = Ref(vector_strategy.counter(setup))
+#    data = (;setup,coo,counter_ref,vector_strategy)
+#    VectorAllocation(data)
+#end
+
+#function allocate_vector(
+#        ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
+#        vector_strategy = monolithic_vector_assembly_strategy(),
+#        block_coupling = map(domain->fill(true,num_fields(space_test)),domains),
+#    ) where T
+#    setup = vector_strategy.init(GT.free_dofs(space_test),T)
+#    counter_ref = Ref(vector_strategy.counter(setup))
+#    fields_test = ntuple(identity,Val(num_fields(space_test)))
+#    let domain = domains[1], field_test_to_mask = block_coupling[1]
+#    #map(block_coupling,domains) do field_test_to_mask,domain
+#        field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
+#        nfaces = num_faces(domain)
+#        let field_test = fields_test[1], face_dofs = field_test_face_dofs[1]
+#        #map(fields_test,field_test_face_dofs) do field_test,face_dofs
+#            mask = field_test_to_mask[field_test]
+#            if mask
+#                counter = counter_ref[]
+#                for face in 1:nfaces
+#                    dofs = face_dofs(face)
+#                    for dof_test in dofs
+#                        counter = vector_strategy.count(counter,setup,dof_test,field_test)
+#                    end
+#                end
+#                counter_ref[] = counter
+#            end
+#        end
+#    end
+#    coo = vector_strategy.allocate(counter_ref[],setup)
+#    counter_ref = Ref(vector_strategy.counter(setup))
+#    data = (;setup,coo,counter_ref,vector_strategy)
+#    VectorAllocation(data)
+#end
+
 function allocate_vector(
         ::Type{T},space_test::AbstractSpace,domains::AbstractDomain...;
         vector_strategy = monolithic_vector_assembly_strategy(),
+        block_coupling = map(domain->fill(true,num_fields(space_test)),domains),
     ) where T
     setup = vector_strategy.init(GT.free_dofs(space_test),T)
     counter = vector_strategy.counter(setup)
-    @assert num_fields(space_test) == 1
-    field_test = 1
-    for domain in domains
-        face_dofs = dofs_accessor(space_test,domain)
-        nfaces = num_faces(domain)
-        for face in 1:nfaces
-            dofs = face_dofs(face)
-            for dof_test in dofs
-                counter = vector_strategy.count(counter,setup,dof_test,field_test)
+    counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_to_mask
+        fields_test = ntuple(identity,Val(num_fields(space_test)))
+        field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
+        increment(counter1,fields_test,field_test_face_dofs) do counter2,field_test,face_dofs
+            mask = field_test_to_mask[field_test]
+            if mask
+                nfaces = num_faces(domain)
+                for face in 1:nfaces
+                    dofs = face_dofs(face)
+                    for dof_test in dofs
+                        counter2 = vector_strategy.count(counter2,setup,dof_test,field_test)
+                    end
+                end
             end
+            counter2
         end
     end
     coo = vector_strategy.allocate(counter,setup)
@@ -853,6 +917,47 @@ function allocate_vector(
     data = (;setup,coo,counter_ref,vector_strategy)
     VectorAllocation(data)
 end
+
+function increment(f,i,a::Tuple{Any},b::Tuple{Any})
+    f(i,a[1],b[1])
+end
+
+function increment(f,i,a::Tuple{Any,Any},b::Tuple{Any,Any})
+    i=f(i,a[1],b[1])
+    f(i,a[2],b[2])
+end
+
+function increment(f,i,a::Tuple,b::Tuple)
+    a1 = a[1]; b1 = b[1]
+    at = Base.tail(a); bt = Base.tail(b)
+    i=f(i,a[1],b[1])
+    increment(f,i,at,bt)
+end
+
+#function allocate_vector_domains(domains::Tuple{Any},block_coupling,counter,setup,vector_strategy,space_test)
+#    domain = domains[1]
+#    field_test_to_mask = block_coupling[1]
+#    allocate_vector_domain(domain,field_test_to_mask,counter,setup,vector_strategy,space_test)
+#end
+
+#function allocate_vector_domain(domain,field_test_to_mask,counter,setup,vector_strategy,space_test)
+#    fields_test = ntuple(identity,Val(num_fields(space_test)))
+#    field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
+#    nfaces = num_faces(domain)
+#    let field_test = fields_test[1], face_dofs = field_test_face_dofs[1]
+#        #map(fields_test,field_test_face_dofs) do field_test,face_dofs
+#        mask = field_test_to_mask[field_test]
+#        if mask
+#            for face in 1:nfaces
+#                dofs = face_dofs(face)
+#                for dof_test in dofs
+#                    counter = vector_strategy.count(counter,setup,dof_test,field_test)
+#                end
+#            end
+#        end
+#    end
+#    counter
+#end
 
 struct VectorAllocation{A} <: AbstractType
     data::A
@@ -890,27 +995,64 @@ function compress!(alloc::VectorAllocation,A,A_cache)
     A
 end
 
+#function allocate_matrix(
+#        ::Type{T},space_test::AbstractSpace,space_trial,domains::AbstractDomain...;
+#        matrix_strategy = monolithic_matrix_assembly_strategy(),
+#    ) where T
+#    setup = matrix_strategy.init(GT.free_dofs(space_test),GT.free_dofs(space_trial),T)
+#    counter = matrix_strategy.counter(setup)
+#    @assert num_fields(space_test) == 1
+#    @assert num_fields(space_trial) == 1
+#    field_test = 1
+#    field_trial = 1
+#    for domain in domains
+#        face_dofs_test = dofs_accessor(space_test,domain)
+#        face_dofs_trial = dofs_accessor(space_trial,domain)
+#        nfaces = num_faces(domain)
+#        for face in 1:nfaces
+#            dofs_test = face_dofs_test(face)
+#            dofs_trial = face_dofs_trial(face)
+#            for dof_test in dofs_test
+#                for dof_trial in dofs_trial
+#                    counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+#                end
+#            end
+#        end
+#    end
+#    coo = matrix_strategy.allocate(counter,setup)
+#    counter_ref = Ref(matrix_strategy.counter(setup))
+#    data = (;setup,coo,counter_ref,matrix_strategy)
+#    MatrixAllocation(data)
+#end
+
 function allocate_matrix(
         ::Type{T},space_test::AbstractSpace,space_trial,domains::AbstractDomain...;
         matrix_strategy = monolithic_matrix_assembly_strategy(),
+        block_coupling = map(domain->fill(true,num_fields(space_test),num_fields(space_trial)),domains),
     ) where T
     setup = matrix_strategy.init(GT.free_dofs(space_test),GT.free_dofs(space_trial),T)
     counter = matrix_strategy.counter(setup)
-    @assert num_fields(space_test) == 1
-    @assert num_fields(space_trial) == 1
-    field_test = 1
-    field_trial = 1
-    for domain in domains
-        face_dofs_test = dofs_accessor(space_test,domain)
-        face_dofs_trial = dofs_accessor(space_trial,domain)
-        nfaces = num_faces(domain)
-        for face in 1:nfaces
-            dofs_test = face_dofs_test(face)
-            dofs_trial = face_dofs_trial(face)
-            for dof_test in dofs_test
-                for dof_trial in dofs_trial
-                    counter = matrix_strategy.count(counter,setup,dof_test,dof_trial,field_test,field_trial)
+    counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_trial_to_mask
+        field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
+        field_trial_face_dofs = map(V->dofs_accessor(V,domain),fields(space_trial))
+        fields_test = ntuple(identity,Val(num_fields(space_test)))
+        fields_trial = ntuple(identity,Val(num_fields(space_trial)))
+        increment(counter1,fields_trial,field_trial_face_dofs) do counter2,field_test,face_dofs_test
+            increment(counter2,fields_trial,field_trial_face_dofs) do counter3,field_trial,face_dofs_trial
+                nfaces = num_faces(domain)
+                mask = field_test_trial_to_mask[field_test,field_trial]
+                if mask
+                    for face in 1:nfaces
+                        dofs_test = face_dofs_test(face)
+                        dofs_trial = face_dofs_trial(face)
+                        for dof_test in dofs_test
+                            for dof_trial in dofs_trial
+                                counter3 = matrix_strategy.count(counter3,setup,dof_test,dof_trial,field_test,field_trial)
+                            end
+                        end
+                    end
                 end
+                counter3
             end
         end
     end

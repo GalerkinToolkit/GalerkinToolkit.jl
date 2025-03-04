@@ -18,6 +18,9 @@ mesh = GT.mesh(Ω)
 
 order = 2
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+V² = V × V
+GT.allocate_vector(Float64,V²,Ω)
+GT.allocate_matrix(Float64,V²,V²,Ω)
 
 GT.num_free_dofs(V)
 GT.num_dirichlet_dofs(V)
