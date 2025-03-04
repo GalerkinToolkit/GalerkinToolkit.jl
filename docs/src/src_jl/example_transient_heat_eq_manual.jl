@@ -13,18 +13,12 @@ import GLMakie as Makie
 import Gmsh: gmsh
 import FileIO # hide
 
-function main()
-    state1 = setup_example()
-    state2 = setup_accessors(state1)
-    state3 = assemble_matrices(state2)
-    time_steps(state3)
-end
 
 function setup_example()
 
     # Generate mesh
     mesh = GT.with_gmsh() do
-        mesh_size = 0.05
+        mesh_size = 0.02
         R = 0.15
         dim = 2
         rect_tag = gmsh.model.occ.add_rectangle(0,0,0,1,1)
@@ -33,7 +27,6 @@ function setup_example()
         circle_surf_tag = gmsh.model.occ.add_plane_surface([circle_curve_tag])
         gmsh.model.occ.cut([(dim,rect_tag)],[(dim,circle_surf_tag)]);
         gmsh.model.occ.synchronize()
-        @show gmsh.model.getEntities()
         domain_tags = [1]
         outer_tags = [6,7,8,9]
         inner_tags = [5]
@@ -57,7 +50,7 @@ function setup_example()
 
     # Time dependent dirichlet field
     uh = GT.semi_discrete_field(Float64,V) do t,uht
-        α =  t < 0.5 ? 2*t : 1
+        α =  t < 0.5 ? 2*t : 1.0
         g1 = GT.analytical_field(x->0.0,Ω)
         g2 = GT.analytical_field(x->1.0*α,Ω)
         g = GT.piecewise_field(g1,g2)
@@ -95,35 +88,37 @@ function assemble_matrices(state)
     #Allocate space for the global matrices
     ff = (GT.FREE,GT.FREE)
     fd = (GT.FREE,GT.DIRICHLET)
-    Kff_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
-    Mff_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
+    K_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
+    M_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
     Kfd_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=fd)
     Mfd_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=fd)
 
-    allocs = (;Kff_alloc,Mff_alloc,Kfd_alloc,Mfd_alloc,Ke,Me)
+    allocs = (;K_alloc,M_alloc,Kfd_alloc,Mfd_alloc,Ke,Me)
 
     # Assembly loop
     assembly_loop!(state,allocs)
 
     #Compress matrices
-    Kff = GT.compress(Kff_alloc)
+    K = GT.compress(K_alloc)
     Kfd = GT.compress(Kfd_alloc)
-    Mff = GT.compress(Mff_alloc)
+    M = GT.compress(M_alloc)
     Mfd = GT.compress(Mfd_alloc)
 
-    (;Kff,Mff,Kfd,Mfd,state...)
+    (;K,M,Kfd,Mfd,state...)
 
 end
 
 function assembly_loop!(state,allocs)
     (;Ω,accessors) = state
-    (;Kff_alloc,Mff_alloc,Kfd_alloc,Mfd_alloc,Ke,Me) = allocs 
+    (;K_alloc,M_alloc,Kfd_alloc,Mfd_alloc,Ke,Me) = allocs 
 
     #Reset allocations
-    GT.reset!(Kff_alloc)
+    GT.reset!(K_alloc)
     GT.reset!(Kfd_alloc)
-    GT.reset!(Mff_alloc)
+    GT.reset!(M_alloc)
     GT.reset!(Mfd_alloc)
+
+    C = 10
 
     #Loop over the faces of the domain
     for face in 1:GT.num_faces(Ω)
@@ -159,46 +154,46 @@ function assembly_loop!(state,allocs)
                     u = dof_s(j)
                     ∇u = dof_∇s(j)
                     Ke[i,j] += ∇v⋅∇u*dV
-                    Me[i,j] += v*u*dV
+                    Me[i,j] += C*v*u*dV
                 end
             end
         end
 
         #Add face contribution to global allocations
-        GT.contribute!(Kff_alloc,Ke,dofs,dofs)
+        GT.contribute!(K_alloc,Ke,dofs,dofs)
         GT.contribute!(Kfd_alloc,Ke,dofs,dofs)
-        GT.contribute!(Mff_alloc,Me,dofs,dofs)
+        GT.contribute!(M_alloc,Me,dofs,dofs)
         GT.contribute!(Mfd_alloc,Me,dofs,dofs)
     end
 
 end
 
 function time_steps(state)
-    (;Ω,uh,Kff,Kfd,Mff,Mfd) = state
+    (;Ω,uh,K,Kfd,M,Mfd) = state
 
-    T = 1
-    N = 50
+    T = 2
+    N = 100
     dt = T/N
-    A = Mff + dt * Kff
+    A = M + dt * K
     t = 0
-    ts = [ (step-1)*dt+t for step in 0:N]
+    ts = [ step*dt+t for step in 0:N]
 
     uht = uh(t)
-    xf = GT.free_values(uht)
+    x = GT.free_values(uht)
     xd = GT.dirichlet_values(uht)
-    b = similar(xf)
-    p = PS.linear_problem(xf,A,b)
+    b = similar(x)
+    p = PS.linear_problem(x,A,b)
     s = PS.LinearAlgebra_lu(p)
 
     axis = (aspect = Makie.DataAspect(),)
     color = Makie.Observable(uht)
     fig = Makie.Figure()
-    ax,sc = Makie.plot(fig[1,1],Ω;color,strokecolor=:black,axis,colorrange=(0,1))
+    ax,sc = Makie.plot(fig[1,1],Ω;color,axis,colorrange=(0,1))
     Makie.Colorbar(fig[1,2],sc)
 
     file = joinpath(@__DIR__,"fig_transient_heat_eq.gif")
-    Makie.record(fig,file,ts;framerate=2) do t
-        mul!(b,Mff,xf)
+    Makie.record(fig,file,ts) do t
+        mul!(b,M,x)
         mul!(b,Mfd,xd,1,1)
         uht = uh(t)
         xd = GT.dirichlet_values(uht)
@@ -206,10 +201,17 @@ function time_steps(state)
         mul!(b,Kfd,xd,-dt,1)
         s = PS.update(s,rhs=b)
         s = PS.solve(s)
-        xf = PS.solution(s)
-        color[] = GT.solution_field(uht,xf)
+        x = PS.solution(s)
+        color[] = GT.solution_field(uht,x)
     end
 
+end
+
+function main()
+    state1 = setup_example()
+    state2 = setup_accessors(state1)
+    state3 = assemble_matrices(state2)
+    time_steps(state3)
 end
 
 main()
