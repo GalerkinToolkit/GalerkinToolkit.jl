@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741077892836,
+  "lastUpdate": 1741159578624,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1064,6 +1064,36 @@ window.BENCHMARK_DATA = {
             "value": 679968904.5,
             "unit": "ns",
             "extra": "gctime=25620302\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3123744bb8678d4947803fcd69c80690a907ff45",
+          "message": "Merge pull request #189 from GalerkinToolkit/new_terms_dev\n\nadd 0-forms and 1-forms to new_terms",
+          "timestamp": "2025-03-05T08:22:38+01:00",
+          "tree_id": "f8c3bccb04a04c1c7e3e4db49a23b08047ec67ea",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/3123744bb8678d4947803fcd69c80690a907ff45"
+        },
+        "date": 1741159578193,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 665953590,
+            "unit": "ns",
+            "extra": "gctime=24346415\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
