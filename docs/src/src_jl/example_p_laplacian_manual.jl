@@ -1,5 +1,7 @@
 # # p-Laplacian (manual assembly)
 #
+# ![](p_laplacian_manual.gif)
+#
 # ## Problem statement
 #
 # We solve the same problem as in the [p-Laplacian](@ref) example, but in this case we explicitly write the numerical integration loops.
@@ -22,7 +24,7 @@ import GLMakie as Makie
 function setup_example(;file)
     assets_dir = normpath(joinpath(@__DIR__,"..","..","..","assets"))
     msh_file = joinpath(assets_dir,"model.msh")
-    mesh = GT.mesh_from_gmsh(msh_file)
+    mesh = GT.mesh_from_msh(msh_file)
     dirichlet_0_names = ["sides"]
     dirichlet_1_names = ["circle", "triangle", "square"]
     Ω = GT.interior(mesh)

@@ -13,7 +13,7 @@ function with_gmsh(f;options=default_gmsh_options())
         gmsh.option.setNumber(k,v)
     end
     try
-        return f()
+        return f(gmsh)
     finally
         gmsh.finalize()
     end
@@ -21,17 +21,17 @@ end
 
 """
 """
-function mesh_from_gmsh(file;complexify=true,renumber=true,kwargs...)
+function mesh_from_msh(file;complexify=true,renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
-    with_gmsh(;kwargs...) do
+    with_gmsh(;kwargs...) do gmsh
         gmsh.open(file)
         renumber && gmsh.model.mesh.renumberNodes()
         renumber && gmsh.model.mesh.renumberElements()
-        mesh_from_gmsh_module(;complexify)
+        mesh_from_gmsh(gmsh;complexify)
     end
 end
 
-function mesh_from_gmsh_module(;complexify=true)
+function mesh_from_gmsh(gmsh::Module;complexify=true)
     entities = gmsh.model.getEntities()
     nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
 

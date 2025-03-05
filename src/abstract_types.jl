@@ -24,7 +24,7 @@ Beginner
 
 - [`mesh`](@ref)
 - [`chain`](@ref)
-- [`mesh_from_gmsh`](@ref)
+- [`mesh_from_msh`](@ref)
 - [`mesh_from_space`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`complexify`](@ref)

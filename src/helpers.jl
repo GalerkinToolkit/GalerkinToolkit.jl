@@ -41,7 +41,7 @@ val_parameter(::Val{a}) where a = a
 
 Create an object representing the default options for the current simulation.
 This object can be used as an optional argument in several object constructors in GalerkinToolkit,
-such as the mesh constructors `cartesian_mesh` and `mesh_from_gmsh`.
+such as the mesh constructors `cartesian_mesh` and `mesh_from_msh`.
 In this case, the computations using the generated mesh, will use the given options by default.
 """
 function options(;

@@ -219,7 +219,7 @@ A = tabulator(GT.value,x)
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 msh =  joinpath(@__DIR__,"..","assets","quad.msh")
-mesh = GT.mesh_from_gmsh(msh)
+mesh = GT.mesh_from_msh(msh)
 vtk_grid(joinpath(outdir,"quad"),GT.vtk_args(mesh)...) do vtk
     GT.vtk_physical_faces!(vtk,mesh)
     GT.vtk_physical_nodes!(vtk,mesh)
@@ -232,7 +232,7 @@ for d in 0:GT.num_dims(mesh)
 end
 
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
-mesh = GT.mesh_from_gmsh(msh;complexify=false)
+mesh = GT.mesh_from_msh(msh;complexify=false)
 vtk_grid(joinpath(outdir,"demo"),GT.vtk_args(mesh)...) do vtk
     GT.vtk_physical_faces!(vtk,mesh)
     GT.vtk_physical_nodes!(vtk,mesh)
@@ -267,11 +267,11 @@ GT.opposite_faces(cube3,3)
 order = 2
 GT.lagrange_mesh_face(spx1,order) |> GT.boundary |> GT.topology
 
-mesh = GT.mesh_from_gmsh(msh;complexify=false)
+mesh = GT.mesh_from_msh(msh;complexify=false)
 
 new_mesh, old_to_new = GT.complexify(mesh,glue=Val(true))
 
-mesh = GT.mesh_from_gmsh(msh)
+mesh = GT.mesh_from_msh(msh)
 
 domain = (0,1,0,1,0,1)
 cells = (2,2,2)
@@ -299,7 +299,7 @@ for d in 0:GT.num_dims(mesh)
     end
 end
 
-mesh = GT.mesh_from_gmsh(msh)
+mesh = GT.mesh_from_msh(msh)
 face_groups = GT.physical_faces(mesh)
 group_names = GT.physical_names(mesh,2)
 group_names = GT.physical_names(mesh)
@@ -347,7 +347,7 @@ map(setup,partition(pmesh),GT.index_partition(pmesh),parts)
 np = 4
 parts = DebugArray(LinearIndices((np,)))
 pmesh = map_main(parts) do parts
-    mesh = GT.mesh_from_gmsh(msh)
+    mesh = GT.mesh_from_msh(msh)
     partition_strategy = GT.partition_strategy(graph_nodes=:nodes,graph_edges=:cells)
     graph = GT.mesh_graph(mesh;partition_strategy)
     graph_partition = Metis.partition(graph,np)
@@ -372,7 +372,7 @@ map(setup,partition(pmesh),GT.index_partition(pmesh),parts)
 
 # In this one, we do only the graph partition on the main
 # but we load the mesh everywhere
-mesh = GT.mesh_from_gmsh(msh)
+mesh = GT.mesh_from_msh(msh)
 partition_strategy = GT.partition_strategy(graph_nodes=:nodes,graph_edges=:cells,ghost_layers=1)
 graph = GT.mesh_graph(mesh;partition_strategy)
 graph_partition = map_main(parts) do parts
@@ -443,7 +443,7 @@ assetsdir = joinpath(@__DIR__, "..", "assets")
 unit_cell_mesh_fpath = joinpath(
     assetsdir,
     "unit_cell_3D_periodic_puzzlepiece_geometry_triangular_refcell.msh")
-unit_cell_mesh = GT.mesh_from_gmsh(unit_cell_mesh_fpath)
+unit_cell_mesh = GT.mesh_from_msh(unit_cell_mesh_fpath)
 
 # visualize the periodic gmsh unit cell with triangular refcells 
 unit_cell_vtk_fname = "unit_cell_mesh_3D_periodic_gmsh_puzzlepiece_geometry_triangular_refcell"

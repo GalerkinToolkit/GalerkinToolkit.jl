@@ -802,6 +802,9 @@ struct SemiDiscreteField{A,B}
     discrete_field::B
 end
 
+free_values(uh::SemiDiscreteField) = free_values(uh.discrete_field)
+dirichlet_values(uh::SemiDiscreteField) = dirichlet_values(uh.discrete_field)
+
 function (u::SemiDiscreteField)(t)
     u.update(t,u.discrete_field)
     u.discrete_field

@@ -1,5 +1,7 @@
 # # Transient heat equation (manual assembly)
 # 
+# ![](fig_transient_heat_equation_manual.gif)
+#
 # ## Implementation
 #
 # Load dependencies form Julia stdlib.
@@ -12,15 +14,27 @@ import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
 import GLMakie as Makie
-import Gmsh: gmsh
+import WriteVTK
 import FileIO # hide
 
+# Main program. The individual functions are defined later.
 
-function setup_example()
+function main(;mesh_size=0.02,R=0.15,T=2,N=100)
+    params = (;mesh_size,R,T,N)
+    state0 = setup_mesh(params)
+    state1 = setup_example(state0)
+    state2 = setup_accessors(state1)
+    state3 = assemble_matrices(state2)
+    state4 = setup_time_steps(state3)
+    time_steps_makie(state4)
+    time_steps_vtk(state4)
+end
 
-    #Generate mesh
-    mesh = GT.with_gmsh() do
-        mesh_size = 0.02
+# Setup the mesh with GMSH
+
+function setup_mesh(state)
+    (;mesh_size,R) = state
+    mesh = GT.with_gmsh() do gmsh
         R = 0.15
         dim = 2
         rect_tag = gmsh.model.occ.add_rectangle(0,0,0,1,1)
@@ -37,31 +51,37 @@ function setup_example()
         gmsh.model.model.add_physical_group(dim-1,inner_tags,-1,"inner")
         gmsh.option.setNumber("Mesh.MeshSizeMax",mesh_size)
         gmsh.model.mesh.generate(dim)
-        GT.mesh_from_gmsh_module()
+        GT.mesh_from_gmsh(gmsh)
     end
+    (;mesh,state...)
+end
 
+# Setup the quantities for this example
+
+function setup_example(state)
+    (;mesh) = state
     #Domains
     Ω = GT.interior(mesh;physical_names=["domain"])
     Γ1 = GT.boundary(mesh;physical_names=["outer"])
     Γ2 = GT.boundary(mesh;physical_names=["inner"])
     Γ = GT.piecewise_domain(Γ1,Γ2)
-
     #Space
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γ)
-
     #Time dependent dirichlet field
     uh = GT.semi_discrete_field(Float64,V) do t,uht
-        α =  t < 0.5 ? 2*t : 1.0
+        α = sin(3*pi*t)
         g1 = GT.analytical_field(x->0.0,Ω)
         g2 = GT.analytical_field(x->1.0*α,Ω)
         g = GT.piecewise_field(g1,g2)
         GT.interpolate_dirichlet!(g,uht)
     end
-
-    (;Ω,V,uh)
-
+    #Initial condition
+    u0 = GT.analytical_field(x->0.0,Ω)
+    (;Ω,V,uh,u0,state...)
 end
+
+# Create the accessor functions used later for integration
 
 function setup_accessors(state)
     (;Ω,V) = state
@@ -74,9 +94,12 @@ function setup_accessors(state)
     face_dofs = GT.dofs_accessor(V,Ω)
     face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
     face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
-    accessors = (;face_point_x,face_point_J,face_point_dV,face_npoints,face_dofs,face_point_dof_s,face_point_dof_∇s)
+    accessors = (;face_point_x,face_point_J,face_point_dV,
+                 face_npoints,face_dofs,face_point_dof_s,face_point_dof_∇s)
     (;accessors,state...)
 end
+
+# Assemble the problem matrices
 
 function assemble_matrices(state)
     (;V,Ω,accessors) = state
@@ -109,6 +132,8 @@ function assemble_matrices(state)
     (;K,M,Kfd,Mfd,state...)
 
 end
+
+# Manual assembly loop
 
 function assembly_loop!(state,allocs)
     (;Ω,accessors) = state
@@ -170,53 +195,112 @@ function assembly_loop!(state,allocs)
 
 end
 
-function time_steps(state)
-    (;Ω,uh,K,Kfd,M,Mfd) = state
+# Perform operations that are shared between time steps.
 
-    T = 2
-    N = 100
+function setup_time_steps(state)
+    (;T,N,Ω,uh,K,M,Kfd,Mfd) = state
+    #Generate linear problem
     dt = T/N
-    A = M + dt * K
     t = 0
-    ts = [ step*dt+t for step in 0:N]
-
-    uht = uh(t)
-    x = GT.free_values(uht)
-    xd = GT.dirichlet_values(uht)
+    A = M + dt * K
+    x = GT.free_values(uh)
     b = similar(x)
     p = PS.linear_problem(x,A,b)
+    #Generate solver object.
+    #This factorizes the matrix
     s = PS.LinearAlgebra_lu(p)
+    (;s,p,b,dt,state...)
+end
 
+# Do the time steps and record the solution with Makie.
+
+function time_steps_makie(state)
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+
+    #Initial condition
+    t0 = 0
+    uht = uh(t0)
+    GT.interpolate_free!(u0,uht)
+    x = GT.free_values(uht)
+    xd = GT.dirichlet_values(uht)
+
+    #Setup Makie scene
     axis = (aspect = Makie.DataAspect(),)
     color = Makie.Observable(uht)
     fig = Makie.Figure()
-    ax,sc = Makie.plot(fig[1,1],Ω;color,axis,colorrange=(0,1))
+    ax,sc = Makie.plot(fig[1,1],Ω;color,axis,colorrange=(-1,1))
     Makie.Colorbar(fig[1,2],sc)
 
-    file = joinpath(@__DIR__,"fig_transient_heat_eq.gif")
-    Makie.record(fig,file,ts) do t
+    #Record Makie scene
+    fn = "fig_transient_heat_equation_manual.gif"
+    file = joinpath(@__DIR__,fn)
+    Makie.record(fig,file,1:N) do step
+        #Compute current time
+        t = dt*step + t0
+        #Setup rhs
         mul!(b,M,x)
         mul!(b,Mfd,xd,1,1)
         uht = uh(t)
         xd = GT.dirichlet_values(uht)
         mul!(b,Mfd,xd,-1,1)
         mul!(b,Kfd,xd,-dt,1)
+        #Update solver with the new rhs and solve
+        #This is only a solver substitution,
+        #not a full factorization
         s = PS.update(s,rhs=b)
         s = PS.solve(s)
+        #Get solution at the end of the step
         x = PS.solution(s)
+        #Update Makie scene
         color[] = GT.solution_field(uht,x)
     end
 
 end
 
-function main()
-    state1 = setup_example()
-    state2 = setup_accessors(state1)
-    state3 = assemble_matrices(state2)
-    time_steps(state3)
+# Do the time steps and record the solution with VTK.
+
+function time_steps_vtk(state)
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+
+    #Initial condition
+    t0 = 0
+    uht = uh(t0)
+    GT.interpolate_free!(u0,uht)
+    x = GT.free_values(uht)
+    xd = GT.dirichlet_values(uht)
+
+    #Create the GT plot object
+    plt = GT.plot(Ω)
+
+    #Save Paraview collection
+    fn = "vtk_transient_heat_equation_manual"
+    file = joinpath(@__DIR__,fn)
+    WriteVTK.paraview_collection(file,plt) do pvd
+        for step in 1:N
+            t = dt*step + t0
+            mul!(b,M,x)
+            mul!(b,Mfd,xd,1,1)
+            uht = uh(t)
+            xd = GT.dirichlet_values(uht)
+            mul!(b,Mfd,xd,-1,1)
+            mul!(b,Kfd,xd,-dt,1)
+            s = PS.update(s,rhs=b)
+            s = PS.solve(s)
+            x = PS.solution(s)
+            uht = GT.solution_field(uht,x)
+            #Save vtk file for this step
+            WriteVTK.vtk_grid("$(file)_$(step)",plt) do plt
+                GT.plot!(plt,uht;label="uh")
+                pvd[step] = plt
+            end
+        end
+    end
+
 end
+
+# Call the main function
 
 main()
 
-# ![](fig_transient_heat_eq.gif)
+# ![](fig_transient_heat_equation_manual.gif)
 

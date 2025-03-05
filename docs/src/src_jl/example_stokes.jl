@@ -1,6 +1,8 @@
 
 # # Stokes lid-driven cavity
 #
+# ![](fig_stokes.png)
+#
 # ## Problem statement
 
 # We solve the lid-driven cavity for a stokes flow. We use an inf-sub stable high order formulation.
@@ -45,7 +47,8 @@ p = GT.linear_problem(uhph_dirichlet,a,l)
 s = PS.LinearAlgebra_lu(p)
 s = PS.solve(s)
 uh,ph = GT.solution_field(uhph_dirichlet,s)
-Makie.plot(Ω,color=ph)
+axis = (aspect = Makie.DataAspect(),)
+Makie.plot(Ω;color=ph,axis)
 Makie.arrows!(uh;color=x->norm(uh(x)),lengthscale=0.1)
 FileIO.save(joinpath(@__DIR__,"fig_stokes.png"),Makie.current_figure()) # hide
 
