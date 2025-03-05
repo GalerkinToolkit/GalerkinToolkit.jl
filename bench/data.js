@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741159578624,
+  "lastUpdate": 1741168281903,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1094,6 +1094,36 @@ window.BENCHMARK_DATA = {
             "value": 665953590,
             "unit": "ns",
             "extra": "gctime=24346415\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8dc29f163383acb914abc028e6790512bfa52e37",
+          "message": "Merge pull request #188 from GalerkinToolkit/heat_eq\n\nTransient heat equation example",
+          "timestamp": "2025-03-05T10:47:35+01:00",
+          "tree_id": "d668d37e0c1030dae8718c033c6156012313b0d8",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/8dc29f163383acb914abc028e6790512bfa52e37"
+        },
+        "date": 1741168281576,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 678933745.5,
+            "unit": "ns",
+            "extra": "gctime=28671684\nmemory=430345320\nallocs=14341011\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
