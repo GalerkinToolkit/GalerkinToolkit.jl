@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Transient heat equation (manual assembly) · GalerkinToolkit.jl</title><meta name="title" content="Transient heat equation (manual assembly) · GalerkinToolkit.jl"/><meta property="og:title" content="Transient heat equation (manual assembly) · GalerkinToolkit.jl"/><meta property="twitter:title" content="Transient heat equation (manual assembly) · GalerkinToolkit.jl"/><meta name="description" content="Documentation for GalerkinToolkit.jl."/><meta property="og:description" content="Documentation for GalerkinToolkit.jl."/><meta property="twitter:description" content="Documentation for GalerkinToolkit.jl."/><meta property="og:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_transient_heat_eq_manual/"/><meta property="twitter:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_transient_heat_eq_manual/"/><link rel="canonical" href="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_transient_heat_eq_manual/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.svg" alt="GalerkinToolkit.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">GalerkinToolkit.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/">Tutorials</a></li><li><a class="tocitem" href="../tutorial_intro_to_fem/">Introduction to FEM</a></li></ul></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../../examples/">Examples</a></li><li><a class="tocitem" href="../example_hello_world/">Hello, World!</a></li><li><a class="tocitem" href="../example_hello_world_manual/">Hello, World! (manual assembly)</a></li><li><a class="tocitem" href="../example_poisson_equation/">Poisson equation</a></li><li><a class="tocitem" href="../example_p_laplacian/">p-Laplacian</a></li><li><a class="tocitem" href="../example_p_laplacian_manual/">p-Laplacian (manual assembly)</a></li><li><a class="tocitem" href="../example_stokes/">Stokes lid-driven cavity</a></li><li class="is-active"><a class="tocitem" href>Transient heat equation (manual assembly)</a><ul class="internal"><li><a class="tocitem" href="#Implementation"><span>Implementation</span></a></li></ul></li></ul></li><li><span class="tocitem">Manual</span><ul><li><a class="tocitem" href="../../manual/">Manual</a></li><li><a class="tocitem" href="../../manual/getting_started/">Getting started</a></li><li><a class="tocitem" href="../../manual/for_developers/">For developers</a></li></ul></li><li><a class="tocitem" href="../../reference/">API</a></li><li><a class="tocitem" href="../../refindex/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Transient heat equation (manual assembly)</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Transient heat equation (manual assembly)</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/docs/src/src_jl/example_transient_heat_eq_manual.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Transient-heat-equation-(manual-assembly)"><a class="docs-heading-anchor" href="#Transient-heat-equation-(manual-assembly)">Transient heat equation (manual assembly)</a><a id="Transient-heat-equation-(manual-assembly)-1"></a><a class="docs-heading-anchor-permalink" href="#Transient-heat-equation-(manual-assembly)" title="Permalink"></a></h1><p><img src="../fig_transient_heat_equation_manual.gif" alt/></p><h2 id="Implementation"><a class="docs-heading-anchor" href="#Implementation">Implementation</a><a id="Implementation-1"></a><a class="docs-heading-anchor-permalink" href="#Implementation" title="Permalink"></a></h2><p>Load dependencies form Julia stdlib.</p><pre><code class="language-julia hljs">using LinearAlgebra</code></pre><p>Import other dependencies</p><pre><code class="language-julia hljs">import GalerkinToolkit as GT
+import PartitionedSolvers as PS
+import ForwardDiff
+import GLMakie as Makie
+import WriteVTK</code></pre><p>Main program. The individual functions are defined later.</p><pre><code class="language-julia hljs">function main(;mesh_size=0.02,R=0.15,T=2,N=100)
+    params = (;mesh_size,R,T,N)
+    state0 = setup_mesh(params)
+    state1 = setup_example(state0)
+    state2 = setup_accessors(state1)
+    state3 = assemble_matrices(state2)
+    state4 = setup_time_steps(state3)
+    time_steps_makie(state4)
+    time_steps_vtk(state4)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">main (generic function with 1 method)</code></pre><p>Setup the mesh with GMSH</p><pre><code class="language-julia hljs">function setup_mesh(state)
+    (;mesh_size,R) = state
+    mesh = GT.with_gmsh() do gmsh
+        R = 0.15
+        dim = 2
+        rect_tag = gmsh.model.occ.add_rectangle(0,0,0,1,1)
+        circle_tag = gmsh.model.occ.add_circle(0.5,0.5,0,R)
+        circle_curve_tag = gmsh.model.occ.add_curve_loop([circle_tag])
+        circle_surf_tag = gmsh.model.occ.add_plane_surface([circle_curve_tag])
+        gmsh.model.occ.cut([(dim,rect_tag)],[(dim,circle_surf_tag)]);
+        gmsh.model.occ.synchronize()
+        domain_tags = [1]
+        outer_tags = [6,7,8,9]
+        inner_tags = [5]
+        gmsh.model.model.add_physical_group(dim,domain_tags,-1,&quot;domain&quot;)
+        gmsh.model.model.add_physical_group(dim-1,outer_tags,-1,&quot;outer&quot;)
+        gmsh.model.model.add_physical_group(dim-1,inner_tags,-1,&quot;inner&quot;)
+        gmsh.option.setNumber(&quot;Mesh.MeshSizeMax&quot;,mesh_size)
+        gmsh.model.mesh.generate(dim)
+        GT.mesh_from_gmsh(gmsh)
+    end
+    (;mesh,state...)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">setup_mesh (generic function with 1 method)</code></pre><p>Setup the quantities for this example</p><pre><code class="language-julia hljs">function setup_example(state)
+    (;mesh) = state
+    #Domains
+    Ω = GT.interior(mesh;physical_names=[&quot;domain&quot;])
+    Γ1 = GT.boundary(mesh;physical_names=[&quot;outer&quot;])
+    Γ2 = GT.boundary(mesh;physical_names=[&quot;inner&quot;])
+    Γ = GT.piecewise_domain(Γ1,Γ2)
+    #Space
+    k = 1
+    V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γ)
+    #Time dependent dirichlet field
+    uh = GT.semi_discrete_field(Float64,V) do t,uht
+        α = sin(3*pi*t)
+        g1 = GT.analytical_field(x-&gt;0.0,Ω)
+        g2 = GT.analytical_field(x-&gt;1.0*α,Ω)
+        g = GT.piecewise_field(g1,g2)
+        GT.interpolate_dirichlet!(g,uht)
+    end
+    #Initial condition
+    u0 = GT.analytical_field(x-&gt;0.0,Ω)
+    (;Ω,V,uh,u0,state...)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">setup_example (generic function with 1 method)</code></pre><p>Create the accessor functions used later for integration</p><pre><code class="language-julia hljs">function setup_accessors(state)
+    (;Ω,V) = state
+    degree = 2*GT.order(V)
+    dΩ = GT.measure(Ω,degree)
+    face_point_x = GT.coordinate_accessor(dΩ)
+    face_point_J = GT.jacobian_accessor(dΩ)
+    face_point_dV = GT.weight_accessor(dΩ)
+    face_npoints = GT.num_points_accessor(dΩ)
+    face_dofs = GT.dofs_accessor(V,Ω)
+    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
+    face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+    accessors = (;face_point_x,face_point_J,face_point_dV,
+                 face_npoints,face_dofs,face_point_dof_s,face_point_dof_∇s)
+    (;accessors,state...)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">setup_accessors (generic function with 1 method)</code></pre><p>Assemble the problem matrices</p><pre><code class="language-julia hljs">function assemble_matrices(state)
+    (;V,Ω,accessors) = state
+
+    #Allocate auxiliary face matrix and vector
+    n = GT.max_num_reference_dofs(V)
+    T = Float64
+    Ke = zeros(T,n,n)
+    Me = zeros(T,n,n)
+
+    #Allocate space for the global matrices
+    ff = (GT.FREE,GT.FREE)
+    fd = (GT.FREE,GT.DIRICHLET)
+    K_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
+    M_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=ff)
+    Kfd_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=fd)
+    Mfd_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=fd)
+
+    allocs = (;K_alloc,M_alloc,Kfd_alloc,Mfd_alloc,Ke,Me)
+
+    #Assembly loop (defined later)
+    assembly_loop!(state,allocs)
+
+    #Compress matrices
+    K = GT.compress(K_alloc)
+    Kfd = GT.compress(Kfd_alloc)
+    M = GT.compress(M_alloc)
+    Mfd = GT.compress(Mfd_alloc)
+
+    (;K,M,Kfd,Mfd,state...)
+
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">assemble_matrices (generic function with 1 method)</code></pre><p>Manual assembly loop</p><pre><code class="language-julia hljs">function assembly_loop!(state,allocs)
+    (;Ω,accessors) = state
+    (;K_alloc,M_alloc,Kfd_alloc,Mfd_alloc,Ke,Me) = allocs
+
+    #Reset allocations
+    GT.reset!(K_alloc)
+    GT.reset!(Kfd_alloc)
+    GT.reset!(M_alloc)
+    GT.reset!(Mfd_alloc)
+
+    C = 10
+
+    #Loop over the faces of the domain
+    for face in 1:GT.num_faces(Ω)
+
+        #Reset element matrices
+        fill!(Ke,zero(eltype(Ke)))
+        fill!(Me,zero(eltype(Me)))
+
+        #Get quantities at current face
+        npoints = accessors.face_npoints(face)
+        point_x = accessors.face_point_x(face)
+        point_J = accessors.face_point_J(face)
+        point_dV = accessors.face_point_dV(face)
+        point_dof_s = accessors.face_point_dof_s(face)
+        point_dof_∇s = accessors.face_point_dof_∇s(face)
+        dofs = accessors.face_dofs(face)
+
+        #Loop over integration points
+        for point in 1:npoints
+
+            #Get quantities at current integration point
+            x = point_x(point)
+            J = point_J(point)
+            dV = point_dV(point,J)
+            dof_s = point_dof_s(point)
+            dof_∇s = point_dof_∇s(point,J)
+
+            #Fill in face matrix and vector
+            for (i,dofi) in enumerate(dofs)
+                v = dof_s(i)
+                ∇v = dof_∇s(i)
+                for (j,dofj) in enumerate(dofs)
+                    u = dof_s(j)
+                    ∇u = dof_∇s(j)
+                    Ke[i,j] += ∇v⋅∇u*dV
+                    Me[i,j] += C*v*u*dV
+                end
+            end
+        end
+
+        #Add face contribution to global allocations
+        GT.contribute!(K_alloc,Ke,dofs,dofs)
+        GT.contribute!(Kfd_alloc,Ke,dofs,dofs)
+        GT.contribute!(M_alloc,Me,dofs,dofs)
+        GT.contribute!(Mfd_alloc,Me,dofs,dofs)
+    end
+
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">assembly_loop! (generic function with 1 method)</code></pre><p>Perform operations that are shared between time steps.</p><pre><code class="language-julia hljs">function setup_time_steps(state)
+    (;T,N,Ω,uh,K,M,Kfd,Mfd) = state
+    #Generate linear problem
+    dt = T/N
+    t = 0
+    A = M + dt * K
+    x = GT.free_values(uh)
+    b = similar(x)
+    p = PS.linear_problem(x,A,b)
+    #Generate solver object.
+    #This factorizes the matrix
+    s = PS.LinearAlgebra_lu(p)
+    (;s,p,b,dt,state...)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">setup_time_steps (generic function with 1 method)</code></pre><p>Do the time steps and record the solution with Makie.</p><pre><code class="language-julia hljs">function time_steps_makie(state)
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+
+    #Initial condition
+    t0 = 0
+    uht = uh(t0)
+    GT.interpolate_free!(u0,uht)
+    x = GT.free_values(uht)
+    xd = GT.dirichlet_values(uht)
+
+    #Setup Makie scene
+    axis = (aspect = Makie.DataAspect(),)
+    color = Makie.Observable(uht)
+    fig = Makie.Figure()
+    ax,sc = Makie.plot(fig[1,1],Ω;color,axis,colorrange=(-1,1))
+    Makie.Colorbar(fig[1,2],sc)
+
+    #Record Makie scene
+    fn = &quot;fig_transient_heat_equation_manual.gif&quot;
+    file = joinpath(@__DIR__,fn)
+    Makie.record(fig,file,1:N) do step
+        #Compute current time
+        t = dt*step + t0
+        #Setup rhs
+        mul!(b,M,x)
+        mul!(b,Mfd,xd,1,1)
+        uht = uh(t)
+        xd = GT.dirichlet_values(uht)
+        mul!(b,Mfd,xd,-1,1)
+        mul!(b,Kfd,xd,-dt,1)
+        #Update solver with the new rhs and solve
+        #This is only a solver substitution,
+        #not a full factorization
+        s = PS.update(s,rhs=b)
+        s = PS.solve(s)
+        #Get solution at the end of the step
+        x = PS.solution(s)
+        #Update Makie scene
+        color[] = GT.solution_field(uht,x)
+    end
+
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">time_steps_makie (generic function with 1 method)</code></pre><p>Do the time steps and record the solution with VTK.</p><pre><code class="language-julia hljs">function time_steps_vtk(state)
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+
+    #Initial condition
+    t0 = 0
+    uht = uh(t0)
+    GT.interpolate_free!(u0,uht)
+    x = GT.free_values(uht)
+    xd = GT.dirichlet_values(uht)
+
+    #Create the GT plot object
+    plt = GT.plot(Ω)
+
+    #Save Paraview collection
+    fn = &quot;vtk_transient_heat_equation_manual&quot;
+    file = joinpath(@__DIR__,fn)
+    WriteVTK.paraview_collection(file,plt) do pvd
+        for step in 1:N
+            t = dt*step + t0
+            mul!(b,M,x)
+            mul!(b,Mfd,xd,1,1)
+            uht = uh(t)
+            xd = GT.dirichlet_values(uht)
+            mul!(b,Mfd,xd,-1,1)
+            mul!(b,Kfd,xd,-dt,1)
+            s = PS.update(s,rhs=b)
+            s = PS.solve(s)
+            x = PS.solution(s)
+            uht = GT.solution_field(uht,x)
+            #Save vtk file for this step
+            WriteVTK.vtk_grid(&quot;$(file)_$(step)&quot;,plt) do plt
+                GT.plot!(plt,uht;label=&quot;uh&quot;)
+                pvd[step] = plt
+            end
+        end
+    end
+
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">time_steps_vtk (generic function with 1 method)</code></pre><p>Call the main function</p><pre><code class="language-julia hljs">main()</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">101-element Vector{String}:
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 50 bytes ⋯ </span></span>&quot;nsient_heat_equation_manual.pvd&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_1.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_2.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_3.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_4.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_5.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_6.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_7.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_8.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 52 bytes ⋯ </span></span>&quot;ient_heat_equation_manual_9.vtu&quot;
+ ⋮
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_92.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_93.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_94.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_95.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_96.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_97.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_98.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 53 bytes ⋯ </span></span>&quot;ent_heat_equation_manual_99.vtu&quot;
+ &quot;/home/runner/work/GalerkinToolk&quot;<span class="sgr93"><span class="sgr1"> ⋯ 54 bytes ⋯ </span></span>&quot;nt_heat_equation_manual_100.vtu&quot;</code></pre><p><img src="../fig_transient_heat_equation_manual.gif" alt/></p><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_stokes/">« Stokes lid-driven cavity</a><a class="docs-footer-nextpage" href="../../manual/">Manual »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 5 March 2025 10:04">Wednesday 5 March 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
