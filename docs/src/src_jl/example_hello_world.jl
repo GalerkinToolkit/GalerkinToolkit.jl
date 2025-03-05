@@ -1,5 +1,7 @@
 # # Hello, World!
 #
+# ![](fig_poisson_3.png)
+#
 # ## Problem statement
 #
 # In this example, we show how to solve the "Hello, world" PDE example:
@@ -41,7 +43,8 @@ nothing # hide
 
 # Visualize the mesh.
 
-Makie.plot(mesh,color=:pink,strokecolor=:blue)
+axis = (aspect = Makie.DataAspect(),)
+Makie.plot(mesh;color=:pink,strokecolor=:blue,axis)
 FileIO.save(joinpath(@__DIR__,"fig_poisson_1.png"),Makie.current_figure()) # hide
 
 # ![](fig_poisson_1.png)
@@ -84,7 +87,7 @@ nothing # hide
 
 # Visualize the Dirichlet field.
 
-Makie.plot(Ω,color=uhd,strokecolor=:blue)
+Makie.plot(Ω;color=uhd,strokecolor=:blue,axis)
 FileIO.save(joinpath(@__DIR__,"fig_poisson_2.png"),Makie.current_figure()) # hide
 
 # ![](fig_poisson_2.png)
@@ -119,7 +122,7 @@ nothing # hide
 
 # Visualize the solution.
 
-Makie.plot(Ω;color=uh,strokecolor=:black)
+Makie.plot(Ω;color=uh,strokecolor=:black,axis)
 FileIO.save(joinpath(@__DIR__,"fig_poisson_3.png"),Makie.current_figure()) # hide
 
 # ![](fig_poisson_3.png)

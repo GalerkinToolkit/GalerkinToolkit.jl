@@ -1,5 +1,7 @@
 # # Poisson equation
 #
+# ![](fig_poisson_eq_5.png)
+#
 # ## Problem statement
 
 #  Find the scalar field $u$ such that
@@ -34,7 +36,7 @@ import FileIO # hide
 
 assets_dir = normpath(joinpath(@__DIR__,"..","..","..","assets"))
 msh_file = joinpath(assets_dir,"model.msh")
-mesh = GT.mesh_from_gmsh(msh_file)
+mesh = GT.mesh_from_msh(msh_file)
 nothing # hide
 
 Makie.plot(mesh,color=:pink,strokecolor=:blue)

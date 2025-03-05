@@ -13,7 +13,7 @@ function with_gmsh(f;options=default_gmsh_options())
         gmsh.option.setNumber(k,v)
     end
     try
-        return f()
+        return f(gmsh)
     finally
         gmsh.finalize()
     end
@@ -21,17 +21,17 @@ end
 
 """
 """
-function mesh_from_gmsh(file;complexify=true,renumber=true,kwargs...)
+function mesh_from_msh(file;complexify=true,renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
-    with_gmsh(;kwargs...) do
+    with_gmsh(;kwargs...) do gmsh
         gmsh.open(file)
         renumber && gmsh.model.mesh.renumberNodes()
         renumber && gmsh.model.mesh.renumberElements()
-        mesh_from_gmsh_module(;complexify)
+        mesh_from_gmsh(gmsh;complexify)
     end
 end
 
-function mesh_from_gmsh_module(;complexify=true)
+function mesh_from_gmsh(gmsh::Module;complexify=true)
     entities = gmsh.model.getEntities()
     nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
 
@@ -222,7 +222,7 @@ end
 function reference_face_from_gmsh_eltype(eltype)
     if eltype == 1
         order = 1
-        geom = unit_n_cube(Val(1))
+        geom = unit_simplex(Val(1))
         lib_to_gmsh = :default#[1,2]
     elseif eltype == 2
         order = 1

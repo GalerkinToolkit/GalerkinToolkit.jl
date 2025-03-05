@@ -460,14 +460,14 @@ function assemble_fill(state)
                                  vector_strategy_counter,
                                  vector_strategy_init,
                                  cache_V.b[i],
-                                 dof_i,field_i)
+                                 dof_i,field_i,GT.FREE)
             for (j,dof_j) in enumerate(dofs)
                 matrix_strategy_counter =
                 matrix_strategy.set!(matrix_strategy_alloc,
                                      matrix_strategy_counter,
                                      matrix_strategy_init,
                                      cache_V.A[i,j],
-                                     dof_i,dof_j,field_i,field_j)
+                                     dof_i,dof_j,field_i,field_j,GT.FREE,GT.FREE)
             end
         end
     end
@@ -501,13 +501,13 @@ function assemble_allocate(state)
             vector_strategy_counter =
             vector_strategy.count(vector_strategy_counter,
                                   vector_strategy_init,
-                                  dof_i,field_i)
+                                  dof_i,field_i,GT.FREE)
             for dof_j in dofs
                 matrix_strategy_counter =
                 matrix_strategy.count(
                                       matrix_strategy_counter,
                                       matrix_strategy_init,
-                                      dof_i,dof_j,field_i,field_j)
+                                      dof_i,dof_j,field_i,field_j,GT.FREE,GT.FREE)
             end
         end
     end

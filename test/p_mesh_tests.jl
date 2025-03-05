@@ -21,7 +21,7 @@ msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 np = 4
 parts = DebugArray(LinearIndices((np,)))
 pmesh = map_main(parts) do parts
-    mesh = GT.mesh_from_gmsh(msh)
+    mesh = GT.mesh_from_msh(msh)
     partition_strategy = GT.partition_strategy(graph_nodes=:nodes,graph_edges=:cells)
     graph = GT.mesh_graph(mesh;partition_strategy)
     graph_partition = Metis.partition(graph,np)
@@ -30,7 +30,7 @@ end |> GT.scatter_mesh
 
 # In this one, we do only the graph partition on the main
 # but we load the mesh everywhere
-mesh = GT.mesh_from_gmsh(msh)
+mesh = GT.mesh_from_msh(msh)
 partition_strategy = GT.partition_strategy(graph_nodes=:nodes,graph_edges=:cells,ghost_layers=1)
 graph = GT.mesh_graph(mesh;partition_strategy)
 graph_partition = map_main(parts) do parts
