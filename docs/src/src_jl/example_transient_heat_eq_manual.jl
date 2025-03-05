@@ -1,3 +1,5 @@
+# # Transient heat equation (manual assembly)
+# 
 # ## Implementation
 #
 # Load dependencies form Julia stdlib.
@@ -16,7 +18,7 @@ import FileIO # hide
 
 function setup_example()
 
-    # Generate mesh
+    #Generate mesh
     mesh = GT.with_gmsh() do
         mesh_size = 0.02
         R = 0.15
@@ -38,17 +40,17 @@ function setup_example()
         GT.mesh_from_gmsh_module()
     end
 
-    # Domain
+    #Domains
     Ω = GT.interior(mesh;physical_names=["domain"])
     Γ1 = GT.boundary(mesh;physical_names=["outer"])
     Γ2 = GT.boundary(mesh;physical_names=["inner"])
     Γ = GT.piecewise_domain(Γ1,Γ2)
 
-    # Space
+    #Space
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γ)
 
-    # Time dependent dirichlet field
+    #Time dependent dirichlet field
     uh = GT.semi_discrete_field(Float64,V) do t,uht
         α =  t < 0.5 ? 2*t : 1.0
         g1 = GT.analytical_field(x->0.0,Ω)
@@ -95,7 +97,7 @@ function assemble_matrices(state)
 
     allocs = (;K_alloc,M_alloc,Kfd_alloc,Mfd_alloc,Ke,Me)
 
-    # Assembly loop
+    #Assembly loop (defined later)
     assembly_loop!(state,allocs)
 
     #Compress matrices
@@ -123,7 +125,7 @@ function assembly_loop!(state,allocs)
     #Loop over the faces of the domain
     for face in 1:GT.num_faces(Ω)
 
-        # Reset element matrices
+        #Reset element matrices
         fill!(Ke,zero(eltype(Ke)))
         fill!(Me,zero(eltype(Me)))
 
@@ -215,4 +217,6 @@ function main()
 end
 
 main()
+
+# ![](fig_transient_heat_eq.gif)
 
