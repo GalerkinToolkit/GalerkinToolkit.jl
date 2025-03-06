@@ -699,3 +699,44 @@ function mesh(chain::Chain)
             outward_normals = outward_normals(chain))
 end
 
+function mesh_space(mesh::AbstractMesh,D)
+    vD = Val(val_parameter(D))
+    MeshSpace(mesn,vD)
+end
+
+struct MeshSpace{A,B} <: AbstractSpace
+    mesh::A
+    num_dims::Val{B}
+end
+
+function num_dims(space::MeshSpace)
+    val_parameter(space.num_dims)
+end
+
+function reference_spaces(space::MeshSpace)
+    reference_spaces(space.mesh,space.num_dims)
+end
+
+function face_reference_id(space::MeshSpace)
+    D = num_dims(space)
+    face_reference_id(space.mesh,D)
+end
+
+function domain(space::MeshSpace)
+    domain(space.mesh,space.num_dims)
+end
+
+num_free_dofs(space::MeshSpace) = num_nondes(space.mesh)
+num_dirichlet_dofs(space::MeshSpace) = 0
+
+function face_dofs(space::MeshSpace)
+    D = num_dims(space)
+    face_dofs(space.mesh,D)
+end
+
+
+
+
+
+
+
