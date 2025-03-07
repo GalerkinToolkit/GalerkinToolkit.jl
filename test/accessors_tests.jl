@@ -1,0 +1,164 @@
+module AccessorsTests
+
+import GalerkinToolkit as GT
+using ForwardDiff
+
+domain = (0,1,0,1)
+n = 4
+cells = (n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+Λ = GT.skeleton(mesh)
+
+k = 1
+V = GT.lagrange_space(Ω,k)
+
+dΩ = GT.measure(Ω,2*k)
+dΓ = GT.measure(Γ,2*k)
+dΛ = GT.measure(Λ,2*k)
+
+Ωface_point_x = GT.coordinate_accessor(dΩ)
+Γface_point_x = GT.coordinate_accessor(dΓ)
+Λface_point_x = GT.coordinate_accessor(dΛ)
+
+@show Ωface_point_x(2)(4)
+@show Γface_point_x(3)(2)
+@show Λface_point_x(4)(2)
+
+Ωface_point_w = GT.weight_accessor(dΩ)
+Γface_point_w = GT.weight_accessor(dΓ)
+Λface_point_w = GT.weight_accessor(dΛ)
+
+@show Ωface_point_w(2)(4)
+@show Γface_point_w(3)(2)
+@show Λface_point_w(4)(2)
+
+Ωface_point_J = GT.jacobian_accessor(dΩ)
+Γface_point_J = GT.jacobian_accessor(dΓ)
+Λface_point_J = GT.jacobian_accessor(dΛ)
+
+@show Ωface_point_J(2)(4)
+@show Γface_point_J(3)(2)
+@show Λface_point_J(4)(2)
+
+Ωface_point_J = GT.jacobian_accessor(dΩ,2)
+Γface_point_J = GT.jacobian_accessor(dΓ,2)
+Λface_point_J = GT.jacobian_accessor(dΛ,2)
+
+@show Ωface_point_J(2)(4)
+@show Γface_point_J(3)(2)
+@show Λface_point_J(4,1)(2)
+
+Ωface_point_J = GT.jacobian_accessor(dΩ,Val(2))
+Γface_point_J = GT.jacobian_accessor(dΓ,Val(2))
+Λface_point_J = GT.jacobian_accessor(dΛ,Val(2))
+
+@show Ωface_point_J(2)(4)
+@show Γface_point_J(3)(2)
+@show Λface_point_J(4,1)(2)
+
+face_phi = GT.physical_map_accessor(GT.value,mesh,2)
+@show face_phi(2)([1,1])
+
+face_phi = GT.physical_map_accessor(GT.value,mesh,1)
+@show face_phi(2)([1])
+
+face_phi = GT.physical_map_accessor(ForwardDiff.jacobian,mesh,1)
+@show face_phi(2)([1])
+
+face_point_phi = GT.physical_map_accessor(ForwardDiff.jacobian,dΓ,2)
+@show face_point_phi(5)(1)
+
+face_point_phi = GT.physical_map_accessor(ForwardDiff.jacobian,dΓ,1)
+@show face_point_phi(5)(1)
+
+face_npoints = GT.num_points_accessor(dΩ)
+@show face_npoints(3)
+
+face_dof_s = GT.shape_function_accessor(GT.value,V)
+@show face_dof_s(3)(1)([1,1])
+
+J = Ωface_point_J(3)(1)
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+@show face_point_dof_s(3)(1,J)(4)
+
+J = Γface_point_J(5)(1)
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΓ)
+@show face_point_dof_s(5)(1,J)(4)
+
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΛ)
+J = Λface_point_J(5,1)(1)
+@show face_point_dof_s(5,1)(1,J)(4)
+J = Λface_point_J(5,2)(1)
+@show face_point_dof_s(5,2)(1,J)(4)
+
+face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
+@show face_point_dof_s(3)(1)(4)
+
+face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΓ)
+@show face_point_dof_s(5)(1)(4)
+
+face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΛ)
+@show face_point_dof_s(5,1)(1)(4)
+@show face_point_dof_s(5,2)(1)(4)
+
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+@show face_point_dof_s(3)(1)(4)
+
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΓ)
+@show face_point_dof_s(5)(1)(4)
+
+face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΛ)
+@show face_point_dof_s(5,1)(1)(4)
+@show face_point_dof_s(5,2)(1)(4)
+
+uh = GT.rand_field(Float64,V)
+
+J = Ωface_point_J(3)(1)
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
+@show face_point_dof_s(3)(1,J)
+
+J = Γface_point_J(5)(1)
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΓ)
+@show face_point_dof_s(5)(1,J)
+
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΛ)
+J = Λface_point_J(5,1)(1)
+@show face_point_dof_s(5,1)(1,J)
+J = Λface_point_J(5,2)(1)
+@show face_point_dof_s(5,2)(1,J)
+
+face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΩ)
+@show face_point_dof_s(3)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΓ)
+@show face_point_dof_s(5)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΛ)
+@show face_point_dof_s(5,1)(1)
+@show face_point_dof_s(5,2)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
+@show face_point_dof_s(3)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΓ)
+@show face_point_dof_s(5)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΛ)
+@show face_point_dof_s(5,1)(1)
+@show face_point_dof_s(5,2)(1)
+
+face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΩ)
+face_point_dof_s = GT.update(face_point_dof_s,discrete_field=uh)
+@show face_point_dof_s(3)(1)
+
+face_diri! =  GT.dirichlet_accessor(uh,Ω)
+face_diri! =  GT.update(face_diri!,discrete_field=uh)
+A = ones(4,4)
+b = zeros(4)
+face_diri!(1)(A,b)
+@show b
+
+end # module

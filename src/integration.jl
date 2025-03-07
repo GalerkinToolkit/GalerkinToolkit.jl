@@ -399,16 +399,3 @@ function quadrature(m::Measure)
        )
 end
 
-function num_points_accessor(measure::Measure)
-    num_points_accessor(quadrature(measure))
-end
-
-function coordinate_accessor(measure::Measure)
-    coordinate_accessor(quadrature(measure))
-end
-function jacobian_accessor(measure::Measure)
-    jacobian_accessor(quadrature(measure))
-end
-function weight_accessor(measure::Measure)
-    weight_accessor(quadrature(measure))
-end
