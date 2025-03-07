@@ -749,6 +749,118 @@ function dirichlet_accessor(uh::DiscreteField,domain::AbstractDomain)
     DirichletAccessor(field_to_accessor,accessor)
 end
 
+function unit_normal_accessor(measure::AbstractQuadrature)
+    domain = GT.domain(measure)
+    mesh = GT.mesh(domain)
+    D = num_dims(mesh)
+    d = num_dims(domain)
+    if D==d && is_physical_domain(domain)
+        unit_normal_accessor_physical_interior(measure)
+    elseif D==d+1 && is_physical_domain(domain)
+        unit_normal_accessor_physical(measure)
+    elseif D==d+1 && is_reference_domain(domain)
+        unit_normal_accessor_reference(measure)
+    else
+        error()
+    end
+end
+
+function unit_normal_accessor_physical_interior(measure::AbstractQuadrature)
+    error("not implemented")
+end
+
+function unit_normal_accessor_physical(measure::AbstractQuadrature)
+    domain = GT.domain(measure)
+    d = num_dims(domain)
+    D = d+1
+    face_n_ref = unit_normal_accessor_reference(measure)
+    face_point_J = jacobian_accessor(measure,Val(D))
+    function face_point_n(face,face_around=nothing)
+        point_J = face_point_J(face,face_around)
+        n_ref = face_n_ref(face,face_around)
+        function n_phys(point,J)
+            map_unit_normal(J,n_ref)
+        end
+        function n_phys(point,::Nothing)
+            n_phys(point)
+        end
+        function n_phys(point)
+            J = point_J(point)
+            map_unit_normal(J,n_ref)
+        end
+        return n_phys
+    end
+    accessor(face_point_n,GT.prototype(face_n_ref))
+end
+
+function unit_normal_accessor_reference(measure::AbstractQuadrature)
+    D = num_dims(mesh(measure))
+    d = num_dims(domain(measure))
+    @assert D == d+1
+    if GT.face_around(domain(measure)) === nothing
+        unit_normal_accessor_reference_skeleton(measure)
+    else
+        unit_normal_accessor_reference_boundary(measure)
+    end
+end
+
+function unit_normal_accessor_reference_skeleton(measure::AbstractQuadrature)
+    domain = GT.domain(measure)
+    d = num_dims(domain)
+    D = d+1
+    mesh = GT.mesh(domain)
+    topo = topology(mesh)
+    dface_to_Dfaces, dface_to_ldfaces = GT.face_incidence_ext(topo,d,D)
+    Dface_to_Drid = face_reference_id(mesh,D)
+    face_to_dface = faces(domain)
+    Drid_to_ldface_to_n = map(GT.reference_spaces(mesh,Val(D))) do refface
+        boundary = refface |> GT.domain |> GT.mesh
+        boundary |> GT.outward_normals # TODO also rename?
+    end
+    prototype = first(first(Drid_to_ldface_to_n))
+    function face_n(face,face_around)
+        dface = face_to_dface[face]
+        Dfaces = dface_to_Dfaces[dface]
+        ldfaces = dface_to_ldfaces[dface]
+        Dface = Dfaces[face_around]
+        ldface = ldfaces[face_around]
+        Drid = Dface_to_Drid[Dface]
+        n = Drid_to_ldface_to_n[Drid][ldface]
+    end
+    accessor(face_n,prototype)
+end
+
+function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
+    face_n = unit_normal_accessor_reference_skeleton(measure)
+    face_around = GT.face_around(domain(measure))
+    function face_n_2(face,dummy=nothing)
+        face_n(face,face_around)
+    end
+    accessor(face_n_2,GT.prototype(face_n))
+end
+
+function face_diameter(domain::AbstractDomain)
+    d = num_dims(domain)
+    dinv = 1/d
+    measure = GT.measure(domain,1)
+    face_point_w = weight_accessor(measure)
+    face_npoints = num_points_accessor(measure)
+    z = zero(prototype(face_point_w))
+    nfaces = num_faces(domain)
+    diams = fill(z,nfaces)
+    for face in 1:nfaces
+        point_w = face_point_w(face)
+        npoints = face_npoints(face)
+        s = z
+        for point in 1:npoints
+            w = point_w(point)
+            s += w
+        end
+        diams[face] =  s^dinv
+    end
+    diams
+end
+
 function num_points_accessor(measure::Measure)
     num_points_accessor(quadrature(measure))
 end
@@ -777,4 +889,7 @@ function physical_map_accessor(f,measure::Measure,vD)
     physical_map_accessor(f,quadrature(measure),vD)
 end
 
+function unit_normal_accessor(measure::Measure)
+    unit_normal_accessor(quadrature(measure))
+end
 

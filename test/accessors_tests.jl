@@ -161,4 +161,17 @@ b = zeros(4)
 face_diri!(1)(A,b)
 @show b
 
+face_point_n = GT.unit_normal_accessor(dΓ)
+@show face_point_n(6)(1)
+
+face_point_n = GT.unit_normal_accessor(dΛ)
+@show face_point_n(6,1)(1)
+@show face_point_n(6,2)(1)
+
+diams = GT.face_diameter(Γ)
+@show diams
+
+diams = GT.face_diameter(Λ)
+@show diams
+
 end # module
