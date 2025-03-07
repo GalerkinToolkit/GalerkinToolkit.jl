@@ -345,16 +345,6 @@ function face_contribution_impl(qty,measure,facemask)
     facevals
 end
 
-function face_diameter(Ω)
-    dΩ = GT.measure(Ω,1)
-    d = GT.num_dims(Ω)
-    u = GT.analytical_field(x->1,Ω)
-    int = ∫(u,dΩ)
-    r = face_contribution(int,Ω)
-    r .= r .^ (1/d)
-    r
-end
-
 function face_diameter_field(Ω)
     dims = GT.face_diameter(Ω)
     face_constant_field(dims,Ω)
@@ -399,16 +389,3 @@ function quadrature(m::Measure)
        )
 end
 
-function num_points_accessor(measure::Measure)
-    num_points_accessor(quadrature(measure))
-end
-
-function coordinate_accessor(measure::Measure)
-    coordinate_accessor(quadrature(measure))
-end
-function jacobian_accessor(measure::Measure)
-    jacobian_accessor(quadrature(measure))
-end
-function weight_accessor(measure::Measure)
-    weight_accessor(quadrature(measure))
-end

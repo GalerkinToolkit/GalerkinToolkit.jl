@@ -16,6 +16,7 @@ using Test
     @testset "Field" begin include("field_tests.jl") end
     @testset "Integration" begin include("integration_tests.jl") end
     @testset "Space" begin include("space_tests.jl") end
+    @testset "Accessors" begin include("accessors_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
     @testset "NewIR" begin include("new_ir_tests.jl") end

@@ -161,7 +161,7 @@ function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
     face_around=nothing,
     is_reference_domain=Val(false),
-    physical_names=[label_faces_in_dim!(mesh,d)],
+    physical_names=[label_faces_in_dim!(mesh,val_parameter(d))],
     )
     mesh_domain(;
         mesh,
@@ -530,7 +530,7 @@ face_nodes(m::Mesh,d) = m.contents.face_nodes[d+1]
 face_reference_id(m::Mesh) = m.contents.face_reference_id
 face_reference_id(m::Mesh,d) = m.contents.face_reference_id[d+1]
 reference_spaces(m::Mesh) = m.contents.reference_spaces
-reference_spaces(m::Mesh,d) = m.contents.reference_spaces[d+1]
+reference_spaces(m::Mesh,d) = m.contents.reference_spaces[val_parameter(d)+1]
 physical_faces(m::Mesh) = m.contents.physical_faces
 physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
@@ -698,4 +698,45 @@ function mesh(chain::Chain)
             physical_faces = physical_faces(chain),
             outward_normals = outward_normals(chain))
 end
+
+function mesh_space(mesh::AbstractMesh,D)
+    vD = Val(val_parameter(D))
+    MeshSpace(mesh,vD)
+end
+
+struct MeshSpace{A,B} <: AbstractSpace{A}
+    mesh::A
+    num_dims::Val{B}
+end
+
+function num_dims(space::MeshSpace)
+    val_parameter(space.num_dims)
+end
+
+function reference_spaces(space::MeshSpace)
+    reference_spaces(space.mesh,space.num_dims)
+end
+
+function face_reference_id(space::MeshSpace)
+    D = num_dims(space)
+    face_reference_id(space.mesh,D)
+end
+
+function domain(space::MeshSpace)
+    domain(space.mesh,space.num_dims)
+end
+
+num_free_dofs(space::MeshSpace) = num_nondes(space.mesh)
+num_dirichlet_dofs(space::MeshSpace) = 0
+
+function face_dofs(space::MeshSpace)
+    D = num_dims(space)
+    face_dofs(space.mesh,D)
+end
+
+
+
+
+
+
 
