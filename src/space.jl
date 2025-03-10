@@ -5,6 +5,7 @@ mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
 num_dims(a::AbstractSpace) = num_dims(mesh(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
+num_dofs(a::AbstractSpace) = num_free_dofs(a) + num_dirichlet_dofs(a)
 
 function max_num_reference_dofs(space::AbstractSpace,field)
     rid_to_reffe = reference_spaces(GT.field(space,field))

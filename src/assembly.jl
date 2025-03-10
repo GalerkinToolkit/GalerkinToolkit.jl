@@ -179,10 +179,11 @@ end
 function assemble_vector(integral::Integral,space,::Type{T};
     reuse = Val(false),
     vector_strategy = monolithic_vector_assembly_strategy(),
+    free_or_dirichlet = FREE,
     ) where T
 
     setup = vector_strategy.init(GT.free_dofs(space),T)
-    state0 = (;space,vector_strategy,setup)
+    state0 = (;space,vector_strategy,setup,free_or_dirichlet)
     state1 = assemble_vector_count(integral,state0)
     state2 = assemble_vector_allocate(state1)
     state3 = assemble_vector_fill!(integral,state2)
@@ -217,7 +218,7 @@ function assemble_vector!(integral::Integral,V,b,cache)
 end
 
 function assemble_vector_count(integral,state)
-    (;space,vector_strategy,setup) = state
+    (;space,vector_strategy,setup,free_or_dirichlet) = state
     contributions = GT.contributions(integral)
     nfields = GT.num_fields(space)
     field_to_domain = map(field->domain(GT.field(space,field)),1:nfields)
@@ -250,7 +251,7 @@ function assemble_vector_count(integral,state)
                     end
                     dofs = Dface_to_dofs[Dface]
                     for dof in dofs
-                        counter = vector_strategy.count(counter,setup,dof,field,FREE)
+                        counter = vector_strategy.count(counter,setup,dof,field,free_or_dirichlet)
                     end
                 end
             end
@@ -266,7 +267,7 @@ function assemble_vector_allocate(state)
 end
 
 function assemble_vector_fill!(integral,state)
-    (;space,vector_strategy,alloc,setup) = state
+    (;space,vector_strategy,alloc,setup,free_or_dirichlet) = state
     contributions = GT.contributions(integral)
     nfields = GT.num_fields(space)
     field_to_domain = map(field->domain(GT.field(space,field)),1:nfields)
@@ -332,7 +333,7 @@ function assemble_vector_fill!(integral,state)
                                 end
                             end
                             for ($idof,dof) in enumerate(dofs)
-                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field,FREE)
+                                counter = args.vector_strategy.set!(args.alloc,counter,args.setup,b[$idof],dof,$field,args.free_or_dirichlet)
                             end
                         end
                     end
@@ -342,7 +343,7 @@ function assemble_vector_fill!(integral,state)
         end
         loop! = eval(expr)
         storage = index_storage(index)
-        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_Dface_to_dofs)
+        args = (;d,nfields,alloc,vector_strategy,setup,b,topo,sface_to_face,field_to_D,field_to_Dface_to_sDface,field_to_Dface_to_dofs,free_or_dirichlet)
         counter = invokelatest(loop!,counter,args,storage)
     end
     state
@@ -372,9 +373,10 @@ end
 function assemble_matrix(integral::Integral,trial_space,test_space,::Type{T};
         reuse=false,
         matrix_strategy = monolithic_matrix_assembly_strategy(),
+        free_or_dirichlet = (FREE,FREE),
     ) where T
     setup = matrix_strategy.init(free_dofs(test_space),free_dofs(trial_space),T)
-    state0 = (;test_space,trial_space,matrix_strategy,setup)
+    state0 = (;test_space,trial_space,matrix_strategy,setup,free_or_dirichlet)
     state1 = assemble_matrix_count(integral,state0)
     state2 = assemble_matrix_allocate(state1)
     state3 = assemble_matrix_fill!(integral,state2)
@@ -411,7 +413,7 @@ function assemble_matrix!(integral::Integral,U,V,A,cache)
 end
 
 function assemble_matrix_count(integral,state)
-    (;test_space,trial_space,matrix_strategy,setup) = state
+    (;test_space,trial_space,matrix_strategy,setup,free_or_dirichlet) = state
     contributions = GT.contributions(integral)
     test, trial = 1, 2
     axis_to_space = (test_space,trial_space)
@@ -462,7 +464,7 @@ function assemble_matrix_count(integral,state)
                             trial_dofs = trial_Dface_to_dofs[trial_Dface]
                             for test_dof in test_dofs
                                 for trial_dof in trial_dofs
-                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial,FREE,FREE)
+                                    counter = matrix_strategy.count(counter,setup,test_dof,trial_dof,field_test,field_trial,free_or_dirichlet...)
                                 end
                             end
                         end
@@ -481,7 +483,7 @@ function assemble_matrix_allocate(state)
 end
 
 function assemble_matrix_fill!(integral,state)
-    (;test_space,trial_space,alloc,matrix_strategy,setup) = state 
+    (;test_space,trial_space,alloc,matrix_strategy,setup,free_or_dirichlet) = state 
 
     contributions = GT.contributions(integral)
     test, trial = 1, 2
@@ -575,7 +577,7 @@ function assemble_matrix_fill!(integral,state)
                                     end
                                     for ($idof_test, dof_test) in enumerate(test_dofs)
                                         for ($idof_trial, dof_trial) in enumerate(trial_dofs)
-                                            counter = args.matrix_strategy.set!(args.alloc,counter,args.setup,b[$idof_test, $idof_trial],dof_test,dof_trial,$field_test,$field_trial,FREE,FREE)
+                                            counter = args.matrix_strategy.set!(args.alloc,counter,args.setup,b[$idof_test, $idof_trial],dof_test,dof_trial,$field_test,$field_trial,args.free_or_dirichlet...)
                                         end
                                     end
                                 end
@@ -589,7 +591,7 @@ function assemble_matrix_fill!(integral,state)
         end
         loop! = eval(expr)
         storage = index_storage(index)
-        args = (;d,axis_to_nfields,alloc,matrix_strategy,setup,b,topo,sface_to_face,axis_to_field_to_D,axis_to_field_to_Dface_to_sDface,axis_to_field_to_Dface_to_dofs) 
+        args = (;d,axis_to_nfields,alloc,matrix_strategy,setup,b,topo,sface_to_face,axis_to_field_to_D,axis_to_field_to_Dface_to_sDface,axis_to_field_to_Dface_to_dofs,free_or_dirichlet) 
         counter = invokelatest(loop!,counter,args,storage)
     end
     state
