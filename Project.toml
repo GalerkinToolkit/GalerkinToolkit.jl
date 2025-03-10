@@ -1,7 +1,7 @@
 name = "GalerkinToolkit"
 uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
 authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
-version = "0.2.1"
+version = "0.3.0"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
