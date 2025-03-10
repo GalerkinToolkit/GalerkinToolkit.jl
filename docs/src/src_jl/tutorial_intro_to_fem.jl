@@ -133,6 +133,7 @@ mesh = GT.with_gmsh() do gmsh
     gmsh.model.mesh.generate(dim)
     GT.mesh_from_gmsh(gmsh)
 end
+nothing # hide
 
 # There are ways of accessing the low level information
 # in this mesh object, but we are not going to discuss them in this tutorial. Here, we only need to know how to
@@ -152,10 +153,12 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_mesh.png"),Makie.current_figur
 # with GalerkinToolkit. They are built from the `mesh` objects as follows:
 
 Ω = GT.interior(mesh)
+nothing # hide
 
 # and
 
 ∂Ω = GT.boundary(mesh)
+nothing # hide
 
 # We can also visualize them using Makie.
 
@@ -181,6 +184,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_domains.png"),Makie.current_fi
 
 degree = 3
 V = GT.lagrange_space(Ω,degree)
+nothing # hide
 
 # We will discus the mathematical derivation of this FE space in another tutorial.
 # For now, it is enough to understand that the object `V` has information about the
@@ -200,10 +204,12 @@ N = GT.num_dofs(V)
 
 Random.seed!(1)
 α = rand(N)
+nothing # hide
 
 # Now we can create the function from these coefficients and the FE space as follows:
 
 u_fem = GT.solution_field(V,α)
+nothing # hide
 
 # Let's us visualize it. We do this by plotting domain $\Omega$ but not colored using
 # the function value.
@@ -229,6 +235,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current
 α2 = zeros(N)
 α2[400] = 1
 s_400 = GT.solution_field(V,α2)
+nothing # hide
 
 # Now, we can visualize this function as we did before for $u^\mathrm{fem}$.
 
@@ -245,6 +252,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_shape.png"),Makie.current_figu
 # the coordinates of all this nodes as follows:
 
 x = GT.node_coordinates(V)
+nothing # hide
 
 # This is a vector containing the coordinates for all nodes. The coordinates for
 # the node associated with function $s_{400}$ can be accessed as
@@ -316,6 +324,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.curre
 # a FE space that is aware of the Dirichlet boundary:
 
 V = GT.lagrange_space(Ω,degree;dirichlet_boundary=∂Ω)
+nothing # hide
 
 # Now the nodes/DOFs in this space are split on two groups: free and Dirichlet.
 # We can get the number of free nodes/DOFs
@@ -343,11 +352,13 @@ N_d = GT.num_dirichlet_dofs(V)
 # in the code as follows. First, we create the Dirichlet field object.
 
 u_d = GT.dirichlet_field(Float64,V)
+nothing # hide
 
 # We can get a vector for all DOFs $\alpha_i$ on the Dirichlet boundary
 # as follows
 
 α_d = GT.dirichlet_values(u_d)
+nothing # hide
 
 # By default, all these values are set to zero. But we can compute
 # their final values by using function $g$ and the nodal coordinates
@@ -357,12 +368,14 @@ u_d = GT.dirichlet_field(Float64,V)
 node_to_x = GT.node_coordinates(V)
 dirichlet_dof_to_node = GT.dirichlet_dof_node(V)
 dirichlet_dof_to_x = node_to_x[dirichlet_dof_to_node]
+nothing # hide
 
 # Now we can fill the values using the definition of function $g$.
 broadcast!(α_d,dirichlet_dof_to_x) do x
     p = 1
     sum(x)^p
 end
+nothing # hide
 
 # Now we can visualize the Dirichlet field and confirm that it is indeed
 # a function that is non-zero at the nodes on the Dirichlet boundary,
@@ -384,6 +397,7 @@ g = GT.analytical_field(Ω) do x
     sum(x)^p
 end
 GT.interpolate_dirichlet!(g,u_d)
+nothing # hide
 
 # This will work also for FE spaces that are not associated with "nodes".
 # In this case, the Dirichlet values will be filled in using a base
@@ -399,6 +413,7 @@ GT.interpolate_dirichlet!(g,u_d)
 Random.seed!(2)
 α_f = rand(N_f)
 u_fem = GT.solution_field(u_d,α_f)
+nothing # hide
 
 # In the following figure, one can see that $u^\mathrm{fem}$ generated in
 # this way has random values in the interior of $\Omega$, while
@@ -429,6 +444,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figu
 #
 
 ∇ = ForwardDiff.gradient
+nothing # hide
 
 # Now we can visualize the first component of the gradient as follows:
 
