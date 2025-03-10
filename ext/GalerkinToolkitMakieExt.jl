@@ -20,7 +20,7 @@ Makie.@recipe(MakiePlot) do scene
         colormap   = :bluesreds,
         shading    = Makie.NoShading,
         cycle      = nothing,
-        refinement = 1,
+        refinement = nothing,
        )
     t2 = Makie.default_theme(scene, Makie.Mesh)
     merge(t1,t2)

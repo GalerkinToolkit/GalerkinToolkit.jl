@@ -285,7 +285,158 @@ colorrange = scene[:colorrange]
 Makie.scatter!(x;color=α,colormap=:bluesreds,colorrange)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_nodes_color2.png)
+#
+# NB. In this scalar-valued FE space, there is a one-to-one relation between the
+# coefficients (DOFs) $\alpha_i$ and the nodes $x_i$. This is not true for
+# other types of spaces. In vector-valued Lagrange spaces, there are several DOFs in
+# one node.  In other FE spaces the concept of "nodes" does not make sense at all.
 
+# ## Free and Dirichlet nodes
+#
+# Remember that our goal is to find the coefficients $α_i$. Most of these coefficients
+# are unknown, but not all of them.
+# Note that the PDE states that $u=g$ on the boundary $\partial\Omega$. With this
+# information we can easily compute the coefficients $\alpha_i$ for nodes $x_i$ on
+# the Dirichlet boundary $\partial\Omega$ simply as $\alpha_i=g(x_i)$. We need to classify the nodes into two
+# groups: the ones on the Dirichlet boundary $\partial\Omega$ in one group and the
+# remaining nodes in another group. Let us call $\mathcal{I}^\mathrm{d}$
+# ("d" for Dirichlet) the set
+# of all integers $i$ for which the node $x_i$ is on $\partial\Omega$.
+# Let us call $\mathcal{I}^\mathrm{f}$ ("f" for free) the other of all integers
+# $i$ for which the node $x_i$ is not on $\partial\Omega$.
+#  The coefficient $\alpha_i$ is computed as $\alpha_i=g(x_i)$
+# for $i\in\mathcal{I}^\mathrm{d}$ and the remaining coefficients will be computed
+# solving a system of linear equations.
+# The union of $\mathcal{I}^\mathrm{d}$ and $\mathcal{I}^\mathrm{f}$ cover all
+# nodes of the FE space. We call $N^\mathrm{f}$ and $N^\mathrm{d}$ the number
+# of items in $\mathcal{I}^\mathrm{f}$ and $\mathcal{I}^\mathrm{d}$ respectively,
+# i.e, the number of free and Dirichlet nodes.
+#
+# The nodes are classified in the code as follows. We create 
+# a FE space that is aware of the Dirichlet boundary:
 
+V = GT.lagrange_space(Ω,degree;dirichlet_boundary=∂Ω)
 
+# Now the nodes/DOFs in this space are split on two groups: free and Dirichlet.
+# We can get the number of free nodes/DOFs
 
+N_f = GT.num_free_dofs(V)
+
+# and the number of Dirichlet nodes/DOFs.
+
+N_d = GT.num_dirichlet_dofs(V)
+
+# ## Dirichlet Field
+#
+# Using the classification of nodes, we can decompose function
+# $u^\mathrm{fem}$ as the sum of two functions,
+# $u^\mathrm{fem}(x)=u^\mathrm{f}(x)+u^\mathrm{d}(x)$
+# ```math
+# u^\mathrm{f}(x)=\sum_{j\in\mathcal{I}^\mathrm{f}} \alpha_j s_j(x)
+# \text{ and }
+# u^\mathrm{d}(x)=\sum_{j\in\mathcal{I}^\mathrm{d}} \alpha_j s_j(x).
+# ```
+# which corresponds to restrict the linear combination to free or Dirichlet
+# DOFs respectively. This decomposition is useful because $u^\mathrm{d}$
+# can be directly computed from the Dirichlet Boundary condition.
+# We refer to $u^\mathrm{d}$ as the "Dirichlet field". If can be computed
+# in the code as follows. First, we create the Dirichlet field object.
+
+u_d = GT.dirichlet_field(Float64,V)
+
+# We can get a vector for all DOFs $\alpha_i$ on the Dirichlet boundary
+# as follows
+
+α_d = GT.dirichlet_values(u_d)
+
+# By default, all these values are set to zero. But we can compute
+# their final values by using function $g$ and the nodal coordinates
+# of the Dirichlet nodes. These coordinates can be computed by restricting
+# the vector of coordinates of all nodes, to only the Dirichlet nodes:
+
+node_to_x = GT.node_coordinates(V)
+dirichlet_dof_to_node = GT.dirichlet_dof_node(V)
+dirichlet_dof_to_x = node_to_x[dirichlet_dof_to_node]
+
+# Now we can fill the values using the definition of function $g$.
+broadcast!(α_d,dirichlet_dof_to_x) do x
+    p = 1
+    sum(x)^p
+end
+
+# Now we can visualize the Dirichlet field and confirm that it is indeed
+# a function that is non-zero at the nodes on the Dirichlet boundary,
+# and zero at the other nodes:
+
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_d,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_diri.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_diri.png)
+#
+# There is a more compact and more general way of generating the
+# Dirichlet:
+
+u_d = GT.dirichlet_field(Float64,V)
+g = GT.analytical_field(Ω) do x
+    p = 1
+    sum(x)^p
+end
+GT.interpolate_dirichlet!(g,u_d)
+
+# This will work also for FE spaces that are not associated with "nodes".
+# In this case, the Dirichlet values will be filled in using a base
+# of the dual space of $V$.
+#
+# Using the Dirichlet field, we can create function $u^\mathrm{fem}$ 
+# only from coefficients that are associated with free nodes. These are going to
+# be computed later by solving a system of linear equations, but
+# we can create a mock version from randomly generated coefficients.
+# In this case, we generate a vector of length $N^\mathrm{f}$ instead of $N$
+# because it should contain only "free" values.
+
+Random.seed!(2)
+α_f = rand(N_f)
+u_fem = GT.solution_field(u_d,α_f)
+
+# In the following figure, one can see that $u^\mathrm{fem}$ generated in
+# this way has random values in the interior of $\Omega$, while
+# matching the Dirichlet boundary condition on $\partial\Omega$.
+
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_fem_2.png)
+#
+# ## Weak form
+#
+# To solve the problem we need to find as many as $N^\mathrm{f}$ coefficients.
+# In other words, we have $N^\mathrm{f}$ unknowns, which suggests that we needs to
+# consider $N^\mathrm{f}$ equations. These equations will follow from the PDE above.
+# One can try to substitute the expression of $u^\mathrm{fem}$ and try to find
+# which coefficients $\alpha_i$ that minimize the residual of the equation in some norm.
+# However, we cannot use the PDE directly in this form. The equation is in face not well
+# defined for function $u^\mathrm{fem}$. This function is continuous, but its gradient it
+# is not continuous at the boundaries of the mesh cells. As a consequence the Laplace
+# operator it is not well defined as one cannot compute derivatives
+# of a discontinuous function.
+#
+# Let us visualize one of the component of gradient of $u^\mathrm{fem}$
+# to confirm that is discontinuous. First, let us define the nabla operator
+#
+
+∇ = ForwardDiff.gradient
+
+# Now we can visualize the first component of the gradient as follows:
+
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=x->∇(u_fem,x)[1],refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_grad.png)
+#
+# It is indeed discontinuous at the mesh cell boundaries.
