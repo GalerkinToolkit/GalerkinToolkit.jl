@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741357608946,
+  "lastUpdate": 1741612832313,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1154,6 +1154,36 @@ window.BENCHMARK_DATA = {
             "value": 681530490.5,
             "unit": "ns",
             "extra": "gctime=26154856.5\nmemory=432179232\nallocs=14366109\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "82130ee8318626de09d5285701ddc23a776fa427",
+          "message": "Merge pull request #191 from GalerkinToolkit/fem_intro\n\nFEM intro tutorial",
+          "timestamp": "2025-03-10T14:16:43+01:00",
+          "tree_id": "d2387e3a8860ff207c29cde04edf3d46e8060c83",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/82130ee8318626de09d5285701ddc23a776fa427"
+        },
+        "date": 1741612831470,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 678837802.5,
+            "unit": "ns",
+            "extra": "gctime=25309033.5\nmemory=432179232\nallocs=14366109\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
