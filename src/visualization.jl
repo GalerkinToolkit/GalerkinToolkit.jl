@@ -194,14 +194,14 @@ function refine_reference_geometry(geo,resolution)
             end
           end
         end
-        refface = lagrange_mesh_face(geo,1)
-        chain = chain_from_arrays(
-                       X,
-                       T,
-                       fill(1,length(T)),
-                       [refface]
+        refface = lagrange_space(geo,1)
+        chain = GT.chain(;
+                       node_coordinates=X,
+                       face_nodes=T,
+                       face_reference_id = fill(1,length(T)),
+                       reference_spaces = [refface],
                       )
-        mesh_from_chain(chain)
+        GT.mesh(chain)
     end
     function refine_unit_tet(geo,n)
         # Copyed + adapted from Gridap

@@ -20,6 +20,7 @@ Makie.@recipe(MakiePlot) do scene
         colormap   = :bluesreds,
         shading    = Makie.NoShading,
         cycle      = nothing,
+        refinement = 1,
        )
     t2 = Makie.default_theme(scene, Makie.Mesh)
     merge(t1,t2)
@@ -117,10 +118,11 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
     valid_attributes = Makie.shared_attributes(sc, MakiePlot)
     warp_by_vector = valid_attributes[:warp_by_vector]
     color = valid_attributes[:color]
-    args = Makie.lift(dom,color) do dom,color
+    refinement = valid_attributes[:refinement]
+    args = Makie.lift(dom,color,refinement) do dom,color,refinement
         if isa(color,GT.AbstractQuantity) || isa(color,Function)
             label = string(gensym())
-            plt = GT.plot(dom)
+            plt = GT.plot(dom;refinement)
             GT.plot!(plt,color;label)
             #color = GT.NodeData(label)
             color = GT.node_color(plt,label)
