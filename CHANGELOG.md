@@ -9,9 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This version includes numerous changes, which are not tracked in the changelog for brevity.
 
-### Added
-
-- New test collection in CI scripts to support protection of main branch.
 ## [0.2.1] - 2024-10-16
 
 ### Added
