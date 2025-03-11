@@ -276,15 +276,8 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes.png"),Makie.current_figu
 # You can easily prove this by taking $u^\mathrm{fem}(x_i) = \sum_{j=1}^N \alpha_j s_j(x_i)$
 # and considering that $s_j(x_i)=\delta_{ji}$.
 #
-# In summary, the coefficients $α_i$ are the values of $u^\mathrm{fem}$ at the nodes
-# as show in this figure:
-
-Makie.plot(Ω;color=:pink,strokecolor=:black,axis)
-Makie.scatter!(x;color=α,colormap=:bluesreds)
-FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color.png"),Makie.current_figure()) # hide
-# ![](fig_tutorial_intro_nodes_color.png)
-
-# Whereas, function $u^\mathrm{fem}$ can be understood as the (Lagrange) interpolation
+# In summary, the coefficients $α_i$ are the values of $u^\mathrm{fem}$ at the nodes,
+# whereas, function $u^\mathrm{fem}$ can be understood as the (Lagrange) interpolation
 # of these nodal values into any other point of the domain $Ω$ as shown in this figure:
 
 _,schene = Makie.plot(Ω;axis,color=u_fem,refinement=5)
@@ -349,19 +342,8 @@ N_d = GT.num_dirichlet_dofs(V)
 # DOFs respectively. This decomposition is useful because $u^\mathrm{d}$
 # can be directly computed from the Dirichlet Boundary condition.
 # We refer to $u^\mathrm{d}$ as the "Dirichlet field". If can be computed
-# in the code as follows. First, we create the Dirichlet field object.
-
-u_d = GT.dirichlet_field(Float64,V)
-nothing # hide
-
-# We can get a vector for all DOFs $\alpha_i$ on the Dirichlet boundary
-# as follows
-
-α_d = GT.dirichlet_values(u_d)
-nothing # hide
-
-# By default, all these values are set to zero. But we can compute
-# their final values by using function $g$ and the nodal coordinates
+# in the code as follows. First, we compute the coefficients for the Dirichlet nodes.
+# We do this by using function $g$ and the nodal coordinates
 # of the Dirichlet nodes. These coordinates can be computed by restricting
 # the vector of coordinates of all nodes, to only the Dirichlet nodes:
 
@@ -370,11 +352,18 @@ dirichlet_dof_to_node = GT.dirichlet_dof_node(V)
 dirichlet_dof_to_x = node_to_x[dirichlet_dof_to_node]
 nothing # hide
 
-# Now we can fill the values using the definition of function $g$.
-broadcast!(α_d,dirichlet_dof_to_x) do x
+# Note that `dirichlet_dof_to_node` contains the ids of all nodes on the Dirichlet boundary.
+# Now, we can compute the values using the definition of function $g$.
+α_d = map(dirichlet_dof_to_x) do x
     p = 1
     sum(x)^p
 end
+nothing # hide
+
+#
+# Finally, we create the object for the Dirichlet field from the computed values
+
+u_d = GT.dirichlet_field(V,α_d)
 nothing # hide
 
 # Now we can visualize the Dirichlet field and confirm that it is indeed
@@ -391,12 +380,11 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_diri.png"),Makie.current_figur
 # There is a more compact and more general way of generating the
 # Dirichlet:
 
-u_d = GT.dirichlet_field(Float64,V)
 g = GT.analytical_field(Ω) do x
     p = 1
     sum(x)^p
 end
-GT.interpolate_dirichlet!(g,u_d)
+u_d = GT.interpolate_dirichlet(g,V)
 nothing # hide
 
 # This will work also for FE spaces that are not associated with "nodes".

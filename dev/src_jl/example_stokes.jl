@@ -35,7 +35,7 @@ V = GT.lagrange_space(Ω,order;space_type=:Q,tensor_size=Val((D,)),dirichlet_bou
 Q = GT.lagrange_space(Ω,order-1;space_type=:P,dirichlet_boundary=GT.last_dof())
 VxQ = V × Q
 u_field, p_field = 1,2
-uhph_dirichlet = GT.dirichlet_field(Float64,VxQ)
+uhph_dirichlet = GT.zero_dirichlet_field(Float64,VxQ)
 uhd = GT.field(uhph_dirichlet,u_field)
 GT.interpolate_dirichlet!(g,uhd)
 dΩ = GT.measure(Ω,2*order)
