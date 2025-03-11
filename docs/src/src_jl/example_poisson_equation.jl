@@ -83,7 +83,7 @@ nothing # hide
 # Interpolate Dirichlet values.
 
 T = Float64
-uhd = GT.dirichlet_field(T,V)
+uhd = GT.zero_dirichlet_field(T,V)
 GT.interpolate_dirichlet!(g,uhd)
 nothing # hide
 

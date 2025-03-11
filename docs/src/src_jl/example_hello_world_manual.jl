@@ -30,7 +30,7 @@ function setup_example(;domain,cells)
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
     T = Float64
-    uhd = GT.dirichlet_field(T,V)
+    uhd = GT.zero_dirichlet_field(T,V)
     GT.interpolate_dirichlet!(g,uhd)
     degree = 2*k
     dΩ = GT.measure(Ω,degree)

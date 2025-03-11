@@ -217,7 +217,7 @@ end
 el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 @test el2 < tol
 
-uhd = GT.dirichlet_field(Float64,V)
+uhd = GT.zero_dirichlet_field(Float64,V)
 GT.interpolate_dirichlet!(uref,uh)
 
 # TODO

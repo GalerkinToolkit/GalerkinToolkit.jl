@@ -155,8 +155,10 @@ function zero_dirichlet_field(::Type{T},space::AbstractSpace) where T
     uh
 end
 
-function dirichlet_field(::Type{T},space::AbstractSpace) where T
-    zero_dirichlet_field(T,space)
+function dirichlet_field(space::AbstractSpace,dirichlet_values::AbstractVector)
+    T = eltype(dirichlet_values)
+    free_values = constant_values(zero(T),GT.free_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
 end
 
 function num_fields(u::DiscreteField)
@@ -257,12 +259,34 @@ function interpolate!(f,u::DiscreteField)
     interpolate!(f,u,nothing)
 end
 
+function interpolate(f,space::AbstractSpace)
+    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
+    vals = sigma(f)
+    index = generate_index(GT.domain(space))
+    t = term(vals,index)
+    T = typeof(prototype(t))
+    u = undef_field(T,space)
+    interpolate!(f,u)
+    u
+end
+
 #function interpolate!(f,u::DiscreteField,field)
 #    interpolate!(f,u,nothing,field)
 #end
 
 function interpolate_free!(f,u::DiscreteField)
     interpolate!(f,u,FREE)
+end
+
+function interpolate_free(f,space::AbstractSpace)
+    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
+    vals = sigma(f)
+    index = generate_index(GT.domain(space))
+    t = term(vals,index)
+    T = typeof(prototype(t))
+    u = zero_field(T,space)
+    interpolate_free!(f,u)
+    u
 end
 
 #function interpolate_free!(f,u::DiscreteField,field)
@@ -272,6 +296,17 @@ end
 function interpolate_dirichlet!(f,u::DiscreteField)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
     interpolate!(f,u,DIRICHLET)
+end
+
+function interpolate_dirichlet(f,space::AbstractSpace)
+    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
+    vals = sigma(f)
+    index = generate_index(GT.domain(space))
+    t = term(vals,index)
+    T = typeof(prototype(t))
+    u = zero_dirichlet_field(T,space)
+    interpolate_dirichlet!(f,u)
+    u
 end
 
 #function interpolate_dirichlet!(f,u::DiscreteField,field)

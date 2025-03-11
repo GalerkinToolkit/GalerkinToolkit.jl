@@ -26,6 +26,10 @@ order = 2
 
 V = GT.lagrange_space(Ω,order)
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+g = GT.analytical_field(sum,Ω)
+GT.interpolate(g,V)
+GT.interpolate_free(g,V)
+GT.interpolate_dirichlet(g,V)
 
 V = GT.lagrange_space(Γ,order)
 
@@ -446,7 +450,7 @@ end
 el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
 @test el2 < tol
 
-uhd = GT.dirichlet_field(Float64,V)
+uhd = GT.zero_dirichlet_field(Float64,V)
 GT.interpolate_dirichlet!(uref,uh)
 
 # TODO
