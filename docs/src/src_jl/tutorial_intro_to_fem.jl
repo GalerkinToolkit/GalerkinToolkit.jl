@@ -276,15 +276,8 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes.png"),Makie.current_figu
 # You can easily prove this by taking $u^\mathrm{fem}(x_i) = \sum_{j=1}^N \alpha_j s_j(x_i)$
 # and considering that $s_j(x_i)=\delta_{ji}$.
 #
-# In summary, the coefficients $α_i$ are the values of $u^\mathrm{fem}$ at the nodes
-# as show in this figure:
-
-Makie.plot(Ω;color=:pink,strokecolor=:black,axis)
-Makie.scatter!(x;color=α,colormap=:bluesreds)
-FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color.png"),Makie.current_figure()) # hide
-# ![](fig_tutorial_intro_nodes_color.png)
-
-# Whereas, function $u^\mathrm{fem}$ can be understood as the (Lagrange) interpolation
+# In summary, the coefficients $α_i$ are the values of $u^\mathrm{fem}$ at the nodes,
+# whereas, function $u^\mathrm{fem}$ can be understood as the (Lagrange) interpolation
 # of these nodal values into any other point of the domain $Ω$ as shown in this figure:
 
 _,schene = Makie.plot(Ω;axis,color=u_fem,refinement=5)
