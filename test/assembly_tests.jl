@@ -43,7 +43,7 @@ GT.num_dirichlet_dofs(V)
 @test GT.num_dirichlet_dofs(V) == 8
 
 u = GT.analytical_field(sum,Ω)
-uhd = GT.dirichlet_field(Float64,V)
+uhd = GT.zero_dirichlet_field(Float64,V)
 GT.interpolate_dirichlet!(u,uhd)
 uh = GT.zero_field(Float64,V)
 GT.interpolate_free!(u,uh)
@@ -157,7 +157,7 @@ A_alloc = GT.allocate_matrix(T,V,V,Ω)
 GT.contribute!(A_alloc,Auu,dofs,dofs)
 A = GT.compress(A_alloc)
 
-uhd = GT.dirichlet_field(T,V)
+uhd = GT.zero_dirichlet_field(T,V)
 GT.interpolate_dirichlet!(u,uhd)
 f = x -> 0
 
@@ -444,7 +444,7 @@ order = 3
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
 
 u = GT.analytical_field(sum,Ω)
-uhd = GT.dirichlet_field(Float64,V)
+uhd = GT.zero_dirichlet_field(Float64,V)
 # TODO
 #GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
 GT.interpolate_dirichlet!(u∘ϕ,uhd)
@@ -487,7 +487,7 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
-uhd = GT.dirichlet_field(Float64,V)
+uhd = GT.zero_dirichlet_field(Float64,V)
 GT.interpolate_dirichlet!(u,uhd)
 
 dΩ = GT.measure(Ω,degree)

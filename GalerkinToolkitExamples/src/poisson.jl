@@ -75,7 +75,7 @@ function main_automatic(params)
 
     if params[:dirichlet_method] === :strong
         V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
-        uhd = GT.dirichlet_field(Float64,V)
+        uhd = GT.zero_dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(mesh,D-1)
