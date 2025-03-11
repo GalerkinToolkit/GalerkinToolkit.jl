@@ -18,6 +18,9 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
+# TODO add constructors that automatically compute the prototype
+# TODO we need a structured way of accessing the children on a Term
+# Return an empty tuple () for terms that are leafs.
 
 @auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
     value::A
@@ -28,6 +31,12 @@ end
     callee::A
     args::B
     prototype::C
+end
+
+function CallTerm(callee,args)
+    ps = map(prototype,args)
+    p = prototype(callee)
+    return_prototype(p,ps...)
 end
 
 @auto_hash_equals cache=true fields=(array, index) struct IndexTerm{A, B, C}  <: NewAbstractTerm
@@ -62,6 +71,8 @@ struct DiscreteFieldTerm{A, B} <: NewAbstractTerm
     prototype::B
     name::Symbol
 end
+# Maybe we can remove name and use only objectid.
+# Be careful with uniform_quantity as two different instances might have the same constant inside.
 
 struct TabulatedDiscreteFieldTerm{A, B, C, D, E, F} <: NewAbstractTerm
     linear_operation::A 
@@ -687,10 +698,13 @@ end
 
 
   
+# TODO this needs to be extended to two-forms.
 function set_free_args(t::NewAbstractTerm, args::Dict)
     new_term_args = map(propertynames(t)) do child_name
         child = getproperty(t, child_name)
         if haskey(args, child_name)
+            # Very important to check that this is indeed a free child
+            # out criterion is nothing means free
             if child === nothing
                 args[child_name]
             else 
