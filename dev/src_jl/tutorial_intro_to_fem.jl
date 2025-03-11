@@ -4,7 +4,7 @@
 # In this tutorial, we will learn:
 # - The gist of the finite element method (FEM).
 # - How to solve a simple partial differential equation (PDE) with it.
-# - How to express the key concept in code using GalerkinToolkit.
+# - How to express the key concepts in code using GalerkinToolkit.
 # - How to validate the code using the method manufactured solutions.
 #
 # This tutorial is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
@@ -15,8 +15,8 @@
 
 # ## Problem statement
 #
-# In this tutorial, we show how to solve a simple PDE with the FEM.
-# To make this introduction really an introduction we consider what is considered the
+# We show how to solve a simple PDE with the FEM.
+# To make this introduction really an introduction we consider the
 # "hello, world" PDE: the Poisson equation.  Our goal is to solve the
 # Poisson equation with Dirichlet boundary conditions on a given
 # domain $\Omega\subset\mathbb{R}^d$ with $d$ being the number of spatial
@@ -43,7 +43,10 @@
 #
 # We are going to select $f$ and $g$ in such a way $u$ is a known function.
 # This will allow us to compare the numerical approximation computed with FEM against the theoretical
-# exact solution $u$. This technique is known as the "method of manufactured solutions".
+# exact solution $u$.
+# This technique is known as the "method of manufactured solutions". Note that $u$ is not known in 
+# practical applications.
+#
 # Let us, "manufacture" $f$ and $g$ such that function $u(x)=(\sum_{i=1}^d x_i)^p$ is
 # the solution of the PDE above. The scalar $p$ is a given integer $p>0$. It will be useful to see how
 # the numerical solution will behave for different values of $p$.
@@ -214,19 +217,17 @@ nothing # hide
 # Let's us visualize it. We do this by plotting domain $\Omega$ but not colored using
 # the function value.
 
-#Create figure
 fig = Makie.Figure()
-#Plot u_fem on a finer mesh
 _,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
-#Plot edges of the original mesh
 Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
-#Plot colorbar
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_rand_field.png)
 
 # By looking into the figure it is clear that function $u^\mathrm{fem}(x)$ is ineed
 # a function that can be evaluated at any point inside the domain $\Omega$.
+
+
 #
 # To have a better intuition of the meaning of the basis functions $s_i$, let us visualize
 # one of them. If we want to visualize $s_{400}$, we just need to create coefficients
@@ -291,6 +292,11 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.curre
 # coefficients (DOFs) $\alpha_i$ and the nodes $x_i$. This is not true for
 # other types of spaces. In vector-valued Lagrange spaces, there are several DOFs in
 # one node.  In other FE spaces the concept of "nodes" does not make sense at all.
+# In general, each shape function $s_i$ is associated with a linear operators $l_i:V\rightarrow\mathbb{R}$ that maps
+# functions in the FE space into real values. These operators are a basis of the dual space of $V$
+# and fulfill $l_i(s_j)=\delta_{ij}$ for the shape
+# functions $s_j$. In our case, $l_i(v)$ is the evaluation of $v$ at node $x_i$, namely $l_i(v)=v(x_i)$.
+# 
 
 # ## Free and Dirichlet nodes
 #
@@ -331,15 +337,13 @@ N_d = GT.num_dirichlet_dofs(V)
 # ## Dirichlet Field
 #
 # Using the classification of nodes, we can decompose function
-# $u^\mathrm{fem}$ as the sum of two functions,
-# $u^\mathrm{fem}(x)=u^\mathrm{f}(x)+u^\mathrm{d}(x)$
+# $u^\mathrm{fem}(x)=u^\mathrm{f}(x)+u^\mathrm{d}(x)$ as the sum of two functions,
 # ```math
 # u^\mathrm{f}(x)=\sum_{j\in\mathcal{I}^\mathrm{f}} \alpha_j s_j(x)
 # \text{ and }
 # u^\mathrm{d}(x)=\sum_{j\in\mathcal{I}^\mathrm{d}} \alpha_j s_j(x).
 # ```
-# which corresponds to restrict the linear combination to free or Dirichlet
-# DOFs respectively. This decomposition is useful because $u^\mathrm{d}$
+#  This decomposition is useful because $u^\mathrm{d}$
 # can be directly computed from the Dirichlet Boundary condition.
 # We refer to $u^\mathrm{d}$ as the "Dirichlet field". If can be computed
 # in the code as follows. First, we compute the coefficients for the Dirichlet nodes.
@@ -366,8 +370,8 @@ nothing # hide
 u_d = GT.dirichlet_field(V,α_d)
 nothing # hide
 
-# Now we can visualize the Dirichlet field and confirm that it is indeed
-# a function that is non-zero at the nodes on the Dirichlet boundary,
+# We visualize the Dirichlet field. Note that it is
+# a function that (by definition) is possibly non-zero at the nodes on the Dirichlet boundary,
 # and zero at the other nodes:
 
 fig = Makie.Figure()
@@ -388,13 +392,13 @@ u_d = GT.interpolate_dirichlet(g,V)
 nothing # hide
 
 # This will work also for FE spaces that are not associated with "nodes".
-# In this case, the Dirichlet values will be filled in using a base
-# of the dual space of $V$.
+# In this case, the Dirichlet values will be filled by applying the
+# dual operators $l_i$ of the FE space onto the Dirichlet function.
 #
 # Using the Dirichlet field, we can create function $u^\mathrm{fem}$ 
 # only from coefficients that are associated with free nodes. These are going to
 # be computed later by solving a system of linear equations, but
-# we can create a mock version from randomly generated coefficients.
+# we can create a mock version of them with randomly generated values.
 # In this case, we generate a vector of length $N^\mathrm{f}$ instead of $N$
 # because it should contain only "free" values.
 
@@ -414,20 +418,27 @@ Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_fem_2.png)
 #
-# ## Weak form
+# ## The weighted residual method
 #
-# To solve the problem we need to find as many as $N^\mathrm{f}$ coefficients.
-# In other words, we have $N^\mathrm{f}$ unknowns, which suggests that we needs to
+# To solve the problem now, we need to find the coefficients $\alpha_i$ associated
+# with the free nodes. Let us assume that these coefficients are stored in vector
+# $\alpha^\mathrm{f}$.
+# The number of such coefficients is $N^\mathrm{f}$.
+# Hence, we have $N^\mathrm{f}$ unknowns, which suggests that we needs to
 # consider $N^\mathrm{f}$ equations. These equations will follow from the PDE above.
-# One can try to substitute the expression of $u^\mathrm{fem}$ and try to find
-# which coefficients $\alpha_i$ that minimize the residual of the equation in some norm.
-# However, we cannot use the PDE directly in this form. The equation is in face not well
-# defined for function $u^\mathrm{fem}$. This function is continuous, but its gradient it
-# is not continuous at the boundaries of the mesh cells. As a consequence the Laplace
-# operator it is not well defined as one cannot compute derivatives
-# of a discontinuous function.
 #
-# Let us visualize one of the component of gradient of $u^\mathrm{fem}$
+# Let us introduce the residual of the PDE, namely $r(v) = \Delta v + f$ for a given function $v$. The operator
+# $r$ is such that $r(u)=0$ for the exact solution of the PDE. The residual
+# provides an estimation of how good a function approximates the solution of the PDE.
+# If $r(v)$ is "small", then $v$ is a good approximation of $u$ as long as $v$ also fulfills
+# the Dirichlet boundary condition $v=g$ on $\partial\Omega$. Our goal is to find
+# the coefficients $\alpha^\mathrm{f}$ for which the resulting function $u^\mathrm{fem}$
+# has a "small" residual $r(u^\mathrm{fem})$. This approach however requires some caution.
+# First, we need to define what "small" is. The second problem is that we cannot directly evaluate
+# $r(u^\mathrm{fem})$ as this value it is not well defined. Function $u^\mathrm{fem}$ is continuous,
+# but its gradient is not continuous at the boundaries of the mesh cells. As a consequence the Laplace
+# operator it is not well defined and this we cannot compute the residual $r(u^\mathrm{fem})$ for
+# points at the element boundaries.  Let us visualize one of the component of gradient of $u^\mathrm{fem}$
 # to confirm that is discontinuous. First, let us define the nabla operator
 #
 
@@ -444,3 +455,59 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 # ![](fig_tutorial_intro_grad.png)
 #
 # It is indeed discontinuous at the mesh cell boundaries.
+#
+# Let first define what we mean by a "small" residual. For this, the FEM considers the so-called
+# weighted residual method. The method looks for a function $u^\mathrm{fem}$ such that
+# ```math
+# \int_\Omega r(u^\mathrm{fem}) s_i\ d\Omega = 0 \text{ for all } i\in\mathcal{I}^\mathrm{f}.
+# ```
+# That is, we want weighted integrals of the residual to be zero. The weights are the basis functions $s_i$
+# but only the ones associated with free nodes. Each basis function provides an equation. The number
+# of total equations that we build with this expression is $N^\mathrm{f}$, which coincides with the number of
+# unknowns. Perfect!
+#
+# Now, we need to address the second problem: we need to avoid computing $\Delta u^\mathrm{fem}$ as this quantity
+# is not well defined for function $u^\mathrm{fem}$. Let us expand the integral above,
+# by in-lining the definition of $r$:
+# ```math
+# \int_\Omega ( (\Delta u^\mathrm{fem}) s_i + f s_i )\ d\Omega = 0
+# ```
+# We can get rid of the Laplace operator by using this identity
+# ```math
+# \nabla\cdot(\nabla u^\mathrm{fem} s_i) = (\Delta u^\mathrm{fem}) s_i + \nabla u^\mathrm{fem} \cdot \nabla s_i
+# ```
+# or equivalently
+# ```math
+#  (\Delta u^\mathrm{fem}) s_i = \nabla\cdot(\nabla u^\mathrm{fem} s_i) - \nabla u^\mathrm{fem} \cdot \nabla s_i
+# ```
+# This identity is analogous to the well known rule for the derivative of a product, but when the functions
+# are multivariate scalar functions. The quantity $\nabla v$ is the gradient of the scalar function $v$, which is a vector
+# defined as $[\nabla v]_k = \partial v/\partial x_k$. The value $\nabla\cdot w$ is the divergence of a vector function
+# $w$, which is defined as $\nabla\cdot w = \sum_k^d \partial w_k/\partial x_k$.
+#
+# Substituting for $(\Delta u^\mathrm{fem}) s_i$ in the integral above, we get:
+# ```math
+# \int_\Omega (\nabla\cdot(\nabla u^\mathrm{fem} s_i) - \nabla u^\mathrm{fem} \cdot \nabla s_i + f s_i)\ d\Omega = 0
+# ```
+# We still have a second order derivative in the first term inside the integral. We can take rid of this one using
+# this other identity, the Gauss divergence theorem:
+# ```math
+# \int_\Omega \nabla\cdot(\nabla u^\mathrm{fem} s_i) \ d\Omega = \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s_i)\ d\partial\Omega,
+# ```
+# where $n$ is the unit normal vector pointing outwards to $\partial\Omega$. Note that the right hand side is an integral
+# on the boundary and we said that the shape functions $s_i$ used here are only the ones associated with the free
+# nodes. All these function are zero at the boundary, so we get:
+# ```math
+# \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s_i)\ d\partial\Omega = 0
+# ```
+# Using this result and rearranging terms, we get this new formulation of our equations:
+# ```math
+#  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s_i \ d\Omega = \int_\Omega f s_i \ d\Omega \text{ for all } i\in\mathcal{I}^\mathrm{f}.
+# ```
+# Note that this new formulation does not require computing second order derivatives. Thus, it is well
+# suited for the numerical approximation $u^\mathrm{fem}$.
+#
+# ## System of algebraic equations
+#
+#
+#
