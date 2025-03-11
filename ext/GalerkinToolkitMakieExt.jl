@@ -13,6 +13,7 @@ Makie.@recipe(MakiePlot) do scene
         dim = Makie.Automatic(),
         shrink = false,
         warp_by_vector = nothing,
+        warp_by_scalar = nothing,
         warp_scale = 1,
         strokecolor = nothing,
         strokewidth = nothing,
@@ -38,6 +39,11 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.Plot}})
         wscale = sc[:warp_scale]
         vec = sc[:warp_by_vector]
         plt = Makie.lift((a,b,c)->GT.warp_by_vector(a,b;scale=c),plt,vec,wscale)
+    end
+    if sc[:warp_by_scalar][] !== nothing
+        wscale = sc[:warp_scale]
+        data = sc[:warp_by_scalar]
+        plt = Makie.lift((a,b,c)->GT.warp_by_scalar(a,b;scale=c),plt,data,wscale)
     end
     if sc[:shrink][] != false
         scale = sc[:shrink]
@@ -117,6 +123,7 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
     dom = sc[1]
     valid_attributes = Makie.shared_attributes(sc, MakiePlot)
     warp_by_vector = valid_attributes[:warp_by_vector]
+    warp_by_scalar = valid_attributes[:warp_by_scalar]
     color = valid_attributes[:color]
     refinement = valid_attributes[:refinement]
     args = Makie.lift(dom,color,refinement) do dom,color,refinement
@@ -144,6 +151,16 @@ function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
         v
     end
     valid_attributes[:warp_by_vector] = warp_by_vector
+
+    warp_by_scalar = Makie.lift(warp_by_scalar,plt) do v,plt
+        if v !== nothing
+            label = string(gensym())
+            GT.plot!(plt,v;label)
+            v = GT.NodeData(label)
+        end
+        v
+    end
+    valid_attributes[:warp_by_scalar] = warp_by_scalar
 
     makieplot!(sc,valid_attributes,plt)
 end
