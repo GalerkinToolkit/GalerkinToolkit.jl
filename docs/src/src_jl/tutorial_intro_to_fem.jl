@@ -292,10 +292,10 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.curre
 # coefficients (DOFs) $\alpha_i$ and the nodes $x_i$. This is not true for
 # other types of spaces. In vector-valued Lagrange spaces, there are several DOFs in
 # one node.  In other FE spaces the concept of "nodes" does not make sense at all.
-# In general, each shape function $s_i$ is associated with a linear operators $l_i:V\rightarrow\mathbb{R}$ that maps
+# In general, each shape function $s_i$ is associated with a linear operators $s\prime_i:V\rightarrow\mathbb{R}$ that maps
 # functions in the FE space into real values. These operators are a basis of the dual space of $V$
-# and fulfill $l_i(s_j)=\delta_{ij}$ for the shape
-# functions $s_j$. In our case, $l_i(v)$ is the evaluation of $v$ at node $x_i$, namely $l_i(v)=v(x_i)$.
+# and fulfill $s\prime_i(s_j)=\delta_{ij}$ for the shape
+# functions $s_j$. In our case, $s\prime_i(v)$ is the evaluation of $v$ at node $x_i$, namely $s\prime_i(v)=v(x_i)$.
 # 
 
 # ## Free and Dirichlet nodes
@@ -307,9 +307,8 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.curre
 # the Dirichlet boundary $\partial\Omega$ simply as $\alpha_i=g(x_i)$. We need to classify the nodes into two
 # groups: the ones on the Dirichlet boundary $\partial\Omega$ in one group and the
 # remaining nodes in another group. Let us call $\mathcal{I}^\mathrm{d}$
-# ("d" for Dirichlet) the set
-# of all integers $i$ for which the node $x_i$ is on $\partial\Omega$.
-# Let us call $\mathcal{I}^\mathrm{f}$ ("f" for free) the other of all integers
+# ("d" for Dirichlet) a vector containing all integers $i$ for which the node $x_i$ is on $\partial\Omega$.
+# Let us call $\mathcal{I}^\mathrm{f}$ ("f" for free) a vector containing all integers
 # $i$ for which the node $x_i$ is not on $\partial\Omega$.
 #  The coefficient $\alpha_i$ is computed as $\alpha_i=g(x_i)$
 # for $i\in\mathcal{I}^\mathrm{d}$ and the remaining coefficients will be computed
@@ -505,9 +504,42 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 #  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s_i \ d\Omega = \int_\Omega f s_i \ d\Omega \text{ for all } i\in\mathcal{I}^\mathrm{f}.
 # ```
 # Note that this new formulation does not require computing second order derivatives. Thus, it is well
-# suited for the numerical approximation $u^\mathrm{fem}$.
+# suited for the numerical approximation $u^\mathrm{fem}$. This equation is called the "weak form" of the PDE,
+# since it puts weaker regularity requirements to the numerical approximation $u^\mathrm{fem}$. In contrast,
+# the original PDE formulation is called the "strong form". There are different types of weak forms. Each one
+# is designed for a type of numerical approximation and PDE. This one is for the Poisson equation and
+# continuous approximations with discontinuous gradients. E.g., a different weak form will be needed if we allow
+# the numerical approximation to be discontinuous across cell boundaries as the gradient will not
+# be defined on cell boundaries. This is what discontinuous Galerkin methods deliver.
 #
-# ## System of algebraic equations
+# ## System of linear algebraic equations
+#
+# Let us rewrite the weak equation as $a(u^\mathrm{fem},s_i) = \ell(s_i)$ with
+# ```math
+# a(u^\mathrm{fem},s_i) =  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s_i \ d\Omega \text{ and } \ell(s_i)= \int_\Omega f s_i \ d\Omega.
+# ```
+#
+# If we substitute the expression of $u^\mathrm{fem}$, we get
+# ```math
+# \sum_{i\in\mathcal{I}^\mathrm{f}}a(s_j,s_i)\alpha_j = \ell(s_i) - \sum_{i\in\mathcal{I}^\mathrm{d}}a(s_j,s_i)\alpha_j \text{ for all } i\in\mathcal{I}^\mathrm{f}
+# ```
+# We have used the face that $a$ is linear in each one of its arguments to move it inside the sums. It we look
+# closer, this can be written in matrix form as
+# ```math
+# A^\mathrm{f}\alpha^\mathrm{f} = b - A^\mathrm{d}\alpha^\mathrm{d}
+# ```
+# where $\alpha^\mathrm{f}$ and $\alpha^\mathrm{d}$ are two vectors containing the coefficients $\alpha_i$ for the
+# free and Dirichlet nodes respectivel. $A^\mathrm{f}$ and $A^\mathrm{d}$ are matrices, and $b$ is a vector such tat
+# ```math
+# [A^\mathrm{f}]_{ab} = a(s_j,s_i) \text{ with } i=[\mathcal{I^\mathrm{f}}]_a \text{ and } j=[\mathcal{I^\mathrm{f}}]_b
+# ```
+# ```math
+# [A^\mathrm{d}]_{ac} = a(s_j,s_i) \text{ with } i=[\mathcal{I^\mathrm{f}}]_a \text{ and } j=[\mathcal{I^\mathrm{d}}]_c
+# ```
+# ```math
+# [b]_{a} = \ell(s_i) \text{ with } i=[\mathcal{I^\mathrm{f}}]_a
+# ```
+# In code, we can build these two matrices and vector as follows:
 #
 #
 #
