@@ -18,9 +18,9 @@ abstract type NewAbstractTerm <: AbstractType end
 
 abstract type NewAbstractQuantity <: AbstractType end
 
-# TODO add constructors that automatically compute the prototype
-# TODO we need a structured way of accessing the children on a Term
-# Return an empty tuple () for terms that are leafs.
+
+# TODO: abstract tree children testing
+# TODO: rewrite set_free_args to support 2 forms
 
 @auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
     value::A
@@ -33,11 +33,6 @@ end
     prototype::C
 end
 
-function CallTerm(callee,args)
-    ps = map(prototype,args)
-    p = prototype(callee)
-    return_prototype(p,ps...)
-end
 
 @auto_hash_equals cache=true fields=(array, index) struct IndexTerm{A, B, C}  <: NewAbstractTerm
     array::A
@@ -51,6 +46,36 @@ end
     prototype::C
 end
 
+children(t::LeafTerm) = ()
+AbstractTrees.children(t::LeafTerm) = (t.value,)
+
+children(t::CallTerm) = (t.callee, t.args...)
+
+children(t::IndexTerm) = (t.array, t.index)
+
+children(t::LambdaTerm) = begin
+    if t.args isa NewAbstractTerm
+        (t.body, t.args)
+    else
+        (t.body, t.args...)
+    end
+end
+
+# TODO: fill prototypes later?
+function call_term(callee, args)
+    CallTerm(callee, args, nothing)
+end
+
+function lambda_term(body, args)
+    LambdaTerm(body, args, nothing) 
+end
+
+function index_term(array, index)
+    IndexTerm(array, index, nothing)
+end
+
+AbstractTrees.children(t::NewAbstractTerm) = children(t)
+
 
 const hashed_terms = Set([LeafTerm, CallTerm, IndexTerm, LambdaTerm])
 
@@ -61,9 +86,13 @@ struct StatementTerm{A, B, C} <: NewAbstractTerm
     prototype::C
 end
 
+children(t::StatementTerm) = (t.lhs, t.rhs)
+
 struct BlockTerm{A} <: NewAbstractTerm
     statements::A
 end
+
+children(t::BlockTerm) = (t.statements...,)
 
 
 struct DiscreteFieldTerm{A, B} <: NewAbstractTerm
@@ -74,6 +103,8 @@ end
 # Maybe we can remove name and use only objectid.
 # Be careful with uniform_quantity as two different instances might have the same constant inside.
 
+children(t::DiscreteFieldTerm) = ()
+
 struct TabulatedDiscreteFieldTerm{A, B, C, D, E, F} <: NewAbstractTerm
     linear_operation::A 
     discrete_field::B 
@@ -82,6 +113,9 @@ struct TabulatedDiscreteFieldTerm{A, B, C, D, E, F} <: NewAbstractTerm
     measure::E 
     prototype::F
 end
+
+
+children(t::TabulatedDiscreteFieldTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.domain_face, t.point, t.measure))
 
 
 prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
@@ -98,6 +132,11 @@ struct NewFormArgumentTerm{A, B, C, D} <: NewAbstractTerm
     name::Symbol #TODO: is it needed?
 end
 
+children(t::NewFormArgumentTerm) = filter(x -> !isnothing(x), (t.space, t.domain_face, t.dof))
+
+AbstractTrees.children(t::NewFormArgumentTerm) = (t.space, t.domain_face, t.dof, t.arg, t.field)
+
+
 struct TabulatedFormArgumentTerm{A, B, C, D, E, F} <: NewAbstractTerm 
     linear_operation::A 
     form_argument::NewFormArgumentTerm
@@ -107,6 +146,12 @@ struct TabulatedFormArgumentTerm{A, B, C, D, E, F} <: NewAbstractTerm
     measure::E
     prototype::F
 end
+
+
+children(t::TabulatedFormArgumentTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.form_argument, t.domain_face, t.point, t.dof, t.measure)) # TODO: form_argument
+
+
+AbstractTrees.children(t::TabulatedFormArgumentTerm) = (t.linear_operation, t.form_argument.space, t.domain_face, t.point, t.dof, t.measure, t.form_argument.arg, t.form_argument.field)
 
 struct OneFormTerm{A, B, C, D, E, F} <: NewAbstractTerm 
     contribution::A
@@ -118,9 +163,105 @@ struct OneFormTerm{A, B, C, D, E, F} <: NewAbstractTerm
 end
 
 
+children(t::OneFormTerm) = filter(x -> !isnothing(x), (t.contribution, t.domain_face, t.dof, t.ndofs, t.local_vector)) # TODO: form_argument
+
 
 space(t::TabulatedFormArgumentTerm) = space(t.form_argument)
 space(t::NewFormArgumentTerm) = t.space 
+
+
+function build_leaf_term(a, a_sym)
+    if a isa NewAbstractTerm
+        a 
+    else
+        LeafTerm(a_sym, a) 
+    end
+end
+
+macro new_term(expr)
+    vars = Set{Symbol}()
+    function findvars!(a)
+        nothing
+    end
+    function findvars!(expr::Expr)
+        if  expr.head === :(=)
+            var = expr.args[1]
+            push!(vars,var)
+        end
+        map(findvars!,expr.args) # always traverse the args. If the user write (a = b = 3) then only a is captured
+        nothing
+    end
+
+    transform(a::LineNumberNode) = a
+    transform(a::Union{Number, Nothing}) = Expr(:call, build_leaf_term, a, a)
+    function transform(a::Symbol)
+        if a in vars
+            a
+        else
+            Expr(:call, build_leaf_term, a, Expr(:quote, a))
+        end
+    end
+
+    function transform(expr::Expr)
+        
+        if  expr.head === :call
+            transform_call(expr)
+        elseif  expr.head === :ref
+            transform_ref(expr)
+        elseif  expr.head === :$
+            transform_interpolation(expr)
+        elseif  expr.head === :(=)
+            transform_default(expr)
+        elseif  expr.head === :(->)
+            transform_lambda(expr)
+        # elseif  expr.head === :do
+        #     transform_do(expr)
+        elseif  expr.head === :block
+            transform_default(expr)
+        elseif  expr.head === :tuple
+            transform_tuple(expr)
+        # elseif  expr.head === :.
+        #     transform_dot(expr)
+        else
+            error("Expr with head=$(expr.head) not supported in macro @term")
+        end
+    end
+    function transform_call(expr::Expr)
+        args = map(transform,expr.args)
+        Expr(:call, call_term, args[1], Expr(:vect, args[2:end]...))
+    end
+    function transform_lambda(expr::Expr)
+        args = map(transform,expr.args)
+        Expr(:call, lambda_term, args[2], args[1])
+    end
+    # function transform_do(expr::Expr)
+    #     expr2 = Expr(:call,expr.args[1].args[1],expr.args[2],expr.args[1].args[2])
+    #     transform(expr2)
+    # end
+    function transform_interpolation(expr::Expr)
+        expr.args[1]
+    end
+    function transform_tuple(expr::Expr)
+        args = map(transform,expr.args)
+        Expr(:tuple,args...)
+    end
+    # function transform_dot(expr::Expr)
+    #     expr
+    # end
+    function transform_ref(expr::Expr)
+        args = map(transform,expr.args)
+        quote
+            Expr(:call, index_term, args[1], args[2])
+        end
+    end
+    function transform_default(expr::Expr)
+        head = expr.head
+        args = map(transform,expr.args)
+        Expr(head,args...)
+    end
+    findvars!(expr)
+    transform(expr) |> esc
+end
 
 function form_argument(space, arg::Int, field::Int) 
     # arg: test or trial
@@ -267,6 +408,9 @@ struct UniformTerm{A, B, C} <: NewAbstractTerm
     domain::C
 end
 
+children(t::UniformTerm) = ()
+AbstractTrees.children(t::UniformTerm) = (t.value,)
+
 domain(t::UniformTerm) = t.domain
 prototype(t::UniformTerm) = t.value
 
@@ -284,6 +428,8 @@ struct NumPointsTerm{A, B} <: NewAbstractTerm
     domain_face::B
 end
 
+children(t::NumPointsTerm) = filter(x -> !isnothing(x), (t.measure, t.domain_face))
+
 prototype(a::NumPointsTerm) = 0
 domain(t::NumPointsTerm) = domain(t.measure)
 
@@ -294,6 +440,9 @@ struct WeightTerm{A,B,C} <: NewAbstractTerm
     domain_face::C
 end
 
+children(t::WeightTerm) = filter(x -> !isnothing(x), (t.measure, t.point, t.domain_face))
+
+
 domain(t::WeightTerm) = domain(t.measure)
 prototype(a::WeightTerm) = 0.0
 
@@ -303,6 +452,9 @@ struct CoordinateTerm{A,B,C} <: NewAbstractTerm
     domain_face::B
     point::C
 end
+
+children(t::CoordinateTerm) = filter(x -> !isnothing(x), (t.measure, t.point, t.domain_face))
+
 
 domain(t::CoordinateTerm) = domain(t.measure)
 
@@ -321,6 +473,8 @@ struct ContributionTerm{A,B,C,D,E} <: NewAbstractTerm
     num_points::D
     prototype::E
 end
+
+children(t::ContributionTerm) = filter(x -> !isnothing(x), (t.integrand, t.weight, t.point, t.num_points))
 
 prototype(t::ContributionTerm) = t.prototype
 
@@ -372,13 +526,20 @@ end
 
 function lower_l1_to_l2(t::UniformTerm,name_to_symbol)
     t2 = name_to_symbol[t.name]
-    CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
+    @new_term begin
+        value($(LeafTerm(t2, t)))
+    end
+    # CallTerm(LeafTerm(:value, value), [LeafTerm(t2, t)], prototype(t))
     # :(value($t2))
 end
 
 
 function lower_l1_to_l2(t::LambdaTerm,name_to_symbol)
-    LambdaTerm(lower_l1_to_l2(t.body, name_to_symbol), t.args, prototype(t))
+    body = lower_l1_to_l2(t.body, name_to_symbol)
+    @new_term begin
+        $(t.args) -> $body
+    end
+    # LambdaTerm(lower_l1_to_l2(t.body, name_to_symbol), t.args, prototype(t))
 end
 
 function lower_l1_to_l2(t::IndexTerm,name_to_symbol)
@@ -399,13 +560,14 @@ function lower_l1_to_l2(t::NumPointsTerm,name_to_symbol)
     domain_face_term = t.domain_face
     measure = name_to_symbol[t.measure.name]
     
-    face_points = CallTerm(LeafTerm(:num_points_accessor, num_points_accessor), [LeafTerm(measure, t.measure)], x -> prototype(t))
-    CallTerm(face_points, [domain_face_term], prototype(t))
-
-    # @term begin
-    #     face_npoints = num_points_accessor($measure)
-    #     face_npoints($domain_face)
-    # end
+    
+    # face_points = CallTerm(LeafTerm(:num_points_accessor, num_points_accessor), [LeafTerm(measure, t.measure)], x -> prototype(t))
+    # CallTerm(face_points, [domain_face_term], prototype(t))
+    measure_term = LeafTerm(measure, t.measure)
+    @new_term begin
+        face_npoints = num_points_accessor($measure_term)
+        face_npoints($domain_face_term)
+    end
 end
 
 
@@ -419,18 +581,22 @@ function lower_l1_to_l2(t::WeightTerm,name_to_symbol)
     x = node_coordinates(m)[1]
     jacobian_prototype = x * transpose(x)
 
-    weight_func_0 = CallTerm(LeafTerm(:weight_accessor, weight_accessor), [measure_term], x -> ( (y1, y2) -> 0.0))
-    weight_func = CallTerm(weight_func_0, [domain_face_term], ((y1, y2) -> 0.0))
 
-    jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
-    jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
-    jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
+    # weight_func_0 = CallTerm(LeafTerm(:weight_accessor, weight_accessor), [measure_term], x -> ( (y1, y2) -> 0.0))
+    # weight_func = CallTerm(weight_func_0, [domain_face_term], ((y1, y2) -> 0.0))
 
-    CallTerm(weight_func, [point_term, jacobian_result], prototype(t))
+    # jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
+    # jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
+    # jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
 
-    # quote
-    #     weight_accessor($measure)($domain_face)($point,jacobian_accessor($measure)($domain_face)($point))
-    # end
+    # CallTerm(weight_func, [point_term, jacobian_result], prototype(t))
+
+    @new_term  begin
+        weight_func = weight_accessor($measure_term)($domain_face_term)
+        jacobian_func = jacobian_accessor($measure_term)($domain_face_term)
+        J = jacobian_func($point_term)
+        weight_func($point_term, J)
+    end
 end
 
 function new_measure(domain,degree;name=gensym("quadrature"))
@@ -475,10 +641,14 @@ function lower_l1_to_l2(t::CoordinateTerm,name_to_symbol)
     m = GT.mesh(t.measure.quadrature)
     prototype_point = node_coordinates(m)[1]
 
+    @new_term begin
+        point_func = coordinate_accessor($measure_term)($domain_face_term)
+        point_func($point_term)
+    end
 
-    point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
-    point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
-    CallTerm(point_func, [point_term], prototype_point)
+    # point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
+    # point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
+    # CallTerm(point_func, [point_term], prototype_point)
 end
 
 
@@ -506,14 +676,15 @@ function lower_l1_to_l2(t::ContributionTerm,name_to_symbol)
     weight_expr = lower_l1_to_l2(t.weight,name_to_symbol)
     num_points_expr = lower_l1_to_l2(t.num_points,name_to_symbol)
     point = t.point
+    point_term = LeafTerm(point, 1)
 
-    l_body = CallTerm(LeafTerm(:*, *), [integrand_expr, weight_expr], prototype(integrand_expr))
-    l = LambdaTerm(l_body, LeafTerm(point, 1), x -> prototype(integrand_expr))
-    range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), num_points_expr], 1:1)
-    CallTerm(LeafTerm(:(sum), sum), [l, range], prototype(t))
-    # quote
-    #     sum($point -> $integrand_expr * $weight_expr,  1:$num_points_expr)
-    # end
+    # l_body = CallTerm(LeafTerm(:*, *), [integrand_expr, weight_expr], prototype(integrand_expr))
+    # l = LambdaTerm(l_body, LeafTerm(point, 1), x -> prototype(integrand_expr))
+    # range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), num_points_expr], 1:1)
+    # CallTerm(LeafTerm(:(sum), sum), [l, range], prototype(t))
+    @new_term begin
+        sum($point_term -> $integrand_expr * $weight_expr,  1:$num_points_expr)
+    end
 end
 
 
@@ -576,12 +747,18 @@ function lower_l1_to_l2(t::LeafTerm,name_to_symbol)
 end
 
 function lower_l1_to_l2(t::OneFormTerm,name_to_symbol)
-
+    ndofs = lower_l1_to_l2(t.ndofs, name_to_symbol)
     body = lower_l1_to_l2(t.contribution, name_to_symbol)
-    dof_lambda_term = LambdaTerm(body, t.dof, x -> prototype(t.body))
-    range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), lower_l1_to_l2(t.ndofs, name_to_symbol)], 1:1)
-    map!_term = CallTerm(LeafTerm(:map!, map!), [dof_lambda_term, t.local_vector, range], nothing)
-    LambdaTerm(map!_term, (t.local_vector, t.domain_face), x -> nothing)
+    result = @new_term begin 
+        ($(t.local_vector), $(t.domain_face)) -> begin 
+            map!($(t.dof) -> $body, $(t.local_vector), 1:$ndofs)
+        end
+    end
+    
+    # dof_lambda_term = LambdaTerm(body, t.dof, x -> prototype(t.body))
+    # range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), lower_l1_to_l2(t.ndofs, name_to_symbol)], 1:1)
+    # map!_term = CallTerm(LeafTerm(:map!, map!), [dof_lambda_term, t.local_vector, range], nothing)
+    # LambdaTerm(map!_term, (t.local_vector, t.domain_face), x -> nothing)
 end
 
 
@@ -598,16 +775,19 @@ function lower_l1_to_l2(t::TabulatedFormArgumentTerm,name_to_symbol)
     point_term = t.point 
     domain_face_term = t.domain_face
     measure_term = LeafTerm(measure, t.measure)
-    
+    form_argument_term = lower_l1_to_l2(t.form_argument, name_to_symbol)
 
-    space_term = CallTerm(LeafTerm(:space, space), [lower_l1_to_l2(t.form_argument, name_to_symbol)], t.form_argument.space) 
+    @new_term begin 
+        s = space($form_argument_term)
+        shape_func = shape_function_accessor($(t.linear_operation), s, $measure_term)($domain_face_term)
+        shape_func($point_term, nothing)($dof_term)
+    end
+    # space_term = CallTerm(LeafTerm(:space, space), [lower_l1_to_l2(t.form_argument, name_to_symbol)], t.form_argument.space) 
 
-    shape_func_0 = CallTerm(LeafTerm(:shape_function_accessor, shape_function_accessor), [t.linear_operation, space_term, measure_term], (x -> y -> z -> t.prototype))
-    shape_func_1 = CallTerm(shape_func_0, [domain_face_term], y -> z -> t.prototype)
-    shape_func_2 = CallTerm(shape_func_1, [point_term, LeafTerm(:nothing, nothing)], z -> t.prototype)
-    CallTerm(shape_func_2, [dof_term], t.prototype)
-
-
+    # shape_func_0 = CallTerm(LeafTerm(:shape_function_accessor, shape_function_accessor), [t.linear_operation, space_term, measure_term], (x -> y -> z -> t.prototype))
+    # shape_func_1 = CallTerm(shape_func_0, [domain_face_term], y -> z -> t.prototype)
+    # shape_func_2 = CallTerm(shape_func_1, [point_term, LeafTerm(:nothing, nothing)], z -> t.prototype)
+    # CallTerm(shape_func_2, [dof_term], t.prototype)
 end
 
 
@@ -627,21 +807,24 @@ function lower_l1_to_l2(t::TabulatedDiscreteFieldTerm,name_to_symbol)
     m = GT.mesh(t.measure.quadrature)
     x = node_coordinates(m)[1]
     jacobian_prototype = x * transpose(x)
-
-
-    jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
-    jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
-    jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
-
-    # point_func_0 = CallTerm(LeafTerm(:coordinate_accessor, coordinate_accessor), [measure_term], x -> y -> prototype_point)
-    # point_func = CallTerm(point_func_0, [domain_face_term], y -> prototype_point)
-    # CallTerm(point_func, [point_term], prototype_point)
-
-    prototype_result = prototype(t)
     discrete_field = lower_l1_to_l2(t.discrete_field, name_to_symbol)
-    field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, discrete_field, measure_term], x -> (y1, y2) -> prototype_result) 
-    field_func =  CallTerm(field_func_0, [domain_face_term], (y1, y2) -> prototype_result)
-    CallTerm(field_func, [point_term, jacobian_result], prototype_result)
+
+
+    @new_term begin 
+        jacobian_func = jacobian_accessor($measure_term)($domain_face_term)
+        J = jacobian_func($point_term)
+        field_func = discrete_field_accessor($(t.linear_operation), $discrete_field, $measure_term)($domain_face_term)
+        field_func($point_term, J)
+    end
+    # jacobian_func_0 = CallTerm(LeafTerm(:jacobian_accessor, jacobian_accessor), [measure_term], (x -> y -> jacobian_prototype))
+    # jacobian_func = CallTerm(jacobian_func_0, [domain_face_term], (y -> jacobian_prototype))
+    # jacobian_result = CallTerm(jacobian_func, [point_term], jacobian_prototype)
+
+    # prototype_result = prototype(t)
+    
+    # field_func_0 = CallTerm(LeafTerm(:discrete_field_accessor, discrete_field_accessor), [t.linear_operation, discrete_field, measure_term], x -> (y1, y2) -> prototype_result) 
+    # field_func =  CallTerm(field_func_0, [domain_face_term], (y1, y2) -> prototype_result)
+    # CallTerm(field_func, [point_term, jacobian_result], prototype_result)
 end
 
 
@@ -667,7 +850,7 @@ function generate(t::NewAbstractTerm,params...)
     # t: L1 (domain specific level) term
     domain_face = :dummy_domain_face
     domain_face_term = LeafTerm(domain_face, 1)
-    term_l1_1 = set_free_args(t, Dict(:domain_face => domain_face_term))
+    term_l1_1 = set_free_args(t, Dict(:domain_face => domain_face_term)) 
     term_l1_2 = LambdaTerm(term_l1_1, domain_face_term, x -> prototype(term_l1_1)) # a wrapper of domain face
 
     # generate body and optimize
@@ -731,41 +914,26 @@ end
 
 function term_ndofs(t::NewFormArgumentTerm, arg::Int, field::Int)
     if (t.arg == arg && t.field == field) 
-        s = CallTerm(LeafTerm(:space, space), [t], t.space)
-        dom = CallTerm(LeafTerm(:domain, domain), [s], domain(t.space))
-        face_dofs = CallTerm(LeafTerm(:dofs_accessor, dofs_accessor), [s, dom], x -> [1]) 
-        dofs = CallTerm(face_dofs, [t.domain_face], [1])
-        CallTerm(LeafTerm(:length, length), [dofs], 1)
-        # TODO: embed the accessors later. this is not efficient
+        # s = CallTerm(LeafTerm(:space, space), [t], t.space)
+        # dom = CallTerm(LeafTerm(:domain, domain), [s], domain(t.space))
+        # face_dofs = CallTerm(LeafTerm(:dofs_accessor, dofs_accessor), [s, dom], x -> [1]) 
+        # dofs = CallTerm(face_dofs, [t.domain_face], [1])
+        # CallTerm(LeafTerm(:length, length), [dofs], 1)
+        @new_term begin
+            s = space($t)
+            dom = domain(s)
+            ndofs = num_dofs_accessor(s, dom)($(t.domain_face))
+        end
     else
         nothing
     end
 end
 
-function terms_ndofs(terms, arg::Int, field::Int)
-    ndofs = nothing
-    for child in terms
-        if child isa NewAbstractTerm
-            ndofs = term_ndofs(child, arg, field)
-        elseif applicable(iterate, child)
-            ndofs = terms_ndofs(child, arg, field)
-        end
-        if ndofs !== nothing
-            break
-        end
-    end
-    ndofs
-end
 
 function term_ndofs(t::NewAbstractTerm, arg::Int, field::Int)
     ndofs = nothing
-    for child_name in propertynames(t)
-        child = getproperty(t, child_name)
-        if child isa NewAbstractTerm
-            ndofs = term_ndofs(child, arg, field)
-        elseif applicable(iterate, child)
-            ndofs = terms_ndofs(child, arg, field)
-        end
+    for child in children(t)
+        ndofs = term_ndofs(child, arg, field)
         if ndofs !== nothing
             break
         end
