@@ -1,16 +1,16 @@
-# # Introduction to FEM
+# # Introduction to the FEM
 # by Francesc Verdugo (VU Amsterdam)
 
-# In this tutorial, we will learn:
+# In this lecture, we will learn:
 # - The gist of the finite element method (FEM).
 # - How to solve a simple partial differential equation (PDE) with it.
 # - How to express the key concepts in code using GalerkinToolkit.
 # - How to validate the code using the method manufactured solutions.
 #
-# This tutorial is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
+# This lecture is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
 # It will walk you through the key parts of the library.
 #
-# This tutorial is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
+# This lecture is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
 # The API documentation and source code of GalerkinToolkit is available under an [MIT license](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE).
 
 # ## Problem statement
@@ -55,7 +55,7 @@
 # That is, $f$ needs to be computed as
 # $f= -\Delta ((\sum_{i=1}^d x_i)^p)$ and $g$ is simply $g(x)=(\sum_{i=1}^d x_i)^p$. Applying the Laplace operator
 # to $(\sum_{i=1}^d x_i)^p$,
-# we get the closed-form expression for $f$, namely $f(x)= -p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
+# we get the closed-form expression for $f$, namely $f(x)= -d*p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
 
 # ## Numerical approximation
 #
@@ -102,7 +102,7 @@
 # the number of elements here. The triangulation is also often called a computational mesh or a computational grid.
 #  
 # Let's build a mesh for our domain $\Omega$ using code.
-# First, let us load all packages that we will use in this tutorial:
+# First, let us load all packages that we will use in this lecture:
 #
 using LinearAlgebra
 using Random
@@ -120,7 +120,7 @@ import FileIO # hide
 # The following cell builds a triangulation (a mesh object) using the external mesh generation tool GMSH.
 # The variable `mesh_size` controls how fine are the cells in the mesh (smaller is finer).
 # We start with a 
-# coarse mesh to make visualization easier. In this tutorial, we are not going to comment in detail all
+# coarse mesh to make visualization easier. In this lecture, we are not going to comment in detail all
 # code lines. We will discuss only the parts relevant in this high-level introduction. You can refer to the API
 # documentation other tutorials when needed.
 
@@ -140,9 +140,9 @@ end
 nothing # hide
 
 # There are ways of accessing the low level information
-# in this mesh object, but we are not going to discuss them in this tutorial. Here, we only need to know how to
+# in this mesh object, but we are not going to discuss them in this lecture. Here, we only need to know how to
 # visualize the mesh, and other high-level operations. The mesh can be visualized both using Paraview and Makie.
-# We use Makie in this tutorial.
+# We use Makie in this lecture.
 
 axis = (aspect = Makie.DataAspect(),)
 Makie.plot(mesh;color=:pink,strokecolor=:blue,axis)
@@ -190,7 +190,7 @@ degree = 2
 V = GT.lagrange_space(Ω,degree)
 nothing # hide
 
-# We will discus the mathematical derivation of this FE space in another tutorial.
+# We will discus the mathematical derivation of this FE space in another lecture.
 # For now, it is enough to understand that the object `V` has information about the
 # basis functions $s_i$. For instance, you can get the number of basis functions with
 
@@ -238,7 +238,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current
 # We also need to introduce a basis for $V^\prime$, the dual space of $V$. Basis functions
 # in the dual space are linear operators $\sigma_i:V\rightarrow\mathbb{R}$ that map functions
 # in the original (primal) space $V$ into real values. The particular definition
-# of these operators is not important in this tutorial. See
+# of these operators is not important in this lecture. See
 # them as black boxes that you can work with in the code. There is an important property
 # of these operators that you need to have in mind. They are linear, there
 # is one operator $\sigma_i$
@@ -658,7 +658,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_error.png"),Makie.current_figu
 # Note that the error is not zero! Functions $u$ and $u^\mathrm{fem}$ are not the same, the last one is
 # just an approximation, but a good one. Note that the relative difference is very small. The result
 # looks promising, but how do we know for sure that this is the expected approximation?
-# This is what we will learn in the next tutorial!
+# This is what we will learn in the next lecture!
 #
 # ## Conclusion
 #
@@ -670,6 +670,6 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_error.png"),Makie.current_figu
 # of the numerical approximation are unknown. A subset of them can be computed directly by interpolating the
 # Dirichlet boundary condition. We used the method of manufactured solutions to build a PDE with known
 # solution so that we can compare it with the computed approximation.  We also learned how to represent all these concepts using GalerkinToolkit.
-# In the next tutorial, we will learn how to confirm that our computed approximation is mathematically correct.
+# In the next lecture, we will learn how to confirm that our computed approximation is mathematically correct.
 #
 #
