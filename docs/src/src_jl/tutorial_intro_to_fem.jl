@@ -551,8 +551,6 @@ nothing # hide
 
 # Then, we need to define the field representing function $f$
 
-Δ(f,x) = tr(ForwardDiff.jacobian(y->∇(f,y),x))
-
 f = GT.analytical_field(Ω) do x
     p=3
     -2*p*(p-1)*sum(x)^(p-2)
@@ -563,6 +561,7 @@ nothing # hide
 
 a = (u,v) -> GT.∫(x->∇(u,x)⋅∇(v,x), dΩ)
 ℓ = v -> GT.∫(x->f(x)*v(x), dΩ)
+nothing # hide
 
 # Now, we can create the matrix and the vector for free DOFs
 
