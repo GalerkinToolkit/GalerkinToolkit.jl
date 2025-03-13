@@ -240,6 +240,12 @@ function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
     qty∘ϕinv
 end
 
+function discrete_field(space::AbstractSpace,free_values)
+    @assert num_dirichlet_dofs(space) == 0 "This space has Dirichlet DOFs. You should provide dirichlet_values."
+    dirichlet_values = similar(free_values,dirichlet_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
+end
+
 function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
     qty = discrete_field_quantity(space,free_values,dirichlet_values)
     mesh = space |> GT.mesh
