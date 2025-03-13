@@ -318,7 +318,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V,Float64)
+b = GT.assemble_vector(l,Float64,V)
 
 @test length(b) == GT.num_free_dofs(V)
 
@@ -330,7 +330,7 @@ function l(v)
     end
 end
 
-b = GT.assemble_vector(l,V,Float64)
+b = GT.assemble_vector(l,Float64,V)
 @test sum(b)+1 ≈ 1
 
 V² = V × V
@@ -346,7 +346,7 @@ function l((v1,v2))
     end
 end
 
-b = GT.assemble_vector(l,V²,Float64)
+b = GT.assemble_vector(l,Float64,V²)
 
 function a(u,v)
     ∫(dΩref) do q
@@ -365,7 +365,7 @@ function a(u,v)
     end
 end
 
-A = GT.assemble_matrix(a,V,V,Float64)
+A = GT.assemble_matrix(a,Float64,V,V)
 @test size(A,1) == GT.num_free_dofs(V)
 
 function a((u1,u2),(v1,v2))
@@ -379,7 +379,7 @@ function a((u1,u2),(v1,v2))
     end
 end
 
-A = GT.assemble_matrix(a,V²,V²,Float64)
+A = GT.assemble_matrix(a,Float64,V²,V²)
 
 x = similar(b,axes(A,2))
 fill!(x,0)
