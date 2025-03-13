@@ -19,9 +19,8 @@ abstract type NewAbstractTerm <: AbstractType end
 abstract type NewAbstractQuantity <: AbstractType end
 
 
-# TODO: abstract tree children testing
 # TODO: rewrite set_free_args to support 2 forms
-
+# TODO: write test cases
 @auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
     value::A
     prototype::B
@@ -115,7 +114,7 @@ struct TabulatedDiscreteFieldTerm{A, B, C, D, E, F} <: NewAbstractTerm
 end
 
 
-children(t::TabulatedDiscreteFieldTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.domain_face, t.point, t.measure))
+children(t::TabulatedDiscreteFieldTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.domain_face, t.point))
 
 
 prototype(t::BlockTerm) = (length(t.statements) == 0) ? nothing : prototype(t.statements[end])
@@ -148,7 +147,7 @@ struct TabulatedFormArgumentTerm{A, B, C, D, E, F} <: NewAbstractTerm
 end
 
 
-children(t::TabulatedFormArgumentTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.form_argument, t.domain_face, t.point, t.dof, t.measure)) # TODO: form_argument
+children(t::TabulatedFormArgumentTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.form_argument, t.domain_face, t.point, t.dof)) # TODO: form_argument
 
 
 AbstractTrees.children(t::TabulatedFormArgumentTerm) = (t.linear_operation, t.form_argument.space, t.domain_face, t.point, t.dof, t.measure, t.form_argument.arg, t.form_argument.field)
@@ -266,7 +265,6 @@ end
 function form_argument(space, arg::Int, field::Int) 
     # arg: test or trial
     # field: block of the global array and matrix 
-    @assert arg == 1 && field == 1 # TODO: extend from 1-form with 1 block only
     name = gensym("form-argument-$arg-$field") # TODO: gensym or just a simple Symbol?
     new_quantity(;name) do opts
         NewFormArgumentTerm(space, nothing, nothing, identity, arg, field, name)
@@ -428,7 +426,7 @@ struct NumPointsTerm{A, B} <: NewAbstractTerm
     domain_face::B
 end
 
-children(t::NumPointsTerm) = filter(x -> !isnothing(x), (t.measure, t.domain_face))
+children(t::NumPointsTerm) = filter(x -> !isnothing(x), (t.domain_face))
 
 prototype(a::NumPointsTerm) = 0
 domain(t::NumPointsTerm) = domain(t.measure)
@@ -440,7 +438,7 @@ struct WeightTerm{A,B,C} <: NewAbstractTerm
     domain_face::C
 end
 
-children(t::WeightTerm) = filter(x -> !isnothing(x), (t.measure, t.point, t.domain_face))
+children(t::WeightTerm) = filter(x -> !isnothing(x), (t.point, t.domain_face))
 
 
 domain(t::WeightTerm) = domain(t.measure)
@@ -453,7 +451,7 @@ struct CoordinateTerm{A,B,C} <: NewAbstractTerm
     point::C
 end
 
-children(t::CoordinateTerm) = filter(x -> !isnothing(x), (t.measure, t.point, t.domain_face))
+children(t::CoordinateTerm) = filter(x -> !isnothing(x), (t.point, t.domain_face))
 
 
 domain(t::CoordinateTerm) = domain(t.measure)
@@ -941,9 +939,86 @@ function term_ndofs(t::NewAbstractTerm, arg::Int, field::Int)
     ndofs
 end
 
-function generate_1_form(field::Int, t::NewAbstractTerm, params...)
-    @assert field == 1 # TODO: include more fields
+# is it sufficient to check the +/- operators only?
+# returns the new term and the field of it
+function select_field_impl(field::Int, t::NewAbstractTerm)
+    (t, 0)
+end
 
+function select_field_impl(field::Int, t::NewFormArgumentTerm)
+    (t, t.field)
+end
+
+
+function select_field_impl(field::Int, t::CallTerm)
+    (callee, call_field) = select_field_impl(field, t.callee)
+    args_with_fields = map(t.args) do arg
+        select_field_impl(field, arg)
+    end
+
+    fields = (call_field, map(last, args_with_fields)...)
+    fields_non_0 = filter(x -> x != 0, fields) |> unique
+    
+    # 1 field: return this field
+    if length(fields_non_0) <= 1
+        f = length(fields_non_0) == 0 ? 0 : first(fields_non_0)
+        args = map(first, args_with_fields)
+        return (CallTerm(callee, args, t.prototype), f)
+    # TODO: can we process other types?
+    # 2+ fields: select the given field, and assume this is a + function
+    elseif callee isa LeafTerm 
+        if callee.prototype == +
+            args = map(x->first(x), filter(x-> last(x) == field, args_with_fields))
+            if length(args) == 0
+                return (LeafTerm(t.prototype, t.prototype), last(last(args_with_fields))) # To be reduced later
+            elseif length(args) == 1
+                return (args[1], field)
+            else 
+                return (CallTerm(callee, args, t.prototype), field)
+            end
+        elseif callee.prototype == -
+            args = map(first, args_with_fields)
+            @assert length(args_with_fields) == 2
+            if args_with_fields[1][2] == field 
+                return (args[1], field)
+            else 
+                return (CallTerm(callee, [args[2]], t.prototype), field)
+            end
+        end
+    end
+    error("customized linear function to combine different fields not supported!")
+    
+end
+
+
+function select_field_impl(field::Int, t::ContributionTerm)
+    (int_term, int_field) = select_field_impl(field, t.integrand)
+    result = ContributionTerm(int_term, t.weight, t.point, t.num_points, t.prototype)
+    (result, int_field)
+end
+
+
+function select_field_impl(field::Int, t::IndexTerm)
+    (array_term, array_field) = select_field_impl(field, t.array)
+    result = IndexTerm(array_term, t.index, t.prototype) # constant index
+    (result, array_field)
+end
+
+function select_field_impl(field::Int, t::OneFormTerm)
+    (contribution, contribution_field) = select_field_impl(field, t.contribution)
+    # TODO: simplify oft without form arguments?
+    @assert contribution_field > 0
+    result = OneFormTerm(contribution, t.domain_face, t.dof, t.ndofs, t.local_vector, t.prototype)
+    (result, contribution_field)
+end
+
+
+function select_field(field::Int, t::NewAbstractTerm)
+    (result, _) = select_field_impl(field, t)
+    result
+end
+
+function generate_1_form(field::Int, t::NewAbstractTerm, params...)
     itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
     symbols = map(last,itr)
     name_to_symbol = Dict(itr)
@@ -975,11 +1050,12 @@ function generate_1_form(field::Int, t::NewAbstractTerm, params...)
     term_l1_2 = OneFormTerm(term_l1_1, domain_face_term, dof_term, ndofs_term, local_vector_term, [prototype(term_l1_1)]) # a wrapper of domain face
 
     # generate body and optimize
+    term_l1_3 = select_field(field, term_l1_2)
     # rewrite L1 term
-    term_l1_3 = rewrite_l1(term_l1_2)
+    term_l1_4 = rewrite_l1(term_l1_3)
     
     # L2: functional level
-    term_l2 = lower_l1_to_l2(term_l1_3, name_to_symbol)
+    term_l2 = lower_l1_to_l2(term_l1_4, name_to_symbol)
     
     # L3: imperative level
     term_l3 = statements(term_l2)
