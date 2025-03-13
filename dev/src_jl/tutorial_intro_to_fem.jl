@@ -1,16 +1,16 @@
-# # Introduction to FEM
+# # Introduction to the FEM
 # by Francesc Verdugo (VU Amsterdam)
 
-# In this tutorial, we will learn:
+# In this lecture, we will learn:
 # - The gist of the finite element method (FEM).
 # - How to solve a simple partial differential equation (PDE) with it.
 # - How to express the key concepts in code using GalerkinToolkit.
 # - How to validate the code using the method manufactured solutions.
 #
-# This tutorial is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
+# This lecture is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
 # It will walk you through the key parts of the library.
 #
-# This tutorial is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
+# This lecture is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
 # The API documentation and source code of GalerkinToolkit is available under an [MIT license](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE).
 
 # ## Problem statement
@@ -55,7 +55,7 @@
 # That is, $f$ needs to be computed as
 # $f= -\Delta ((\sum_{i=1}^d x_i)^p)$ and $g$ is simply $g(x)=(\sum_{i=1}^d x_i)^p$. Applying the Laplace operator
 # to $(\sum_{i=1}^d x_i)^p$,
-# we get the closed-form expression for $f$, namely $f(x)= -p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
+# we get the closed-form expression for $f$, namely $f(x)= -d*p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
 
 # ## Numerical approximation
 #
@@ -102,11 +102,12 @@
 # the number of elements here. The triangulation is also often called a computational mesh or a computational grid.
 #  
 # Let's build a mesh for our domain $\Omega$ using code.
-# First, let us load all packages that we will use in this tutorial:
+# First, let us load all packages that we will use in this lecture:
 #
 using LinearAlgebra
 using Random
 import GalerkinToolkit as GT
+import PartitionedSolvers as PS
 import ForwardDiff
 import GLMakie as Makie
 import FileIO # hide
@@ -119,7 +120,7 @@ import FileIO # hide
 # The following cell builds a triangulation (a mesh object) using the external mesh generation tool GMSH.
 # The variable `mesh_size` controls how fine are the cells in the mesh (smaller is finer).
 # We start with a 
-# coarse mesh to make visualization easier. In this tutorial, we are not going to comment in detail all
+# coarse mesh to make visualization easier. In this lecture, we are not going to comment in detail all
 # code lines. We will discuss only the parts relevant in this high-level introduction. You can refer to the API
 # documentation other tutorials when needed.
 
@@ -139,9 +140,9 @@ end
 nothing # hide
 
 # There are ways of accessing the low level information
-# in this mesh object, but we are not going to discuss them in this tutorial. Here, we only need to know how to
+# in this mesh object, but we are not going to discuss them in this lecture. Here, we only need to know how to
 # visualize the mesh, and other high-level operations. The mesh can be visualized both using Paraview and Makie.
-# We use Makie in this tutorial.
+# We use Makie in this lecture.
 
 axis = (aspect = Makie.DataAspect(),)
 Makie.plot(mesh;color=:pink,strokecolor=:blue,axis)
@@ -185,11 +186,11 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_domains.png"),Makie.current_fi
 # we need the discretized computational domain on which the functions of the space are defined and
 # their polynomial degree of the Lagrange basis functions.
 
-degree = 3
+degree = 2
 V = GT.lagrange_space(Ω,degree)
 nothing # hide
 
-# We will discus the mathematical derivation of this FE space in another tutorial.
+# We will discus the mathematical derivation of this FE space in another lecture.
 # For now, it is enough to understand that the object `V` has information about the
 # basis functions $s_i$. For instance, you can get the number of basis functions with
 
@@ -211,11 +212,14 @@ nothing # hide
 
 # Now we can create the function from these coefficients and the FE space as follows:
 
-u_fem = GT.solution_field(V,α)
+u_fem = GT.discrete_field(V,α)
 nothing # hide
+# As suggested by the function name, the numerical approximation is called "discrete
+# field" in GalerkinToolkit. The field is "discrete" since it is expressed
+# in terms of a finite number of degrees of freedom.
 
-# Let's us visualize it. We do this by plotting domain $\Omega$ but not colored using
-# the function value.
+# Let's us visualize it. We do this by plotting domain $\Omega$, using
+# the function value as color code.
 
 fig = Makie.Figure()
 _,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
@@ -225,153 +229,153 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current
 # ![](fig_tutorial_intro_rand_field.png)
 
 # By looking into the figure it is clear that function $u^\mathrm{fem}(x)$ is ineed
-# a function that can be evaluated at any point inside the domain $\Omega$.
+# a function that can be evaluated at any point inside the domain $\Omega$, even though
+# it is defined by a finite number of coefficients! This is not surprising if
+# you realize that $V$ is a finite dimensional vector space.
 
-
+# ## Dual operators
 #
-# To have a better intuition of the meaning of the basis functions $s_i$, let us visualize
-# one of them. If we want to visualize $s_{400}$, we just need to create coefficients
-# such that $\alpha_{400}=1$ and $\alpha_i=0$ for $i\neq 400$.
+# We also need to introduce a basis for $V^\prime$, the dual space of $V$. Basis functions
+# in the dual space are linear operators $\sigma_i:V\rightarrow\mathbb{R}$ that map functions
+# in the original (primal) space $V$ into real values. The particular definition
+# of these operators is not important in this lecture. See
+# them as black boxes that you can work with in the code. There is an important property
+# of these operators that you need to have in mind. They are linear, there
+# is one operator $\sigma_i$
+# for each shape function $s_i$, and they fulfill 
+# $\sigma(s_j)=\delta_{ij}$, where $\delta_{ij}$ is Kroneker's delta.
+# Operator $\sigma_i$ maps the shape function $s_i$ to one, $\sigma_i(s_i)=1$,
+# and maps the other shape functions to zero, $\sigma_i(s_j)=0$ for $i\neq j$.
+# This property allows us to compute $\alpha_i$ as the application of operator
+# $\sigma_i$ to the numerical approximation $u^\mathrm{fem}$, namely $\alpha_i=\sigma_i(u^\mathrm{fem})$.
+# You can understand $\sigma_i(u^\mathrm{fem})$ as "extract" coefficient $\alpha_i$ from $u^\mathrm{fem}$.
+# You can easily prove this by taking $\sigma_i(u^\mathrm{fem}) = \sigma_i(\sum_{j=1}^N \alpha_j s_j)$
+# and considering that $\sigma_i$ is linear and $\sigma_i(s_j)=\delta_{ji}$.
+#
+# ## FE interpolation
+#
+# Using the dual operators we can define an interpolation operator that builds
+# a function in the FE space $V$ from a given function $f:\Omega\rightarrow\mathbb{R}$
+# as follows:
+# ```math
+# (\Pi^\mathrm{fem} f)(x) = \sum_{j=1}^N \sigma_j(f) s_j(x)
+# ```
+# Let us do this interpolation using code for a particular function.
+# First, we need to define
+# the function we want to interpolate
 
-α2 = zeros(N)
-α2[400] = 1
-s_400 = GT.solution_field(V,α2)
+f = GT.analytical_field(Ω) do x
+    sin(4*pi*x[1])*cos(4*pi*x[2])
+end
 nothing # hide
 
-# Now, we can visualize this function as we did before for $u^\mathrm{fem}$.
+# We have build an "analytical field", which is a field defined by an analytical
+# function. Let us visualize this field.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=s_400,refinement=5)
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=f,refinement=5)
 Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
 Makie.Colorbar(fig[1,2],scene)
-FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_shape.png"),Makie.current_figure()) # hide
-# ![](fig_tutorial_intro_shape.png)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_f.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_f.png)
 #
-# Note that the function is equal to one at a single point and zero almost everywhere.
-# The point $x_i$ in which the function $s_i(x_i)=1$ is called the "node" associated
-# with this function. Each function $s_i$ has a node associated with it. We can get
-# the coordinates of all this nodes as follows:
+# We interpolate the field using code:
 
-x = GT.node_coordinates(V)
+f_fem = GT.interpolate(f,V)
 nothing # hide
 
-# This is a vector containing the coordinates for all nodes. The coordinates for
-# the node associated with function $s_{400}$ can be accessed as
+# and we visualize the result
 
-x_400 = x[400]
-
-# We can also visualize all node coordinates.
-
-Makie.plot(Ω;color=:pink,strokecolor=:black,axis)
-Makie.scatter!(x;color=:blue)
-FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes.png"),Makie.current_figure()) # hide
-# ![](fig_tutorial_intro_nodes.png)
-
-# We have as many basis functions as nodes in this figure.
-# The shape functions $s_i$ have also a very important property.
-# Function $s_i$ is equal to
-# one at its node $x_i$, but it is zero at all other nodes, namely $s_i(x_j)=\delta_{ij}$,
-# where $\delta_{ij}$ is Kronecker's delta. This property allows us to interpret the
-# coefficients $\alpha_i$ as the "nodal values" of function $u^\mathrm{fem}$. That is,
-# $\alpha_i$ is the value of $u^\mathrm{fem}$ at node $x_i$, $\alpha_i=u^\mathrm{fem}(x_i)$.
-# You can easily prove this by taking $u^\mathrm{fem}(x_i) = \sum_{j=1}^N \alpha_j s_j(x_i)$
-# and considering that $s_j(x_i)=\delta_{ji}$.
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=f_fem,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_f_fem.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_f_fem.png)
 #
-# In summary, the coefficients $α_i$ are the values of $u^\mathrm{fem}$ at the nodes,
-# whereas, function $u^\mathrm{fem}$ can be understood as the (Lagrange) interpolation
-# of these nodal values into any other point of the domain $Ω$ as shown in this figure:
+# Note that the interpolated field is an approximation of the original one. The "noisier" the original
+# field, the worse will be the interpolation. Also the larger the number of DOFs in the space $V$ the
+# better will be the interpolation.
 
-_,schene = Makie.plot(Ω;axis,color=u_fem,refinement=5)
-Makie.plot!(Ω;color=nothing,strokecolor=:black)
-colorrange = scene[:colorrange]
-Makie.scatter!(x;color=α,colormap=:bluesreds,colorrange)
-FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_nodes_color2.png"),Makie.current_figure()) # hide
-# ![](fig_tutorial_intro_nodes_color2.png)
-#
-# NB. In this scalar-valued FE space, there is a one-to-one relation between the
-# coefficients (DOFs) $\alpha_i$ and the nodes $x_i$. This is not true for
-# other types of spaces. In vector-valued Lagrange spaces, there are several DOFs in
-# one node.  In other FE spaces the concept of "nodes" does not make sense at all.
-# In general, each shape function $s_i$ is associated with a linear operators $l_i:V\rightarrow\mathbb{R}$ that maps
-# functions in the FE space into real values. These operators are a basis of the dual space of $V$
-# and fulfill $l_i(s_j)=\delta_{ij}$ for the shape
-# functions $s_j$. In our case, $l_i(v)$ is the evaluation of $v$ at node $x_i$, namely $l_i(v)=v(x_i)$.
-# 
 
-# ## Free and Dirichlet nodes
+
+
+# ## Free and Dirichlet DOFs
 #
 # Remember that our goal is to find the coefficients $α_i$. Most of these coefficients
 # are unknown, but not all of them.
 # Note that the PDE states that $u=g$ on the boundary $\partial\Omega$. With this
-# information we can easily compute the coefficients $\alpha_i$ for nodes $x_i$ on
-# the Dirichlet boundary $\partial\Omega$ simply as $\alpha_i=g(x_i)$. We need to classify the nodes into two
-# groups: the ones on the Dirichlet boundary $\partial\Omega$ in one group and the
-# remaining nodes in another group. Let us call $\mathcal{I}^\mathrm{d}$
-# ("d" for Dirichlet) the set
-# of all integers $i$ for which the node $x_i$ is on $\partial\Omega$.
-# Let us call $\mathcal{I}^\mathrm{f}$ ("f" for free) the other of all integers
-# $i$ for which the node $x_i$ is not on $\partial\Omega$.
-#  The coefficient $\alpha_i$ is computed as $\alpha_i=g(x_i)$
-# for $i\in\mathcal{I}^\mathrm{d}$ and the remaining coefficients will be computed
-# solving a system of linear equations.
-# The union of $\mathcal{I}^\mathrm{d}$ and $\mathcal{I}^\mathrm{f}$ cover all
-# nodes of the FE space. We call $N^\mathrm{f}$ and $N^\mathrm{d}$ the number
-# of items in $\mathcal{I}^\mathrm{f}$ and $\mathcal{I}^\mathrm{d}$ respectively,
-# i.e, the number of free and Dirichlet nodes.
+# information we can compute some of the coefficients $\alpha_i$ directly, without solving a linear system.
+# To find out which coefficients are really unknown and which can be computed from the boundary condition,
+# we classify the shape functions $s_i$ into two
+# groups: the $s_i$ that are zero at any point of the boundary, $s_i(x) = 0$ for all $x\in\partial\Omega$
+# in one group, and the rest in the second group. We denote $s^\mathrm{f}_i$ the shape function number $i$
+# in the first group, and $s^\mathrm{d}_i$ function number $i$
+# in the second group. Letters "f" and "d" stand for free and Dirichlet as they will be associated with
+# unknown (free) coefficients and coefficients computed from the Dirichlet condition respectively.
+# Using this classification  of the shape functions, we can also classify the coefficients $\alpha_i$,
+# and the dual operators $\sigma_i$. Coefficient $\alpha^\star_i$ is the one that multiplies
+# $s^\star_i$ and $\sigma^\star_i$ is its associated dual operator for $\star\in(\mathrm{f},\mathrm{d})$.
+# We can also define the space $V^\star=\mathrm{span}\{s^\star_1,\ldots,s^\star_{N^\star}\}$ as the subspace
+# of $V$ generated by the shape functions $s^\star_i$ for $\star\in(\mathrm{f},\mathrm{d})$. Finally,
+#  we call $N^\star$ the number of shape functions $s^\star_i$ for $\star\in(\mathrm{f},\mathrm{d})$,
+#  i.e, the number of free and Dirichlet DOFs.
 #
-# The nodes are classified in the code as follows. We create 
+# The shape functions are classified in the code by creating
 # a FE space that is aware of the Dirichlet boundary:
 
 V = GT.lagrange_space(Ω,degree;dirichlet_boundary=∂Ω)
 nothing # hide
 
-# Now the nodes/DOFs in this space are split on two groups: free and Dirichlet.
-# We can get the number of free nodes/DOFs
+# Now the DOFs in this space are split on two groups: free and Dirichlet.
+# We can get the number of free DOFs
 
 N_f = GT.num_free_dofs(V)
 
-# and the number of Dirichlet nodes/DOFs.
+# and the number of Dirichlet DOFs.
 
 N_d = GT.num_dirichlet_dofs(V)
 
 # ## Dirichlet Field
 #
 # Using the classification of nodes, we can decompose function
-# $u^\mathrm{fem}(x)=u^\mathrm{f}(x)+u^\mathrm{d}(x)$ as the sum of two functions,
+# $u^\mathrm{fem}(x)$ as the sum of two functions,
 # ```math
-# u^\mathrm{f}(x)=\sum_{j\in\mathcal{I}^\mathrm{f}} \alpha_j s_j(x)
-# \text{ and }
-# u^\mathrm{d}(x)=\sum_{j\in\mathcal{I}^\mathrm{d}} \alpha_j s_j(x).
+# u^\mathrm{fem}(x)=u^\mathrm{f}(x)+u^\mathrm{d}(x)
 # ```
+# with
+# ```math
+# u^\star(x)=\sum_{j=1}^{N^\star} \alpha^\star_j s^\star_j(x) \text{ for } \star\in(\mathrm{f},\mathrm{d})
+# ```
+# That is, $u^\mathrm{f}\in V^\mathrm{f}$ is a linear combination of the "free" shape functions,
+# and $u^\mathrm{d}\in V^\mathrm{d}$
+# is a linear combination of the Dirichlet shape functions.
 #  This decomposition is useful because $u^\mathrm{d}$
 # can be directly computed from the Dirichlet Boundary condition.
-# We refer to $u^\mathrm{d}$ as the "Dirichlet field". If can be computed
-# in the code as follows. First, we compute the coefficients for the Dirichlet nodes.
-# We do this by using function $g$ and the nodal coordinates
-# of the Dirichlet nodes. These coordinates can be computed by restricting
-# the vector of coordinates of all nodes, to only the Dirichlet nodes:
+# We refer to $u^\mathrm{d}$ as the "Dirichlet field". It is computed
+# by building
+# the coefficients $\alpha^\mathrm{d}_i=\sigma^\mathrm{d}_i(g)$ as the application of the linear operators
+# for the Dirichlet DOFs on function $g$. In other, $u^\mathrm{d}$ is built as the interpolation of the Dirichlet
+# function $g$ onto the space $V^\mathrm{d}$, namely $u^\mathrm{d}=\Pi^\mathrm{d} g$.
+# We define the interpolation to the spaces
+# $V^\mathrm{f}$ and $V^\mathrm{d}$ of a given funciton $f$ as we did for $V$, but only taking the corresponding shape functions:
+# ```math
+# (\Pi^\star f)(x) = \sum_{j=1}^{N^\star} \sigma^\star_j(f) s^\star_j(x).
+# ```
+#
+# Let us build the Dirichlet field with code. First, we need to build an analytical field
+# representing the Dirichlet function. We take $p=3$ for example.
 
-node_to_x = GT.node_coordinates(V)
-dirichlet_dof_to_node = GT.dirichlet_dof_node(V)
-dirichlet_dof_to_x = node_to_x[dirichlet_dof_to_node]
-nothing # hide
-
-# Note that `dirichlet_dof_to_node` contains the ids of all nodes on the Dirichlet boundary.
-# Now, we can compute the values using the definition of function $g$.
-α_d = map(dirichlet_dof_to_x) do x
-    p = 1
-    sum(x)^p
+g = GT.analytical_field(Ω) do x
+    sum(x)^3
 end
 nothing # hide
 
-#
-# Finally, we create the object for the Dirichlet field from the computed values
+# Then, we interpolate this field, but only on the Dirichlet DOFs, yielding the Dirichlet field
+u_d = GT.interpolate_dirichlet(g,V)
 
-u_d = GT.dirichlet_field(V,α_d)
-nothing # hide
-
-# We visualize the Dirichlet field. Note that it is
-# a function that (by definition) is possibly non-zero at the nodes on the Dirichlet boundary,
+# Note that it is
+# a function that (by definition) is possibly non-zero at the Dirichlet boundary,
 # and zero at the other nodes:
 
 fig = Makie.Figure()
@@ -381,26 +385,13 @@ Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_diri.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_diri.png)
 #
-# There is a more compact and more general way of generating the
-# Dirichlet:
 
-g = GT.analytical_field(Ω) do x
-    p = 1
-    sum(x)^p
-end
-u_d = GT.interpolate_dirichlet(g,V)
-nothing # hide
-
-# This will work also for FE spaces that are not associated with "nodes".
-# In this case, the Dirichlet values will be filled by applying the
-# dual operators $l_i$ of the FE space onto the Dirichlet function.
-#
 # Using the Dirichlet field, we can create function $u^\mathrm{fem}$ 
-# only from coefficients that are associated with free nodes. These are going to
+# only from coefficients that are associated with free DOFs. These are going to
 # be computed later by solving a system of linear equations, but
 # we can create a mock version of them with randomly generated values.
 # In this case, we generate a vector of length $N^\mathrm{f}$ instead of $N$
-# because it should contain only "free" values.
+# because it should contain only "free" coefficients.
 
 Random.seed!(2)
 α_f = rand(N_f)
@@ -420,32 +411,33 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figu
 #
 # ## The weighted residual method
 #
-# To solve the problem now, we need to find the coefficients $\alpha_i$ associated
-# with the free nodes. Let us assume that these coefficients are stored in vector
-# $\alpha^\mathrm{f}$.
-# The number of such coefficients is $N^\mathrm{f}$.
+# To solve the problem now, we need to find the coefficients $\alpha^\mathrm{f}_i$ associated
+# with the free DOFs. The number of such coefficients is $N^\mathrm{f}$.
 # Hence, we have $N^\mathrm{f}$ unknowns, which suggests that we needs to
 # consider $N^\mathrm{f}$ equations. These equations will follow from the PDE above.
 #
-# Let us introduce the residual of the PDE, namely $r(v) = \Delta v + f$ for a given function $v$. The operator
+# Let us introduce the residual of the PDE, namely $r(v) = \Delta v + f$ for a given function $v$.
+# The operator
 # $r$ is such that $r(u)=0$ for the exact solution of the PDE. The residual
 # provides an estimation of how good a function approximates the solution of the PDE.
 # If $r(v)$ is "small", then $v$ is a good approximation of $u$ as long as $v$ also fulfills
 # the Dirichlet boundary condition $v=g$ on $\partial\Omega$. Our goal is to find
-# the coefficients $\alpha^\mathrm{f}$ for which the resulting function $u^\mathrm{fem}$
+# the coefficients $\alpha^\mathrm{f}_i$ for which the resulting function $u^\mathrm{fem}$
 # has a "small" residual $r(u^\mathrm{fem})$. This approach however requires some caution.
 # First, we need to define what "small" is. The second problem is that we cannot directly evaluate
-# $r(u^\mathrm{fem})$ as this value it is not well defined. Function $u^\mathrm{fem}$ is continuous,
+# $r(u^\mathrm{fem})$ as this value it is not well defined for all
+# points $x\in\Omega$. Function $u^\mathrm{fem}$ is continuous,
 # but its gradient is not continuous at the boundaries of the mesh cells. As a consequence the Laplace
-# operator it is not well defined and this we cannot compute the residual $r(u^\mathrm{fem})$ for
-# points at the element boundaries.  Let us visualize one of the component of gradient of $u^\mathrm{fem}$
+# operator and the residual $r$ it is not well defined on the cell boundaries. 
+#
+# Let us visualize one of the components of the gradient of $u^\mathrm{fem}$
 # to confirm that is discontinuous. First, let us define the nabla operator
 #
 
 ∇ = ForwardDiff.gradient
 nothing # hide
 
-# Now we can visualize the first component of the gradient as follows:
+# Then, we visualize the first component of the gradient as follows:
 
 fig = Makie.Figure()
 _,scene = Makie.plot(fig[1,1],Ω;axis,color=x->∇(u_fem,x)[1],refinement=5)
@@ -456,58 +448,227 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 #
 # It is indeed discontinuous at the mesh cell boundaries.
 #
-# Let first define what we mean by a "small" residual. For this, the FEM considers the so-called
+# Let us introduce a solution to this problem. Let first define what we mean by a "small" residual.
+# For this, the FEM considers the so-called
 # weighted residual method. The method looks for a function $u^\mathrm{fem}$ such that
 # ```math
-# \int_\Omega r(u^\mathrm{fem}) s_i\ d\Omega = 0 \text{ for all } i\in\mathcal{I}^\mathrm{f}.
+# \int_\Omega r(u^\mathrm{fem}) s^\mathrm{f}_i \ d\Omega = 0 \text{ for } i=1,\ldots,N^\mathrm{f}.
 # ```
-# That is, we want weighted integrals of the residual to be zero. The weights are the basis functions $s_i$
-# but only the ones associated with free nodes. Each basis function provides an equation. The number
+# That is, we want weighted integrals of the residual to be zero. The weights are the basis functions $s^mathrm{f}_i$
+# associated with free DOFs. Each basis function provides an equation. The number
 # of total equations that we build with this expression is $N^\mathrm{f}$, which coincides with the number of
 # unknowns. Perfect!
 #
-# Now, we need to address the second problem: we need to avoid computing $\Delta u^\mathrm{fem}$ as this quantity
+# Now, we need to address the second problem:
+# we need to avoid computing $\Delta u^\mathrm{fem}$ as this quantity
 # is not well defined for function $u^\mathrm{fem}$. Let us expand the integral above,
 # by in-lining the definition of $r$:
 # ```math
-# \int_\Omega ( (\Delta u^\mathrm{fem}) s_i + f s_i )\ d\Omega = 0
+# \int_\Omega ( (\Delta u^\mathrm{fem}) s^\mathrm{f}_i + f s^\mathrm{f}_i )\ d\Omega = 0
 # ```
 # We can get rid of the Laplace operator by using this identity
 # ```math
-# \nabla\cdot(\nabla u^\mathrm{fem} s_i) = (\Delta u^\mathrm{fem}) s_i + \nabla u^\mathrm{fem} \cdot \nabla s_i
+# \nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) = (\Delta u^\mathrm{fem}) s^\mathrm{f}_i + \nabla u^\mathrm{fem} \cdot \nabla s^\mathrm{f}_i
 # ```
 # or equivalently
 # ```math
-#  (\Delta u^\mathrm{fem}) s_i = \nabla\cdot(\nabla u^\mathrm{fem} s_i) - \nabla u^\mathrm{fem} \cdot \nabla s_i
+#  (\Delta u^\mathrm{fem}) s^\mathrm{f}_i = \nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) - \nabla u^\mathrm{fem} \cdot \nabla s^\mathrm{f}_i
 # ```
 # This identity is analogous to the well known rule for the derivative of a product, but when the functions
 # are multivariate scalar functions. The quantity $\nabla v$ is the gradient of the scalar function $v$, which is a vector
 # defined as $[\nabla v]_k = \partial v/\partial x_k$. The value $\nabla\cdot w$ is the divergence of a vector function
 # $w$, which is defined as $\nabla\cdot w = \sum_k^d \partial w_k/\partial x_k$.
 #
-# Substituting for $(\Delta u^\mathrm{fem}) s_i$ in the integral above, we get:
+# Substituting for $(\Delta u^\mathrm{fem}) s^\mathrm{f}_i$ in the integral above, we get:
 # ```math
-# \int_\Omega (\nabla\cdot(\nabla u^\mathrm{fem} s_i) - \nabla u^\mathrm{fem} \cdot \nabla s_i + f s_i)\ d\Omega = 0
+# \int_\Omega (\nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) - \nabla u^\mathrm{fem} \cdot \nabla s^\mathrm{f}_i + f s^\mathrm{f}_i)\ d\Omega = 0
 # ```
 # We still have a second order derivative in the first term inside the integral. We can take rid of this one using
 # this other identity, the Gauss divergence theorem:
 # ```math
-# \int_\Omega \nabla\cdot(\nabla u^\mathrm{fem} s_i) \ d\Omega = \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s_i)\ d\partial\Omega,
+# \int_\Omega \nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) \ d\Omega = \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega,
 # ```
-# where $n$ is the unit normal vector pointing outwards to $\partial\Omega$. Note that the right hand side is an integral
-# on the boundary and we said that the shape functions $s_i$ used here are only the ones associated with the free
-# nodes. All these function are zero at the boundary, so we get:
+# where $n$ is the unit normal vector on the boundary $\partial\Omega$ pointing outwards to $\Omega$.
+# Note that the right hand side is an integral
+# on the boundary and we classified the shape functions so that all $s^\mathrm{f}_i$ 
+# are zero at the boundary. Using $s^\mathrm{f}_i(x)=0$ for any $x\in\partial\Omega$, we get:
 # ```math
-# \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s_i)\ d\partial\Omega = 0
+# \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega = 0
 # ```
 # Using this result and rearranging terms, we get this new formulation of our equations:
 # ```math
-#  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s_i \ d\Omega = \int_\Omega f s_i \ d\Omega \text{ for all } i\in\mathcal{I}^\mathrm{f}.
+#  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s^\mathrm{f}_i \ d\Omega = \int_\Omega f s^\mathrm{f}_i \ d\Omega \text{ for } i=1,\ldots,N^\mathrm{f}.
 # ```
 # Note that this new formulation does not require computing second order derivatives. Thus, it is well
-# suited for the numerical approximation $u^\mathrm{fem}$.
+# suited for the numerical approximation $u^\mathrm{fem}$. This equation is called the "weak form" of the PDE,
+# since it puts weaker regularity requirements to the numerical approximation $u^\mathrm{fem}$. In contrast,
+# the original PDE formulation is called the "strong form". There are different types of weak forms. Each one
+# is designed for a type of numerical approximation and PDE. This one is for the Poisson equation and
+# continuous approximations with discontinuous gradients. E.g., a different weak form will be needed if we allow
+# the numerical approximation to be discontinuous across cell boundaries as the gradient will not
+# be defined on cell boundaries. This is what discontinuous Galerkin methods deliver.
 #
-# ## System of algebraic equations
+# ## System of linear algebraic equations
 #
+# Let us rewrite the weak equation as $a(u^\mathrm{fem},s^\mathrm{f}_i) = \ell(s^\mathrm{f}_i)$ with
+# ```math
+# a(u^\mathrm{fem},s^\mathrm{f}_i) =  \int_\Omega \nabla u^\mathrm{fem} \cdot \nabla s^\mathrm{f}_i \ d\Omega \text{ and } \ell(s^\mathrm{f}_i)= \int_\Omega f s^\mathrm{f}_i \ d\Omega.
+# ```
+#
+# If we substitute
+# ```math
+# u^\mathrm{fem} = \sum_{j=1}^{N^\mathrm{f}}\alpha^\mathrm{f}_j s^\mathrm{f}_j +\sum_{j=1}^{N^\mathrm{d}}\alpha^\mathrm{d}_j s^\mathrm{d}_j,
+# ```
+# we get
+# ```math
+# \sum_{j=1}^{N^\mathrm{f}}a(s^\mathrm{f}_j,s^\mathrm{f}_i)\alpha^\mathrm{f}_j = \ell(s^\mathrm{f}_i) - \sum_{i=1}^{N^\mathrm{d}}a(s^\mathrm{d}_j,s^\mathrm{f}_i)\alpha^\mathrm{d}_j \text{ for } i=1,\ldots,N^\mathrm{f}.
+# ```
+# We have used the face that $a$ is linear in each one of its arguments to move it inside the sums. It we look
+# closer, this can be written in matrix form as
+# ```math
+# A^\mathrm{f}\alpha^\mathrm{f} = b - A^\mathrm{d}\alpha^\mathrm{d}
+# ```
+# where $\alpha^\mathrm{f}$ and $\alpha^\mathrm{d}$ are two vectors containing the coefficients
+# $\alpha^\mathrm{f}_i$ and $\alpha^\mathrm{d}_i$ respectively
+# $A^\mathrm{f}$ and $A^\mathrm{d}$ are matrices, and $b$ is a vector defined as
+# ```math
+# [A^\mathrm{f}]_{ij} = a(s^\mathrm{f}_j,s^\mathrm{f}_i), \
+# [A^\mathrm{d}]_{ij} = a(s^\mathrm{d}_j,s^\mathrm{f}_i), \text{ and }
+# [b]_{i} = \ell(s^\mathrm{f}_i).
+# ```
+#
+# Solving for $\alpha^\mathrm{f}$, we find the unknown coefficients in $u^\mathrm{fem}$.
+#
+# In code, we can build these two matrices and vector using a high-level API. First, we define
+# an object that allows us to do the integrals over $\Omega$ required in the definition
+# of $a$ and $\ell$. This object uses a numerical quadrature internally to compute the integrals.
+# So, we need to specify the polynomial degree that we want to integrate exactly. Two times the degree
+# of the interpolation degree is a good rule of thumb for this value.
+
+integration_degree = 2*degree
+dΩ = GT.measure(Ω,integration_degree)
+nothing # hide
+
+# Then, we need to define the field representing function $f$
+
+f = GT.analytical_field(Ω) do x
+    p=3
+    -2*p*(p-1)*sum(x)^(p-2)
+end
+nothing # hide
+
+# and functions representing $a$ and $\ell$.
+
+a = (u,v) -> GT.∫(x->∇(u,x)⋅∇(v,x), dΩ)
+ℓ = v -> GT.∫(x->f(x)*v(x), dΩ)
+nothing # hide
+
+# Now, we can create the matrix and the vector for free DOFs
+
+K_f = GT.assemble_matrix(a,Float64,V,V)
+b = GT.assemble_vector(ℓ,Float64,V)
+nothing # hide
+
+# We can also assembly the matrix for the Dirichlet DOFs
+# using an optional argument. Here, we are asking
+# for "free" rows and "Dirichlet" columns.
+
+free_or_dirichlet = (GT.FREE,GT.DIRICHLET)
+K_d = GT.assemble_matrix(a,Float64,V,V;free_or_dirichlet)
+nothing # hide
+
+# Note that to build the final right-hand-side of the system,
+# we need to compute $b-K^\mathrm{d}\alpha^\mathrm{d}$ and thus
+# we need the Dirichlet coefficients $\alpha^\mathrm{d}$. They
+# can be taken from the Dirichlet field that we created before.
+
+α_d = GT.dirichlet_values(u_d)
+nothing # hide
+
+# Now, we have all ingredients to build and solve the system:
+
+α_f = K_f\(b-K_d*α_d)
+nothing # hide
+
+# We can finally create the function $u^\mathrm{fem}$.
+
+u_fem = GT.solution_field(u_d,α_f)
+nothing # hide
+
+
+# There is a more compact (and efficient) way of building and solving the system.
+# This one generates matrices $K^\mathrm{f}$ and $K^\mathrm{d}$ in a single
+# loop internally.
+# We create a linear problem object, and we solve it, and we
+# extract the solution field from it. This approach automatically handles
+# the Dirichlet boundary conditions.
+
+p = GT.linear_problem(u_d,a,ℓ)
+s = PS.solve(p)
+u_fem = GT.solution_field(u_d,s)
+nothing # hide
+
+
+# Finally, we visualize the compute FEM solution.
+
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_3.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_fem_3.png)
+#
+# Let us also define the manufactured solution $u$
+
+u = GT.analytical_field(Ω) do x
+    sum(x)^3
+end
+nothing # hide
+
+# and visualize it
+#
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=u,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_sol.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_sol.png)
+#
+# They look very similar. It seems that we solved the PDE correctly
+# (but we still need to conform it mathematically).
+#
+# ##  FE error
+#
+# Lets us introduce the error field,
+# i.e., the difference $e^\mathrm{fem}(x) = u(x)- u^\mathrm{fem}(x)$.
+
+e_fem = x -> u(x) - u_fem(x)
+nothing # hide
+
+# and visualize it.
+
+fig = Makie.Figure()
+_,scene = Makie.plot(fig[1,1],Ω;axis,color=e_fem,refinement=5)
+Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+Makie.Colorbar(fig[1,2],scene)
+FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_error.png"),Makie.current_figure()) # hide
+# ![](fig_tutorial_intro_error.png)
+
+# Note that the error is not zero! Functions $u$ and $u^\mathrm{fem}$ are not the same, the last one is
+# just an approximation, but a good one. Note that the relative difference is very small. The result
+# looks promising, but how do we know for sure that this is the expected approximation?
+# This is what we will learn in the next lecture!
+#
+# ## Conclusion
+#
+# We learned the key ingredients to solve a PDE with the FEM. This requires to define a discrete
+# space, and look for a solution in this space that makes the residual of the PDE "small". To properly define
+# what a "small" residual is, we used the weighted residual method. This also allowed us to rewrite
+# the PDE into a new form called the weak form. This new form is important, because only the residual
+# of the weak form makes sense for functions in the discrete space. We also learned that part of the coefficients
+# of the numerical approximation are unknown. A subset of them can be computed directly by interpolating the
+# Dirichlet boundary condition. We used the method of manufactured solutions to build a PDE with known
+# solution so that we can compare it with the computed approximation.  We also learned how to represent all these concepts using GalerkinToolkit.
+# In the next lecture, we will learn how to confirm that our computed approximation is mathematically correct.
 #
 #
