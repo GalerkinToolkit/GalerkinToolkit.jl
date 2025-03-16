@@ -114,6 +114,35 @@ face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΛ)
 @show face_point_dof_s(5,1)(1)(4)
 @show face_point_dof_s(5,2)(1)(4)
 
+#face_dof_s = GT.form_argument_accessor(GT.value,V)
+#@show face_dof_s(3)(1)([1,1])
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΩ)
+#@show face_point_dof_s(3)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΓ)
+#@show face_point_dof_s(5)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΛ)
+#@show face_point_dof_s(5,1)(1)(4)
+#@show face_point_dof_s(5,2)(1)(4)
+#@show face_point_dof_s(5,1)(1)(4,1)
+#@show face_point_dof_s(5,2)(1)(4,1)
+#@show face_point_dof_s(5,1)(1)(4,2)
+#@show face_point_dof_s(5,2)(1)(4,2)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΩ)
+#@show face_point_dof_s(3)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΓ)
+#@show face_point_dof_s(5)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΛ)
+#@show face_point_dof_s(5,1)(1)(4,1)
+#@show face_point_dof_s(5,2)(1)(4,1)
+#@show face_point_dof_s(5,1)(1)(4,2)
+#@show face_point_dof_s(5,2)(1)(4,2)
+
 uh = GT.rand_field(Float64,V)
 
 J = Ωface_point_J(3)(1)

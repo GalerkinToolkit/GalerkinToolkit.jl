@@ -187,8 +187,8 @@ function assemble_vector(integral::Integral,space,::Type{T};
     state1 = assemble_vector_count(integral,state0)
     state2 = assemble_vector_allocate(state1)
     state3 = assemble_vector_fill!(integral,state2)
-    b, bcache = assemble_vector_compress(state3)
-    cache = (;bcache,state2)
+    b, vector_cache = assemble_vector_compress(state3)
+    cache = (;vector_cache,state2)
     if val_parameter(reuse) == false
         b
     else
@@ -204,16 +204,16 @@ function assemble_vector!(f,space,b,cache)
 end
 
 function assemble_vector!(integral::Integral,b,cache)
-    (;bcache,state2) = cache
+    (;vector_cache,state2) = cache
     state3 = assemble_vector_fill!(integral,state2)
-    assemble_vector_compress!(b,bcache,state3)
+    assemble_vector_compress!(b,vector_cache,state3)
     b
 end
 
 function assemble_vector!(integral::Integral,V,b,cache)
-    (;bcache,state2) = cache
+    (;vector_cache,state2) = cache
     state3 = assemble_vector_fill!(integral,state2)
-    assemble_vector_compress!(b,bcache,state3)
+    assemble_vector_compress!(b,vector_cache,state3)
     b
 end
 
@@ -351,13 +351,13 @@ end
 
 function assemble_vector_compress(state)
     (;alloc,setup,vector_strategy) = state
-    b, bcache = vector_strategy.compress(alloc,setup)
-    b, bcache
+    b, vector_cache = vector_strategy.compress(alloc,setup)
+    b, vector_cache
 end
 
-function assemble_vector_compress!(b,bcache,state)
+function assemble_vector_compress!(b,vector_cache,state)
     (;alloc,setup,vector_strategy) = state
-    vector_strategy.compress!(b,bcache,alloc,setup)
+    vector_strategy.compress!(b,vector_cache,alloc,setup)
     b
 end
 
@@ -380,8 +380,8 @@ function assemble_matrix(integral::Integral,trial_space,test_space,::Type{T};
     state1 = assemble_matrix_count(integral,state0)
     state2 = assemble_matrix_allocate(state1)
     state3 = assemble_matrix_fill!(integral,state2)
-    A, Acache = assemble_matrix_compress(state3)
-    cache = (;Acache,state2)
+    A, matrix_cache = assemble_matrix_compress(state3)
+    cache = (;matrix_cache,state2)
     if reuse == false
         A
     else
@@ -399,16 +399,16 @@ function assemble_matrix!(f,trial_space,test_space,A,cache)
 end
 
 function assemble_matrix!(integral::Integral,A,cache)
-    (;Acache,state2) = cache
+    (;matrix_cache,state2) = cache
     state3 = assemble_matrix_fill!(integral,state2)
-    assemble_matrix_compress!(A,Acache,state3)
+    assemble_matrix_compress!(A,matrix_cache,state3)
     A
 end
 
 function assemble_matrix!(integral::Integral,U,V,A,cache)
-    (;Acache,state2) = cache
+    (;matrix_cache,state2) = cache
     state3 = assemble_matrix_fill!(integral,state2)
-    assemble_matrix_compress!(A,Acache,state3)
+    assemble_matrix_compress!(A,matrix_cache,state3)
     A
 end
 
@@ -599,13 +599,13 @@ end
 
 function assemble_matrix_compress(state)
     (;alloc,matrix_strategy,setup) = state
-    A, Acache = matrix_strategy.compress(alloc,setup)
-    A, Acache
+    A, matrix_cache = matrix_strategy.compress(alloc,setup)
+    A, matrix_cache
 end
 
-function assemble_matrix_compress!(A,Acache,state)
+function assemble_matrix_compress!(A,matrix_cache,state)
     (;alloc,matrix_strategy,setup) = state
-    matrix_strategy.compress!(A,Acache,alloc,setup)
+    matrix_strategy.compress!(A,matrix_cache,alloc,setup)
     A
 end
 
@@ -614,9 +614,9 @@ function assemble_matrix_and_vector(a,l,U,V,::Type{T};
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
-    A,Acache = assemble_matrix(a,U,V,T;reuse=Val(true),matrix_strategy)
-    b,bcache = assemble_vector(l,V,T;reuse=Val(true),vector_strategy)
-    cache = (;Acache,bcache)
+    A,matrix_cache = assemble_matrix(a,U,V,T;reuse=Val(true),matrix_strategy)
+    b,vector_cache = assemble_vector(l,V,T;reuse=Val(true),vector_strategy)
+    cache = (;matrix_cache,vector_cache)
     if val_parameter(reuse)
         A,b,cache
     else
@@ -625,9 +625,9 @@ function assemble_matrix_and_vector(a,l,U,V,::Type{T};
 end
 
 function assemble_matrix_and_vector!(a,l,U,V,A,b,cache)
-    (;Acache,bcache) = cache
-    assemble_matrix!(a,U,V,A,Acache)
-    assemble_vector!(l,V,b,bcache)
+    (;matrix_cache,vector_cache) = cache
+    assemble_matrix!(a,U,V,A,matrix_cache)
+    assemble_vector!(l,V,b,vector_cache)
     A,b
 end
 
@@ -756,7 +756,7 @@ function nonlinear_problem(uh0::DiscreteField,r,j,V=GT.space(uh0);
     U = GT.space(uh0)
     x0 = free_values(uh0)
     T = eltype(x0)
-    A0,b0,cache = assemble_matrix_and_vector(a0,l0,U,V,T;
+    A0,b0,cache = assemble_matrix_and_vector(a0,l0,T,U,V;
        reuse=Val(true),matrix_strategy,vector_strategy)
     PS.nonlinear_problem(x0,b0,A0,cache) do p
         x = PS.solution(p)
@@ -770,9 +770,9 @@ function nonlinear_problem(uh0::DiscreteField,r,j,V=GT.space(uh0);
         if b !== nothing && A !== nothing
             assemble_matrix_and_vector!(a,l,U,V,A,b,ws)
         elseif b !== nothing && A === nothing
-            assemble_vector!(l,V,b,ws.bcache)
+            assemble_vector!(l,V,b,ws.vector_cache)
         elseif b === nothing && A !== nothing
-            assemble_matrix!(a,U,V,A,ws.Acache)
+            assemble_matrix!(a,U,V,A,ws.matrix_cache)
         end
         p = PS.update(p,solution=x,residual=b,jacobian=A)
     end
@@ -855,9 +855,9 @@ function nonlinear_ode(
         if b !== nothing && A !== nothing
             assemble_matrix_and_vector!(j_int,r_int,U,V,A,b,ws)
         elseif b !== nothing && A === nothing
-            assemble_vector!(r_int,V,b,ws.bcache)
+            assemble_vector!(r_int,V,b,ws.vector_cache)
         elseif b === nothing && A !== nothing
-            assemble_matrix!(j_int,U,V,A,ws.Acache)
+            assemble_matrix!(j_int,U,V,A,ws.matrix_cache)
         end
         p = PS.update(p,solution=x,residual=b,jacobian=A)
     end
@@ -1030,6 +1030,17 @@ function contribute!(alloc::VectorAllocation,b,dofs_test,field_test=1)
     alloc
 end
 
+#function vector_assembly_loop!(fs,alloc,faces)
+#    for face in faces
+#        map(fs) do f
+#            b,dofs,field = f(face)
+#            contribute!(alloc,b,dofs,field)
+#            nothing
+#        end
+#    end
+#    alloc
+#end
+
 function compress(alloc::VectorAllocation;reuse=Val(false))
     (;setup,coo,vector_strategy) = alloc.data
     b,cache = vector_strategy.compress(coo,setup)
@@ -1135,6 +1146,22 @@ function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1
     counter_ref[] = counter
     alloc
 end
+
+#function matrix_assembly_loop!(fs,alloc,faces)
+#
+#
+#function matrix_assembly_loop!(fs,alloc,faces)
+#    for face in faces
+#        map(fs) do f
+#            A,dofs_i,dofs_j,field_i,field_j = f(face)
+#            contribute!(alloc,A,dofs_i,dofs_j,field_i,field_j)
+#            nothing
+#        end
+#    end
+#    alloc
+#end
+
+
 
 function compress(alloc::MatrixAllocation;reuse=Val(false))
     (;setup,coo,matrix_strategy) = alloc.data

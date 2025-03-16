@@ -861,6 +861,38 @@ function face_diameter(domain::AbstractDomain)
     diams
 end
 
+#function form_argument_accessor(f,space::AbstractSpace)
+#    shape_function_accessor(f,space)
+#end
+#
+#function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature;field=1)
+#    face_point_dof_s = shape_function_accessor(f,space,measure)
+#    prototype = GT.prototype(face_point_dof_s)
+#    the_field = field
+#    function face_point_dof_a(face,face_around=nothing)
+#        the_face_around = face_around
+#        point_dof_s = face_point_dof_s(face,face_around)
+#        function point_dof_a(point)
+#            dof_s = point_dof_s(point)
+#            function dof_a(dof,face_around=nothing;field=1)
+#                s = dof_s(dof)
+#                mask = face_around == the_face_around && field == the_field
+#                if mask
+#                    s
+#                else
+#                    zero(s)
+#                end
+#            end
+#        end
+#    end
+#    accessor(face_point_dof_a,prototype)
+#end
+
+function num_faces_around_accesor(space_domain,domain)
+    error("not implemented")
+end
+
+
 function num_points_accessor(measure::Measure)
     num_points_accessor(quadrature(measure))
 end
@@ -883,6 +915,10 @@ end
 
 function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
     shape_function_accessor(f,space,quadrature(measure))
+end
+
+function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
+    form_argument_accessor(f,space,quadrature(measure))
 end
 
 function physical_map_accessor(f,measure::Measure,vD)
