@@ -648,6 +648,22 @@ function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
     plt2
 end
 
+function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+    mesh = plt.mesh
+    @assert num_dims(mesh) == 2
+    @assert num_ambient_dims(mesh) == 2
+    node_to_xy = node_coordinates(mesh)
+    node_to_z = plt.node_data[data.name]
+    nnodes = length(node_to_z)
+    node_to_xyz = map(node_to_xy,node_to_z) do xy,z
+        x,y = xy
+        SVector(x,y,scale*z)
+    end
+    mesh2 = replace_node_coordinates(mesh,node_to_xyz)
+    plt2 = replace_mesh(plt,mesh2)
+    plt2
+end
+
 function plot(domain::AbstractDomain;kwargs...)
     mesh = GT.mesh(domain)
     d = GT.num_dims(domain)

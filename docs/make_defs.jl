@@ -79,7 +79,7 @@ function main(;debug=false)
                                    ),
              pages=[
                     "index.md",
-                    "Tutorials" => tutorials,
+                    "Lectures" => tutorials,
                     "Examples" => examples,
                     "Manual" => manual,
                     "reference.md",

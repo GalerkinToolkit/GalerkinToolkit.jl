@@ -152,14 +152,14 @@ function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
     (;init,scalar_type,counter,count,allocate,set!,compress,compress!)
 end
 
-function assemble_vector(f,space,::Type{T};kwargs...) where T
+function assemble_vector(f,::Type{T},space;kwargs...) where T
     axis = 1
     dv = GT.form_argument_quantity(space,axis)
     integral = f(dv)
-    assemble_vector(integral,space,T;kwargs...)
+    assemble_vector(integral,T,space;kwargs...)
 end
 
-function assemble_vector(integral::Number,space,::Type{T};
+function assemble_vector(integral::Number,::Type{T},space;
     reuse = Val(false),
     vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
@@ -176,7 +176,7 @@ function assemble_vector(integral::Number,space,::Type{T};
     end
 end
 
-function assemble_vector(integral::Integral,space,::Type{T};
+function assemble_vector(integral::Integral,::Type{T},space;
     reuse = Val(false),
     vector_strategy = monolithic_vector_assembly_strategy(),
     free_or_dirichlet = FREE,
@@ -361,21 +361,21 @@ function assemble_vector_compress!(b,vector_cache,state)
     b
 end
 
-function assemble_matrix(f,trial_space,test_space,::Type{T};kwargs...) where T
+function assemble_matrix(f,::Type{T},trial_space,test_space;kwargs...) where T
     test_dim = 1
     trial_dim = 2
     dv = GT.form_argument_quantity(test_space,test_dim)
     du = GT.form_argument_quantity(trial_space,trial_dim)
     integral = f(du,dv)
-    assemble_matrix(integral,trial_space,test_space,T;kwargs...)
+    assemble_matrix(integral,T,trial_space,test_space;kwargs...)
 end
 
-function assemble_matrix(integral::Integral,trial_space,test_space,::Type{T};
+function assemble_matrix(integral::Integral,::Type{T},trial_space,test_space;
         reuse=false,
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         free_or_dirichlet = (FREE,FREE),
     ) where T
-    setup = matrix_strategy.init(free_dofs(test_space),free_dofs(trial_space),T)
+    setup = matrix_strategy.init(dofs(test_space,free_or_dirichlet[1]),dofs(trial_space,free_or_dirichlet[2]),T)
     state0 = (;test_space,trial_space,matrix_strategy,setup,free_or_dirichlet)
     state1 = assemble_matrix_count(integral,state0)
     state2 = assemble_matrix_allocate(state1)
@@ -609,14 +609,14 @@ function assemble_matrix_compress!(A,matrix_cache,state)
     A
 end
 
-function assemble_matrix_and_vector(a,l,U,V,::Type{T};
+function assemble_matrix_and_vector(a,l,::Type{T},U,V;
         reuse = Val(false),
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
-    A,matrix_cache = assemble_matrix(a,U,V,T;reuse=Val(true),matrix_strategy)
-    b,vector_cache = assemble_vector(l,V,T;reuse=Val(true),vector_strategy)
-    cache = (;matrix_cache,vector_cache)
+    A,Acache = assemble_matrix(a,T,U,V;reuse=Val(true),matrix_strategy)
+    b,bcache = assemble_vector(l,T,V;reuse=Val(true),vector_strategy)
+    cache = (;Acache,bcache)
     if val_parameter(reuse)
         A,b,cache
     else
@@ -636,7 +636,7 @@ function assemble_matrix_and_vector_with_dirichlet(a,l,U,V,dirichlet_values;kwar
     free_values = constant_values(zero(T),GT.free_dofs(U))
     ud = discrete_field(U,free_values,dirichlet_values)
     l2(v) = l(v) - a(ud,v)
-    assemble_matrix_and_vector(a,l2,U,V,T;kwargs...)
+    assemble_matrix_and_vector(a,l2,T,U,V;kwargs...)
 end
 
 function assemble_matrix_and_vector_with_dirichlet!(a,l,U,V,dirichlet_values,A,b,cache)
@@ -656,9 +656,9 @@ function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
     x = similar(b,axes(A,2))
     PS.linear_problem(x,A,b)
     #T = eltype(dirichlet_values(uhd))
-    #A = assemble_matrix(a,U,V,T)
-    #b = assemble_vector(l,V,T)
-    #d = assemble_vector(v->a(uhd,v),V,T)
+    #A = assemble_matrix(a,T,U,V)
+    #b = assemble_vector(l,T,V)
+    #d = assemble_vector(v->a(uhd,v),T,V)
     #b .= b .- d
     #x = similar(b,axes(A,2))
     #PS.linear_problem(x,A,b)
@@ -668,7 +668,7 @@ function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
-    A,b = assemble_matrix_and_vector(a,l,U,V,T;matrix_strategy,vector_strategy)
+    A,b = assemble_matrix_and_vector(a,l,T,U,V;matrix_strategy,vector_strategy)
     x = similar(b,axes(A,2))
     PS.linear_problem(x,A,b)
 end
@@ -838,7 +838,7 @@ function nonlinear_ode(
     js0_int = map((jac,coeff)->coeff*jac(t0,uhs_0)(du,v),jacs,coeffs_0)
     j0_int = sum(js0_int)
     T = eltype(free_values(uhs_0[1]))
-    A0,b0,cache = assemble_matrix_and_vector(j0_int,r0_int,U,V,T;
+    A0,b0,cache = assemble_matrix_and_vector(j0_int,r0_int,T,U,V;
        reuse=Val(true),matrix_strategy,vector_strategy)
     x0 = (t0,map(free_values,uhs_0)...)
     PS.ode_problem(x0,b0,A0,tspan,coeffs_0,cache) do p
