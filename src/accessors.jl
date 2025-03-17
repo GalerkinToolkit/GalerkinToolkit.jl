@@ -700,6 +700,7 @@ function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature
     DiscreteFieldAccessor(field_to_accessor,accessor)
 end
 
+# TODO not needed anymore
 struct DirichletAccessor{A,B} <: AbstractAccessor
     update::A
     accessor::B

@@ -47,26 +47,44 @@ function replace_coefficient(a::DomainContribution,coefficient)
     DomainContribution(a.integrand,a.quadrature,coefficient)
 end
 
-function term(contribution::DomainContribution,index)
+function quantity(contribution::DomainContribution)
     (;integrand,quadrature) = contribution
     domain = GT.domain(contribution)
     x = coordinate_quantity(quadrature)
     dV = weight_quantity(quadrature)
     coefficient = GT.coefficient(contribution)
     alpha = uniform_quantity(coefficient)
-    quantity = alpha*integrand(x)*dV
+    alpha*integrand(x)*dV
+end
+
+function prototype(contribution::DomainContribution)
+    prototype(quantity(contribution))
+end
+
+function term(contribution::DomainContribution,index)
+    domain = GT.domain(contribution)
     opts = QuantityOptions(domain,index)
-    term(quantity,opts)
+    term(quantity(contribution),opts)
 end
 
 function integral(contributions...)
     Integral(contributions)
 end
 
-contributions(i::Integral) = contributions
 
 struct Integral{A}
     contributions::A
+end
+
+contributions(i::Integral) = contributions
+
+function contribution(i::Integral,domain::AbstractDomain)
+    for contribution in contributions(i)
+        if domain == GT.comain(contribution)
+            return contribution
+        end
+    end
+    error("domain is not found")
 end
 
 function Base.:+(int1::Integral,int2::Integral)
@@ -100,12 +118,23 @@ function Base.:/(int::Integral,v::Number)
     (1/v)*int
 end
 
-# Sample, this is needed to visualize fields
+# Sample on the quadrature points. This is needed to visualize fields
 
-function sample(f,quadrature::AbstractQuadrature)
-    # No params are given, but it could be parametrized
-    g = generate_sample(f,quadrature)
-    g()
+function sample_accessor(f,quadrature::AbstractQuadrature;
+        parameters = (),
+        reuse = isempty(parameters) ? Val(false) : Val(true),
+    )
+    g = generate_sample_accessor(f,quadrature;parameters)
+    accessor = g(parameters...)
+    if val_parameter(reuse)
+        accessor, g
+    else
+        accessor
+    end
+end
+
+function update_sample_accessor(g;parameters)
+    g(parameters...)
 end
 
 # 0-forms
@@ -116,9 +145,10 @@ function assemble_scalar(integral::Integral;
     )
     contributions = GT.contributions(integral)
     pairs = map(contributions) do contribution
-        params_loop = generate_scalar_assembly_loop(contribution;parameters)
+        init = zero(prototype(contribution))
+        params_loop = generate_assemble_scalar(contribution;parameters)
         loop = params_loop(parameters...)
-        loop(), params_loop
+        loop(init), (params_loop, init)
     end
     b = sum(first,pairs)
     loops = map(last,pairs)
@@ -130,9 +160,9 @@ function assemble_scalar(integral::Integral;
 end
 
 function update_scalar(loops;parameters)
-    sum(loops) do params_loop
+    sum(loops) do (params_loop, init)
         loop = params_loop(parameters...)
-        loop()
+        loop(init)
     end
 end
 
@@ -140,12 +170,38 @@ function Base.sum(int::Integral)
     assemble_scalar(int)
 end
 
+
+function assemble_face_contribution!(face_to_val,contribution::DomainContribution;
+        parameters = (),
+        reuse = isempty(parameters) ? Val(false) : Val(true),
+    )
+    params_loop = generate_assemble_face_contribution(contribution;parameters)
+    loop! = params_loop(parameters...)
+    loop!(face_to_val)
+    if val_parameter(reuse)
+        face_to_val, params_loop
+    else
+        face_to_val
+    end
+end
+
+function update_face_contribution!(face_to_val, params_loop;parameters)
+    loop! = params_loop(parameters...)
+    loop!(face_to_val)
+    face_to_val
+end
+
 function face_contribution(int::Integral,domain::AbstractDomain)
-    error("Not implemented")
+    contribution = GT.contribution(int,domain)
+    nfaces = GT.domain(contribution)
+    T = typeof(prototype(contribution))
+    face_to_val = zeros(T,nfaces)
+    assemble_face_contribution!(face_to_val,contribution)
 end
 
 function face_contribution!(a,int::Integral,domain::AbstractDomain)
-    error("Not implemented")
+    contribution = GT.contribution(int,domain)
+    assemble_face_contribution!(face_to_val,contribution)
 end
 
 # 1-forms
@@ -164,7 +220,7 @@ function assemble_vector(f,::Type{T},space;
     domains = map(GT.domain,contributions)
     alloc = allocate_vector(T,space,domains...;vector_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
-        params_loop = generate_vector_assembly_loop(contribution,space;parameters)
+        params_loop = generate_assemble_vector(contribution,space;parameters)
         loop! = params_loop(parameters...)
         loop!(alloc)
         params_loop
@@ -206,7 +262,7 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     domains = map(GT.domain,contributions)
     alloc = allocate_matrix(T,space,domains...;matrix_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
-        params_loop = generate_matrix_assembly_loop(contribution,space;parameters)
+        params_loop = generate_assemble_matrix(contribution,space;parameters)
         loop! = params_loop(parameters...)
         loop!(alloc)
         params_loop
@@ -237,7 +293,7 @@ function assemble_matrix_with_free_and_dirichlet_columns(f,::Type{T},trial_space
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     free_or_dirichlet = FREE, # Rows
     ) where T
-    # TODO we are doing two loops
+    # We are doing two calls, this can be optimized
     A,Acache = assemble_matrix(f,T,trial_space,test_space;
         parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,FREE))
     Ad,Adcache = assemble_matrix(f,T,trial_space,test_space;
