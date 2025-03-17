@@ -19,7 +19,6 @@ abstract type NewAbstractTerm <: AbstractType end
 abstract type NewAbstractQuantity <: AbstractType end
 
 
-# TODO: rewrite set_free_args to support 2 forms
 # TODO: write test cases
 @auto_hash_equals cache=true typearg=true  fields=(value, ) struct LeafTerm{A, B}  <: NewAbstractTerm
     value::A
@@ -147,7 +146,7 @@ struct TabulatedFormArgumentTerm{A, B, C, D, E, F} <: NewAbstractTerm
 end
 
 
-children(t::TabulatedFormArgumentTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.form_argument, t.domain_face, t.point, t.dof)) # TODO: form_argument
+children(t::TabulatedFormArgumentTerm) = filter(x -> !isnothing(x), (t.linear_operation, t.form_argument, t.domain_face, t.point, t.dof))
 
 
 AbstractTrees.children(t::TabulatedFormArgumentTerm) = (t.linear_operation, t.form_argument.space, t.domain_face, t.point, t.dof, t.measure, t.form_argument.arg, t.form_argument.field)
@@ -161,9 +160,19 @@ struct OneFormTerm{A, B, C, D, E, F} <: NewAbstractTerm
     prototype::F
 end
 
+struct TwoFormTerm{A, B, C, D, E, F, G, H} <: NewAbstractTerm 
+    contribution::A
+    domain_face::B
+    dof_trial::D
+    dof_test::C
+    ndofs_trial::F
+    ndofs_test::E
+    local_matrix::G
+    prototype::H
+end
 
-children(t::OneFormTerm) = filter(x -> !isnothing(x), (t.contribution, t.domain_face, t.dof, t.ndofs, t.local_vector)) # TODO: form_argument
-
+children(t::OneFormTerm) = filter(x -> !isnothing(x), (t.contribution, t.domain_face, t.dof, t.ndofs, t.local_vector))
+children(t::TwoFormTerm) = filter(x -> !isnothing(x), (t.contribution, t.domain_face, t.dof_trial, t.dof_test, t.ndofs_trial, t.ndofs_test, t.local_matrix))
 
 space(t::TabulatedFormArgumentTerm) = space(t.form_argument)
 space(t::NewFormArgumentTerm) = t.space 
@@ -480,6 +489,10 @@ function rewrite_l1(t::OneFormTerm)
     OneFormTerm(rewrite_l1(t.contribution), t.domain_face, t.dof, t.ndofs, t.local_vector, t.prototype)
 end
 
+function rewrite_l1(t::TwoFormTerm)
+    TwoFormTerm(rewrite_l1(t.contribution), t.domain_face, t.dof_trial, t.dof_test, t.ndofs_trial, t.ndofs_test, t.local_matrix, t.prototype)
+end
+
 
 function rewrite_l1(t::Union{UniformTerm, LeafTerm, NumPointsTerm, WeightTerm, CoordinateTerm, NewFormArgumentTerm})
     t
@@ -522,7 +535,7 @@ function rewrite_l1(t::ContributionTerm)
 end
 
 
-function lower_l1_to_l2(t::UniformTerm,name_to_symbol)
+function lower_l1_to_l2(t::UniformTerm, name_to_symbol)
     t2 = name_to_symbol[t.name]
     @new_term begin
         value($(LeafTerm(t2, t)))
@@ -532,7 +545,7 @@ function lower_l1_to_l2(t::UniformTerm,name_to_symbol)
 end
 
 
-function lower_l1_to_l2(t::LambdaTerm,name_to_symbol)
+function lower_l1_to_l2(t::LambdaTerm, name_to_symbol)
     body = lower_l1_to_l2(t.body, name_to_symbol)
     @new_term begin
         $(t.args) -> $body
@@ -540,12 +553,12 @@ function lower_l1_to_l2(t::LambdaTerm,name_to_symbol)
     # LambdaTerm(lower_l1_to_l2(t.body, name_to_symbol), t.args, prototype(t))
 end
 
-function lower_l1_to_l2(t::IndexTerm,name_to_symbol)
+function lower_l1_to_l2(t::IndexTerm, name_to_symbol)
     IndexTerm(lower_l1_to_l2(t.array, name_to_symbol), lower_l1_to_l2(t.index, name_to_symbol), t.prototype)
 end
 
 
-function lower_l1_to_l2(t::CallTerm,name_to_symbol)
+function lower_l1_to_l2(t::CallTerm, name_to_symbol)
     callee = lower_l1_to_l2(t.callee, name_to_symbol)
     args = map(t.args) do arg 
         lower_l1_to_l2(arg, name_to_symbol)
@@ -554,7 +567,7 @@ function lower_l1_to_l2(t::CallTerm,name_to_symbol)
 end
 
 
-function lower_l1_to_l2(t::NumPointsTerm,name_to_symbol)
+function lower_l1_to_l2(t::NumPointsTerm, name_to_symbol)
     domain_face_term = t.domain_face
     measure = name_to_symbol[t.measure.name]
     
@@ -569,7 +582,7 @@ function lower_l1_to_l2(t::NumPointsTerm,name_to_symbol)
 end
 
 
-function lower_l1_to_l2(t::WeightTerm,name_to_symbol)
+function lower_l1_to_l2(t::WeightTerm, name_to_symbol)
     measure = name_to_symbol[t.measure.name]
     point_term = t.point
     domain_face_term = t.domain_face
@@ -619,7 +632,7 @@ discrete_field_accessor(f, uh, m::NewMeasure) = begin
     discrete_field_accessor(f, uh, m.quadrature)
 end
 
-function coordinate_quantity(measure::NewMeasure,point)
+function coordinate_quantity(measure::NewMeasure, point)
     new_quantity(;) do dom
         @assert dom == domain(measure)
         CoordinateTerm(measure, nothing, LeafTerm(point, 1))
@@ -627,7 +640,7 @@ function coordinate_quantity(measure::NewMeasure,point)
 end
 
 
-function lower_l1_to_l2(t::CoordinateTerm,name_to_symbol)
+function lower_l1_to_l2(t::CoordinateTerm, name_to_symbol)
     # coordinate_accessor($measure)($domain_face)($point)
 
     measure = name_to_symbol[t.measure.name]
@@ -650,7 +663,7 @@ function lower_l1_to_l2(t::CoordinateTerm,name_to_symbol)
 end
 
 
-function contribution(f,measure::NewMeasure)
+function contribution(f, measure::NewMeasure)
     point = :point
     x = coordinate_quantity(measure,point)
     fx = f(x)
@@ -669,7 +682,7 @@ end
 const new_∫ = contribution
 
 
-function lower_l1_to_l2(t::ContributionTerm,name_to_symbol)
+function lower_l1_to_l2(t::ContributionTerm, name_to_symbol)
     integrand_expr = lower_l1_to_l2(t.integrand,name_to_symbol)
     weight_expr = lower_l1_to_l2(t.weight,name_to_symbol)
     num_points_expr = lower_l1_to_l2(t.num_points,name_to_symbol)
@@ -744,7 +757,7 @@ function lower_l1_to_l2(t::LeafTerm,name_to_symbol)
     t
 end
 
-function lower_l1_to_l2(t::OneFormTerm,name_to_symbol)
+function lower_l1_to_l2(t::OneFormTerm, name_to_symbol)
     ndofs = lower_l1_to_l2(t.ndofs, name_to_symbol)
     body = lower_l1_to_l2(t.contribution, name_to_symbol)
     result = @new_term begin 
@@ -757,6 +770,24 @@ function lower_l1_to_l2(t::OneFormTerm,name_to_symbol)
     # range = CallTerm(LeafTerm(:(:), :), [LeafTerm(1, 1), lower_l1_to_l2(t.ndofs, name_to_symbol)], 1:1)
     # map!_term = CallTerm(LeafTerm(:map!, map!), [dof_lambda_term, t.local_vector, range], nothing)
     # LambdaTerm(map!_term, (t.local_vector, t.domain_face), x -> nothing)
+end
+
+
+function lower_l1_to_l2(t::TwoFormTerm, name_to_symbol)
+    ndofs_trial = lower_l1_to_l2(t.ndofs_trial, name_to_symbol)
+    ndofs_test = lower_l1_to_l2(t.ndofs_test, name_to_symbol)
+    body = lower_l1_to_l2(t.contribution, name_to_symbol)
+
+    map(x -> map!(y -> x + y, view(a, x, :), 1:5), 1:4)
+    # TODO: cartesian indexing of a matrix?
+    result = @new_term begin 
+        ($(t.local_matrix), $(t.domain_face)) -> begin 
+            # two_form_lambda = ($(t.dof_trial), $(t.dof_test)) -> $body # ugly to wrap the cartesian index with another lambda, and maybe incorrect
+            # map!(cartesian_arg -> two_form_lambda(cartesian_arg[1], cartesian_arg[2]), $(t.local_matrix), CartesianIndices(($ndofs_trial, $ndofs_test)))
+            map($(t.dof_trial) -> map!($(t.dof_test) -> $body, view($(t.local_matrix), :, $(t.dof_trial)), 1:$ndofs_test), 1:$ndofs_trial)
+            # do we need a `nothing` here? we do not need to collect the lambda results
+        end
+    end
 end
 
 
@@ -848,7 +879,7 @@ function generate(t::NewAbstractTerm,params...)
     # t: L1 (domain specific level) term
     domain_face = :dummy_domain_face
     domain_face_term = LeafTerm(domain_face, 1)
-    term_l1_1 = set_free_args(t, Dict(:domain_face => domain_face_term)) 
+    term_l1_1 = set_free_args(t, domain_face_term) 
     term_l1_2 = LambdaTerm(term_l1_1, domain_face_term, x -> prototype(term_l1_1)) # a wrapper of domain face
 
     # generate body and optimize
@@ -878,23 +909,22 @@ function generate(t::NewAbstractTerm,params...)
 end
 
 
-  
-# TODO this needs to be extended to two-forms.
-function set_free_args(t::NewAbstractTerm, args::Dict)
+# TODO: find a general solution for dofs setting (for accessor terms)
+function set_free_args(t::NewAbstractTerm, domain_face, dofs=())
     new_term_args = map(propertynames(t)) do child_name
         child = getproperty(t, child_name)
-        if haskey(args, child_name)
+        if child_name === :domain_face
             # Very important to check that this is indeed a free child
             # out criterion is nothing means free
             if child === nothing
-                args[child_name]
+                domain_face
             else 
                 child
             end
         elseif child isa NewAbstractTerm
-            set_free_args(child, args)
+            set_free_args(child, domain_face, dofs)
         elseif applicable(iterate, child)
-            map(x -> (x isa NewAbstractTerm) ? set_free_args(x, args) : x, child)
+            map(x -> (x isa NewAbstractTerm) ? set_free_args(x, domain_face, dofs) : x, child)
         else
             child
         end
@@ -905,8 +935,28 @@ function set_free_args(t::NewAbstractTerm, args::Dict)
     else 
         (new_term_type)(new_term_args...)
     end
+end
 
-    
+
+function set_free_args(t::OneFormTerm, domain_face, dofs=())
+    (contribution_term, nodfs_term, local_vector_term) = map(x -> set_free_args(x, domain_face, dofs), (t.contribution, t.ndofs, t.local_vector))
+    dof_term = (t.dof === nothing && length(dofs) >= 1) ? dofs[1] : t.dof
+    domain_face_term = (t.domain_face === nothing) ? domain_face : t.domain_face
+    OneFormTerm(contribution_term, domain_face_term, dof_term, nodfs_term, local_vector_term, t.prototype)
+end 
+
+function set_free_args(t::TwoFormTerm, domain_face, dofs=())
+    (contribution_term, ndofs_trial_term, ndofs_test_term, local_matrix_term) = map(x -> set_free_args(x, domain_face, dofs), (t.contribution, t.ndofs_trial, t.ndofs_test, t.local_matrix))
+    dof_trial_term = (t.dof_trial === nothing && length(dofs) >= 1) ? dofs[1] : t.dof_trial
+    dof_test_term = (t.dof_test === nothing && length(dofs) >= 2) ? dofs[2] : t.dof_test
+    domain_face_term = (t.domain_face === nothing) ? domain_face : t.domain_face
+    TwoFormTerm(contribution_term, domain_face_term, dof_trial_term, dof_test_term, ndofs_trial_term, ndofs_test_term, local_matrix_term, t.prototype)
+end 
+
+function set_free_args(t::NewFormArgumentTerm, domain_face, dofs=())
+    dof_term = (t.dof === nothing && length(dofs) >= t.arg) ? dofs[t.arg] : t.dof
+    domain_face_term = (t.domain_face === nothing) ? domain_face : t.domain_face
+    NewFormArgumentTerm(t.space, domain_face_term, dof_term, t.prototype, t.arg, t.field, t.name)
 end
 
 
@@ -941,48 +991,81 @@ end
 
 # is it sufficient to check the +/- operators only?
 # returns the new term and the field of it
-function select_field_impl(field::Int, t::NewAbstractTerm)
-    (t, 0)
+function select_field_impl(field::Vector{Int64}, t::NewAbstractTerm)
+    (t, zero(field))
 end
 
-function select_field_impl(field::Int, t::NewFormArgumentTerm)
-    (t, t.field)
+function select_field_impl(field::Vector{Int64}, t::NewFormArgumentTerm)
+    result_field = zero(field)
+    result_field[t.arg] = t.field
+    (t, result_field)
 end
 
 
-function select_field_impl(field::Int, t::CallTerm)
+function isa_subset(field, subfield)
+    @assert length(field) == length(subfield)
+    for (a, b) in zip(field, subfield)
+        if (b != 0) && (a != b)
+            return false
+        end
+    end
+    true
+end
+
+# TODO: hard to handle input errors, and requires to be (completely) tested
+function select_field_impl(field::Vector{Int64}, t::CallTerm)
     (callee, call_field) = select_field_impl(field, t.callee)
     args_with_fields = map(t.args) do arg
         select_field_impl(field, arg)
     end
 
     fields = (call_field, map(last, args_with_fields)...)
-    fields_non_0 = filter(x -> x != 0, fields) |> unique
-    
+
+    fields_per_arg = zero(field)
+    # -1 represents multipe fields, 0 represents no field, positive int represents the existing field
+    for fs in fields 
+        for (id, f) in enumerate(fs)
+            if fields_per_arg[id] == 0
+                fields_per_arg[id] = f 
+            elseif fields_per_arg[id] != f && f != 0
+                fields_per_arg[id] = -1
+            end
+        end
+    end
+
     # 1 field: return this field
-    if length(fields_non_0) <= 1
-        f = length(fields_non_0) == 0 ? 0 : first(fields_non_0)
+    if all(x -> x >= 0, fields_per_arg)
         args = map(first, args_with_fields)
-        return (CallTerm(callee, args, t.prototype), f)
+        return (CallTerm(callee, args, t.prototype), fields_per_arg)
+    end
+    
     # TODO: can we process other types?
     # 2+ fields: select the given field, and assume this is a + function
-    elseif callee isa LeafTerm 
+    for id in 1:length(fields_per_arg)
+        if fields_per_arg[id] < 0
+            fields_per_arg[id] = field[id]
+        end
+    end
+    if callee isa LeafTerm 
         if callee.prototype == +
-            args = map(x->first(x), filter(x-> last(x) == field, args_with_fields))
-            if length(args) == 0
+            args_with_fields_filtered = filter(x-> isa_subset(field, last(x)), args_with_fields)
+            args = map(first, args_with_fields_filtered)
+            if length(args_with_fields_filtered) == 0
                 return (LeafTerm(t.prototype, t.prototype), last(last(args_with_fields))) # To be reduced later
-            elseif length(args) == 1
-                return (args[1], field)
+            elseif length(args_with_fields_filtered) == 1
+                return args_with_fields_filtered[1] 
             else 
-                return (CallTerm(callee, args, t.prototype), field)
+                return (CallTerm(callee, args, t.prototype), fields_per_arg)
             end
         elseif callee.prototype == -
             args = map(first, args_with_fields)
             @assert length(args_with_fields) == 2
-            if args_with_fields[1][2] == field 
-                return (args[1], field)
-            else 
-                return (CallTerm(callee, [args[2]], t.prototype), field)
+            if isa_subset(field, args_with_fields[1][2])
+                return (args[1], args_with_fields[1][2])
+            elseif isa_subset(field, args_with_fields[2][2])
+                return (CallTerm(callee, [args[2]], t.prototype), args_with_fields[2][2])
+            else
+                return (LeafTerm(t.prototype, t.prototype), last(last(args_with_fields)))  # To be reduced later  
             end
         end
     end
@@ -991,30 +1074,32 @@ function select_field_impl(field::Int, t::CallTerm)
 end
 
 
-function select_field_impl(field::Int, t::ContributionTerm)
+function select_field_impl(field::Vector{Int64}, t::ContributionTerm)
     (int_term, int_field) = select_field_impl(field, t.integrand)
     result = ContributionTerm(int_term, t.weight, t.point, t.num_points, t.prototype)
     (result, int_field)
 end
 
 
-function select_field_impl(field::Int, t::IndexTerm)
+function select_field_impl(field::Vector{Int64}, t::IndexTerm)
     (array_term, array_field) = select_field_impl(field, t.array)
     result = IndexTerm(array_term, t.index, t.prototype) # constant index
     (result, array_field)
 end
 
-function select_field_impl(field::Int, t::OneFormTerm)
+function select_field_impl(field::Vector{Int64}, t::OneFormTerm)
     (contribution, contribution_field) = select_field_impl(field, t.contribution)
     # TODO: simplify oft without form arguments?
-    @assert contribution_field > 0
+    @assert sum(contribution_field) > 0
     result = OneFormTerm(contribution, t.domain_face, t.dof, t.ndofs, t.local_vector, t.prototype)
     (result, contribution_field)
 end
 
 
-function select_field(field::Int, t::NewAbstractTerm)
-    (result, _) = select_field_impl(field, t)
+function select_field(field, t::Union{OneFormTerm, TwoFormTerm}) # OneFormTerm or TwoFormTerm
+    field_vector = [field...]
+    (result, f) = select_field_impl(field_vector, t)
+    @assert f == field_vector # TODO: what if f != field?
     result
 end
 
@@ -1044,13 +1129,13 @@ function generate_1_form(field::Int, t::NewAbstractTerm, params...)
     local_vector = :b 
     local_vector_term = LeafTerm(local_vector, [prototype(t)])
     
-    term_l1_1 = set_free_args(t, Dict(:domain_face => domain_face_term, :dof => dof_term))
+    term_l1_1 = set_free_args(t, domain_face_term, (dof_term, ))
     ndofs_term = term_ndofs(term_l1_1, 1, field)
 
     term_l1_2 = OneFormTerm(term_l1_1, domain_face_term, dof_term, ndofs_term, local_vector_term, [prototype(term_l1_1)]) # a wrapper of domain face
 
     # generate body and optimize
-    term_l1_3 = select_field(field, term_l1_2)
+    term_l1_3 = select_field((field, ), term_l1_2)
     # rewrite L1 term
     term_l1_4 = rewrite_l1(term_l1_3)
     
@@ -1076,6 +1161,67 @@ function generate_1_form(field::Int, t::NewAbstractTerm, params...)
     (MacroTools.striplines(result), captured_data)
 end
 
+# TODO: to be completed and tested
+function generate_2_form(field_trial::Int, field_test::Int, t::NewAbstractTerm, params...)
+    itr = [ name(p)=>Symbol("arg$i") for (i,p) in enumerate(params)  ]
+    symbols = map(last,itr)
+    name_to_symbol = Dict(itr)
+    
+    # find all leaf terms 
+    name_to_captured_data = Dict()
+    capture!(t, name_to_symbol, name_to_captured_data)
+
+    # update name_to_symbol and generate captured data symbols
+    captured_data = []
+    captured_data_symbols = []
+    for (i, (k, v)) in enumerate(name_to_captured_data)
+        sym = Symbol("captured_arg_$i")
+        name_to_symbol[k] = sym 
+        push!(captured_data, v)
+        push!(captured_data_symbols, sym)
+    end
+
+    dof_trial = :dof_trial 
+    dof_test = :dof_test
+    dof_trial_term = LeafTerm(dof_trial, 1)
+    dof_test_term = LeafTerm(dof_test, 1)
+    domain_face = :dummy_domain_face
+    domain_face_term = LeafTerm(domain_face, 1)
+    local_matrix = :a
+    local_matrix_term = LeafTerm(local_matrix, [[prototype(t)]])
+    
+    term_l1_1 = set_free_args(t, domain_face_term, (dof_trial_term, dof_test_term))
+    ndofs_trial_term = term_ndofs(term_l1_1, 1, field_trial)
+    ndofs_test_term = term_ndofs(term_l1_1, 2, field_test)
+
+    term_l1_2 = TwoFormTerm(term_l1_1, domain_face_term, dof_trial_term, dof_test_term, ndofs_trial_term, ndofs_test_term, local_matrix_term, [[prototype(term_l1_1)]]) # a wrapper of domain face
+
+    # generate body and optimize
+    term_l1_3 = select_field((field_trial, field_test), term_l1_2)
+    # rewrite L1 term
+    term_l1_4 = rewrite_l1(term_l1_3)
+    
+    # L2: functional level
+    term_l2 = lower_l1_to_l2(term_l1_4, name_to_symbol)
+    
+    # L3: imperative level
+    term_l3 = statements(term_l2)
+    
+    # L4: imperative level with loops
+    
+    # L5: julia expression
+    expr = lower(term_l3)
+    fun_block = expr
+
+    result = quote
+        ($(captured_data_symbols...), ) -> begin
+            ($(symbols...), ) -> begin
+                $fun_block
+            end
+        end
+    end
+    (MacroTools.striplines(result), captured_data)
+end
 
 
 function evaluate(expr_and_captured)

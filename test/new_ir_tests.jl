@@ -124,6 +124,56 @@ sum(domain_face_v, 1:1)
 @show s
 @test s ≈ 2
 
+
+# testing discrete fields, forms, etc.
+
+n = 10
+domain = (0,2,0,2,0,2)
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+D = GT.num_dims(mesh)
+Ω = GT.interior(mesh)
+degree = 3
+dΩ = GT.new_measure(Ω,degree)
+
+V = GT.lagrange_space(Ω, degree)
+u = GT.form_argument(V, 1, 1)
+p = GT.form_argument(V, 1, 2)
+v = GT.form_argument(V, 2, 1)
+q = GT.form_argument(V, 2, 2)
+
+
+int = GT.new_∫(x -> GT.@qty(u(x) + 2 * p(x)),dΩ)
+expr_assembly = GT.generate_1_form(1, int)
+f_assembly = GT.evaluate(expr_assembly)
+domain_face_v! = f_assembly()
+
+ndofs = 64
+b = zeros(Float64, ndofs)
+
+poly(f) = begin
+    sum(x -> x[1] * x[2], enumerate(f))
+end
+
+face_contrib(face) = begin
+    domain_face_v!(b, face)
+    poly(b)
+end
+
+s = sum(face_contrib, 1:1)
+@time s = sum(face_contrib, 1:GT.num_faces(Ω))
+
+@test s ≈ 260 
+
+expr_assembly = GT.generate_1_form(2, int)
+f_assembly = GT.evaluate(expr_assembly)
+domain_face_v! = f_assembly()
+
+s = sum(face_contrib, 1:1)
+@time s = sum(face_contrib, 1:GT.num_faces(Ω))
+
+@test s ≈ 520
+
 #face_point_J
 #face_point_w 
 #loop over faces, loop over pointsm and and up the output of face_point_w(face)(point,J)
