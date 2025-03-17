@@ -35,7 +35,7 @@ function face_constant_field(data,dom::AbstractDomain)
     Field(q2,dom)
 end
 
-function piecewise_field(fields::AbstractQuantity...)
+function piecewise_field(fields::AbstractField...)
     PiecewiseField(fields)
 end
 
@@ -56,22 +56,36 @@ struct PiecewiseDomain{A} <: AbstractType
     domains::A
 end
 
-struct DiscreteField{A,B,C,D,E} <: GT.AbstractField
+function discrete_field(space::AbstractSpace,free_values)
+    @assert num_dirichlet_dofs(space) == 0 "This space has Dirichlet DOFs. You should provide dirichlet_values."
+    dirichlet_values = similar(free_values,dirichlet_dofs(space))
+    discrete_field(space,free_values,dirichlet_values)
+end
+
+function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
+    qty = discrete_field_quantity(space,free_values,dirichlet_values)
+    mesh = space |> GT.mesh
+    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
+end
+
+struct DiscreteField{A,B,C,D} <: GT.AbstractField
     mesh::A
     space::B
     free_values::C
     dirichlet_values::D
-    quantity::E
 end
+
+# term is defined in compiler.jl
 
 Base.iterate(m::DiscreteField) = iterate(fields(m))
 Base.iterate(m::DiscreteField,state) = iterate(fields(m),state)
 Base.getindex(m::DiscreteField,field::Integer) = field(m,field)
 Base.length(m::DiscreteField) = num_fields(m)
 
-@enum FreeOrDirichlet FREE=1 DIRICHLET=2
+@enum FreeOrDirichlet FREE=1 DIRICHLET=2 FREE_AND_DIRICHLET=3
 
 function values(a::DiscreteField,free_or_diri::FreeOrDirichlet)
+    @assert free_or_diri != FREE_AND_DIRICHLET
     if free_or_diri == FREE
         free_values(a)
     else
@@ -381,3 +395,51 @@ function interpolate_impl!(f::PiecewiseField,u,space,free_or_diri)
     end
     u
 end
+
+function semi_discrete_field(T,V::AbstractSpace)
+    semi_discrete_field(T,V) do t,uh
+        uh
+    end
+end
+
+function semi_discrete_field(f,T,V::AbstractSpace)
+    uh = zero_field(T,V)
+    semi_discrete_field(f,uh)
+end
+
+function semi_discrete_field(uh::DiscreteField)
+    semi_discrete_field(uh) do t,uh
+        uh
+    end
+end
+
+function semi_discrete_field(f,uh::DiscreteField)
+    SemiDiscreteField(f,uh)
+end
+
+struct SemiDiscreteField{A,B}
+    update::A
+    discrete_field::B
+end
+
+free_values(uh::SemiDiscreteField) = free_values(uh.discrete_field)
+dirichlet_values(uh::SemiDiscreteField) = dirichlet_values(uh.discrete_field)
+
+function (u::SemiDiscreteField)(t)
+    u.update(t,u.discrete_field)
+    u.discrete_field
+end
+
+function space(u::SemiDiscreteField)
+    space(u.discrete_field)
+end
+
+function discrete_field(u::SemiDiscreteField)
+    u.discrete_field
+end
+
+function face_diameter_field(Ω::AbstractDomain)
+    dims = GT.face_diameter(Ω)
+    face_constant_field(dims,Ω)
+end
+

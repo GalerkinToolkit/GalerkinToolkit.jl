@@ -169,33 +169,33 @@ function pull_back(a::AbstractSpace,qty)
     qty
 end
 
-function shape_function_quantity(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
-    domain = GT.domain(a)
-    qty = shape_function_quantity(refid_to_funs,domain;reference=true,face_reference_id=face_to_refid,dof)
-    if reference
-        return qty
-    end
-    D = num_dims(domain)
-    ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    push_forward(a,qty)∘ϕinv
-end
-
-function form_argument_quantity(a::AbstractSpace,axis,field=1)
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
-    domain = GT.domain(a)
-    qty = form_argument(axis,field,refid_to_funs,domain;reference=true)# TODO,face_reference_id=face_to_refid)
-    if is_reference_domain(GT.domain(a))
-        return qty
-    end
-    D = num_dims(domain)
-    ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    push_forward(a,qty)∘ϕinv
-end
+#function shape_function_quantity(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+#    domain = GT.domain(a)
+#    qty = shape_function_quantity(refid_to_funs,domain;reference=true,face_reference_id=face_to_refid,dof)
+#    if reference
+#        return qty
+#    end
+#    D = num_dims(domain)
+#    ϕinv = GT.inverse_physical_map(mesh(domain),D)
+#    push_forward(a,qty)∘ϕinv
+#end
+#
+#function form_argument_quantity(a::AbstractSpace,axis,field=1)
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+#    domain = GT.domain(a)
+#    qty = form_argument(axis,field,refid_to_funs,domain;reference=true)# TODO,face_reference_id=face_to_refid)
+#    if is_reference_domain(GT.domain(a))
+#        return qty
+#    end
+#    D = num_dims(domain)
+#    ϕinv = GT.inverse_physical_map(mesh(domain),D)
+#    push_forward(a,qty)∘ϕinv
+#end
 
 function free_or_dirichlet_value(free_vals,diri_vals,dof)
     if dof < 0
@@ -205,87 +205,75 @@ function free_or_dirichlet_value(free_vals,diri_vals,dof)
     end
 end
 
-function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
-    ldof = gensym("fe-dof")
-    s = shape_function_quantity(a,ldof;reference=true)
-    # TODO ugly
-    if is_physical_domain(GT.domain(a))
-        s = push_forward(a,s)
-    end
-    face_to_dofs = GT.face_dofs(a)
-    D = num_dims(domain(a))
-    qty = quantity() do index
-        face_to_dofs_sym = get_symbol!(index,face_to_dofs,"face_to_dofs")
-        free_vals_sym = get_symbol!(index,free_vals,"free_vals")
-        diri_vals_sym = get_symbol!(index,diri_vals,"diri_vals")
-        face = face_index(index,D)
-        expr = @term begin
-            dof = $face_to_dofs_sym[$face][$ldof]
-            GalerkinToolkit.free_or_dirichlet_value($free_vals_sym,$diri_vals_sym,dof)
-        end
-        p = zero(eltype(free_vals))
-        coeffs = expr_term([D],expr,p,index)
-        expr = @term begin
-            length($face_to_dofs_sym[$face])
-        end
-        ndofs = expr_term([D],expr,0,index)
-        shapes = term(s,index)
-        discrete_function_term(coeffs,shapes,ldof,ndofs)
-    end
-    # TODO ugly
-    if is_reference_domain(GT.domain(a))
-        return qty
-    end
-    ϕinv = GT.inverse_physical_map(mesh(domain(a)),D)
-    qty∘ϕinv
-end
+#function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
+#    ldof = gensym("fe-dof")
+#    s = shape_function_quantity(a,ldof;reference=true)
+#    # TODO ugly
+#    if is_physical_domain(GT.domain(a))
+#        s = push_forward(a,s)
+#    end
+#    face_to_dofs = GT.face_dofs(a)
+#    D = num_dims(domain(a))
+#    qty = quantity() do index
+#        face_to_dofs_sym = get_symbol!(index,face_to_dofs,"face_to_dofs")
+#        free_vals_sym = get_symbol!(index,free_vals,"free_vals")
+#        diri_vals_sym = get_symbol!(index,diri_vals,"diri_vals")
+#        face = face_index(index,D)
+#        expr = @term begin
+#            dof = $face_to_dofs_sym[$face][$ldof]
+#            GalerkinToolkit.free_or_dirichlet_value($free_vals_sym,$diri_vals_sym,dof)
+#        end
+#        p = zero(eltype(free_vals))
+#        coeffs = expr_term([D],expr,p,index)
+#        expr = @term begin
+#            length($face_to_dofs_sym[$face])
+#        end
+#        ndofs = expr_term([D],expr,0,index)
+#        shapes = term(s,index)
+#        discrete_function_term(coeffs,shapes,ldof,ndofs)
+#    end
+#    # TODO ugly
+#    if is_reference_domain(GT.domain(a))
+#        return qty
+#    end
+#    ϕinv = GT.inverse_physical_map(mesh(domain(a)),D)
+#    qty∘ϕinv
+#end
 
-function discrete_field(space::AbstractSpace,free_values)
-    @assert num_dirichlet_dofs(space) == 0 "This space has Dirichlet DOFs. You should provide dirichlet_values."
-    dirichlet_values = similar(free_values,dirichlet_dofs(space))
-    discrete_field(space,free_values,dirichlet_values)
-end
-
-function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
-    qty = discrete_field_quantity(space,free_values,dirichlet_values)
-    mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
-end
-
-function dual_basis_quantity(a::AbstractSpace,dof)
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
-    domain = GT.domain(a)
-    D = num_dims(domain)
-    prototype = first(first(refid_to_funs))
-    s = GT.quantity() do index
-        face_to_sface = get_symbol!(index,inverse_faces(domain),"face_to_sface")
-        sface_to_refid_sym = get_symbol!(index,face_to_refid,"sface_to_refid")
-        refid_to_funs_sym = get_symbol!(index,refid_to_funs,"refid_to_funs")
-        face = face_index(index,D)
-        expr = @term begin
-            sface = $face_to_sface[$face]
-            refid = $sface_to_refid_sym[sface]
-            $refid_to_funs_sym[refid][$dof]
-        end
-        expr_term([D],expr,prototype,index;dof)
-    end
-    if is_reference_domain(GT.domain(a))
-        return s
-    end
-    ϕ = GT.physical_map(mesh(domain),D)
-    s2 = pull_back(a,s)
-    call(dual_compose,s2,ϕ)
-end
+#function dual_basis_quantity(a::AbstractSpace,dof)
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
+#    domain = GT.domain(a)
+#    D = num_dims(domain)
+#    prototype = first(first(refid_to_funs))
+#    s = GT.quantity() do index
+#        face_to_sface = get_symbol!(index,inverse_faces(domain),"face_to_sface")
+#        sface_to_refid_sym = get_symbol!(index,face_to_refid,"sface_to_refid")
+#        refid_to_funs_sym = get_symbol!(index,refid_to_funs,"refid_to_funs")
+#        face = face_index(index,D)
+#        expr = @term begin
+#            sface = $face_to_sface[$face]
+#            refid = $sface_to_refid_sym[sface]
+#            $refid_to_funs_sym[refid][$dof]
+#        end
+#        expr_term([D],expr,prototype,index;dof)
+#    end
+#    if is_reference_domain(GT.domain(a))
+#        return s
+#    end
+#    ϕ = GT.physical_map(mesh(domain),D)
+#    s2 = pull_back(a,s)
+#    call(dual_compose,s2,ϕ)
+#end
 
 function dual_compose(s,g)
     f -> s(f∘g)
 end
 
-function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.prefix)
-    :(GalerkinToolkit.dual_compose)
-end
+#function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.prefix)
+#    :(GalerkinToolkit.dual_compose)
+#end
 
 function generate_dof_ids(space::AbstractSpace)
     state0 = generate_dof_ids_step_0(space)

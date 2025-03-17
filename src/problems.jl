@@ -43,6 +43,10 @@ domain(a::DomainContribution) = domain(a.quadrature)
 quadrature(a::DomainContribution) = a.quadrature
 coefficient(a::DomainContribution) = a.coefficient
 
+function prototype(a::DomainContribution)
+    prototype(optimize(term(a,index(Val(0)))))
+end
+
 function replace_coefficient(a::DomainContribution,coefficient)
     DomainContribution(a.integrand,a.quadrature,coefficient)
 end
@@ -57,10 +61,6 @@ function quantity(contribution::DomainContribution)
     alpha*integrand(x)*dV
 end
 
-function prototype(contribution::DomainContribution)
-    prototype(quantity(contribution))
-end
-
 function term(contribution::DomainContribution,index)
     domain = GT.domain(contribution)
     opts = QuantityOptions(domain,index)
@@ -70,7 +70,6 @@ end
 function integral(contributions...)
     Integral(contributions)
 end
-
 
 struct Integral{A}
     contributions::A
@@ -243,6 +242,36 @@ function update_vector!(b,cache;parameters)
     end
     compress!(alloc,b,vector_cache)
     b
+end
+
+# 1-forms (dual)
+
+function assemble_values!(f,uh::DiscreteField,space::AbstractSpace;
+    parameters = (),
+    reuse = isempty(parameters) ? Val(false) : Val(true),
+    free_or_dirichlet = FREE_AND_DIRICHLET, 
+    location=1,
+    )
+
+    ds = dual_operator_quantity(space)
+    qty = ds(f)
+    params_loop = generate_assemble_values(space;parameters,free_or_dirichlet,location) do index
+        opts = QuantityOptions(domain,index)
+        term(qty,opts)
+    end
+    loop! = params_loop(parameters...)
+    loop!(uh)
+    if val_parameter(reuse)
+        uh, params_loop
+    else
+        uh
+    end
+end
+
+function update_values!(uh,params_loop;parameters)
+    loop! = params_loop(parameters...)
+    loop!(uh)
+    uh
 end
 
 # 2-forms
@@ -484,3 +513,4 @@ end
 function free_values_from_solution(x::BVector,dofs::BRange)
     x
 end
+

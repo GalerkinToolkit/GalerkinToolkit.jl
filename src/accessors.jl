@@ -700,55 +700,55 @@ function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature
     DiscreteFieldAccessor(field_to_accessor,accessor)
 end
 
-# TODO not needed anymore
-struct DirichletAccessor{A,B} <: AbstractAccessor
-    update::A
-    accessor::B
-end
-
-prototype(f::DirichletAccessor) = prototype(f.accessor)
-
-function (f::DirichletAccessor)(face)
-    f.accessor(face)
-end
-
-function update(f::DirichletAccessor;discrete_field)
-    uh = discrete_field
-    accessor = f.update(uh)
-    DirichletAccessor(f.update,accessor)
-end
-
-function dirichlet_accessor(uh::DiscreteField,domain::AbstractDomain)
-    face_to_dofs = dofs_accessor(GT.space(uh),domain)
-    function field_to_accessor(uh)
-        space = GT.space(uh)
-        dirichlet_values = GT.dirichlet_values(uh)
-        prototype = nothing
-        function face_dirichlet!(face,face_around=nothing)
-            ldof_to_dof = face_to_dofs(face,face_around)
-            nldofs = length(ldof_to_dof)
-            function dirichlet!(A,b)
-                m = size(A,1)
-                z = zero(eltype(b))
-                for i in 1:m
-                    bi = z
-                    for j in 1:nldofs
-                        dof = ldof_to_dof[j]
-                        if dof < 0
-                            uj = dirichlet_values[-dof]
-                            bi += A[i,j]*uj
-                        end
-                    end
-                    b[i] -= bi
-                end
-                nothing
-            end
-        end
-        GT.accessor(face_dirichlet!,prototype)
-    end
-    accessor = field_to_accessor(uh)
-    DirichletAccessor(field_to_accessor,accessor)
-end
+## TODO not needed anymore
+#struct DirichletAccessor{A,B} <: AbstractAccessor
+#    update::A
+#    accessor::B
+#end
+#
+#prototype(f::DirichletAccessor) = prototype(f.accessor)
+#
+#function (f::DirichletAccessor)(face)
+#    f.accessor(face)
+#end
+#
+#function update(f::DirichletAccessor;discrete_field)
+#    uh = discrete_field
+#    accessor = f.update(uh)
+#    DirichletAccessor(f.update,accessor)
+#end
+#
+#function dirichlet_accessor(uh::DiscreteField,domain::AbstractDomain)
+#    face_to_dofs = dofs_accessor(GT.space(uh),domain)
+#    function field_to_accessor(uh)
+#        space = GT.space(uh)
+#        dirichlet_values = GT.dirichlet_values(uh)
+#        prototype = nothing
+#        function face_dirichlet!(face,face_around=nothing)
+#            ldof_to_dof = face_to_dofs(face,face_around)
+#            nldofs = length(ldof_to_dof)
+#            function dirichlet!(A,b)
+#                m = size(A,1)
+#                z = zero(eltype(b))
+#                for i in 1:m
+#                    bi = z
+#                    for j in 1:nldofs
+#                        dof = ldof_to_dof[j]
+#                        if dof < 0
+#                            uj = dirichlet_values[-dof]
+#                            bi += A[i,j]*uj
+#                        end
+#                    end
+#                    b[i] -= bi
+#                end
+#                nothing
+#            end
+#        end
+#        GT.accessor(face_dirichlet!,prototype)
+#    end
+#    accessor = field_to_accessor(uh)
+#    DirichletAccessor(field_to_accessor,accessor)
+#end
 
 function unit_normal_accessor(measure::AbstractQuadrature)
     domain = GT.domain(measure)
