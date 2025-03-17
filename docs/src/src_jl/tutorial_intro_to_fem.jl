@@ -36,7 +36,7 @@
 # The boundary condition $g$ applies on the boundary of $\Omega$, which is denoted as $\partial\Omega$.
 # For simplicity,
 # we will define $\Omega$ as a disk of radius one. This is a simple geometry, but yet more complex than a 
-# two-dimensional box. We this, we illustrate that FEM can be used to solve PDEs on complex
+# two-dimensional box. With this, we illustrate that FEM can be used to solve PDEs on complex
 # geometries beyond simple "boxes".
 #
 # ## The method of manufactured solutions
@@ -51,7 +51,7 @@
 # the solution of the PDE above. The scalar $p$ is a given integer $p>0$. It will be useful to see how
 # the numerical solution will behave for different values of $p$.
 #
-# To manufacture function $f$ and $g$ we applying the PDE operators to the given function $u$.
+# To manufacture function $f$ and $g$ we apply the PDE operators to the given function $u$.
 # That is, $f$ needs to be computed as
 # $f= -\Delta ((\sum_{i=1}^d x_i)^p)$ and $g$ is simply $g(x)=(\sum_{i=1}^d x_i)^p$. Applying the Laplace operator
 # to $(\sum_{i=1}^d x_i)^p$,
@@ -65,7 +65,7 @@
 # To do this, FEM does not look for the exact function $u$, but for approximations of it that can be written as a 
 # linear combination of a finite number of basis functions, namely
 # ```math
-# u^\mathrm{fem}(x)=\sum_{j=1}^N \alpha_j s_j(x),
+# u^\mathrm{fem}(x)=\sum_{i=1}^N \alpha_i s_i(x),
 # ```
 # where $\alpha_i$ are the coefficients of the linear combination, $s_i$ are functions such that
 # $s_i:\Omega\rightarrow\mathbb{R}$ and $N$ is an integer. The basis functions $s_i$ are also
@@ -82,10 +82,10 @@
 # and a finite element (FE) function space. The next step is building a system of linear
 # algebraic equations $Ax=b$. This step is called the "FEM assembly". Then, one solves for the vector $x$ in
 # what is called the "solver" or "solution" step.
-# At this points, the coefficients $\alpha_i$ can be computed using both vector $x$ and the Dirichlet boundary
+# At this point, the coefficients $\alpha_i$ can be computed using both vector $x$ and the Dirichlet boundary
 # conditions of the PDE.
 # The final step is typically some post-process of
-# function $u^\mathrm{fem}$. For instance, visualize it, store it into a file, compute some quantity of interest, etc.
+# function $u^\mathrm{fem}$. For instance, visualize it, store it into a file, compute some quantities of interest, etc.
 # In summary,
 # these are the key phases in a FEM computation:
 # - Discretization
@@ -114,15 +114,15 @@ import FileIO # hide
 
 # A common practice in GalerkinToolkit is to load packages in the Julia standard library with `using`.
 # Other packages are loaded with `import`.
-# This makes clear from which package each function comes from, while assuming that developers already know
+# This makes clear which package each function comes from while assuming that developers already know
 # functions in the standard library.
 #
 # The following cell builds a triangulation (a mesh object) using the external mesh generation tool GMSH.
 # The variable `mesh_size` controls how fine are the cells in the mesh (smaller is finer).
 # We start with a 
-# coarse mesh to make visualization easier. In this lecture, we are not going to comment in detail all
+# coarse mesh to make visualization easier. In this lecture, we are not going to comment in detail on all
 # code lines. We will discuss only the parts relevant in this high-level introduction. You can refer to the API
-# documentation other tutorials when needed.
+# documentation and other tutorials when needed.
 
 mesh_size = 0.3
 R = 1 #Radius
@@ -190,13 +190,13 @@ degree = 2
 V = GT.lagrange_space(Ω,degree)
 nothing # hide
 
-# We will discus the mathematical derivation of this FE space in another lecture.
+# We will discuss the mathematical derivation of this FE space in another lecture.
 # For now, it is enough to understand that the object `V` has information about the
 # basis functions $s_i$. For instance, you can get the number of basis functions with
 
 N = GT.num_dofs(V)
 
-# The word "dofs" stands for degrees of freedom (DOFs). Each coefficent $\alpha_i$
+# The word "dofs" stands for degrees of freedom (DOFs). Each coefficient $\alpha_i$
 # can be understood as a degree of freedom, i.e., a quantity that can be tweaked to
 # modify function $u^\mathrm{fem}$.
 #
@@ -355,10 +355,10 @@ N_d = GT.num_dirichlet_dofs(V)
 # We refer to $u^\mathrm{d}$ as the "Dirichlet field". It is computed
 # by building
 # the coefficients $\alpha^\mathrm{d}_i=\sigma^\mathrm{d}_i(g)$ as the application of the linear operators
-# for the Dirichlet DOFs on function $g$. In other, $u^\mathrm{d}$ is built as the interpolation of the Dirichlet
+# for the Dirichlet DOFs on function $g$. In other words, $u^\mathrm{d}$ is built as the interpolation of the Dirichlet
 # function $g$ onto the space $V^\mathrm{d}$, namely $u^\mathrm{d}=\Pi^\mathrm{d} g$.
 # We define the interpolation to the spaces
-# $V^\mathrm{f}$ and $V^\mathrm{d}$ of a given funciton $f$ as we did for $V$, but only taking the corresponding shape functions:
+# $V^\mathrm{f}$ and $V^\mathrm{d}$ of a given function $f$ as we did for $V$, but only taking the corresponding shape functions:
 # ```math
 # (\Pi^\star f)(x) = \sum_{j=1}^{N^\star} \sigma^\star_j(f) s^\star_j(x).
 # ```
@@ -386,7 +386,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_diri.png"),Makie.current_figur
 # ![](fig_tutorial_intro_diri.png)
 #
 
-# Using the Dirichlet field, we can create function $u^\mathrm{fem}$ 
+# Using the Dirichlet field, we can create the function $u^\mathrm{fem}$ 
 # only from coefficients that are associated with free DOFs. These are going to
 # be computed later by solving a system of linear equations, but
 # we can create a mock version of them with randomly generated values.
@@ -425,13 +425,13 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figu
 # the coefficients $\alpha^\mathrm{f}_i$ for which the resulting function $u^\mathrm{fem}$
 # has a "small" residual $r(u^\mathrm{fem})$. This approach however requires some caution.
 # First, we need to define what "small" is. The second problem is that we cannot directly evaluate
-# $r(u^\mathrm{fem})$ as this value it is not well defined for all
+# $r(u^\mathrm{fem})$ as this value is not well defined for all
 # points $x\in\Omega$. Function $u^\mathrm{fem}$ is continuous,
 # but its gradient is not continuous at the boundaries of the mesh cells. As a consequence the Laplace
 # operator and the residual $r$ it is not well defined on the cell boundaries. 
 #
 # Let us visualize one of the components of the gradient of $u^\mathrm{fem}$
-# to confirm that is discontinuous. First, let us define the nabla operator
+# to confirm that is discontinuous. First, let us define the nabla operator:
 #
 
 ∇ = ForwardDiff.gradient
@@ -454,7 +454,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 # ```math
 # \int_\Omega r(u^\mathrm{fem}) s^\mathrm{f}_i \ d\Omega = 0 \text{ for } i=1,\ldots,N^\mathrm{f}.
 # ```
-# That is, we want weighted integrals of the residual to be zero. The weights are the basis functions $s^mathrm{f}_i$
+# That is, we want weighted integrals of the residual to be zero. The weights are the basis functions $s^\mathrm{f}_i$
 # associated with free DOFs. Each basis function provides an equation. The number
 # of total equations that we build with this expression is $N^\mathrm{f}$, which coincides with the number of
 # unknowns. Perfect!
@@ -486,14 +486,14 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 # We still have a second order derivative in the first term inside the integral. We can take rid of this one using
 # this other identity, the Gauss divergence theorem:
 # ```math
-# \int_\Omega \nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) \ d\Omega = \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega,
+# \int_\Omega \nabla\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i) \ d\Omega = \int_{\partial\Omega} \boldsymbol{n}\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega,
 # ```
-# where $n$ is the unit normal vector on the boundary $\partial\Omega$ pointing outwards to $\Omega$.
+# where $\boldsymbol{n}$ is the unit normal vector on the boundary $\partial\Omega$ pointing outwards to $\Omega$.
 # Note that the right hand side is an integral
 # on the boundary and we classified the shape functions so that all $s^\mathrm{f}_i$ 
 # are zero at the boundary. Using $s^\mathrm{f}_i(x)=0$ for any $x\in\partial\Omega$, we get:
 # ```math
-# \int_{\partial\Omega} n\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega = 0
+# \int_{\partial\Omega} \boldsymbol{n}\cdot(\nabla u^\mathrm{fem} s^\mathrm{f}_i)\ d\partial\Omega = 0
 # ```
 # Using this result and rearranging terms, we get this new formulation of our equations:
 # ```math
@@ -661,13 +661,13 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_error.png"),Makie.current_figu
 #
 # ## Conclusion
 #
-# We learned the key ingredients to solve a PDE with the FEM. This requires to define a discrete
-# space, and look for a solution in this space that makes the residual of the PDE "small". To properly define
+# We learned the key ingredients to solve a PDE with the FEM. This requires defining a discrete
+# space, and looking for a solution in this space that makes the residual of the PDE "small". To properly define
 # what a "small" residual is, we used the weighted residual method. This also allowed us to rewrite
-# the PDE into a new form called the weak form. This new form is important, because only the residual
+# the PDE into a new form called the weak form. This new form is important because only the residual
 # of the weak form makes sense for functions in the discrete space. We also learned that part of the coefficients
 # of the numerical approximation are unknown. A subset of them can be computed directly by interpolating the
-# Dirichlet boundary condition. We used the method of manufactured solutions to build a PDE with known
+# Dirichlet boundary condition. We used the method of manufactured solutions to build a PDE with a known
 # solution so that we can compare it with the computed approximation.  We also learned how to represent all these concepts using GalerkinToolkit.
 # In the next lecture, we will learn how to confirm that our computed approximation is mathematically correct.
 #
