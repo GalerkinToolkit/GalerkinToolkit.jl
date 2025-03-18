@@ -151,17 +151,17 @@ domain_face_v! = f_assembly()
 ndofs = 64
 b = zeros(Float64, ndofs)
 
-poly(f) = begin
+array_feature(f) = begin
     sum(x -> x[1] * x[2], enumerate(f))
 end
 
-face_contrib(face) = begin
+face_contrib_vector(face) = begin
     domain_face_v!(b, face)
-    poly(b)
+    array_feature(b)
 end
 
-s = sum(face_contrib, 1:1)
-@time s = sum(face_contrib, 1:GT.num_faces(Ω))
+s = sum(face_contrib_vector, 1:1)
+@time s = sum(face_contrib_vector, 1:GT.num_faces(Ω))
 
 @test s ≈ 260 
 
@@ -169,10 +169,35 @@ expr_assembly = GT.generate_1_form(2, int)
 f_assembly = GT.evaluate(expr_assembly)
 domain_face_v! = f_assembly()
 
-s = sum(face_contrib, 1:1)
-@time s = sum(face_contrib, 1:GT.num_faces(Ω))
+s = sum(face_contrib_vector, 1:1)
+@time s = sum(face_contrib_vector, 1:GT.num_faces(Ω))
 
 @test s ≈ 520
+
+
+int = GT.new_∫(x -> GT.@qty(u(x) ⋅ v(x) - 2 * u(x) ⋅ q(x) + 3 * p(x) ⋅ v(x) - 4 * p(x) ⋅ q(x)), dΩ)
+expr_assembly = GT.generate_2_form(1, 2, int)
+f_assembly = GT.evaluate(expr_assembly)
+domain_face_v! = f_assembly()
+a = zeros(Float64, ndofs, ndofs)
+
+face_contrib_matrix(face) = begin
+    domain_face_v!(a, face)
+    array_feature(a)
+end
+
+s = sum(face_contrib_matrix, 1:1)
+@time s = sum(face_contrib_matrix, 1:GT.num_faces(Ω))
+@test s ≈ -32776
+
+
+expr_assembly = GT.generate_2_form(2, 1, int)
+f_assembly = GT.evaluate(expr_assembly)
+domain_face_v! = f_assembly()
+
+s = sum(face_contrib_matrix, 1:1)
+@time s = sum(face_contrib_matrix, 1:GT.num_faces(Ω))
+@test s ≈ 49164
 
 #face_point_J
 #face_point_w 

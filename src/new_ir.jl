@@ -778,7 +778,6 @@ function lower_l1_to_l2(t::TwoFormTerm, name_to_symbol)
     ndofs_test = lower_l1_to_l2(t.ndofs_test, name_to_symbol)
     body = lower_l1_to_l2(t.contribution, name_to_symbol)
 
-    map(x -> map!(y -> x + y, view(a, x, :), 1:5), 1:4)
     # TODO: cartesian indexing of a matrix?
     result = @new_term begin 
         ($(t.local_matrix), $(t.domain_face)) -> begin 
@@ -1092,6 +1091,14 @@ function select_field_impl(field::Vector{Int64}, t::OneFormTerm)
     # TODO: simplify oft without form arguments?
     @assert sum(contribution_field) > 0
     result = OneFormTerm(contribution, t.domain_face, t.dof, t.ndofs, t.local_vector, t.prototype)
+    (result, contribution_field)
+end
+
+function select_field_impl(field::Vector{Int64}, t::TwoFormTerm)
+    (contribution, contribution_field) = select_field_impl(field, t.contribution)
+    # TODO: simplify 2ft without form arguments?
+    @assert sum(contribution_field) > 0
+    result = TwoFormTerm(contribution, t.domain_face, t.dof_trial, t.dof_test, t.ndofs_trial, t.ndofs_test, t.local_matrix, t.prototype)
     (result, contribution_field)
 end
 
