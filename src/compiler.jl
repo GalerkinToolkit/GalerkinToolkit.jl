@@ -6,7 +6,11 @@
 macro term(expr)
 end
 
-abstract type AbstractTerm <: AbstractType end
+function evaluate(expr,captured_data)
+    f1 = eval(expr)
+    f2 = Base.invokelatest(f1, captured_data...)
+    f2
+end
 
 # No bindings by default
 # Bindings are always symbols and dependencies are always terms
