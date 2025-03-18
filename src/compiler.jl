@@ -321,7 +321,7 @@ function weight_quantity(quadrature)
     end
 end
 
-struct WeightTermTerm{A} <: AbstractTerm
+struct WeightTerm{A} <: AbstractTerm
     dependencies::A
 end
 

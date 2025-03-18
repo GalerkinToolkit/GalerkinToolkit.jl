@@ -893,40 +893,40 @@ function num_faces_around_accesor(space_domain,domain)
     error("not implemented")
 end
 
+# remove it as we use quadrature directly
+# function num_points_accessor(measure::Measure)
+#     num_points_accessor(quadrature(measure))
+# end
 
-function num_points_accessor(measure::Measure)
-    num_points_accessor(quadrature(measure))
-end
+# function coordinate_accessor(measure::Measure)
+#     coordinate_accessor(quadrature(measure))
+# end
 
-function coordinate_accessor(measure::Measure)
-    coordinate_accessor(quadrature(measure))
-end
+# function jacobian_accessor(measure::Measure,args...)
+#     jacobian_accessor(quadrature(measure),args...)
+# end
 
-function jacobian_accessor(measure::Measure,args...)
-    jacobian_accessor(quadrature(measure),args...)
-end
+# function weight_accessor(measure::Measure)
+#     weight_accessor(quadrature(measure))
+# end
 
-function weight_accessor(measure::Measure)
-    weight_accessor(quadrature(measure))
-end
+# function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+#     discrete_field_accessor(f,uh,quadrature(measure))
+# end
 
-function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
-    discrete_field_accessor(f,uh,quadrature(measure))
-end
+# function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
+#     shape_function_accessor(f,space,quadrature(measure))
+# end
 
-function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
-    shape_function_accessor(f,space,quadrature(measure))
-end
+# function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
+#     form_argument_accessor(f,space,quadrature(measure))
+# end
 
-function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
-    form_argument_accessor(f,space,quadrature(measure))
-end
+# function physical_map_accessor(f,measure::Measure,vD)
+#     physical_map_accessor(f,quadrature(measure),vD)
+# end
 
-function physical_map_accessor(f,measure::Measure,vD)
-    physical_map_accessor(f,quadrature(measure),vD)
-end
-
-function unit_normal_accessor(measure::Measure)
-    unit_normal_accessor(quadrature(measure))
-end
+# function unit_normal_accessor(measure::Measure)
+#     unit_normal_accessor(quadrature(measure))
+# end
 

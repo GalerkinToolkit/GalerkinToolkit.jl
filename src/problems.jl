@@ -158,7 +158,7 @@ function assemble_scalar(integral::Integral;
     end
 end
 
-function update_scalar(loops;parameters)
+function update_scalar(loops; parameters)
     sum(loops) do (params_loop, init)
         loop = params_loop(parameters...)
         loop(init)
@@ -234,7 +234,7 @@ function assemble_vector(f,::Type{T},space;
 end
 
 function update_vector!(b,cache;parameters)
-    cache = (;loops,alloc,vector_cache)
+    (;loops,alloc,vector_cache) = cache
     reset!(alloc)
     map(loops) do params_loop
         loop! = params_loop(parameters...)
