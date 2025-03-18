@@ -71,7 +71,7 @@ function integral(contributions...)
     Integral(contributions)
 end
 
-struct Integral{A}
+struct Integral{A} <: AbstractType
     contributions::A
 end
 
@@ -418,18 +418,20 @@ end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh0::DiscreteField,r,j,V=GT.space(uh0),
+function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh0),
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
-    U = GT.space(uh0)
+    U = GT.space(uh)
     #b0,residual_cache = assemble_residual(r,uh,V;reuse=Val(true),vector_strategy)
     #A0,jacobian_cache = assemble_jacobian(j,uh,V,reuse=Val(true),matrix_strategy)
     parameters = (uh,)
-    b0,residual_cache = assemble_vector(r(uh),V;parameters,vector_strategy)
-    A0,jacobian_cache = assemble_matrix(j(uh),U,V;parameters,matrix_strategy)
-    workspace = (;uh0,residual_cache,jacobian_cache)
-    PS.nonlinear_problem(nonlinear_problem_update,x0,b0,A0,workspace)
+    x = free_values(uh)
+    T = eltype(x)
+    b,residual_cache = assemble_vector(r(uh),T,V;parameters,vector_strategy)
+    A,jacobian_cache = assemble_matrix(j(uh),T,U,V;parameters,matrix_strategy)
+    workspace = (;uh,residual_cache,jacobian_cache)
+    PS.nonlinear_problem(nonlinear_problem_update,x,b,A,workspace)
 end
 
 function nonlinear_problem_update(p)

@@ -25,13 +25,16 @@ function optimize(term::AbstractTerm)
 end
 
 # We want the leafs to be also AbstractTerm
-struct LeafTerm{A,B} <: AbstractTerm
+struct LeafTerm{A,B,C} <: AbstractTerm
     value::A
     prototype::B
+    is_compile_constant::Val{C}
 end
 
 # The prototye is the same as the value by default
-LeafTerm(v) = LeafTerm(v,v)
+leaf_term(v,prototype=v;is_compile_constant::Val) = LeafTerm(v,v,is_compile_constant)
+
+is_compile_constant(t::LeafTerm) = val_parameter(t.is_compile_constant)
 
 # TODO rename value
 value(a::LeafTerm) = a.value
@@ -141,9 +144,10 @@ end
 # Parametrizes all values in Leafs if they are in params.
 function parametrize(term::AbstractTerm,params...)
     pairs = map(enumerate(params)) do (i,param)
-        param=>Symbol("param_$(arg[])")
+        param=>Symbol("param_$i")
     end
     args = map(last,pairs)
+    value_arg = IdDict{Any,Symbol}(pairs...)
     body = parametrize!(value_arg,term)
     lambda_term(body,args...)
 end
@@ -161,13 +165,15 @@ function parametrize!(value_arg,term::AbstractTerm)
     replace_dependencies(term,dependencies)
 end
 
-# captures all values in Leafs
+# captures all values in Leafs that are not compile constants
+# and have not been reduced
 # Make sure that all indices have been reduced
 # before using this function!
 function capture(term::AbstractTerm)
     value_arg = IdDict{Any,Symbol}
+    reduced_symbols = Base.IdSet{Any}()
     arg = Ref(0)
-    body = capture!(value_arg,arg,term)
+    body = capture!(value_arg,arg,reduced_symbols,term)
     captured_pairs = collect(value_arg)
     sort!(captured_pairs, by=last)
     captured_values = map(first,captured_pairs)
@@ -176,16 +182,25 @@ function capture(term::AbstractTerm)
     captured_term, captured_values
 end
 
-function capture!(value_arg,arg,term::LeafTerm)
+function capture!(value_arg,arg,reduced_symbols,term::LeafTerm)
+    if is_compile_constant(term)
+        return term
+    end
     (;value) = term
+    if value in reduced_symbols
+        return term
+    end
     if ! haskey(value_arg,value)
         arg[] += 1
         value_arg[value] = Symbol("captured_arg_$(arg[])")
     end
     value_arg[value]
+    term
 end
 
-function capture!(value_arg,arg,term::AbstractTerm)
+function capture!(value_arg,arg,reduced_symbols,term::AbstractTerm)
+    bindings = GT.bindings(term)
+    append!(reduced_symbols,bindings)
     dependencies = map(child->capture!(value_arg,arg,child),dependencies(term))
     replace_dependencies(term,dependencies)
 end
@@ -204,11 +219,11 @@ end
 # involving integrals,
 # when using numerical integration to compute the integrals
 struct Index{N} <: AbstractTerm
-    domain_face_index::index
-    point_index::index
-    arg_field_index::NTuple{N,index}
-    arg_face_around_index::NTuple{N,index}
-    arg_dof_index::NTuple{N,index}
+    domain_face_index::Symbol
+    point_index::Symbol
+    arg_field_index::NTuple{N,Symbol}
+    arg_face_around_index::NTuple{N,Symbol}
+    arg_dof_index::NTuple{N,Symbol}
 end
 
 domain_face_index(index::Index) = index.domain_face_index
