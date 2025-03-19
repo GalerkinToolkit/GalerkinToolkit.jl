@@ -20,7 +20,7 @@ end
 
 # By default, we just optimize the dependencies
 function optimize(term::AbstractTerm)
-    dependencies = map(optimize,dependencies(term))
+    dependencies = map(optimize,GT.dependencies(term))
     replace_dependencies(term,dependencies)
 end
 
@@ -32,7 +32,7 @@ struct LeafTerm{A,B,C} <: AbstractTerm
 end
 
 # The prototye is the same as the value by default
-leaf_term(v,prototype=v;is_compile_constant::Val) = LeafTerm(v,v,is_compile_constant)
+leaf_term(v; prototype=v, is_compile_constant::Val=Val(true)) = LeafTerm(v, prototype, is_compile_constant)
 
 is_compile_constant(t::LeafTerm) = val_parameter(t.is_compile_constant)
 
@@ -98,12 +98,29 @@ struct CallTerm{A,B} <: AbstractTerm
     args::B
 end
 
+
+function return_prototype(f,args...)
+    f(args...)
+end
+
+function return_prototype(::typeof(getindex),a,b)
+    zero(eltype(a))
+end
+
+function return_prototype(::typeof(getindex),a,b::Integer)
+    if length(a) != 0
+        first(a)
+    else
+        zero(eltype(a))
+    end
+end
+
 function prototype(a::CallTerm)
     return_prototype(prototype(a.callee),map(prototype,a.args)...)
 end
 
 function dependencies(term::CallTerm)
-    (term.callee,calee.args...)
+    (term.callee, term.args...)
 end
 
 function replace_dependencies(term::CallTerm,dependencies)
@@ -241,20 +258,18 @@ end
 
 # The objects that are exposed to the user
 # inside of an integral
-abstract type AbstractQuantity <: AbstractType end
 
+# NB.To define a prototype for a quantity  we need a domain
+# It is easier to add the prototype to terms instead
+struct Quantity{A} <: AbstractQuantity
+    term::A
+end
 function quantity(term)
     Quantity(term)
 end
 
-# NB.To define a prototype for a quantity  we need a domain
-# It is easier to add the prototype to terms instead
-struct Quantity{A,B}
-    term::A
-end
-
 function term(qty::Quantity,opts)
-    qyt.term(opts)
+    qty.term(opts)
 end
 
 function call(callee,args::AbstractQuantity...)
@@ -264,7 +279,7 @@ end
 
 function call(callee::AbstractQuantity,args::AbstractQuantity...)
     quantity() do opts
-        f_term = term(f,opts)
+        f_term = term(callee,opts)
         args_term = map(arg->term(arg,opts),args)
         call_term(f_term,args_term...)
     end
@@ -272,15 +287,21 @@ end
 
 function compile_constant_quantity(v)
     quantity() do opts
-        LeafTerm(v)
+        leaf_term(v; is_compile_constant=Val(true))
+    end
+end
+
+function uniform_quantity(v)
+    quantity() do opts
+        leaf_term(v; is_compile_constant=Val(false))
     end
 end
 
 function coordinate_quantity(quadrature)
     quantity() do opts
-        face = domain_face_index(term.index)
-        point = point_index(term.index)
-        dependencies = map(LeafTerm,(quadrature,face,point))
+        face = domain_face_index(opts.index)
+        point = point_index(opts.index)
+        dependencies = map(leaf_term,(quadrature,face,point))
         CoordinateTerm(dependencies)
     end
 end
@@ -314,9 +335,10 @@ end
 
 function weight_quantity(quadrature)
     quantity() do opts
-        face = domain_face_index(term.index)
-        point = point_index(term.index)
-        dependencies = map(LeafTerm,(quadrature,face,point))
+        face = domain_face_index(opts.index)
+        point = point_index(opts.index)
+        # TODO: fix prototypes of all leaf terms?
+        dependencies = map(leaf_term,(quadrature,face,point))
         WeightTerm(dependencies)
     end
 end
@@ -357,17 +379,17 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         if D == d
             the_face_around = nothing
             face_around = nothing
-            dependencies = map(LeafTerm,(space,domain,face,the_field,field,dof,the_face_around,face_around))
+            dependencies = map(leaf_term,(space,domain,face,the_field,field,dof,the_face_around,face_around))
             FormArgumentTerm(dependencies)
         elseif D==d+1 && face_around !== nothing
             the_face_around = face_around
-            dependencies = map(LeafTerm,(space,domain,face,the_field,field,dof,the_face_around,face_around))
+            dependencies = map(leaf_term,(space,domain,face,the_field,field,dof,the_face_around,face_around))
             FormArgumentTerm(dependencies)
         else
             face_around = face_around_index(index,arg)
             the_face_around = :the_face_around
-            dependencies = map(LeafTerm,(space,domain,face,the_field,field,dof,the_face_around,face_around))
-            n_faces_around = LeafTerm(2) # Hard coded! But OK in practice.
+            dependencies = map(leaf_term,(space,domain,face,the_field,field,dof,the_face_around,face_around))
+            n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
             SkeletonTerm(FormArgumentTerm(dependencies),n_faces_around,the_face_around)
         end
     end
@@ -419,15 +441,15 @@ function term(uh::DiscreteField,opts)
     f = value
     if D == d
         face_around = nothing
-        dependencies = map(LeafTerm,(f,uh,domain,face,face_around))
+        dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         DiscreteTerm(dependencies)
     elseif D==d+1 && face_around !== nothing
-        dependencies = map(LeafTerm,(f,uh,domain,face,face_around))
+        dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         DiscreteTerm(dependencies)
     else
         face_around = :the_face_around
-        n_faces_around = LeafTerm(2) # Hard coded! But OK in practice.
-        dependencies = map(LeafTerm,(f,uh,domain,face,face_around))
+        n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
+        dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         SkeletonTerm(DiscreteTerm(dependencies),n_faces_around,face_around)
     end
 end
@@ -517,6 +539,20 @@ function optimize(term::RefTerm{<:SkeletonTerm})
     replace_the_face_around(term.container.parent,the_face_around)
 end
 
+function generate_assemble_scalar(contribution::DomainContribution;parameters=())
+    # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
+    # needs to be though carefully. We provably will need several calls to optimize and more IR levels
+    term_0 = write_assemble_scalar(contribution,space)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    term_4 = statements(term_3)
+    expr_0 = expression(term_4)
+
+    f = evaluate(expr_0,captured_data)
+    f
+end
+
 function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=())
     # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
     # needs to be though carefully. We provably will need several calls to optimize and more IR levels
@@ -536,10 +572,10 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
     arity = Val(1)
     index = GT.index(arity)
     term = GT.term(contribution,index)
-    space_term = LeafTerm(space)
-    quadrature_term = LeafTerm(quadrature)
+    space_term = leaf_term(space)
+    quadrature_term = leaf_term(quadrature)
     arg = :alloc
-    alloc = LeafTerm(alloc)
+    alloc = leaf_term(alloc)
     VectorAssemblyTerm(term,space_term,quadrature_term,alloc,arg,index)
 end
 
@@ -647,3 +683,44 @@ function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     alloc
 end
 
+
+# TODO: why abstract quantity?
+function to_quantity(q::AbstractQuantity)
+    q
+end
+
+function to_quantity(q)
+    # TODO: other types
+    # is it a compile constant?
+    compile_constant_quantity(q)
+    # quantity() do opts
+    #     leaf_term(q, q; is_compile_constant=false)
+    # end
+
+end
+
+function to_quantities(expr)
+    :($to_quantity($expr))
+end
+
+function to_quantities(expr::Expr)
+    if expr.head == :(->)
+        Expr(expr.head, expr.args[1], map(to_quantities, expr.args[2:end])...)
+    elseif expr.head == :call 
+        Expr(expr.head, call, map(to_quantities, expr.args)...)
+    else
+        Expr(expr.head, map(to_quantities, expr.args)...)
+    end
+end
+
+macro qty(expr)
+    expr |> MacroTools.striplines |> to_quantities |> esc
+end
+
+for op in (:+,:-,:*,:/,:\,:^)
+    @eval begin
+        (Base.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(Base.$op,a,b)
+        (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.compile_constant_quantity(a),b)
+        (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.compile_constant_quantity(b))
+    end
+end

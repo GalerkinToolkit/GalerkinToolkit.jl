@@ -57,14 +57,14 @@ function quantity(contribution::DomainContribution)
     x = coordinate_quantity(quadrature)
     dV = weight_quantity(quadrature)
     coefficient = GT.coefficient(contribution)
-    alpha = uniform_quantity(coefficient)
+    alpha = uniform_quantity(coefficient) # TODO: do we need a uniform quantity here?
     alpha*integrand(x)*dV
 end
 
 function term(contribution::DomainContribution,index)
     domain = GT.domain(contribution)
     opts = QuantityOptions(domain,index)
-    term(quantity(contribution),opts)
+    term(quantity(contribution), opts)
 end
 
 function integral(contributions...)
@@ -137,18 +137,19 @@ function update_sample_accessor(g;parameters)
 end
 
 # 0-forms
-
 function assemble_scalar(integral::Integral;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    contributions = GT.contributions(integral)
+    contributions = integral.contributions
     pairs = map(contributions) do contribution
         init = zero(prototype(contribution))
-        params_loop = generate_assemble_scalar(contribution;parameters)
+        params_loop = generate_assemble_scalar(contribution; parameters)
         loop = params_loop(parameters...)
-        loop(init), (params_loop, init)
+        (loop(init), (params_loop, init))
     end
+    
+    display(pairs)
     b = sum(first,pairs)
     loops = map(last,pairs)
     if val_parameter(reuse)
