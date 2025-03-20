@@ -57,14 +57,15 @@ function quantity(contribution::DomainContribution)
     x = coordinate_quantity(quadrature)
     dV = weight_quantity(quadrature)
     coefficient = GT.coefficient(contribution)
-    alpha = uniform_quantity(coefficient)
+    alpha = uniform_quantity(coefficient) # TODO: do we need a uniform quantity here? Yes, we need it.
     alpha*integrand(x)*dV
 end
 
 function term(contribution::DomainContribution,index)
     domain = GT.domain(contribution)
     opts = QuantityOptions(domain,index)
-    term(quantity(contribution),opts)
+    qty = quantity(contribution)
+    term(qty,opts)
 end
 
 function integral(contributions...)
@@ -75,7 +76,7 @@ struct Integral{A} <: AbstractType
     contributions::A
 end
 
-contributions(i::Integral) = contributions
+contributions(i::Integral) = i.contributions
 
 function contribution(i::Integral,domain::AbstractDomain)
     for contribution in contributions(i)
@@ -137,18 +138,19 @@ function update_sample_accessor(g;parameters)
 end
 
 # 0-forms
-
 function assemble_scalar(integral::Integral;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    contributions = GT.contributions(integral)
+    contributions = integral.contributions
     pairs = map(contributions) do contribution
         init = zero(prototype(contribution))
-        params_loop = generate_assemble_scalar(contribution;parameters)
+        params_loop = generate_assemble_scalar(contribution; parameters)
         loop = params_loop(parameters...)
-        loop(init), (params_loop, init)
+        (loop(init), (params_loop, init))
     end
+    
+    display(pairs)
     b = sum(first,pairs)
     loops = map(last,pairs)
     if val_parameter(reuse)
@@ -158,7 +160,7 @@ function assemble_scalar(integral::Integral;
     end
 end
 
-function update_scalar(loops;parameters)
+function update_scalar(loops; parameters)
     sum(loops) do (params_loop, init)
         loop = params_loop(parameters...)
         loop(init)
@@ -220,8 +222,8 @@ function assemble_vector(f,::Type{T},space;
     alloc = allocate_vector(T,space,domains...;vector_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
         params_loop = generate_assemble_vector(contribution,space;parameters)
-        loop! = params_loop(parameters...)
-        loop!(alloc)
+        loop! = Base.invokelatest(params_loop,parameters...)
+        Base.invokelatest(loop!,alloc)
         params_loop
     end
     b, vector_cache = compress(alloc;reuse=Val(true))
@@ -233,12 +235,12 @@ function assemble_vector(f,::Type{T},space;
     end
 end
 
-function update_vector!(b,cache;parameters)
-    cache = (;loops,alloc,vector_cache)
+function update_vector!(b,cache;parameters=())
+    (;loops,alloc,vector_cache) = cache
     reset!(alloc)
     map(loops) do params_loop
-        loop! = params_loop(parameters...)
-        loop!(alloc)
+        loop! = Base.invokelatest(params_loop,parameters...)
+        Base.invokelatest(loop!,alloc)
     end
     compress!(alloc,b,vector_cache)
     b

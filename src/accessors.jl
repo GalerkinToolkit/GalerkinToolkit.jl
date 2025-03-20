@@ -866,67 +866,90 @@ end
 #    shape_function_accessor(f,space)
 #end
 #
-#function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature;field=1)
-#    face_point_dof_s = shape_function_accessor(f,space,measure)
-#    prototype = GT.prototype(face_point_dof_s)
-#    the_field = field
-#    function face_point_dof_a(face,face_around=nothing)
-#        the_face_around = face_around
-#        point_dof_s = face_point_dof_s(face,face_around)
-#        function point_dof_a(point)
-#            dof_s = point_dof_s(point)
-#            function dof_a(dof,face_around=nothing;field=1)
-#                s = dof_s(dof)
-#                mask = face_around == the_face_around && field == the_field
-#                if mask
-#                    s
-#                else
-#                    zero(s)
-#                end
-#            end
-#        end
-#    end
-#    accessor(face_point_dof_a,prototype)
-#end
-
-function num_faces_around_accesor(space_domain,domain)
-    error("not implemented")
+function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,field=1)
+    face_point_dof_s = shape_function_accessor(f,space,measure)
+    prototype = GT.prototype(face_point_dof_s)
+    the_field = field
+    function face_point_dof_a(face,face_around=nothing)
+        the_face_around = face_around
+        point_dof_s = face_point_dof_s(face,face_around)
+        function point_dof_a(point)
+            dof_s = point_dof_s(point)
+            function dof_a(dof,field=1,face_around=nothing)
+                s = dof_s(dof)
+                mask = face_around == the_face_around && field == the_field
+                if mask
+                    s
+                else
+                    zero(s)
+                end
+            end
+        end
+    end
+    accessor(face_point_dof_a,prototype)
 end
 
-
-function num_points_accessor(measure::Measure)
-    num_points_accessor(quadrature(measure))
+function num_faces_around_accesor(domain_space,domain)
+    d = num_dims(domain)
+    D = num_dims(domain_space)
+    face_around = GT.face_around(domain)
+    if d == D
+        num_faces_around_accesor_interior(domain_space,space)
+    elseif d+1==D && face_around !== nothing
+        num_faces_around_accesor_interior(domain_space,space)
+    else
+        num_faces_around_accesor_skeleton(domain_space,space)
+    end
 end
 
-function coordinate_accessor(measure::Measure)
-    coordinate_accessor(quadrature(measure))
+function num_faces_around_accesor_interior(space_domain,domain)
+    function n_faces_around(face,face_around=nothing)
+        1
+    end
+    accessor(n_faces_around,1)
 end
 
-function jacobian_accessor(measure::Measure,args...)
-    jacobian_accessor(quadrature(measure),args...)
+function num_faces_around_accesor_skeleton(space_domain,domain)
+    function n_faces_around(face,face_around=nothing)
+        2
+    end
+    accessor(n_faces_around,1)
 end
 
-function weight_accessor(measure::Measure)
-    weight_accessor(quadrature(measure))
-end
+# remove it as we use quadrature directly
+# function num_points_accessor(measure::Measure)
+#     num_points_accessor(quadrature(measure))
+# end
 
-function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
-    discrete_field_accessor(f,uh,quadrature(measure))
-end
+# function coordinate_accessor(measure::Measure)
+#     coordinate_accessor(quadrature(measure))
+# end
 
-function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
-    shape_function_accessor(f,space,quadrature(measure))
-end
+# function jacobian_accessor(measure::Measure,args...)
+#     jacobian_accessor(quadrature(measure),args...)
+# end
 
-function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
-    form_argument_accessor(f,space,quadrature(measure))
-end
+# function weight_accessor(measure::Measure)
+#     weight_accessor(quadrature(measure))
+# end
 
-function physical_map_accessor(f,measure::Measure,vD)
-    physical_map_accessor(f,quadrature(measure),vD)
-end
+# function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
+#     discrete_field_accessor(f,uh,quadrature(measure))
+# end
 
-function unit_normal_accessor(measure::Measure)
-    unit_normal_accessor(quadrature(measure))
-end
+# function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
+#     shape_function_accessor(f,space,quadrature(measure))
+# end
+
+# function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
+#     form_argument_accessor(f,space,quadrature(measure))
+# end
+
+# function physical_map_accessor(f,measure::Measure,vD)
+#     physical_map_accessor(f,quadrature(measure),vD)
+# end
+
+# function unit_normal_accessor(measure::Measure)
+#     unit_normal_accessor(quadrature(measure))
+# end
 

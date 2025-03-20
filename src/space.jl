@@ -2171,11 +2171,12 @@ function flip_sign(space,qty)
         face = face_index(index,D)
         t = term(qty,index)
         dof = dof_index(t)
-        expr = @term begin
-            flip = $face_dof_flip($face)($dof)
-            s = $(expression(t))
-            x->flip*s(x)
-        end
+        expr = :($face_dof_flip($face)($dof) * $(expression(t))(x))
+        # expr = @term begin
+        #     flip = $face_dof_flip($face)($dof)
+        #     s = $(expression(t))
+        #     x->flip*s(x)
+        # end
         expr_term(D,expr,x->1*prototype(t)(x),index)
     end
 end
