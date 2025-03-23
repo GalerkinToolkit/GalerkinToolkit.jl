@@ -376,7 +376,6 @@ function weight_quantity(quadrature)
     quantity() do opts
         face = domain_face_index(opts.index)
         point = point_index(opts.index)
-        # TODO: fix prototypes of all leaf terms?
         dependencies = map(leaf_term,(quadrature,face,point))
         WeightTerm(dependencies)
     end
@@ -410,28 +409,33 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         domain = GT.domain(opts)
         D = num_dims(space_domain)
         d = num_dims(domain)
-        the_face_around = GT.face_around(domain)
+        face_around = GT.face_around(domain)
         index = GT.index(opts)
         face = domain_face_index(index)
         field = field_index(index,arg)
         dof = dof_index(index,arg)
+
+        f = leaf_term(GT.value; is_compile_constant=Val(true))
+        the_field_term = leaf_term(the_field; is_compile_constant=Val(true))
+        (space_term, domain_term, face_term, field_term, dof_term, face_around_term) = map(leaf_term, (space, domain, face, field, dof, face_around))
+        to_leaf_term = x -> (x isa AbstractTerm) ? x : leaf_term(x)
+
         if D == d
-            the_face_around = nothing
-            face_around = nothing
-            # TODO make field and the face around a compile constant?
-            # TODO makie f compile constant
-            f = GT.value
-            dependencies = map(leaf_term,(f,space,domain,face,the_field,field,dof,the_face_around,face_around))
+            the_face_around_term = leaf_term(nothing, is_compile_constant=Val(true))
+            face_around_term = leaf_term(nothing)
+            dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
         elseif D==d+1 && face_around !== nothing
-            the_face_around = face_around
-            dependencies = map(leaf_term,(f,space,domain,face,the_field,field,dof,the_face_around,face_around))
+            the_face_around_term = leaf_term(face_around, is_compile_constant=Val(true))
+            face_around_term = leaf_term(face_around)
+            dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
         else
-            face_around = face_around_index(index,arg)
-            the_face_around = :the_face_around
-            dependencies = map(leaf_term,(f,space,domain,face,the_field,field,dof,the_face_around,face_around))
+            face_around_term = leaf_term(face_around_index(index,arg))
+            the_face_around_term = leaf_term(:the_face_around)
+            # the_face_around = leaf_term(:the_face_around, is_compile_constant=Val(true))
             n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
+            dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             SkeletonTerm(FormArgumentTerm(dependencies),n_faces_around,the_face_around)
         end
     end
@@ -623,6 +627,35 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
     VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index)
 end
 
+
+function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=())
+    # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
+    # needs to be though carefully. We provably will need several calls to optimize and more IR levels
+    term_0 = write_assemble_matrix(contribution,space_trial, space_test)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    expr_0 = expression(term_3)
+    #TODO
+    #expr_1 = statements(expr_0)
+    expr_1 = expr_0
+    f = evaluate(expr_1,captured_data)
+    f
+end
+
+function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace)
+    quadrature = GT.quadrature(contribution)
+    domain = GT.domain(quadrature)
+    arity = Val(2)
+    index = GT.index(arity)
+    term = GT.term(contribution,index)
+    space_trial_term = leaf_term(space_trial)
+    space_test_term = leaf_term(space_test)
+    quadrature_term = leaf_term(quadrature)
+    alloc_arg = :alloc
+    alloc = leaf_term(alloc_arg)
+    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
+end
 struct VectorAssemblyTerm{A,B,C,D,E,F} <: AbstractTerm
     term::A # <: Term
     space::B # <: Term
@@ -631,6 +664,17 @@ struct VectorAssemblyTerm{A,B,C,D,E,F} <: AbstractTerm
     alloc_arg::E # gets reduced
     index::F # gets reduced
 end
+
+struct MatrixAssemblyTerm{A,B,C,D,E,F,G} <: AbstractTerm
+    term::A # <: Term
+    space_trial::B # <: Term
+    space_test::C
+    quadrature::D # <: Term
+    alloc::E
+    alloc_arg::F # gets reduced
+    index::G # gets reduced
+end
+
 
 function bindings(term::VectorAssemblyTerm)
     index = term.index
@@ -647,10 +691,32 @@ function dependencies(term::VectorAssemblyTerm)
     (term,space,quadrature,alloc)
 end
 
+function bindings(term::MatrixAssemblyTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    field_trial, field_test = field_index(index,1), field_index(index,2)
+    face_around_trial, face_around_test = face_around_index(index,1), face_around_index(index,2)
+    dof_trial, dof_test = dof_index(index,1), dof_index(index,2)
+    (term.alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test)
+end
+
+function dependencies(term::MatrixAssemblyTerm)
+    (;term,space_trial,space_test,quadrature,alloc) = term
+    (term,space_trial,space_test,quadrature,alloc)
+end
+
 function replace_dependencies(term::VectorAssemblyTerm,dependencies)
     (term2,space,quadrature,alloc) = dependencies
     (;alloc_arg,index) = term
     VectorAssemblyTerm(term2,space,quadrature,alloc,alloc_arg,index)
+end
+
+
+function replace_dependencies(term::MatrixAssemblyTerm,dependencies)
+    (term2,space_trial,space_test,quadrature,alloc) = dependencies
+    (;alloc_arg,index) = term
+    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index)
 end
 
 # We can specialize for particular cases if needed
@@ -667,6 +733,21 @@ function expression(term::VectorAssemblyTerm)
     expr
 end
 
+# TODO: fix it
+function expression(term::MatrixAssemblyTerm)
+    (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
+    (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
+    dof_v = :(($dof_trial, $dof_test) -> $term2)
+    block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
+    point_block_dof_v = :($point -> $block_dof_v)
+    face_point_block_dof_v = :( $face -> $point_block_dof_v)
+    nfaces = :(num_faces($domain))
+    body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
+    expr = :($alloc_arg->$body)
+    expr
+end
+
+
 function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
@@ -682,7 +763,7 @@ function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
         n = max_num_faces_around(GT.domain(field_space),domain)
         map(1:n) do _
             m = max_num_reference_dofs(field_space)
-            zeros(eltype(alloc),m,n)
+            zeros(eltype(alloc),m)
         end
     end
     nfields = num_fields(space)
@@ -728,39 +809,111 @@ function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     alloc
 end
 
-
-# TODO: why abstract quantity?
-function to_quantity(q::AbstractQuantity)
-    q
-end
-
-function to_quantity(q)
-    # TODO: other types
-    # is it a compile constant?
-    compile_constant_quantity(q)
-    # quantity() do opts
-    #     leaf_term(q, q; is_compile_constant=false)
-    # end
-
-end
-
-function to_quantities(expr)
-    :($to_quantity($expr))
-end
-
-function to_quantities(expr::Expr)
-    if expr.head == :(->)
-        Expr(expr.head, expr.args[1], map(to_quantities, expr.args[2:end])...)
-    elseif expr.head == :call 
-        Expr(expr.head, call, map(to_quantities, expr.args)...)
-    else
-        Expr(expr.head, map(to_quantities, expr.args)...)
+# TODO:fix
+function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_test,quadrature)
+    domain = GT.domain(quadrature)
+    nfaces = num_faces(domain)
+    # space_domain = GT.domain(space)
+    face_npoints = num_points_accessor(quadrature)
+    field_face_n_faces_around_trial = map(fields(space_trial)) do field_space
+        num_faces_around_accesor(GT.domain(field_space),domain)
     end
+    field_face_n_faces_around_test = map(fields(space_test)) do field_space
+        num_faces_around_accesor(GT.domain(field_space),domain)
+    end
+
+    field_face_dofs_trial = map(fields(space_trial)) do field_space
+        dofs_accessor(field_space,domain)
+    end
+
+    field_face_dofs_test = map(fields(space_test)) do field_space
+        dofs_accessor(field_space,domain)
+    end
+
+    # TODO: set matrix 
+    field_face_around_be = map(fields(space_trial)) do field_space_trial
+        n_trial = max_num_faces_around(GT.domain(field_space_trial),domain)
+        map(fields(space_test)) do field_space_test
+            n_test = max_num_faces_around(GT.domain(field_space_test),domain)
+            map(1:n_trial) do _
+                map(1:n_test) do _
+                    m_trial = max_num_reference_dofs(field_space_trial)
+                    m_test = max_num_reference_dofs(field_space_test)
+                    zeros(eltype(alloc),m_trial, m_test)
+                end
+            end
+        end
+    end
+
+
+    nfields_trial = num_fields(space_trial)
+    nfields_test = num_fields(space_test)
+    z = zero(eltype(alloc))
+
+    for face in 1:nfaces
+        point_block_dof_v = face_point_block_dof_v(face)
+        # TODO: Reset
+        for field_test_face_around_be in field_face_around_be
+            for face_around_be in field_test_face_around_be
+                for face_around_test_be in face_around_be
+                    for be in face_around_test_be
+                        fill!(be,z)
+                    end
+                end
+            end
+        end
+        # Integrate
+        npoints = face_npoints(face)
+        for point in 1:npoints
+            block_dof_v = point_block_dof_v(point)
+            for field_trial in 1:nfields_trial
+                n_faces_around_trial = field_face_n_faces_around_trial[field_trial](face)
+                for field_test in 1:nfields_test
+                    face_around_be = field_face_around_be[field_trial][field_test]
+                    n_faces_around_test = field_face_n_faces_around_test[field_test](face)
+                    
+                    for face_around_trial in 1:n_faces_around_trial
+                        for face_around_test in 1:n_faces_around_test
+                            be = face_around_be[face_around_trial][face_around_test]
+                            dof_v = block_dof_v(field_trial,field_test,face_around_trial,face_around_test)
+
+                            dofs_trial = field_face_dofs_trial[field_trial](face,face_around_trial)
+                            dofs_test = field_face_dofs_test[field_test](face,face_around_test)
+                            ndofs_trial, ndofs_test = length(dofs_trial), length(dofs_test)
+                            for dof_trial in 1:ndofs_trial
+                                for dof_test in 1:ndofs_test
+                                    v = dof_v(dof_trial, dof_test)
+                                    be[dof_test, dof_trial] += v
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        # Contribute
+        for field_trial in 1:nfields_trial
+            n_faces_around_trial = field_face_n_faces_around_trial[field_trial](face)
+            for field_test in 1:nfields_test
+                face_around_be = field_face_around_be[field_trial][field_test]
+                n_faces_around_test = field_face_n_faces_around_test[field_test](face)
+                for face_around_trial in 1:n_faces_around_trial
+                    for face_around_test in 1:n_faces_around_test
+                        dofs_trial = field_face_dofs_trial[field_trial](face,face_around_trial)
+                        dofs_test = field_face_dofs_test[field_test](face,face_around_test)
+                        be = face_around_be[face_around_trial][face_around_test]
+                        contribute!(alloc,be,dofs_test, dofs_trial,field_test, field_trial)
+                    end
+                    # function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
+                end
+            end
+        end
+    end
+    alloc
 end
 
-macro qty(expr)
-    expr |> MacroTools.striplines |> to_quantities |> esc
-end
+
 
 #for op in (:+,:-,:*,:/,:\,:^)
 #    @eval begin
