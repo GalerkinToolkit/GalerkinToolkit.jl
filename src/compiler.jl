@@ -475,6 +475,18 @@ function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
     TabulatedTerm(term.callee,quadrature,point)
 end
 
+# function optimize(term::CallTerm{<:LeafTerm})#{typeof(ForwardDiff.gradient)}})#,<:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
+function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
+    v = optimize(term.args[1]) 
+    coords = optimize(term.args[2])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(v)
+    new_deps = (term.callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
+    v2 = replace_dependencies(v, new_deps)
+    TabulatedTerm(v2,quadrature,point)
+end
+
+
 function term(uh::DiscreteField,opts)
     space = GT.space(uh)
     space_domain = GT.domain(space)
@@ -488,15 +500,15 @@ function term(uh::DiscreteField,opts)
     if D == d
         face_around = nothing
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
-        DiscreteTerm(dependencies)
+        DiscreteFieldTerm(dependencies)
     elseif D==d+1 && face_around !== nothing
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
-        DiscreteTerm(dependencies)
+        DiscreteFieldTerm(dependencies)
     else
         face_around = :the_face_around
         n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
-        SkeletonTerm(DiscreteTerm(dependencies),n_faces_around,face_around)
+        SkeletonTerm(DiscreteFieldTerm(dependencies),n_faces_around,face_around)
     end
 end
 
@@ -504,10 +516,20 @@ struct DiscreteFieldTerm{A} <: AbstractTerm
     dependencies::A
 end
 
-function optimize(term::CallTerm{<:DiscreteFieldTerm,Tuple{<:CoordinateTerm}})
+
+function dependencies(term::DiscreteFieldTerm)
+    term.dependencies
+end
+
+function replace_dependencies(term::DiscreteFieldTerm,dependencies)
+    DiscreteFieldTerm(dependencies)
+end
+
+
+function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
     coords = term.args[1]
     (quadrature,face,point) = dependencies(coords)
-    TabulatedTerm(term.calee,quadrature,point)
+    TabulatedTerm(term.callee,quadrature,point)
 end
 
 struct TabulatedTerm{A,B,C} <: AbstractTerm
@@ -552,7 +574,7 @@ function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
     form_arg = term.parent
     quadrature = expression(term.quadrature)
     (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
-    :(discrete_field_accessor($f,$space,$quadrature)($face,$face_around)($point))
+    :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
 struct SkeletonTerm{A,B,C} <: AbstractTerm
@@ -586,18 +608,30 @@ function optimize(term::RefTerm{<:SkeletonTerm})
 end
 
 function generate_assemble_scalar(contribution::DomainContribution;parameters=())
-    # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
-    # needs to be though carefully. We provably will need several calls to optimize and more IR levels
-    term_0 = write_assemble_scalar(contribution,space)
+    term_0 = write_assemble_scalar(contribution)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
-    term_4 = statements(term_3)
-    expr_0 = expression(term_4)
-
+    expr_0 = expression(term_3)
+    #TODO
+    expr_1 = statements_expr(expr_0)
     f = evaluate(expr_0,captured_data)
     f
 end
+
+
+function write_assemble_scalar(contribution::DomainContribution)
+    quadrature = GT.quadrature(contribution)
+    domain = GT.domain(quadrature)
+    arity = Val(0)
+    index = GT.index(arity)
+    term = GT.term(contribution,index)
+    quadrature_term = leaf_term(quadrature)
+    init_arg = :init
+    init = leaf_term(init_arg)
+    ScalarAssemblyTerm(term,quadrature_term,init,init_arg,index)
+end
+
 
 function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=())
     # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
@@ -608,8 +642,7 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
     #TODO
-    #expr_1 = statements(expr_0)
-    expr_1 = expr_0
+    expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
 end
@@ -637,8 +670,7 @@ function generate_assemble_matrix(contribution::DomainContribution,space_trial::
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
     #TODO
-    #expr_1 = statements(expr_0)
-    expr_1 = expr_0
+    expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
 end
@@ -656,6 +688,15 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     alloc = leaf_term(alloc_arg)
     MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
 end
+
+struct ScalarAssemblyTerm{A,B,C,D,E} <: AbstractTerm
+    term::A # <: Term
+    quadrature::B # <: Term
+    init::C
+    init_arg::D # gets reduced
+    index::E # gets reduced
+end
+
 struct VectorAssemblyTerm{A,B,C,D,E,F} <: AbstractTerm
     term::A # <: Term
     space::B # <: Term
@@ -673,6 +714,20 @@ struct MatrixAssemblyTerm{A,B,C,D,E,F,G} <: AbstractTerm
     alloc::E
     alloc_arg::F # gets reduced
     index::G # gets reduced
+end
+
+
+function bindings(term::ScalarAssemblyTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    (term.init_arg,face,point)
+end
+
+
+function dependencies(term::ScalarAssemblyTerm)
+    (;term,quadrature,init) = term
+    (term,quadrature,init)
 end
 
 
@@ -706,6 +761,13 @@ function dependencies(term::MatrixAssemblyTerm)
     (term,space_trial,space_test,quadrature,alloc)
 end
 
+
+function replace_dependencies(term::ScalarAssemblyTerm,dependencies)
+    (term2,quadrature,init) = dependencies
+    (;init_arg,index) = term
+    ScalarAssemblyTerm(term2,quadrature,init,init_arg,index)
+end
+
 function replace_dependencies(term::VectorAssemblyTerm,dependencies)
     (term2,space,quadrature,alloc) = dependencies
     (;alloc_arg,index) = term
@@ -719,6 +781,19 @@ function replace_dependencies(term::MatrixAssemblyTerm,dependencies)
     MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index)
 end
 
+
+function expression(term::ScalarAssemblyTerm)
+    (term2,quadrature,init) = map(expression,dependencies(term))
+    (init_arg,face,point) = bindings(term)
+    point_v = :($point -> $term2)
+    face_point_v = :($face -> $point_v)
+    body = :(scalar_assembly_loop($face_point_v,$init,$quadrature))
+    expr = :($init_arg->$body)
+    expr
+end
+
+
+
 # We can specialize for particular cases if needed
 function expression(term::VectorAssemblyTerm)
     (term2,space,quadrature,alloc) = map(expression,dependencies(term))
@@ -727,13 +802,11 @@ function expression(term::VectorAssemblyTerm)
     block_dof_v = :( ($field,$face_around) -> $dof_v)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
-    nfaces = :(num_faces($domain))
     body = :(vector_assembly_loop!($face_point_block_dof_v,$alloc,$space,$quadrature))
     expr = :($alloc_arg->$body)
     expr
 end
 
-# TODO: fix it
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
@@ -741,10 +814,27 @@ function expression(term::MatrixAssemblyTerm)
     block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
-    nfaces = :(num_faces($domain))
     body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
     expr = :($alloc_arg->$body)
     expr
+end
+
+
+
+function scalar_assembly_loop(face_point_v,init,quadrature)
+    domain = GT.domain(quadrature)
+    nfaces = num_faces(domain)
+    face_npoints = num_points_accessor(quadrature)
+
+    z = init
+    for face in 1:nfaces
+        point_v = face_point_v(face)
+        npoints = face_npoints(face)
+        for point in 1:npoints
+            z += point_v(point)
+        end
+    end
+    z
 end
 
 
@@ -809,7 +899,6 @@ function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     alloc
 end
 
-# TODO:fix
 function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_test,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
@@ -830,7 +919,6 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
         dofs_accessor(field_space,domain)
     end
 
-    # TODO: set matrix 
     field_face_around_be = map(fields(space_trial)) do field_space_trial
         n_trial = max_num_faces_around(GT.domain(field_space_trial),domain)
         map(fields(space_test)) do field_space_test
@@ -905,7 +993,6 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
                         be = face_around_be[face_around_trial][face_around_test]
                         contribute!(alloc,be,dofs_test, dofs_trial,field_test, field_trial)
                     end
-                    # function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
                 end
             end
         end
@@ -945,9 +1032,9 @@ function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
     call(getindex,a,b)
 end
 
-#function Base.getindex(a::AbstractQuantity,b::Number)
-#    Base.getindex(a,compile_constant_quantity(b))
-#end
+# function Base.getindex(a::AbstractQuantity,b::Number)
+#    call(getindex,a,compile_constant_quantity(b))
+# end
 
 for op in (:+,:-,:*,:/,:\,:^)
   @eval begin
@@ -974,9 +1061,126 @@ for op in (:dot,:cross)
           $( Expr(:quote,op) )
       end
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
-      #(LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.uniform_quantity(a),b)
-      #(LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.uniform_quantity(b))
+    #   (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.uniform_quantity(a),b)
+    #   (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.uniform_quantity(b))
   end
 end
 
+
+for op in (:(ForwardDiff.gradient),:(ForwardDiff.jacobian),:(ForwardDiff.hessian))
+    @eval begin
+        ($op)(a::AbstractQuantity,b::AbstractQuantity) = call($op,a,b)
+    end
+end
+
+
+# a copy of the older version. need to be compared with statements over terms
+
+
+function statements_expr(node)
+    # @assert lambda_args_once(node) # keep hash_scope but make an error check. In some cases it will be a bug if we have a lambda function arg name more than once in the term
+    root = :root
+    scope_level = Dict{Symbol,Int}()
+    scope_level[root] = 0
+    hash_scope = Dict{UInt,Symbol}()
+    scope_rank = Dict{Symbol,Int}()
+    scope_rank[root] = 0
+    hash_expr = Dict{UInt, Any}()
+    scope_block = Dict(root=>Expr(:block))
+    function visit(node, depth = 0) # if the terms here are immutable (no terms "appended" after construction) then we can assume there is no graph cycle
+        hash = Base.hash(node)
+        if haskey(hash_scope, hash)
+            return [hash_scope[hash]]
+        end
+        if node isa Symbol || node isa Number || node isa Function || node isa Nothing
+            scopes = [root]
+            hash_expr[hash] = node
+            hash_scope[hash] = root 
+            return scopes
+        elseif node isa Expr
+            if  node.head === :call || node.head ===  :ref || node.head ===  :block
+                
+                # args = (node.head === :call) ? (node.callee, node.args...) : (node.array, node.index)
+                args = filter(x->!(x isa LineNumberNode), node.args)
+                scopes_nested = map(args) do arg
+                    visit(arg, depth)
+                end
+                scopes = reduce(vcat,scopes_nested) |> unique
+                scope = argmax(x->scope_level[x],scopes)
+                hash_scope[hash] = scope
+                rank = 1 + scope_rank[scope]
+                scope_rank[scope] = rank
+
+                var = Symbol("var_$(scope)_$(rank)")
+                hash_expr[hash] = var
+                args_var = map(args) do arg
+                    arg_hash = Base.hash(arg)
+                    hash_expr[arg_hash]
+                end
+                expr = if node.head === :block && length(args_var) === 1
+                    args_var[1]
+                else
+                    Expr(node.head,args_var...)
+                end
+                assignment = :($var = $expr)
+                block = scope_block[scope]
+                push!(block.args, assignment)
+                return scopes
+            elseif node.head === :(->)
+                body = node.args[2]
+                args = (node.args[1] isa Expr) ? node.args[1].args : (node.args[1], )
+                block = Expr(:block)
+
+                scope = (length(args) > 0) ? args[1] : gensym()
+                scope_level[scope] = depth + 1
+                scope_rank[scope] = 0                
+                scope_block[scope] = block
+    
+                for arg in args 
+                    arg_hash = Base.hash(arg)
+                    hash_expr[arg_hash] = arg
+                    hash_scope[arg_hash] = scope
+                end
+                
+                scopes = visit(body, depth + 1)
+                if length(block.args) == 0 # at least 1 statement
+                    arg_hash = Base.hash(body)
+                    arg_var = hash_expr[arg_hash]
+                    
+                    push!(block.args, :($(gensym()) = $arg_var))
+                end
+
+                scopes = setdiff(scopes,[scope])
+                scope = argmax(scope->scope_level[scope],scopes)
+                hash_scope[hash] = scope
+                rank = 1 + scope_rank[scope]
+                scope_rank[scope] = rank
+    
+                var = Symbol("var_$(scope)_$(rank)")
+                hash_expr[hash] = var
+    
+                expr = Expr(:(->), node.args[1], block) #  LambdaTerm(block, node.args, x -> prototype(node))
+    
+                assignment = :($var = $expr) #  StatementTerm(var_term, expr, prototype(node))
+                block = scope_block[scope]
+                push!(block.args, assignment)
+                return scopes
+            else
+                @show node
+                dump(node)
+                @show typeof(node)
+                error("A")
+            end
+        else
+            @show node
+            @show typeof(node)
+            error("B")
+        end
+
+
+    end
+
+    visit(node)
+    scope_block[root]
+end
 

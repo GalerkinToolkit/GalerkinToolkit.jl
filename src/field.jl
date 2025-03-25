@@ -17,8 +17,7 @@ end
 function analytical_field(f,dom::AbstractDomain)
     D = num_dims(dom)
     q = quantity() do index
-        expr = get_symbol!(index,f,"analytical_field")
-        expr_term([D],expr,f,index)
+        leaf_term(f)
     end
     AnalyticalField(f,q,dom)
 end
@@ -63,9 +62,8 @@ function discrete_field(space::AbstractSpace,free_values)
 end
 
 function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
-    qty = discrete_field_quantity(space,free_values,dirichlet_values)
     mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
+    DiscreteField(mesh,space,free_values,dirichlet_values)
 end
 
 struct DiscreteField{A,B,C,D} <: GT.AbstractField
@@ -313,7 +311,7 @@ function interpolate_dirichlet!(f,u::DiscreteField)
 end
 
 function interpolate_dirichlet(f,space::AbstractSpace)
-    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
+    sigma = GT.dual_basis_quantity(space,gensym("fe-dof")) # TODO: 
     vals = sigma(f)
     index = generate_index(GT.domain(space))
     t = term(vals,index)
