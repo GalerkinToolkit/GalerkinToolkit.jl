@@ -57,7 +57,7 @@ function quantity(contribution::DomainContribution)
     x = coordinate_quantity(quadrature)
     dV = weight_quantity(quadrature)
     coefficient = GT.coefficient(contribution)
-    alpha = uniform_quantity(coefficient) # TODO: do we need a uniform quantity here? Yes, we need it.
+    alpha = uniform_quantity(coefficient)
     alpha*integrand(x)*dV
 end
 
@@ -142,15 +142,13 @@ function assemble_scalar(integral::Integral;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    contributions = integral.contributions
+    contributions = GT.contributions(integral)
     pairs = map(contributions) do contribution
         init = zero(prototype(contribution))
         params_loop = generate_assemble_scalar(contribution; parameters)
-        loop = params_loop(parameters...)
-        (loop(init), (params_loop, init))
+        loop = Base.invokelatest(params_loop, parameters...)
+        (Base.invokelatest(loop, init), (params_loop, init))
     end
-    
-    display(pairs)
     b = sum(first,pairs)
     loops = map(last,pairs)
     if val_parameter(reuse)
@@ -160,10 +158,10 @@ function assemble_scalar(integral::Integral;
     end
 end
 
-function update_scalar(loops; parameters)
+function update_scalar(loops; parameters=())
     sum(loops) do (params_loop, init)
-        loop = params_loop(parameters...)
-        loop(init)
+        loop = Base.invokelatest(params_loop,parameters...)
+        Base.invokelatest(loop,init)
     end
 end
 
@@ -186,7 +184,7 @@ function assemble_face_contribution!(face_to_val,contribution::DomainContributio
     end
 end
 
-function update_face_contribution!(face_to_val, params_loop;parameters)
+function update_face_contribution!(face_to_val, params_loop;parameters=())
     loop! = params_loop(parameters...)
     loop!(face_to_val)
     face_to_val
@@ -270,7 +268,7 @@ function assemble_values!(f,uh::DiscreteField,space::AbstractSpace;
     end
 end
 
-function update_values!(uh,params_loop;parameters)
+function update_values!(uh,params_loop;parameters=())
     loop! = params_loop(parameters...)
     loop!(uh)
     uh
@@ -286,16 +284,16 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     ) where T
     arg_test = 1
     arg_trial = 2
-    du = form_argument_quantity(space,arg_trial)
-    dv = form_argument_quantity(space,arg_test)
+    du = form_argument_quantity(trial_space,arg_trial)
+    dv = form_argument_quantity(test_space,arg_test)
     integral = f(du,dv)
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
-    alloc = allocate_matrix(T,space,domains...;matrix_strategy,free_or_dirichlet)
+    alloc = allocate_matrix(T,test_space,trial_space,domains...;matrix_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_matrix(contribution,space;parameters)
-        loop! = params_loop(parameters...)
-        loop!(alloc)
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters)
+        loop! = Base.invokelatest(params_loop,parameters...)
+        Base.invokelatest(loop!,alloc)
         params_loop
     end
     b, matrix_cache = compress(alloc;reuse=Val(true))
@@ -307,15 +305,15 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     end
 end
 
-function update_matrix!(A,cache;parameters)
-    cache = (;loops,alloc,vector_cache)
+function update_matrix!(A,cache;parameters=())
+    (;loops,alloc,matrix_cache) = cache # TODO: names
     reset!(alloc)
     map(loops) do params_loop
-        loop! = params_loop(parameters...)
-        loop!(alloc)
+        loop! = Base.invokelatest(params_loop, parameters...)
+        Base.invokelatest(loop!, alloc)
     end
-    compress!(alloc,b,vector_cache)
-    b
+    compress!(alloc,A,matrix_cache)
+    A
 end
 
 function assemble_matrix_with_free_and_dirichlet_columns(f,::Type{T},trial_space,test_space;
