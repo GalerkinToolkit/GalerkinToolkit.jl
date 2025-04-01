@@ -689,6 +689,138 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
 end
 
+function generate_sample_accessor(f,quadrature::AbstractQuadrature;parameters=())
+    term_0 = write_sample_accessor(f,quadrature)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    expr_0 = expression(term_3)
+    #TODO
+    expr_1 = statements_expr(expr_0)
+    f = evaluate(expr_0,captured_data)
+    f
+end
+
+function write_sample_accessor(f,quadrature::AbstractQuadrature)
+    x = coordinate_quantity(quadrature)
+    fx = f(x)
+    domain = GT.domain(quadrature)
+    arity = Val(0)
+    index = GT.index(arity)
+    opts = QuantityOptions(domain,index)
+    term = GT.term(fx,opts)
+    FacePointValueTerm(term,index)
+end
+
+struct FacePointValueTerm{A,B} <: AbstractTerm
+    term::A
+    index::B
+end
+
+function bindings(term::FacePointValueTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    (face,point)
+end
+
+function dependencies(term::FacePointValueTerm)
+    (;term) = term
+    (term)
+end
+
+function replace_dependencies(term::FacePointValueTerm,dependencies)
+    (term2) = dependencies
+    (;index) = term
+    FacePointValueTerm(term2,index)
+end
+
+function expression(term::FacePointValueTerm)
+    (term2) = map(expression,dependencies(term))
+    (face,point) = bindings(term)
+    point_v = :($point -> $term2)
+    face_point_v = :($face -> $point_v)
+    face_point_v
+end
+
+function generate_assemble_face_contribution(contribution::DomainContribution;parameters=())
+    term_0 = write_assemble_face_contribution(contribution)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    expr_0 = expression(term_3)
+    #TODO
+    expr_1 = statements_expr(expr_0)
+    f = evaluate(expr_0,captured_data)
+    f
+end
+
+function write_assemble_face_contribution(contribution::DomainContribution)
+    quadrature = GT.quadrature(contribution)
+    domain = GT.domain(quadrature)
+    arity = Val(0)
+    index = GT.index(arity)
+    term = GT.term(contribution,index)
+    quadrature_term = leaf_term(quadrature)
+    contribs_arg = :init
+    contribs = leaf_term(contribs_arg)
+    FaceContributionTerm(term,quadrature_term,contribs,contribs_arg,index)
+end
+
+# Like ScalarAssemblyTerm but we store intermediate face results into a vector contribs
+struct FaceContributionTerm{A,B,C,D,E} <: AbstractTerm
+    term::A # <: Term
+    quadrature::B # <: Term
+    contribs::C
+    contribs_arg::D # gets reduced
+    index::E # gets reduced
+end
+
+function bindings(term::FaceContributionTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    (term.contribs_arg,face,point)
+end
+
+function dependencies(term::FaceContributionTerm)
+    (;term,quadrature,contribs) = term
+    (term,quadrature,contribs)
+end
+
+function replace_dependencies(term::FaceContributionTerm,dependencies)
+    (term2,quadrature,contribs) = dependencies
+    (;contribs_arg,index) = term
+    FaceContributionTerm(term2,quadrature,contribs,contribs_arg,index)
+end
+
+function expression(term::FaceContributionTerm)
+    (term2,quadrature,contribs) = map(expression,dependencies(term))
+    (contribs_arg,face,point) = bindings(term)
+    point_v = :($point -> $term2)
+    face_point_v = :($face -> $point_v)
+    body = :(face_contribution_loop!($contribs,$face_point_v,$quadrature))
+    expr = :($contribs_arg->$body)
+    expr
+end
+
+function face_contribution_loop!(contribs,face_point_v,quadrature)
+    domain = GT.domain(quadrature)
+    nfaces = num_faces(domain)
+    face_npoints = num_points_accessor(quadrature)
+    init = zero(eltype(contribs))
+    for face in 1:nfaces
+        point_v = face_point_v(face)
+        npoints = face_npoints(face)
+        z = init
+        for point in 1:npoints
+            z += point_v(point)
+        end
+        contribs[face] = z
+    end
+    contribs
+end
+
 struct ScalarAssemblyTerm{A,B,C,D,E} <: AbstractTerm
     term::A # <: Term
     quadrature::B # <: Term

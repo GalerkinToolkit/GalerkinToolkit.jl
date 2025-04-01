@@ -80,7 +80,7 @@ contributions(i::Integral) = i.contributions
 
 function contribution(i::Integral,domain::AbstractDomain)
     for contribution in contributions(i)
-        if domain == GT.comain(contribution)
+        if domain == GT.domain(contribution)
             return contribution
         end
     end
@@ -120,12 +120,13 @@ end
 
 # Sample on the quadrature points. This is needed to visualize fields
 
-function sample_accessor(f,quadrature::AbstractQuadrature;
+function sample(f,quadrature::AbstractQuadrature;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    g = generate_sample_accessor(f,quadrature;parameters)
-    accessor = g(parameters...)
+    g = generate_sample(f,quadrature;parameters)
+    acc = Base.invokelatest(g,parameters...)
+    accessor
     if val_parameter(reuse)
         accessor, g
     else
@@ -169,14 +170,13 @@ function Base.sum(int::Integral)
     assemble_scalar(int)
 end
 
-
 function assemble_face_contribution!(face_to_val,contribution::DomainContribution;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
     params_loop = generate_assemble_face_contribution(contribution;parameters)
-    loop! = params_loop(parameters...)
-    loop!(face_to_val)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,face_to_val)
     if val_parameter(reuse)
         face_to_val, params_loop
     else
@@ -185,14 +185,14 @@ function assemble_face_contribution!(face_to_val,contribution::DomainContributio
 end
 
 function update_face_contribution!(face_to_val, params_loop;parameters=())
-    loop! = params_loop(parameters...)
-    loop!(face_to_val)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,face_to_val)
     face_to_val
 end
 
 function face_contribution(int::Integral,domain::AbstractDomain)
     contribution = GT.contribution(int,domain)
-    nfaces = GT.domain(contribution)
+    nfaces = num_faces(GT.domain(contribution))
     T = typeof(prototype(contribution))
     face_to_val = zeros(T,nfaces)
     assemble_face_contribution!(face_to_val,contribution)
@@ -200,7 +200,7 @@ end
 
 function face_contribution!(a,int::Integral,domain::AbstractDomain)
     contribution = GT.contribution(int,domain)
-    assemble_face_contribution!(face_to_val,contribution)
+    assemble_face_contribution!(a,contribution)
 end
 
 # 1-forms
