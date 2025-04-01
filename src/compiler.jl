@@ -810,7 +810,7 @@ end
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
-    dof_v = :(($dof_trial, $dof_test) -> $term2)
+    dof_v = :(($dof_trial) -> ($dof_test) -> $term2)
     block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
@@ -969,8 +969,10 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
                             dofs_test = field_face_dofs_test[field_test](face,face_around_test)
                             ndofs_trial, ndofs_test = length(dofs_trial), length(dofs_test)
                             for dof_trial in 1:ndofs_trial
+                                dof_test_v = dof_v(dof_trial)
                                 for dof_test in 1:ndofs_test
-                                    v = dof_v(dof_trial, dof_test)
+                                    # v = dof_v(dof_trial, dof_test)
+                                    v = dof_test_v(dof_test)
                                     be[dof_test, dof_trial] += v
                                 end
                             end
@@ -1111,20 +1113,21 @@ function statements_expr(node)
                 rank = 1 + scope_rank[scope]
                 scope_rank[scope] = rank
 
-                var = Symbol("var_$(scope)_$(rank)")
-                hash_expr[hash] = var
                 args_var = map(args) do arg
                     arg_hash = Base.hash(arg)
                     hash_expr[arg_hash]
                 end
-                expr = if node.head === :block && length(args_var) === 1
-                    args_var[1]
+                
+                if node.head === :block && length(args_var) === 1
+                    hash_expr[hash] = args_var[1]
                 else
-                    Expr(node.head,args_var...)
+                    var = Symbol("var_$(scope)_$(rank)")
+                    hash_expr[hash] = var
+                    expr = Expr(node.head,args_var...)
+                    assignment = :($var = $expr)
+                    block = scope_block[scope]
+                    push!(block.args, assignment)
                 end
-                assignment = :($var = $expr)
-                block = scope_block[scope]
-                push!(block.args, assignment)
                 return scopes
             elseif node.head === :(->)
                 body = node.args[2]
@@ -1146,8 +1149,8 @@ function statements_expr(node)
                 if length(block.args) == 0 # at least 1 statement
                     arg_hash = Base.hash(body)
                     arg_var = hash_expr[arg_hash]
-                    
-                    push!(block.args, :($(gensym()) = $arg_var))
+                    push!(block.args, arg_var)
+                    # push!(block.args, :($(gensym()) = $arg_var))
                 end
 
                 scopes = setdiff(scopes,[scope])
