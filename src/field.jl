@@ -29,7 +29,13 @@ struct AnalyticalField{A,B,C} <: AbstractField
 end
 
 function face_constant_field(data,dom::AbstractDomain)
-    q = face_quantity(data,dom)
+    mesh = GT.mesh(dom)
+    d = num_dims(dom)
+    nfaces = num_faces(mesh,d)
+    T = eltype(data)
+    mesh_data = zeros(T,nfaces)
+    mesh_data[GT.faces(dom)] = data
+    q = face_quantity(mesh_data,mesh,d)
     q2 = call(a->(x->a),q)
     Field(q2,dom)
 end

@@ -189,7 +189,7 @@ end
 function expression(term::RefTerm)
     container = expression(term.container)
     index = expression(term.index)
-    :($(container)[$(args...)])
+    :($(container)[$(index)])
 end
 
 # Parametrizes all values in Leafs if they are in params.
@@ -486,7 +486,6 @@ function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tup
     TabulatedTerm(v2,quadrature,point)
 end
 
-
 function term(uh::DiscreteField,opts)
     space = GT.space(uh)
     space_domain = GT.domain(space)
@@ -516,7 +515,6 @@ struct DiscreteFieldTerm{A} <: AbstractTerm
     dependencies::A
 end
 
-
 function dependencies(term::DiscreteFieldTerm)
     term.dependencies
 end
@@ -524,7 +522,6 @@ end
 function replace_dependencies(term::DiscreteFieldTerm,dependencies)
     DiscreteFieldTerm(dependencies)
 end
-
 
 function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
     coords = term.args[1]
@@ -605,6 +602,81 @@ end
 function optimize(term::RefTerm{<:SkeletonTerm})
     the_face_around = term.index
     replace_the_face_around(term.container.parent,the_face_around)
+end
+
+function physical_map(mesh::AbstractMesh,vD)
+    quantity() do opts
+        D = val_parameter(vD)
+        domain = GT.domain(opts)
+        d = num_dims(domain)
+        face = GT.domain_face_index(opts.index)
+        @assert d == D
+        f = GT.value
+        dependencies = map(leaf_term,(f,mesh,vD,face))
+        PhysicalMapTerm(dependencies)
+    end
+end
+
+struct PhysicalMapTerm{A} <: AbstractTerm
+    dependencies::A
+end
+
+function dependencies(term::PhysicalMapTerm)
+    term.dependencies
+end
+
+function replace_dependencies(term::PhysicalMapTerm,dependencies)
+    PhysicalMapTerm(dependencies)
+end
+
+function optimize(term::CallTerm{<:PhysicalMapTerm,<:Tuple{<:CoordinateTerm}})
+    coords = optimize(term.args[1])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    TabulatedTerm(term.callee,quadrature,point)
+end
+
+function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.jacobian)}, <:Tuple{<:PhysicalMapTerm,<:CoordinateTerm}})
+    v = optimize(term.args[1]) 
+    coords = optimize(term.args[2])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    (f,mesh,vD,face) = dependencies(v)
+    new_deps = (term.callee,mesh,vD,face)
+    v2 = replace_dependencies(v, new_deps)
+    TabulatedTerm(v2,quadrature,point)
+end
+
+function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
+    parent = term.parent
+    quadrature = prototype(term.quadrature)
+    (f,mesh,vD,face) = map(prototype,dependencies(parent))
+    prototype(physical_map_accessor(f,quadrature,vD))
+end
+
+function expression(term::TabulatedTerm{<:PhysicalMapTerm})
+    point = expression(term.point)
+    phys_map = term.parent
+    quadrature = expression(term.quadrature)
+    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+end
+
+function face_quantity(data,mesh::AbstractMesh,vd;reference=Val(false))
+    quantity() do opts
+        d = val_parameter(vd)
+        domain = GT.domain(opts)
+        index = GT.index(opts)
+        face = leaf_term(domain_face_index(index))
+        @assert num_dims(domain) == d
+        if val_parameter(reference)
+            face_to_rid = call_term(map(leaf_term,face_reference_id,mesh,d)...)
+            rid_to_value = leaf_term(data)
+            rid = RefTerm(face_to_refid,face)
+            value = RefTerm(rid_to_value,rid)
+        else
+            face_to_value = leaf_term(data)
+            value = RefTerm(face_to_value,face)
+        end
+    end
 end
 
 function generate_assemble_scalar(contribution::DomainContribution;parameters=())
