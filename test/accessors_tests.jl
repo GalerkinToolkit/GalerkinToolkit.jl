@@ -2,6 +2,7 @@ module AccessorsTests
 
 import GalerkinToolkit as GT
 using ForwardDiff
+#using InteractiveUtils
 
 domain = (0,1,0,1)
 n = 4
@@ -18,6 +19,15 @@ V = GT.lagrange_space(Ω,k)
 dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
+
+# OK
+#@code_warntype GT.shape_function_accessor_reference(GT.value,V,dΩ)
+
+#@code_warntype GT.reference_spaces(V)
+#@code_warntype map(GT.num_dofs,GT.reference_spaces(V))
+#@code_warntype GT.num_dofs_accessor_interior(V,Ω)
+
+#@code_warntype GT.shape_function_accessor_physical(GT.value,V,dΩ)
 
 Ωface_point_x = GT.coordinate_accessor(dΩ)
 Γface_point_x = GT.coordinate_accessor(dΓ)

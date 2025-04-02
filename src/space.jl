@@ -913,11 +913,14 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
        )
-    LagrangeFaceSpace(contents)
+    space = LagrangeFaceSpace(nothing,contents)
+    workspace = generate_workspace(space)
+    space2 = replace_workspace(space,workspace)
 end
 
-struct LagrangeFaceSpace{A} <: AbstractFaceSpace
-    contents::A
+struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
+    workspace::A
+    contents::B
 end
 
 domain(a::LagrangeFaceSpace) = a.contents.domain
@@ -927,6 +930,15 @@ space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
 dirichlet_boundary(fe::LagrangeFaceSpace) = fe.contents.dirichlet_boundary
+
+function replace_workspace(fe::LagrangeFaceSpace,workspace)
+    LagrangeFaceSpace(workspace,fe.contents)
+end
+
+function generate_workspace(fe::LagrangeFaceSpace)
+    monomial_exponents = GT.monomial_exponents(fe)
+    (;monomial_exponents)
+end
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
     if val_parameter(fe.contents.lib_to_user_nodes) === :default
@@ -951,6 +963,10 @@ function conformity(fe::LagrangeFaceSpace)
 end
 
 function monomial_exponents(a::LagrangeFaceSpace)
+    a.workspace.monomial_exponents
+end
+
+function monomial_exponents(a::LagrangeFaceSpace{Nothing})
     range_per_dir = map(k->0:k,order_per_dir(a))
     exponents_list = map(CartesianIndices(range_per_dir)) do ci
         exponent = Tuple(ci)
@@ -969,6 +985,7 @@ end
 
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
+# TODO cache it
 function node_coordinates(a::LagrangeFaceSpace)
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
@@ -996,6 +1013,7 @@ function node_coordinates(a::LagrangeFaceSpace)
     user_node_to_coords
 end
 
+# TODO cache it
 function tensor_basis(fe::LagrangeFaceSpace)
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
@@ -1012,6 +1030,7 @@ function tensor_basis(fe::LagrangeFaceSpace)
     end
 end
 
+# TODO cache it
 function primal_basis(fe::LagrangeFaceSpace)
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
@@ -1026,6 +1045,7 @@ function primal_basis(fe::LagrangeFaceSpace)
     end
 end
 
+# TODO cache it
 function dual_basis(fe::LagrangeFaceSpace)
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)

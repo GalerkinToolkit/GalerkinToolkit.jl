@@ -120,22 +120,45 @@ end
 
 # Sample on the quadrature points. This is needed to visualize fields
 
-function sample(f,quadrature::AbstractQuadrature;
+function sample(f,quadrature::AbstractQuadrature;kwargs...)
+    x = coordinate_quantity(quadrature)
+    fx = f(x)
+    index = GT.index(Val(0))
+    domain = GT.domain(quadrature)
+    opts = QuantityOptions(domain,index)
+    term = GT.term(fx,opts)
+    T = eltype(GT.prototype(term))
+    nfaces = num_faces(domain)
+    face_npoints = num_points_accessor(quadrature)
+    ptrs = zeros(Int32,nfaces+1)
+    for face in 1:nfaces
+        ptrs[face+1] = face_npoints(face)
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = zeros(T,ndata)
+    vals = JaggedArray(data,ptrs)
+    sample!(f,vals,quadrature;kwargs...)
+end
+
+function sample!(f,vals,quadrature::AbstractQuadrature;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    g = generate_sample(f,quadrature;parameters)
-    acc = Base.invokelatest(g,parameters...)
-    accessor
+    params_loop = generate_sample(f,quadrature;parameters)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,vals)
     if val_parameter(reuse)
-        accessor, g
+        vals, params_loop
     else
-        accessor
+        vals
     end
 end
 
-function update_sample_accessor(g;parameters)
-    g(parameters...)
+function update_sample!(vals,params_loop;parameters=())
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,vals)
+    vals
 end
 
 # 0-forms

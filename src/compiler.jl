@@ -613,12 +613,10 @@ function generate_assemble_scalar(contribution::DomainContribution;parameters=()
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_0,captured_data)
+    f = evaluate(expr_1,captured_data)
     f
 end
-
 
 function write_assemble_scalar(contribution::DomainContribution)
     quadrature = GT.quadrature(contribution)
@@ -641,7 +639,6 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
@@ -669,7 +666,6 @@ function generate_assemble_matrix(contribution::DomainContribution,space_trial::
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
@@ -689,19 +685,18 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
 end
 
-function generate_sample_accessor(f,quadrature::AbstractQuadrature;parameters=())
-    term_0 = write_sample_accessor(f,quadrature)
+function generate_sample(f,quadrature::AbstractQuadrature;parameters=())
+    term_0 = write_sample(f,quadrature)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_0,captured_data)
+    f = evaluate(expr_1,captured_data)
     f
 end
 
-function write_sample_accessor(f,quadrature::AbstractQuadrature)
+function write_sample(f,quadrature::AbstractQuadrature)
     x = coordinate_quantity(quadrature)
     fx = f(x)
     domain = GT.domain(quadrature)
@@ -709,38 +704,55 @@ function write_sample_accessor(f,quadrature::AbstractQuadrature)
     index = GT.index(arity)
     opts = QuantityOptions(domain,index)
     term = GT.term(fx,opts)
-    FacePointValueTerm(term,index)
+    vals_arg = :vals
+    vals = leaf_term(vals_arg)
+    SampleTerm(term,index,vals,vals_arg)
 end
 
-struct FacePointValueTerm{A,B} <: AbstractTerm
+struct SampleTerm{A,B,C,D} <: AbstractTerm
     term::A
     index::B
+    vals::C
+    vals_arg::D
 end
 
-function bindings(term::FacePointValueTerm)
+function bindings(term::SampleTerm)
     index = term.index
     face = domain_face_index(index)
     point = point_index(index)
-    (face,point)
+    (face,point,term.vals_arg)
 end
 
-function dependencies(term::FacePointValueTerm)
-    (;term) = term
-    (term)
+function dependencies(term::SampleTerm)
+    (;term,vals) = term
+    (term,vals)
 end
 
-function replace_dependencies(term::FacePointValueTerm,dependencies)
-    (term2) = dependencies
-    (;index) = term
-    FacePointValueTerm(term2,index)
+function replace_dependencies(term::SampleTerm,dependencies)
+    (term2,vals) = dependencies
+    (;index,vals_arg) = term
+    SampleTerm(term2,index,vals,vals_arg)
 end
 
-function expression(term::FacePointValueTerm)
-    (term2) = map(expression,dependencies(term))
-    (face,point) = bindings(term)
+function expression(term::SampleTerm)
+    (term2,vals) = map(expression,dependencies(term))
+    (face,point,vals_arg) = bindings(term)
     point_v = :($point -> $term2)
     face_point_v = :($face -> $point_v)
-    face_point_v
+    :( $vals_arg ->  sample_loop!($vals,$face_point_v))
+end
+
+function sample_loop!(face_point_w,face_point_v)
+    nfaces = length(face_point_w)
+    for face in 1:nfaces
+        point_v = face_point_v(face)
+        point_w = face_point_w[face]
+        npoints = length(point_w)
+        for point in 1:npoints
+            point_w[point] = point_v(point)
+        end
+    end
+    face_point_w
 end
 
 function generate_assemble_face_contribution(contribution::DomainContribution;parameters=())
@@ -749,9 +761,8 @@ function generate_assemble_face_contribution(contribution::DomainContribution;pa
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_0,captured_data)
+    f = evaluate(expr_1,captured_data)
     f
 end
 

@@ -24,7 +24,9 @@ function problems_tests_main()
     end
 
     face_point_v = GT.sample(f,dΩ)
-
+    display(face_point_v)
+    face_point_v,cache = GT.sample(f,dΩ;reuse=Val(true))
+    @time GT.update_sample!(face_point_v,cache)
 
     int = GT.∫(x-> GT.call(sum, x),dΩ)
     c = GT.assemble_scalar(int)
