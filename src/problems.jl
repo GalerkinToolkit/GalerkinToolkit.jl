@@ -308,7 +308,7 @@ end
 function update_matrix!(A,cache;parameters=())
     (;loops,alloc,matrix_cache) = cache # TODO: names
     reset!(alloc)
-    map(loops) do params_loop
+    for params_loop in loops 
         loop! = Base.invokelatest(params_loop, parameters...)
         Base.invokelatest(loop!, alloc)
     end

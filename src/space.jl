@@ -895,6 +895,8 @@ function default_space_type(geom::UnitSimplex)
     :P
 end
 
+# TODO: cache the construction of lagrange_face_space
+#  with the contents
 function lagrange_face_space(;
         domain,
         order_per_dir,
@@ -913,12 +915,35 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
        )
-    LagrangeFaceSpace(contents)
+    space = LagrangeFaceSpace(nothing, contents)
+    get_workspace(space)
 end
 
-struct LagrangeFaceSpace{A} <: AbstractFaceSpace
-    contents::A
+struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
+    workspace::A
+    contents::B
 end
+
+
+function get_workspace(space::LagrangeFaceSpace)
+    workspace = (;
+        monomial_exponents = monomial_exponents(space),
+        node_coordinates = node_coordinates(space),
+        tensor_basis = tensor_basis(space),
+        primal_basis = primal_basis(space),
+        dual_basis = dual_basis(space),
+        node_dofs = node_dofs(space),
+        dof_node = dof_node(space),
+        # interior_nodes = interior_nodes(space),
+        # interior_node_permutations = interior_node_permutations(space),
+        # node_permutations = node_permutations(space),
+        node_quadrature = node_quadrature(space), 
+        num_dofs = num_dofs(space),
+        )
+    # LagrangeFaceSpace(workspace, space.contents)
+    space
+end
+
 
 domain(a::LagrangeFaceSpace) = a.contents.domain
 order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
@@ -950,7 +975,11 @@ function conformity(fe::LagrangeFaceSpace)
     :default
 end
 
-function monomial_exponents(a::LagrangeFaceSpace)
+function monomial_exponents(a::LagrangeFaceSpace) 
+    a.workspace.monomial_exponents
+end
+
+function monomial_exponents(a::LagrangeFaceSpace{Nothing})
     range_per_dir = map(k->0:k,order_per_dir(a))
     exponents_list = map(CartesianIndices(range_per_dir)) do ci
         exponent = Tuple(ci)
@@ -970,6 +999,10 @@ end
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
 function node_coordinates(a::LagrangeFaceSpace)
+    a.workspace.node_coordinates
+end
+
+function node_coordinates(a::LagrangeFaceSpace{Nothing})
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
         x  = node_coordinates(a_linear)
@@ -997,6 +1030,10 @@ function node_coordinates(a::LagrangeFaceSpace)
 end
 
 function tensor_basis(fe::LagrangeFaceSpace)
+    fe.workspace.tensor_basis
+end
+
+function tensor_basis(fe::LagrangeFaceSpace{Nothing})
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
     if tensor_size(fe) === :scalar
@@ -1012,7 +1049,12 @@ function tensor_basis(fe::LagrangeFaceSpace)
     end
 end
 
+
 function primal_basis(fe::LagrangeFaceSpace)
+    fe.workspace.primal_basis
+end
+
+function primal_basis(fe::LagrangeFaceSpace{Nothing})
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
         return scalar_basis
@@ -1026,7 +1068,12 @@ function primal_basis(fe::LagrangeFaceSpace)
     end
 end
 
+
 function dual_basis(fe::LagrangeFaceSpace)
+    fe.workspace.dual_basis
+end
+
+function dual_basis(fe::LagrangeFaceSpace{Nothing})
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
     ts = tensor_size(fe) 
@@ -1057,6 +1104,10 @@ contraction(a,b) = sum(map(*,a,b))
 value(f,x) = f(x)
 
 function node_dofs(fe::LagrangeFaceSpace)
+    fe.workspace.node_dofs
+end
+
+function node_dofs(fe::LagrangeFaceSpace{Nothing})
     Tv = int_type(options(fe))
     nnodes = num_nodes(fe)
     nodes =  1:nnodes
@@ -1083,6 +1134,10 @@ function node_dofs(fe::LagrangeFaceSpace)
 end
 
 function dof_node(fe::LagrangeFaceSpace)
+    fe.workspace.dof_node
+end
+
+function dof_node(fe::LagrangeFaceSpace{Nothing})
     Tv = int_type(options(fe))
     ndofs = num_dofs(fe)
     if tensor_size(fe) === :scalar
@@ -1110,6 +1165,11 @@ function conforming(fe::LagrangeFaceSpace)
     ! nonconforming
 end
 
+# function interior_nodes(fe::LagrangeFaceSpace)
+#     fe.workspace.interior_nodes
+# end
+
+# function interior_nodes(fe::LagrangeFaceSpace{Nothing})
 function interior_nodes(fe::LagrangeFaceSpace)
     if !conforming(fe)
         return collect(Int,1:num_nodes(fe))
@@ -1217,12 +1277,20 @@ function face_interior_node_permutations_from_mesh_face(fe,d)
     end
 end
 
+
+# function interior_node_permutations(fe::LagrangeFaceSpace)
+#     fe.workspace.interior_node_permutations
+# end
 """
 """
 function interior_node_permutations(fe::LagrangeFaceSpace)
     interior_ho_nodes = interior_nodes(fe)
     node_permutations_from_mesh_face(fe,interior_ho_nodes)
 end
+
+# function node_permutations(fe::LagrangeFaceSpace)
+#     fe.workspace.node_permutations
+# end
 
 """
 """
@@ -1370,6 +1438,10 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
 end
 
 function num_dofs(a::LagrangeFaceSpace)
+    a.workspace.num_dofs 
+end 
+
+function num_dofs(a::LagrangeFaceSpace{Nothing})
     nnodes = num_nodes(a)
     if tensor_size(a) === :scalar
         Int(nnodes)
@@ -1379,7 +1451,11 @@ function num_dofs(a::LagrangeFaceSpace)
     end
 end
 
-function node_quadrature(fe::LagrangeFaceSpace)
+function node_quadrature(a::LagrangeFaceSpace)
+    a.workspace.node_quadrature
+end 
+
+function node_quadrature(fe::LagrangeFaceSpace{Nothing})
     coordinates = node_coordinates(fe)
     Tv = real_type(options(fe))
     nnodes = length(coordinates)

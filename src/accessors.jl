@@ -341,12 +341,17 @@ function weight_accessor_physical(measure::AbstractQuadrature)
     function face_point_w(face,face_around=nothing)
         point_v = face_point_v(face)
         point_J = face_point_J(face)
-        function point_w(point)
-            v = point_v(point)
-            J = point_J(point)
-            change_of_measure(J)*v
-        end
-        function point_w(point,J)
+        # function point_w(point)
+        #     v = point_v(point)
+        #     J = point_J(point)
+        #     change_of_measure(J)*v
+        # end
+        # # TODO: fixed?
+        # function point_w(point,J)
+        #     v = point_v(point)
+        #     change_of_measure(J)*v
+        # end
+        function point_w(point,J = point_J(point))
             v = point_v(point)
             change_of_measure(J)*v
         end
@@ -514,12 +519,12 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                 dof_modif = dface_to_modif(face,face_around)
                 ndofs = face_ndofs(face,face_around)
                 point_Dphi = face_point_Dphi(face,face_around)
-                if face_around === nothing
-                    dof_s = face_around_dof_s[1]
+                dof_s = if face_around === nothing
+                    face_around_dof_s[1]
                 else
-                    dof_s = face_around_dof_s[face_around]
+                    face_around_dof_s[face_around]
                 end
-                function point_dof_s(point,J)
+                function point_J_dof_s(point,J)
                     dof_v = point_dof_v(point)
                     for dof in 1:ndofs
                         v = dof_v(dof)
@@ -530,13 +535,18 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                         dof_s[dof]
                     end
                 end
-                function point_dof_s(point,::Nothing)
-                    J = point_Dphi(point)
-                    point_dof_s(point,J)
-                end
-                function point_dof_s(point)
-                    J = point_Dphi(point)
-                    point_dof_s(point,J)
+                # TODO: finding this function is the problem
+                # function point_dof_s(point,::Nothing)
+                #     J = point_Dphi(point)
+                #     point_dof_s(point,J)
+                # end
+                function point_dof_s(point,J = nothing)
+                    # if(J === nothing)
+                    #     J2 = point_Dphi(point)
+                    #     point_J_dof_s(point,J2)
+                    # else
+                    J2 = J === nothing ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
                 end
                 return point_dof_s
             end
@@ -779,15 +789,20 @@ function unit_normal_accessor_physical(measure::AbstractQuadrature)
     function face_point_n(face,face_around=nothing)
         point_J = face_point_J(face,face_around)
         n_ref = face_n_ref(face,face_around)
-        function n_phys(point,J)
-            map_unit_normal(J,n_ref)
-        end
-        function n_phys(point,::Nothing)
-            n_phys(point)
-        end
-        function n_phys(point)
-            J = point_J(point)
-            map_unit_normal(J,n_ref)
+        # function n_phys(point,J)
+        #     map_unit_normal(J,n_ref)
+        # end
+        # # TODO: fixed?
+        # function n_phys(point,::Nothing)
+        #     n_phys(point)
+        # end
+        # function n_phys(point)
+        #     J = point_J(point)
+        #     map_unit_normal(J,n_ref)
+        # end
+        function n_phys(point, J=nothing)
+            J2 = J === nothing ? point_J(point) : J
+            map_unit_normal(J2,n_ref)
         end
         return n_phys
     end
@@ -866,6 +881,7 @@ end
 #    shape_function_accessor(f,space)
 #end
 #
+# TODO: type instability when using accessor for customized functions
 function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,field=1)
     face_point_dof_s = shape_function_accessor(f,space,measure)
     prototype = GT.prototype(face_point_dof_s)

@@ -573,13 +573,16 @@ function setup_domain(pdomain::MeshDomain{<:AbstractPMesh})
 end
 
 function replace_workspace(domain::MeshDomain,workspace)
-    mesh = GT.mesh(domain)
-    num_dims = GT.num_dims(domain)
-    mesh_id = GT.mesh_id(domain)
-    physical_names = GT.physical_names(domain)
-    is_reference_domain = GT.is_reference_domain(domain)
-    face_around = GT.face_around(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
+    # mesh = GT.mesh(domain)
+    # num_dims = GT.num_dims(domain)
+    # mesh_id = GT.mesh_id(domain)
+    # physical_names = GT.physical_names(domain)
+    # is_reference_domain = GT.is_reference_domain(domain)
+    # face_around = GT.face_around(domain)
+    # GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
+
+    contents = (;domain.contents..., workspace)
+    typeof(domain).name.wrapper(domain.mesh, contents)
 end
 
 function faces(domain::MeshDomain)

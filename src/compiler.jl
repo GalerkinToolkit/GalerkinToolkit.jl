@@ -803,6 +803,10 @@ function expression(term::VectorAssemblyTerm)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
     body = :(vector_assembly_loop!($face_point_block_dof_v,$alloc,$space,$quadrature))
+    # function save_params(args...)
+    #     args
+    # end
+    # body = :($save_params($face_point_block_dof_v,$alloc,$space,$quadrature))
     expr = :($alloc_arg->$body)
     expr
 end
@@ -815,6 +819,10 @@ function expression(term::MatrixAssemblyTerm)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
     body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
+    # function save_params(args...)
+    #     args
+    # end
+    # body = :($save_params($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
     expr = :($alloc_arg->$body)
     expr
 end
@@ -923,13 +931,15 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
         n_trial = max_num_faces_around(GT.domain(field_space_trial),domain)
         map(fields(space_test)) do field_space_test
             n_test = max_num_faces_around(GT.domain(field_space_test),domain)
-            map(1:n_trial) do _
+            # TODO: fix the type of tuple(tuple(vector(vector(matrix))))
+            n_matrix::Vector{Vector{Matrix{eltype(alloc)}}} = map(1:n_trial) do _
                 map(1:n_test) do _
                     m_trial = max_num_reference_dofs(field_space_trial)
                     m_test = max_num_reference_dofs(field_space_test)
                     zeros(eltype(alloc),m_trial, m_test)
                 end
             end
+            n_matrix
         end
     end
 
