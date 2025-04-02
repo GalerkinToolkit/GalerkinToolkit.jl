@@ -24,7 +24,7 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
         end
         nrefids = length(refid_to_srefid_to_oid)
         i_to_oid = reduce(vcat,refid_to_srefid_to_oid)
-        i_to_vrefface = reduce(vcat,refid_to_srefid_to_vrefface)
+        i_to_vrefface = reduce(vcat,map(collect,refid_to_srefid_to_vrefface))
         refid_to_srefid_to_i = Vector{Vector{Int}}(undef,nrefids)
         i = 0
         for refid in 1:nrefids

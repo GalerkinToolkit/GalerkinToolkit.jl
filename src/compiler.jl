@@ -174,7 +174,12 @@ struct RefTerm{A,B} <: AbstractTerm
 end
 
 function prototype(a::RefTerm)
-    zero(eltype(prototype(a.container)))
+    #zero(eltype(prototype(a.container)))
+    if length(prototype(a.container)) > 0
+        first(prototype(a.container))
+    else
+        zero(eltype(prototype(a.container)))
+    end
 end
 
 function dependencies(term::RefTerm)
@@ -660,17 +665,40 @@ function expression(term::TabulatedTerm{<:PhysicalMapTerm})
     :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
 end
 
+function dual_basis_quantity(space::AbstractSpace)
+    quantity() do opts
+        domain_space = GT.domain(space)
+        domain = GT.domain(opts)
+        d = num_dims(domain)
+        index = opts.index
+        domain_face = leaf_term(domain_face_index(index))
+        dof = leaf_term(dof_index(index,1))
+        domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
+        face = RefTerm(domain_face_to_face,domain_face)
+        @assert num_dims(domain_space) == d
+        face_to_rid = call_term(map(leaf_term,(face_reference_id,space))...)
+        rid = RefTerm(face_to_rid,face)
+        rid_to_fe = call_term(map(leaf_term,(reference_spaces,space))...)
+        fe = RefTerm(rid_to_fe,rid)
+        dof_to_sigma = call_term(leaf_term(dual_basis),fe)
+        sigma = RefTerm(dof_to_sigma,dof)
+        sigma
+    end
+end
+
 function face_quantity(data,mesh::AbstractMesh,vd;reference=Val(false))
     quantity() do opts
         d = val_parameter(vd)
         domain = GT.domain(opts)
         index = GT.index(opts)
-        face = leaf_term(domain_face_index(index))
+        domain_face = leaf_term(domain_face_index(index))
         @assert num_dims(domain) == d
+        domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
+        face = RefTerm(domain_face_to_face,domain_face)
         if val_parameter(reference)
             face_to_rid = call_term(map(leaf_term,face_reference_id,mesh,d)...)
             rid_to_value = leaf_term(data)
-            rid = RefTerm(face_to_refid,face)
+            rid = RefTerm(face_to_rid,face)
             value = RefTerm(rid_to_value,rid)
         else
             face_to_value = leaf_term(data)
