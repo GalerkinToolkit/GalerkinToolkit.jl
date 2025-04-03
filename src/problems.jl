@@ -80,7 +80,7 @@ contributions(i::Integral) = i.contributions
 
 function contribution(i::Integral,domain::AbstractDomain)
     for contribution in contributions(i)
-        if domain == GT.comain(contribution)
+        if domain == GT.domain(contribution)
             return contribution
         end
     end
@@ -120,21 +120,45 @@ end
 
 # Sample on the quadrature points. This is needed to visualize fields
 
-function sample_accessor(f,quadrature::AbstractQuadrature;
+function sample(f,quadrature::AbstractQuadrature;kwargs...)
+    x = coordinate_quantity(quadrature)
+    fx = f(x)
+    index = GT.index(Val(0))
+    domain = GT.domain(quadrature)
+    opts = QuantityOptions(domain,index)
+    term = GT.term(fx,opts)
+    T = eltype(GT.prototype(term))
+    nfaces = num_faces(domain)
+    face_npoints = num_points_accessor(quadrature)
+    ptrs = zeros(Int32,nfaces+1)
+    for face in 1:nfaces
+        ptrs[face+1] = face_npoints(face)
+    end
+    length_to_ptrs!(ptrs)
+    ndata = ptrs[end]-1
+    data = zeros(T,ndata)
+    vals = JaggedArray(data,ptrs)
+    sample!(f,vals,quadrature;kwargs...)
+end
+
+function sample!(f,vals,quadrature::AbstractQuadrature;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
-    g = generate_sample_accessor(f,quadrature;parameters)
-    accessor = g(parameters...)
+    params_loop = generate_sample(f,quadrature;parameters)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,vals)
     if val_parameter(reuse)
-        accessor, g
+        vals, params_loop
     else
-        accessor
+        vals
     end
 end
 
-function update_sample_accessor(g;parameters)
-    g(parameters...)
+function update_sample!(vals,params_loop;parameters=())
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,vals)
+    vals
 end
 
 # 0-forms
@@ -169,14 +193,13 @@ function Base.sum(int::Integral)
     assemble_scalar(int)
 end
 
-
 function assemble_face_contribution!(face_to_val,contribution::DomainContribution;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
     params_loop = generate_assemble_face_contribution(contribution;parameters)
-    loop! = params_loop(parameters...)
-    loop!(face_to_val)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,face_to_val)
     if val_parameter(reuse)
         face_to_val, params_loop
     else
@@ -185,14 +208,14 @@ function assemble_face_contribution!(face_to_val,contribution::DomainContributio
 end
 
 function update_face_contribution!(face_to_val, params_loop;parameters=())
-    loop! = params_loop(parameters...)
-    loop!(face_to_val)
+    loop! = Base.invokelatest(params_loop,parameters...)
+    Base.invokelatest(loop!,face_to_val)
     face_to_val
 end
 
 function face_contribution(int::Integral,domain::AbstractDomain)
     contribution = GT.contribution(int,domain)
-    nfaces = GT.domain(contribution)
+    nfaces = num_faces(GT.domain(contribution))
     T = typeof(prototype(contribution))
     face_to_val = zeros(T,nfaces)
     assemble_face_contribution!(face_to_val,contribution)
@@ -200,7 +223,7 @@ end
 
 function face_contribution!(a,int::Integral,domain::AbstractDomain)
     contribution = GT.contribution(int,domain)
-    assemble_face_contribution!(face_to_val,contribution)
+    assemble_face_contribution!(a,contribution)
 end
 
 # 1-forms

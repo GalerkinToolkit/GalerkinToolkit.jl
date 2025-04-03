@@ -19,9 +19,22 @@ function problems_tests_main()
     Γd = GT.boundary(mesh)
     dΩ = GT.measure(Ω,degree)
 
+    f = GT.analytical_field(Ω) do x
+        sum(x)
+    end
+
+    face_point_v = GT.sample(f,dΩ)
+    display(face_point_v)
+    face_point_v,cache = GT.sample(f,dΩ;reuse=Val(true))
+    @time GT.update_sample!(face_point_v,cache)
+
     int = GT.∫(x-> GT.call(sum, x),dΩ)
     c = GT.assemble_scalar(int)
     @test c ≈ 1.0 
+
+    face_to_c = GT.face_contribution(int,Ω)
+    @test sum(face_to_c) ≈ 1
+
 
     #TODO: tabulate jacobian
     V = GT.lagrange_space(Ω,k)

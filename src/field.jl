@@ -29,7 +29,13 @@ struct AnalyticalField{A,B,C} <: AbstractField
 end
 
 function face_constant_field(data,dom::AbstractDomain)
-    q = face_quantity(data,dom)
+    mesh = GT.mesh(dom)
+    d = num_dims(dom)
+    nfaces = num_faces(mesh,d)
+    T = eltype(data)
+    mesh_data = zeros(T,nfaces)
+    mesh_data[GT.faces(dom)] = data
+    q = face_quantity(mesh_data,mesh,d)
     q2 = call(a->(x->a),q)
     Field(q2,dom)
 end
@@ -267,18 +273,20 @@ end
 # Solution: Two options: u is defined either on the domain of the space
 # or on the Dirichlet boundary
 
-function interpolate!(f,u::DiscreteField)
-    interpolate!(f,u,nothing)
+function interpolate!(f,u::DiscreteField;free_or_dirichlet=FREE_AND_DIRICHLET)
+    interpolate!(f,u;free_or_dirichlet)
 end
 
-function interpolate(f,space::AbstractSpace)
-    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
+function interpolate(f,space::AbstractSpace;free_or_dirichlet=FREE_AND_DIRICHLET)
+    sigma = GT.dual_basis_quantity(space)
     vals = sigma(f)
-    index = generate_index(GT.domain(space))
-    t = term(vals,index)
+    index = GT.index(Val(1))
+    domain = GT.domain(space)
+    opts = QuantityOptions(domain,index)
+    t = term(vals,opts)
     T = typeof(prototype(t))
     u = undef_field(T,space)
-    interpolate!(f,u)
+    interpolate!(f,u;free_or_dirichlet)
     u
 end
 
@@ -287,18 +295,11 @@ end
 #end
 
 function interpolate_free!(f,u::DiscreteField)
-    interpolate!(f,u,FREE)
+    interpolate!(f,u;free_or_dirichlet = FREE)
 end
 
 function interpolate_free(f,space::AbstractSpace)
-    sigma = GT.dual_basis_quantity(space,gensym("fe-dof"))
-    vals = sigma(f)
-    index = generate_index(GT.domain(space))
-    t = term(vals,index)
-    T = typeof(prototype(t))
-    u = zero_field(T,space)
-    interpolate_free!(f,u)
-    u
+    interpolate(f,space;free_or_dirichlet = FREE)
 end
 
 #function interpolate_free!(f,u::DiscreteField,field)
@@ -307,18 +308,11 @@ end
 
 function interpolate_dirichlet!(f,u::DiscreteField)
     # TODO for dirichlet we perhaps want to allow integrating on boundaries?
-    interpolate!(f,u,DIRICHLET)
+    interpolate!(f,u;free_or_dirichlet = DIRICHLET)
 end
 
 function interpolate_dirichlet(f,space::AbstractSpace)
-    sigma = GT.dual_basis_quantity(space,gensym("fe-dof")) # TODO: 
-    vals = sigma(f)
-    index = generate_index(GT.domain(space))
-    t = term(vals,index)
-    T = typeof(prototype(t))
-    u = zero_dirichlet_field(T,space)
-    interpolate_dirichlet!(f,u)
-    u
+    interpolate(f,space;free_or_dirichlet = DIRICHLET)
 end
 
 #function interpolate_dirichlet!(f,u::DiscreteField,field)
@@ -326,8 +320,8 @@ end
 #    interpolate!(f,u,DIRICHLET,field)
 #end
 
-function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet})
-    interpolate_impl!(f,u,space(u),free_or_diri)
+function interpolate!(f,u::DiscreteField;free_or_dirichlet=FREE_AND_DIRICHLET)
+    interpolate_impl!(f,u,space(u),free_or_dirichlet)
 end
 
 #function interpolate!(f,u::DiscreteField,free_or_diri::Union{Nothing,FreeOrDirichlet},field)
@@ -336,56 +330,56 @@ end
 #    u
 #end
 
-function interpolate_impl!(f,u,space,free_or_diri;location=1)
-    free_vals = GT.free_values(u)
-    diri_vals = GT.dirichlet_values(u)
-    dof = gensym("fe-dof")
-    sigma = GT.dual_basis_quantity(space,dof)
-    face_to_dofs = GT.face_dofs(space)
-    vals = sigma(f)
-    domain = GT.domain(space)
-    dirichlet_dof_location = GT.dirichlet_dof_location(space)
-    index = generate_index(domain)
-    sface_to_face = get_symbol!(index,faces(domain),"sface_to_face")
-    t = term(vals,index)
-    expr_qty = t |> expression |> simplify
-    D = num_dims(domain)
-    face = face_index(index,D)
-    s_qty = GT.topological_sort(expr_qty,(face,dof))
-    expr = quote
-        (args,storage) -> begin
-            (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri) = args
-            $(unpack_index_storage(index,:storage))
-            $(s_qty[1])
-            for sface in 1:nfaces
-                $face = $sface_to_face[sface]
-                $(s_qty[2])
-                dofs = face_to_dofs[$face]
-                ndofs = length(dofs)
-                for $dof in 1:ndofs
-                    v = $(s_qty[3])
-                    gdof = dofs[$dof]
-                    if gdof > 0
-                        if free_or_diri != DIRICHLET
-                            free_vals[gdof] = v
-                        end
-                    else
-                        diri_dof = -gdof
-                        if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
-                            diri_vals[diri_dof] = v
-                        end
-                    end
-                end
-            end
-        end
-    end
-    loop! = eval(expr)
-    storage = GT.index_storage(index)
-    nfaces = GT.num_faces(domain)
-    args = (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri)
-    invokelatest(loop!,args,storage)
-    u
-end
+#function interpolate_impl!(f,u,space,free_or_diri;location=1)
+#    free_vals = GT.free_values(u)
+#    diri_vals = GT.dirichlet_values(u)
+#    dof = gensym("fe-dof")
+#    sigma = GT.dual_basis_quantity(space,dof)
+#    face_to_dofs = GT.face_dofs(space)
+#    vals = sigma(f)
+#    domain = GT.domain(space)
+#    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+#    index = generate_index(domain)
+#    sface_to_face = get_symbol!(index,faces(domain),"sface_to_face")
+#    t = term(vals,index)
+#    expr_qty = t |> expression |> simplify
+#    D = num_dims(domain)
+#    face = face_index(index,D)
+#    s_qty = GT.topological_sort(expr_qty,(face,dof))
+#    expr = quote
+#        (args,storage) -> begin
+#            (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri) = args
+#            $(unpack_index_storage(index,:storage))
+#            $(s_qty[1])
+#            for sface in 1:nfaces
+#                $face = $sface_to_face[sface]
+#                $(s_qty[2])
+#                dofs = face_to_dofs[$face]
+#                ndofs = length(dofs)
+#                for $dof in 1:ndofs
+#                    v = $(s_qty[3])
+#                    gdof = dofs[$dof]
+#                    if gdof > 0
+#                        if free_or_diri != DIRICHLET
+#                            free_vals[gdof] = v
+#                        end
+#                    else
+#                        diri_dof = -gdof
+#                        if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
+#                            diri_vals[diri_dof] = v
+#                        end
+#                    end
+#                end
+#            end
+#        end
+#    end
+#    loop! = eval(expr)
+#    storage = GT.index_storage(index)
+#    nfaces = GT.num_faces(domain)
+#    args = (;face_to_dofs,free_vals,diri_vals,nfaces,dirichlet_dof_location,location,free_or_diri)
+#    invokelatest(loop!,args,storage)
+#    u
+#end
 
 function interpolate_impl!(f::PiecewiseField,u,space,free_or_diri)
     for (location,field) in f.fields |> enumerate

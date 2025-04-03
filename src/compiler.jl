@@ -174,7 +174,12 @@ struct RefTerm{A,B} <: AbstractTerm
 end
 
 function prototype(a::RefTerm)
-    zero(eltype(prototype(a.container)))
+    #zero(eltype(prototype(a.container)))
+    if length(prototype(a.container)) > 0
+        first(prototype(a.container))
+    else
+        zero(eltype(prototype(a.container)))
+    end
 end
 
 function dependencies(term::RefTerm)
@@ -189,7 +194,7 @@ end
 function expression(term::RefTerm)
     container = expression(term.container)
     index = expression(term.index)
-    :($(container)[$(args...)])
+    :($(container)[$(index)])
 end
 
 # Parametrizes all values in Leafs if they are in params.
@@ -487,7 +492,6 @@ function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tup
     TabulatedTerm(v2,quadrature,point)
 end
 
-
 function term(uh::DiscreteField,opts)
     space = GT.space(uh)
     space_domain = GT.domain(space)
@@ -517,7 +521,6 @@ struct DiscreteFieldTerm{A} <: AbstractTerm
     dependencies::A
 end
 
-
 function dependencies(term::DiscreteFieldTerm)
     term.dependencies
 end
@@ -525,7 +528,6 @@ end
 function replace_dependencies(term::DiscreteFieldTerm,dependencies)
     DiscreteFieldTerm(dependencies)
 end
-
 
 function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
     coords = term.args[1]
@@ -609,18 +611,114 @@ function optimize(term::RefTerm{<:SkeletonTerm})
     replace_the_face_around(term.container.parent,the_face_around)
 end
 
+function physical_map(mesh::AbstractMesh,vD)
+    quantity() do opts
+        D = val_parameter(vD)
+        domain = GT.domain(opts)
+        d = num_dims(domain)
+        face = GT.domain_face_index(opts.index)
+        @assert d == D
+        f = GT.value
+        dependencies = map(leaf_term,(f,mesh,vD,face))
+        PhysicalMapTerm(dependencies)
+    end
+end
+
+struct PhysicalMapTerm{A} <: AbstractTerm
+    dependencies::A
+end
+
+function dependencies(term::PhysicalMapTerm)
+    term.dependencies
+end
+
+function replace_dependencies(term::PhysicalMapTerm,dependencies)
+    PhysicalMapTerm(dependencies)
+end
+
+function optimize(term::CallTerm{<:PhysicalMapTerm,<:Tuple{<:CoordinateTerm}})
+    coords = optimize(term.args[1])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    TabulatedTerm(term.callee,quadrature,point)
+end
+
+function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.jacobian)}, <:Tuple{<:PhysicalMapTerm,<:CoordinateTerm}})
+    v = optimize(term.args[1]) 
+    coords = optimize(term.args[2])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    (f,mesh,vD,face) = dependencies(v)
+    new_deps = (term.callee,mesh,vD,face)
+    v2 = replace_dependencies(v, new_deps)
+    TabulatedTerm(v2,quadrature,point)
+end
+
+function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
+    parent = term.parent
+    quadrature = prototype(term.quadrature)
+    (f,mesh,vD,face) = map(prototype,dependencies(parent))
+    prototype(physical_map_accessor(f,quadrature,vD))
+end
+
+function expression(term::TabulatedTerm{<:PhysicalMapTerm})
+    point = expression(term.point)
+    phys_map = term.parent
+    quadrature = expression(term.quadrature)
+    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+end
+
+function dual_basis_quantity(space::AbstractSpace)
+    quantity() do opts
+        domain_space = GT.domain(space)
+        domain = GT.domain(opts)
+        d = num_dims(domain)
+        index = opts.index
+        domain_face = leaf_term(domain_face_index(index))
+        dof = leaf_term(dof_index(index,1))
+        domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
+        face = RefTerm(domain_face_to_face,domain_face)
+        @assert num_dims(domain_space) == d
+        face_to_rid = call_term(map(leaf_term,(face_reference_id,space))...)
+        rid = RefTerm(face_to_rid,face)
+        rid_to_fe = call_term(map(leaf_term,(reference_spaces,space))...)
+        fe = RefTerm(rid_to_fe,rid)
+        dof_to_sigma = call_term(leaf_term(dual_basis),fe)
+        sigma = RefTerm(dof_to_sigma,dof)
+        sigma
+    end
+end
+
+function face_quantity(data,mesh::AbstractMesh,vd;reference=Val(false))
+    quantity() do opts
+        d = val_parameter(vd)
+        domain = GT.domain(opts)
+        index = GT.index(opts)
+        domain_face = leaf_term(domain_face_index(index))
+        @assert num_dims(domain) == d
+        domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
+        face = RefTerm(domain_face_to_face,domain_face)
+        if val_parameter(reference)
+            face_to_rid = call_term(map(leaf_term,face_reference_id,mesh,d)...)
+            rid_to_value = leaf_term(data)
+            rid = RefTerm(face_to_rid,face)
+            value = RefTerm(rid_to_value,rid)
+        else
+            face_to_value = leaf_term(data)
+            value = RefTerm(face_to_value,face)
+        end
+    end
+end
+
 function generate_assemble_scalar(contribution::DomainContribution;parameters=())
     term_0 = write_assemble_scalar(contribution)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_0,captured_data)
+    f = evaluate(expr_1,captured_data)
     f
 end
-
 
 function write_assemble_scalar(contribution::DomainContribution)
     quadrature = GT.quadrature(contribution)
@@ -643,7 +741,6 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
@@ -671,7 +768,6 @@ function generate_assemble_matrix(contribution::DomainContribution,space_trial::
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    #TODO
     expr_1 = statements_expr(expr_0)
     f = evaluate(expr_1,captured_data)
     f
@@ -689,6 +785,153 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     alloc_arg = :alloc
     alloc = leaf_term(alloc_arg)
     MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
+end
+
+function generate_sample(f,quadrature::AbstractQuadrature;parameters=())
+    term_0 = write_sample(f,quadrature)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    expr_0 = expression(term_3)
+    expr_1 = statements_expr(expr_0)
+    f = evaluate(expr_1,captured_data)
+    f
+end
+
+function write_sample(f,quadrature::AbstractQuadrature)
+    x = coordinate_quantity(quadrature)
+    fx = f(x)
+    domain = GT.domain(quadrature)
+    arity = Val(0)
+    index = GT.index(arity)
+    opts = QuantityOptions(domain,index)
+    term = GT.term(fx,opts)
+    vals_arg = :vals
+    vals = leaf_term(vals_arg)
+    SampleTerm(term,index,vals,vals_arg)
+end
+
+struct SampleTerm{A,B,C,D} <: AbstractTerm
+    term::A
+    index::B
+    vals::C
+    vals_arg::D
+end
+
+function bindings(term::SampleTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    (face,point,term.vals_arg)
+end
+
+function dependencies(term::SampleTerm)
+    (;term,vals) = term
+    (term,vals)
+end
+
+function replace_dependencies(term::SampleTerm,dependencies)
+    (term2,vals) = dependencies
+    (;index,vals_arg) = term
+    SampleTerm(term2,index,vals,vals_arg)
+end
+
+function expression(term::SampleTerm)
+    (term2,vals) = map(expression,dependencies(term))
+    (face,point,vals_arg) = bindings(term)
+    point_v = :($point -> $term2)
+    face_point_v = :($face -> $point_v)
+    :( $vals_arg ->  sample_loop!($vals,$face_point_v))
+end
+
+function sample_loop!(face_point_w,face_point_v)
+    nfaces = length(face_point_w)
+    for face in 1:nfaces
+        point_v = face_point_v(face)
+        point_w = face_point_w[face]
+        npoints = length(point_w)
+        for point in 1:npoints
+            point_w[point] = point_v(point)
+        end
+    end
+    face_point_w
+end
+
+function generate_assemble_face_contribution(contribution::DomainContribution;parameters=())
+    term_0 = write_assemble_face_contribution(contribution)
+    term_1 = optimize(term_0)
+    term_2 = parametrize(term_1,parameters...)
+    term_3, captured_data = capture(term_2)
+    expr_0 = expression(term_3)
+    expr_1 = statements_expr(expr_0)
+    f = evaluate(expr_1,captured_data)
+    f
+end
+
+function write_assemble_face_contribution(contribution::DomainContribution)
+    quadrature = GT.quadrature(contribution)
+    domain = GT.domain(quadrature)
+    arity = Val(0)
+    index = GT.index(arity)
+    term = GT.term(contribution,index)
+    quadrature_term = leaf_term(quadrature)
+    contribs_arg = :init
+    contribs = leaf_term(contribs_arg)
+    FaceContributionTerm(term,quadrature_term,contribs,contribs_arg,index)
+end
+
+# Like ScalarAssemblyTerm but we store intermediate face results into a vector contribs
+struct FaceContributionTerm{A,B,C,D,E} <: AbstractTerm
+    term::A # <: Term
+    quadrature::B # <: Term
+    contribs::C
+    contribs_arg::D # gets reduced
+    index::E # gets reduced
+end
+
+function bindings(term::FaceContributionTerm)
+    index = term.index
+    face = domain_face_index(index)
+    point = point_index(index)
+    (term.contribs_arg,face,point)
+end
+
+function dependencies(term::FaceContributionTerm)
+    (;term,quadrature,contribs) = term
+    (term,quadrature,contribs)
+end
+
+function replace_dependencies(term::FaceContributionTerm,dependencies)
+    (term2,quadrature,contribs) = dependencies
+    (;contribs_arg,index) = term
+    FaceContributionTerm(term2,quadrature,contribs,contribs_arg,index)
+end
+
+function expression(term::FaceContributionTerm)
+    (term2,quadrature,contribs) = map(expression,dependencies(term))
+    (contribs_arg,face,point) = bindings(term)
+    point_v = :($point -> $term2)
+    face_point_v = :($face -> $point_v)
+    body = :(face_contribution_loop!($contribs,$face_point_v,$quadrature))
+    expr = :($contribs_arg->$body)
+    expr
+end
+
+function face_contribution_loop!(contribs,face_point_v,quadrature)
+    domain = GT.domain(quadrature)
+    nfaces = num_faces(domain)
+    face_npoints = num_points_accessor(quadrature)
+    init = zero(eltype(contribs))
+    for face in 1:nfaces
+        point_v = face_point_v(face)
+        npoints = face_npoints(face)
+        z = init
+        for point in 1:npoints
+            z += point_v(point)
+        end
+        contribs[face] = z
+    end
+    contribs
 end
 
 struct ScalarAssemblyTerm{A,B,C,D,E} <: AbstractTerm
