@@ -400,7 +400,8 @@ end
 
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    :( weight_accessor($quadrature)($face)($point) )
+    J = :(jacobian_accessor($quadrature)($face)($point))
+    :(weight_accessor($quadrature)($face)($point, $J) )
 end
 
 function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
@@ -566,7 +567,8 @@ function expression(term::TabulatedTerm{<:FormArgumentTerm})
     form_arg = term.parent
     quadrature = expression(term.quadrature)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
-    :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point)($dof,$field,$face_around))
+    J = :(jacobian_accessor($quadrature)($face)($point))
+    :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
 function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
@@ -803,10 +805,6 @@ function expression(term::VectorAssemblyTerm)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
     body = :(vector_assembly_loop!($face_point_block_dof_v,$alloc,$space,$quadrature))
-    # function save_params(args...)
-    #     args
-    # end
-    # body = :($save_params($face_point_block_dof_v,$alloc,$space,$quadrature))
     expr = :($alloc_arg->$body)
     expr
 end
@@ -819,10 +817,6 @@ function expression(term::MatrixAssemblyTerm)
     point_block_dof_v = :($point -> $block_dof_v)
     face_point_block_dof_v = :( $face -> $point_block_dof_v)
     body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
-    # function save_params(args...)
-    #     args
-    # end
-    # body = :($save_params($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
     expr = :($alloc_arg->$body)
     expr
 end

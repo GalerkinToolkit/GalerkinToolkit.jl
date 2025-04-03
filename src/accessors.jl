@@ -341,16 +341,6 @@ function weight_accessor_physical(measure::AbstractQuadrature)
     function face_point_w(face,face_around=nothing)
         point_v = face_point_v(face)
         point_J = face_point_J(face)
-        # function point_w(point)
-        #     v = point_v(point)
-        #     J = point_J(point)
-        #     change_of_measure(J)*v
-        # end
-        # # TODO: fixed?
-        # function point_w(point,J)
-        #     v = point_v(point)
-        #     change_of_measure(J)*v
-        # end
         function point_w(point,J = point_J(point))
             v = point_v(point)
             change_of_measure(J)*v
@@ -526,7 +516,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                 end
                 function point_J_dof_s(point,J)
                     dof_v = point_dof_v(point)
-                    for dof in 1:ndofs
+                    for dof in 1:ndofs # TODO: do the jacobian only once for simplices
                         v = dof_v(dof)
                         modif = dof_modif(dof)
                         dof_s[dof] = modif(v,J)
@@ -535,16 +525,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                         dof_s[dof]
                     end
                 end
-                # TODO: finding this function is the problem
-                # function point_dof_s(point,::Nothing)
-                #     J = point_Dphi(point)
-                #     point_dof_s(point,J)
-                # end
                 function point_dof_s(point,J = nothing)
-                    # if(J === nothing)
-                    #     J2 = point_Dphi(point)
-                    #     point_J_dof_s(point,J2)
-                    # else
                     J2 = J === nothing ? point_Dphi(point) : J
                     point_J_dof_s(point,J2)
                 end
@@ -789,17 +770,6 @@ function unit_normal_accessor_physical(measure::AbstractQuadrature)
     function face_point_n(face,face_around=nothing)
         point_J = face_point_J(face,face_around)
         n_ref = face_n_ref(face,face_around)
-        # function n_phys(point,J)
-        #     map_unit_normal(J,n_ref)
-        # end
-        # # TODO: fixed?
-        # function n_phys(point,::Nothing)
-        #     n_phys(point)
-        # end
-        # function n_phys(point)
-        #     J = point_J(point)
-        #     map_unit_normal(J,n_ref)
-        # end
         function n_phys(point, J=nothing)
             J2 = J === nothing ? point_J(point) : J
             map_unit_normal(J2,n_ref)
@@ -889,8 +859,8 @@ function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadratu
     function face_point_dof_a(face,face_around=nothing)
         the_face_around = face_around
         point_dof_s = face_point_dof_s(face,face_around)
-        function point_dof_a(point)
-            dof_s = point_dof_s(point)
+        function point_dof_a(point, J=nothing)
+            dof_s = point_dof_s(point, J)
             function dof_a(dof,field=1,face_around=nothing)
                 s = dof_s(dof)
                 mask = face_around == the_face_around && field == the_field
