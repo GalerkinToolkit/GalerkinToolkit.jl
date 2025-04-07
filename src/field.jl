@@ -273,9 +273,9 @@ end
 # Solution: Two options: u is defined either on the domain of the space
 # or on the Dirichlet boundary
 
-function interpolate!(f,u::DiscreteField;free_or_dirichlet=FREE_AND_DIRICHLET)
-    interpolate!(f,u;free_or_dirichlet)
-end
+#function interpolate!(f,u::DiscreteField;free_or_dirichlet=FREE_AND_DIRICHLET)
+#    interpolate!(f,u;free_or_dirichlet)
+#end
 
 function interpolate(f,space::AbstractSpace;free_or_dirichlet=FREE_AND_DIRICHLET)
     sigma = GT.dual_basis_quantity(space)

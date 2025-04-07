@@ -121,6 +121,29 @@ face_permutation_ids(a::MeshTopology,d,D) = a.contents.face_permutation_ids[d+1,
 reference_topologies(a::MeshTopology) = a.contents.reference_topologies
 reference_topologies(a::MeshTopology,d) = a.contents.reference_topologies[d+1]
 
+function face_incidence_ext(topo,d,D)
+    dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
+    Dface_to_ldface_to_dface = GT.face_incidence(topo,D,d)
+    data = copy(dface_to_Dface_around_to_Dface.data)
+    fill!(data,0)
+    ptrs = dface_to_Dface_around_to_Dface.ptrs
+    dface_to_Dface_around_to_ldface = JaggedArray(data,ptrs)
+    ndfaces = num_faces(topo,d)
+    for dface in 1:ndfaces
+        Dface_around_to_Dface = dface_to_Dface_around_to_Dface[dface]
+        for (Dface_around, Dface) in enumerate(Dface_around_to_Dface)
+            ldface_to_dface = Dface_to_ldface_to_dface[Dface]
+            for (ldface2,dface2) in enumerate(ldface_to_dface)
+                if dface == dface2
+                    dface_to_Dface_around_to_ldface[dface][Dface_around] = ldface2
+                    break
+                end
+            end
+        end
+    end
+    dface_to_Dface_around_to_Dface,dface_to_Dface_around_to_ldface
+end
+
 """
 """
 function topology(mesh::AbstractMesh)

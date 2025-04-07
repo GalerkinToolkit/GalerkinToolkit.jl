@@ -2,7 +2,7 @@
 
 #domain(space::AbstractSpace,field) = domain(space)
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
-num_dims(a::AbstractSpace) = num_dims(mesh(a))
+num_dims(a::AbstractSpace) = num_dims(domain(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 num_dofs(a::AbstractSpace) = num_free_dofs(a) + num_dirichlet_dofs(a)
@@ -317,8 +317,8 @@ function generate_dof_ids_step_1(space,state0)
     mesh = domain |> GT.mesh
     topology = mesh |> GT.topology
     d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
-    cell_to_ctype = space |> GT.face_reference_id
-    ncells = length(cell_to_ctype)
+    Dface_to_ctype = space |> GT.face_reference_id
+    ncells = length(cell_to_Dface)
     nDfaces = num_faces(topology,D)
     d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
@@ -330,8 +330,8 @@ function generate_dof_ids_step_1(space,state0)
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ndfaces = length(dface_to_dof_offset)
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldface_to_num_own_dofs = ctype_to_ldface_to_num_own_dofs[ctype]
             ldface_to_dface = Dface_to_dfaces[Dface]
             nldfaces = length(ldface_to_num_own_dofs)
@@ -350,7 +350,8 @@ function generate_dof_ids_step_1(space,state0)
     ndofs = dof_offset
     Dface_to_ptrs = zeros(Int32,nDfaces+1)
     for cell in 1:ncells
-        ctype = cell_to_ctype[cell]
+        Dface = cell_to_Dface[cell]
+        ctype = Dface_to_ctype[Dface]
         num_dofs = ctype_to_num_dofs[ctype]
         Dface = cell_to_Dface[cell]
         Dface_to_ptrs[Dface+1] = num_dofs
@@ -368,8 +369,8 @@ function generate_dof_ids_step_1(space,state0)
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
         Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldof_to_dof = Dface_to_dofs[Dface]
             ldface_to_dface = Dface_to_dfaces[Dface]
             ldface_to_own_ldofs = ctype_to_ldface_to_own_ldofs[ctype]
@@ -396,7 +397,7 @@ function generate_dof_ids_step_1(space,state0)
     dof_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(ndofs,))
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
-     cell_to_ctype,cell_to_Dface,dof_local_indices)
+     Dface_to_ctype,cell_to_Dface,dof_local_indices)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
@@ -411,7 +412,7 @@ end
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
     #physical_names = dirichlet_boundary |> GT.physical_names
@@ -424,8 +425,8 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldof_to_dof = Dface_to_dofs[Dface]
             ldface_to_dface = Dface_to_dfaces[Dface]
             ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
@@ -463,99 +464,99 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     (;Dface_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(space,state,q::AbstractField)
-    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dirichlet_boundary = domain(q)
-    dof_to_tag = zeros(Int32,ndofs)
-    N = GT.num_dims(dirichlet_boundary)
-    #physical_names = dirichlet_boundary |> GT.physical_names
-    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-    mesh = dirichlet_boundary |> GT.mesh
-    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
-    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
-    ncells = length(cell_to_Dface)
-    dim = 1
-    ldof = :ldof
-    sigma = GT.dual_basis_quantity(space,ldof)
-    index1 = generate_index(domain(space))
-    Dface = face_index(index1,num_dims(domain(space)))
-    sigma_expr = term(sigma,index1) |> expression |> simplify
-    index2 = GT.generate_index(dirichlet_boundary)
-    dface = face_index(index2,num_dims(dirichlet_boundary))
-    q_expr = term(q,index2) |> expression |> simplify
-    sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
-    # TODO Why empty?
-    #q_texpr = topological_sort(q_expr,(dface,))
-    expr = quote
-        (args,storage1,storage2) -> begin
-            $(unpack_index_storage(index1,:storage1))
-            $(unpack_index_storage(index2,:storage2))
-            d = args.d
-            Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
-            ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
-            $(sigma_texpr[1])
-            for cell in 1:args.ncells
-                ctype = args.cell_to_ctype[cell]
-                $Dface = args.cell_to_Dface[cell]
-                $(sigma_texpr[2])
-                ldface_to_dface = Dface_to_dfaces[$Dface]
-                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
-                nldfaces = length(ldface_to_dface)
-                Dface = args.cell_to_Dface[cell]
-                dofs = args.Dface_to_dofs[Dface]
-                for ldface in 1:nldfaces
-                    ldofs = ldface_to_ldofs[ldface]
-                    $dface = ldface_to_dface[ldface]
-                    Nface = $dface
-                    tag = args.Nface_to_tag[Nface]
-                    if tag == 0
-                        continue
-                    end
-                    qfun = $(q_expr)
-                    for ldof in ldofs
-                        sfun = $(sigma_texpr[3])
-                        mask = sfun(qfun)
-                        if !(abs(mask) + 1 ≈ 1)
-                            dof = dofs[ldof]
-                            args.dof_to_tag[dof] = tag
-                        end
-                    end
-                end
-            end
-        end
-    end
-    loop! = eval(expr)
-    storage1 = GT.index_storage(index1)
-    storage2 = GT.index_storage(index2)
-    d = N
-    args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
-    invokelatest(loop!,args,storage1,storage2)
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
-    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
-    n_free_dofs = length(first(free_and_dirichlet_dofs))
-    f = dof -> begin
-        dof2 = dof_permutation[dof]
-        T = typeof(dof2)
-        if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
-        end
-        dof2
-    end
-    data = Dface_to_dofs.data
-    data .= f.(data)
-    ndiri = length(last(free_and_dirichlet_dofs))
-    dirichlet_dof_location = ones(Int32,ndiri)
-    free_dofs = Base.OneTo(n_free_dofs)
-    dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
-end
+#function generate_dof_ids_step_2(space,state,q::AbstractField)
+#    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
+#     d_to_ctype_to_ldface_to_dofs,
+#     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
+#    dirichlet_boundary = domain(q)
+#    dof_to_tag = zeros(Int32,ndofs)
+#    N = GT.num_dims(dirichlet_boundary)
+#    #physical_names = dirichlet_boundary |> GT.physical_names
+#    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+#    mesh = dirichlet_boundary |> GT.mesh
+#    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
+#    ncells = length(cell_to_Dface)
+#    dim = 1
+#    ldof = :ldof
+#    sigma = GT.dual_basis_quantity(space,ldof)
+#    index1 = generate_index(domain(space))
+#    Dface = face_index(index1,num_dims(domain(space)))
+#    sigma_expr = term(sigma,index1) |> expression |> simplify
+#    index2 = GT.generate_index(dirichlet_boundary)
+#    dface = face_index(index2,num_dims(dirichlet_boundary))
+#    q_expr = term(q,index2) |> expression |> simplify
+#    sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
+#    # TODO Why empty?
+#    #q_texpr = topological_sort(q_expr,(dface,))
+#    expr = quote
+#        (args,storage1,storage2) -> begin
+#            $(unpack_index_storage(index1,:storage1))
+#            $(unpack_index_storage(index2,:storage2))
+#            d = args.d
+#            Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
+#            ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
+#            $(sigma_texpr[1])
+#            for cell in 1:args.ncells
+#                ctype = args.cell_to_ctype[cell]
+#                $Dface = args.cell_to_Dface[cell]
+#                $(sigma_texpr[2])
+#                ldface_to_dface = Dface_to_dfaces[$Dface]
+#                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+#                nldfaces = length(ldface_to_dface)
+#                Dface = args.cell_to_Dface[cell]
+#                dofs = args.Dface_to_dofs[Dface]
+#                for ldface in 1:nldfaces
+#                    ldofs = ldface_to_ldofs[ldface]
+#                    $dface = ldface_to_dface[ldface]
+#                    Nface = $dface
+#                    tag = args.Nface_to_tag[Nface]
+#                    if tag == 0
+#                        continue
+#                    end
+#                    qfun = $(q_expr)
+#                    for ldof in ldofs
+#                        sfun = $(sigma_texpr[3])
+#                        mask = sfun(qfun)
+#                        if !(abs(mask) + 1 ≈ 1)
+#                            dof = dofs[ldof]
+#                            args.dof_to_tag[dof] = tag
+#                        end
+#                    end
+#                end
+#            end
+#        end
+#    end
+#    loop! = eval(expr)
+#    storage1 = GT.index_storage(index1)
+#    storage2 = GT.index_storage(index2)
+#    d = N
+#    args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
+#    invokelatest(loop!,args,storage1,storage2)
+#    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+#    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+#    n_free_dofs = length(first(free_and_dirichlet_dofs))
+#    f = dof -> begin
+#        dof2 = dof_permutation[dof]
+#        T = typeof(dof2)
+#        if dof2 > n_free_dofs
+#            return T(n_free_dofs-dof2)
+#        end
+#        dof2
+#    end
+#    data = Dface_to_dofs.data
+#    data .= f.(data)
+#    ndiri = length(last(free_and_dirichlet_dofs))
+#    dirichlet_dof_location = ones(Int32,ndiri)
+#    free_dofs = Base.OneTo(n_free_dofs)
+#    dirichlet_dofs = Base.OneTo(ndiri)
+#    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+#end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
     dof_to_location = zeros(Int32,ndofs)
     D = length(d_to_ndfaces)-1
     for d in D:-1:0
@@ -573,8 +574,8 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
             ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
             for cell in 1:ncells
-                ctype = cell_to_ctype[cell]
                 Dface = cell_to_Dface[cell]
+                ctype = Dface_to_ctype[Dface]
                 ldof_to_dof = Dface_to_dofs[Dface]
                 ldface_to_dface = Dface_to_dfaces[Dface]
                 ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
@@ -613,102 +614,102 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
-    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dof_to_tag = zeros(Int32,ndofs)
-    D = length(d_to_ndfaces)-1
-    for d in D:-1:0
-        for (location,q) in enumerate(q_all.fields)
-            dirichlet_boundary = domain(q)
-            N = GT.num_dims(dirichlet_boundary)
-            if d != N
-                continue
-            end
-            #physical_names = dirichlet_boundary |> GT.physical_names
-            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-            mesh = dirichlet_boundary |> GT.mesh
-            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
-            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
-            ncells = length(cell_to_Dface)
-            dim = 1
-            ldof = :ldof
-            sigma = GT.dual_basis_quantity(space,ldof)
-            index1 = generate_index(domain(space))
-            Dface = face_index(index1,num_dims(domain(space)))
-            sigma_expr = term(sigma,index1) |> expression |> simplify
-            index2 = GT.generate_index(dirichlet_boundary)
-            dface = face_index(index2,num_dims(dirichlet_boundary))
-            q_expr = term(q,index2) |> expression |> simplify
-            sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
-            # TODO Why empty?
-            #q_texpr = topological_sort(q_expr,(dface,))
-            expr = quote
-                (args,storage1,storage2) -> begin
-                    $(unpack_index_storage(index1,:storage1))
-                    $(unpack_index_storage(index2,:storage2))
-                    d = args.d
-                    Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
-                    ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
-                    $(sigma_texpr[1])
-                    for cell in 1:args.ncells
-                        ctype = args.cell_to_ctype[cell]
-                        $Dface = args.cell_to_Dface[cell]
-                        $(sigma_texpr[2])
-                        ldface_to_dface = Dface_to_dfaces[$Dface]
-                        ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
-                        nldfaces = length(ldface_to_dface)
-                        Dface = args.cell_to_Dface[cell]
-                        dofs = args.Dface_to_dofs[Dface]
-                        for ldface in 1:nldfaces
-                            ldofs = ldface_to_ldofs[ldface]
-                            $dface = ldface_to_dface[ldface]
-                            Nface = $dface
-                            tag = args.Nface_to_tag[Nface]
-                            if tag == 0
-                                continue
-                            end
-                            qfun = $(q_expr)
-                            for ldof in ldofs
-                                sfun = $(sigma_texpr[3])
-                                mask = sfun(qfun)
-                                if !(abs(mask) + 1 ≈ 1)
-                                    dof = dofs[ldof]
-                                    args.dof_to_tag[dof] = tag
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            loop! = eval(expr)
-            storage1 = GT.index_storage(index1)
-            storage2 = GT.index_storage(index2)
-            d = N
-            args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
-            invokelatest(loop!,args,storage1,storage2)
-        end
-    end
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
-    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
-    n_free_dofs = length(first(free_and_dirichlet_dofs))
-    f = dof -> begin
-        dof2 = dof_permutation[dof]
-        T = typeof(dof2)
-        if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
-        end
-        dof2
-    end
-    data = Dface_to_dofs.data
-    data .= f.(data)
-    ndiri = length(last(free_and_dirichlet_dofs))
-    dirichlet_dof_location = ones(Int32,ndiri)
-    free_dofs = Base.OneTo(n_free_dofs)
-    dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
-end
+#function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
+#    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
+#     d_to_ctype_to_ldface_to_dofs,
+#     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+#    dof_to_tag = zeros(Int32,ndofs)
+#    D = length(d_to_ndfaces)-1
+#    for d in D:-1:0
+#        for (location,q) in enumerate(q_all.fields)
+#            dirichlet_boundary = domain(q)
+#            N = GT.num_dims(dirichlet_boundary)
+#            if d != N
+#                continue
+#            end
+#            #physical_names = dirichlet_boundary |> GT.physical_names
+#            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+#            mesh = dirichlet_boundary |> GT.mesh
+#            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
+#            ncells = length(cell_to_Dface)
+#            dim = 1
+#            ldof = :ldof
+#            sigma = GT.dual_basis_quantity(space,ldof)
+#            index1 = generate_index(domain(space))
+#            Dface = face_index(index1,num_dims(domain(space)))
+#            sigma_expr = term(sigma,index1) |> expression |> simplify
+#            index2 = GT.generate_index(dirichlet_boundary)
+#            dface = face_index(index2,num_dims(dirichlet_boundary))
+#            q_expr = term(q,index2) |> expression |> simplify
+#            sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
+#            # TODO Why empty?
+#            #q_texpr = topological_sort(q_expr,(dface,))
+#            expr = quote
+#                (args,storage1,storage2) -> begin
+#                    $(unpack_index_storage(index1,:storage1))
+#                    $(unpack_index_storage(index2,:storage2))
+#                    d = args.d
+#                    Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
+#                    ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
+#                    $(sigma_texpr[1])
+#                    for cell in 1:args.ncells
+#                        ctype = args.cell_to_ctype[cell]
+#                        $Dface = args.cell_to_Dface[cell]
+#                        $(sigma_texpr[2])
+#                        ldface_to_dface = Dface_to_dfaces[$Dface]
+#                        ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+#                        nldfaces = length(ldface_to_dface)
+#                        Dface = args.cell_to_Dface[cell]
+#                        dofs = args.Dface_to_dofs[Dface]
+#                        for ldface in 1:nldfaces
+#                            ldofs = ldface_to_ldofs[ldface]
+#                            $dface = ldface_to_dface[ldface]
+#                            Nface = $dface
+#                            tag = args.Nface_to_tag[Nface]
+#                            if tag == 0
+#                                continue
+#                            end
+#                            qfun = $(q_expr)
+#                            for ldof in ldofs
+#                                sfun = $(sigma_texpr[3])
+#                                mask = sfun(qfun)
+#                                if !(abs(mask) + 1 ≈ 1)
+#                                    dof = dofs[ldof]
+#                                    args.dof_to_tag[dof] = tag
+#                                end
+#                            end
+#                        end
+#                    end
+#                end
+#            end
+#            loop! = eval(expr)
+#            storage1 = GT.index_storage(index1)
+#            storage2 = GT.index_storage(index2)
+#            d = N
+#            args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
+#            invokelatest(loop!,args,storage1,storage2)
+#        end
+#    end
+#    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+#    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+#    n_free_dofs = length(first(free_and_dirichlet_dofs))
+#    f = dof -> begin
+#        dof2 = dof_permutation[dof]
+#        T = typeof(dof2)
+#        if dof2 > n_free_dofs
+#            return T(n_free_dofs-dof2)
+#        end
+#        dof2
+#    end
+#    data = Dface_to_dofs.data
+#    data .= f.(data)
+#    ndiri = length(last(free_and_dirichlet_dofs))
+#    dirichlet_dof_location = ones(Int32,ndiri)
+#    free_dofs = Base.OneTo(n_free_dofs)
+#    dirichlet_dofs = Base.OneTo(ndiri)
+#    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+#end
 
 struct LastDof end
 
@@ -918,7 +919,7 @@ function lagrange_face_space(;
     space2 = replace_workspace(space,workspace)
 end
 
-struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
+@auto_hash_equals struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
     workspace::A
     contents::B
 end
@@ -1631,11 +1632,11 @@ end
 function face_reference_id(space::LagrangeMeshSpace)
     domain = space |> GT.domain
     mesh = domain |> GT.mesh
-    cell_to_Dface = domain |> GT.faces
+    #cell_to_Dface = domain |> GT.faces
     D = domain |> GT.num_dims
     Dface_to_ctype = GT.face_reference_id(mesh,D)
-    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
-    cell_to_ctype
+    #cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+    #cell_to_ctype
 end
 
 function reference_spaces(space::LagrangeMeshSpace)

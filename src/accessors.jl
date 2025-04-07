@@ -152,6 +152,55 @@ function shape_function_accessor_reference_boundary(f,space::AbstractSpace,measu
     accessor(face_point_dof_b,prototype)
 end
 
+function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
+    d = num_dims(refdface)
+    dof_to_f = shape_functions(refdface)
+    boundary = refDface |> GT.domain |> GT.mesh
+    lface_to_nodes = GT.face_nodes(boundary,d)
+    node_to_coords = GT.node_coordinates(boundary)
+    lface_to_lrefid = GT.face_reference_id(boundary,d)
+    lrefid_to_lrefface = GT.reference_spaces(boundary,d)
+    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+    map(1:GT.num_faces(boundary,d)) do lface
+        lrefid = lface_to_lrefid[lface]
+        nodes = lface_to_nodes[lface]
+        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+        map(perm_to_ids) do ids
+            dof_to_coeff = node_to_coords[nodes[ids]]
+            ndofs = length(dof_to_coeff)
+            x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs)
+        end
+    end
+end
+
+function inv_map(f,x0)
+    function pseudo_inverse_if_not_square(J)
+        m,n = size(J)
+        if m != n
+            pinv(J)
+        else
+            inv(J)
+        end
+    end
+    function invf(fx)
+        x = x0
+        tol = 1.0e-12
+        J = nothing
+        niters = 100
+        for _ in 1:niters
+            J = ForwardDiff.jacobian(f,x)
+            Jinv = pseudo_inverse_if_not_square(J)
+            dx = Jinv*(fx-f(x))
+            x += dx
+            if norm(dx) < tol
+                return x
+            end
+        end
+        error("Max iterations reached")
+        x
+    end
+end
+
 function nodes_accessor(mesh::AbstractMesh,vD,domain::AbstractDomain)
     D = val_parameter(vD)
     d = num_dims(domain)
@@ -676,13 +725,14 @@ function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature
         free_values = GT.free_values(uh)
         dirichlet_values = GT.dirichlet_values(uh)
         prototype = zero(eltype(free_values))*GT.prototype(face_to_point_to_ldof_to_s)
+        z = zero(prototype)
         function face_point_u(face,face_around=nothing)
             ldof_to_dof = face_to_dofs(face,face_around)
             point_to_ldof_to_s = face_to_point_to_ldof_to_s(face,face_around)
             function point_u(point,J=nothing)
                 ldof_to_s = point_to_ldof_to_s(point,J)
                 nldofs = length(ldof_to_dof)
-                sum(1:nldofs) do ldof
+                sum(1:nldofs;init=z) do ldof
                     dof = ldof_to_dof[ldof]
                     s = ldof_to_s(ldof)
                     if dof > 0
@@ -792,6 +842,18 @@ function unit_normal_accessor_physical(measure::AbstractQuadrature)
         return n_phys
     end
     accessor(face_point_n,GT.prototype(face_n_ref))
+end
+
+function map_unit_normal(J,n)
+    Jt = transpose(J)
+    pinvJt = transpose(inv(Jt*J)*Jt)
+    v = pinvJt*n
+    m = sqrt(v⋅v)
+    if m < eps()
+        return zero(v)
+    else
+        return v/m
+    end
 end
 
 function unit_normal_accessor_reference(measure::AbstractQuadrature)

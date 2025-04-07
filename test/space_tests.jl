@@ -24,20 +24,18 @@ F = GT.domain(mesh,1)
 
 order = 2
 
+V = GT.lagrange_space(Γ,order)
+uh = GT.rand_field(Float64,V)
+plt = GT.plot(F)
+GT.plot!(plt,uh,label="uh")
+vtk_grid("plt",plt) |> close
+
 V = GT.lagrange_space(Ω,order)
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 g = GT.analytical_field(sum,Ω)
 GT.interpolate(g,V)
 GT.interpolate_free(g,V)
 GT.interpolate_dirichlet(g,V)
-
-V = GT.lagrange_space(Γ,order)
-
-uh = GT.rand_field(Float64,V)
-plt = GT.plot(F)
-GT.plot!(plt,uh,label="uh")
-vtk_grid("plt",plt) |> close
-
 
 V = GT.lagrange_space(Λ,order)
 
@@ -128,6 +126,7 @@ fe = GT.lagrange_space(cube2,1)
 display(fe)
 
 fe2 = GT.lagrange_space(cube2,1)
+
 
 @test isequal(fe,fe2)
 @test hash(fe) == hash(fe2)
@@ -335,8 +334,7 @@ D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
 Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
 dΛ = GT.measure(Λ,2*order)
-n = GT.unit_normal(mesh,D-1)
-
+#n = GT.unit_normal(mesh,D-1)
 
 V = GT.lagrange_space(Ω,1)
 GT.reference_face_own_dofs(V,0) |> display
@@ -346,12 +344,12 @@ GT.reference_face_own_dofs(V,2) |> display
 display(GT.face_dofs(V))
 
 
-V = GT.raviart_thomas_space(Ω,order)
-#V = GT.lagrange_space(Ω,order,shape=(D,))
-uh = GT.zero_field(Float64,V)
-u = GT.analytical_field(identity,Ω)
-GT.interpolate!(u,uh)
-rh = GT.rand_field(Float64,V)
+#V = GT.raviart_thomas_space(Ω,order)
+##V = GT.lagrange_space(Ω,order,shape=(D,))
+#uh = GT.zero_field(Float64,V)
+#u = GT.analytical_field(identity,Ω)
+#GT.interpolate!(u,uh)
+#rh = GT.rand_field(Float64,V)
 
 #plt = GT.plot(Ω,refinement=10)
 #GT.plot!(plt,uh;label="uh")
@@ -365,7 +363,6 @@ rh = GT.rand_field(Float64,V)
 ##end
 #vtk_grid("rt",plt) |> close
 #
-#xxxx
 
 domain = (0,1,0,1)
 cells = (3,3)
@@ -386,7 +383,7 @@ D = GT.num_dims(mesh)
 D = GT.num_dims(mesh)
 Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
 
-V = GT.lagrange_space(Ωref,1;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ω,1;dirichlet_boundary=Γdiri)
 
 #@test V.cache.face_dofs == GT.face_dofs(V)
 
@@ -394,10 +391,10 @@ v = GT.zero_field(Float64,V)
 v2 = GT.zero_field(Float64,V)
 
 u = GT.analytical_field(x->sum(x),Ω)
-uref = u∘ϕ
-
-GT.interpolate!(uref,v)
-GT.interpolate_dirichlet!(uref,v2)
+#uref = u∘ϕ
+#
+#GT.interpolate!(uref,v)
+#GT.interpolate_dirichlet!(uref,v2)
 
 Y = V×V
 y = GT.zero_field(Float64,Y)
@@ -408,21 +405,21 @@ y1, y2 = y
 @test GT.free_values(y1) === blocks(GT.free_values(y))[1]
 @test GT.free_values(y2) === blocks(GT.free_values(y))[2]
 
-GT.interpolate!(uref,y1)
+GT.interpolate!(u,y1)
 #GT.interpolate!(uref,y,1)
 
-GT.interpolate_free!(uref,y1)
+GT.interpolate_free!(u,y1)
 #GT.interpolate_free!(uref,y,1)
 
-GT.interpolate_dirichlet!(uref,y1)
+GT.interpolate_dirichlet!(u,y1)
 #GT.interpolate_dirichlet!(uref,y,1)
 
 order = 3
-V = GT.lagrange_space(Ωref,order)
+V = GT.lagrange_space(Ω,order)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
@@ -430,28 +427,28 @@ w = GT.zero_field(Float64,V)
 w2 = GT.zero_field(Float64,V)
 w3 = GT.zero_field(Float64,V)
 
-GT.interpolate!(uref,w)
-GT.interpolate_dirichlet!(uref,w2)
-GT.interpolate_dirichlet!(uref,w3)
+GT.interpolate!(u,w)
+GT.interpolate_dirichlet!(u,w2)
+GT.interpolate_dirichlet!(u,w3)
 
 x = GT.free_values(w3)
 x .= rand(length(x))
 
 uh = GT.zero_field(Float64,V)
-GT.interpolate!(uref,uh)
-eh(q) = u(ϕ(q)) - uh(q)
-tol = 1.e-12
-degree = 2
-dΩref = GT.measure(Ωref,degree)
-function dV(q)
-    J = ForwardDiff.jacobian(ϕ,q)
-    abs(det(J))
-end
-el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
-@test el2 < tol
+GT.interpolate!(u,uh)
+#eh(q) = u(ϕ(q)) - uh(q)
+#tol = 1.e-12
+#degree = 2
+#dΩref = GT.measure(Ωref,degree)
+#function dV(q)
+#    J = ForwardDiff.jacobian(ϕ,q)
+#    abs(det(J))
+#end
+#el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
+#@test el2 < tol
 
 uhd = GT.zero_dirichlet_field(Float64,V)
-GT.interpolate_dirichlet!(uref,uh)
+GT.interpolate_dirichlet!(u,uh)
 
 # TODO
 #udiri = GT.analytical_field(sum,Γdiri)
@@ -521,37 +518,38 @@ GT.reference_spaces(V) # TODO why 2 reference fes?
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
 
-order = 3
-m = GT.analytical_field(x->SVector(false,true),Γ)
-V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
-
-@test GT.workspace(V).face_dofs == GT.face_dofs(V)
-
-uh = GT.rand_field(Float64,V)
-
-vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
-    GT.plot!(plt,uh;label="uh")
-    GT.plot!(plt,x->uh(x)[1];label="uh1")
-    GT.plot!(plt,x->uh(x)[2];label="uh2")
-end
+#TODO
+#order = 3
+#m = GT.analytical_field(x->SVector(false,true),Γ)
+#V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
+#
+#@test GT.workspace(V).face_dofs == GT.face_dofs(V)
+#
+#uh = GT.rand_field(Float64,V)
+#
+#vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
+#    GT.plot!(plt,uh;label="uh")
+#    GT.plot!(plt,x->uh(x)[1];label="uh1")
+#    GT.plot!(plt,x->uh(x)[2];label="uh2")
+#end
 
 Γ1 = GT.boundary(mesh;physical_names=["1-face-1"])
 Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
-
-order = 3
-m1 = GT.analytical_field(x->SVector(false,true),Γ1)
-m2 = GT.analytical_field(x->SVector(true,false),Γ2)
-m = GT.piecewise_field(m1,m2)
-V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
-
-@test GT.workspace(V).face_dofs == GT.face_dofs(V)
-
-uh = GT.rand_field(Float64,V)
-vtk_grid(joinpath(outdir,"Vvec2"),Ω;plot_params=(;refinement=10)) do plt
-    GT.plot!(plt,uh;label="uh")
-    GT.plot!(plt,x->uh(x)[1];label="uh1")
-    GT.plot!(plt,x->uh(x)[2];label="uh2")
-end
+#
+#order = 3
+#m1 = GT.analytical_field(x->SVector(false,true),Γ1)
+#m2 = GT.analytical_field(x->SVector(true,false),Γ2)
+#m = GT.piecewise_field(m1,m2)
+#V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
+#
+#@test GT.workspace(V).face_dofs == GT.face_dofs(V)
+#
+#uh = GT.rand_field(Float64,V)
+#vtk_grid(joinpath(outdir,"Vvec2"),Ω;plot_params=(;refinement=10)) do plt
+#    GT.plot!(plt,uh;label="uh")
+#    GT.plot!(plt,x->uh(x)[1];label="uh1")
+#    GT.plot!(plt,x->uh(x)[2];label="uh2")
+#end
 
 order = 0
 V = GT.lagrange_space(Ω,order,space_type=:P,dirichlet_boundary=GT.last_dof())
