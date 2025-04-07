@@ -17,7 +17,15 @@ function problems_tests_main()
     degree = 2*k
     Ω = GT.interior(mesh)
     Γd = GT.boundary(mesh)
+    Λ = GT.skeleton(mesh)
     dΩ = GT.measure(Ω,degree)
+    dΓd = GT.measure(Γd,degree)
+    dΛ = GT.measure(Λ,degree)
+
+    n = GT.unit_normal(mesh,1)
+    face_point_v = GT.sample(n,dΓd)
+    face_point_v = GT.sample(n[1],dΛ)
+    face_point_v = GT.sample(n[2],dΛ)
 
     f = GT.analytical_field(Ω) do x
         sum(x)

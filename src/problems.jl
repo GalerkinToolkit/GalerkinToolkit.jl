@@ -447,7 +447,7 @@ end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh0),
+function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh),
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
@@ -464,9 +464,9 @@ function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh0),
 end
 
 function nonlinear_problem_update(p)
-    (;uh0,residual_cache,jacobian_cache) = PS.workspace(p)
+    (;uh,residual_cache,jacobian_cache) = PS.workspace(p)
     x = PS.solution(p)
-    uh = solution_field(uh0,x)
+    uh = solution_field(uh,x)
     A = PS.jacobian(p)
     b = PS.residual(p)
     parameters = (uh,)

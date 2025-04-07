@@ -737,6 +737,65 @@ end
 #    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
 #end
 
+function unit_normal(mesh::AbstractMesh,vd)
+    quantity() do opts
+        d = val_parameter(vd)
+        D = num_dims(mesh)
+        face = domain_face_index(opts.index)
+        @assert d == num_dims(domain(opts))
+        if GT.face_around(domain(opts)) === nothing
+            the_face_around = :the_face_around
+            dependencies = map(leaf_term,(face,the_face_around))
+            parent = UnitNormalTerm(dependencies)
+            n_faces_around = leaf_term(2;is_compile_constant=Val(true))
+            SkeletonTerm(parent,n_faces_around,the_face_around)
+        else
+            the_face_around = nothing
+            dependencies = map(leaf_term,(face,the_face_around))
+            UnitNormalTerm(dependencies)
+        end
+    end
+end
+
+struct UnitNormalTerm{A} <: AbstractTerm
+    dependencies::A
+end
+
+function dependencies(term::UnitNormalTerm)
+    term.dependencies
+end
+
+function replace_dependencies(term::UnitNormalTerm,deps)
+    UnitNormalTerm(deps)
+end
+
+function replace_the_face_around(term::UnitNormalTerm,the_face_around)
+    (face,_) = GT.dependencies(term)
+    newdeps = (face,the_face_around)
+    replace_dependencies(term,newdeps)
+end
+
+function optimize(term::CallTerm{<:UnitNormalTerm,<:Tuple{<:CoordinateTerm}})
+    coords = term.args[1]
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    TabulatedTerm(term.callee,quadrature,point)
+end
+
+function prototype(term::TabulatedTerm{<:UnitNormalTerm})
+    parent = term.parent
+    quadrature = prototype(term.quadrature)
+    #(face,the_face_around) = map(prototype,dependencies(parent))
+    prototype(unit_normal_accessor(quadrature))
+end
+
+function expression(term::TabulatedTerm{<:UnitNormalTerm})
+    parent = term.parent
+    quadrature = expression(term.quadrature)
+    point = expression(term.point)
+    (face,the_face_around) = map(expression,dependencies(parent))
+    :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+end
+
 function dual_basis_quantity(space::AbstractSpace)
     quantity() do opts
         domain_space = GT.domain(space)
@@ -1235,19 +1294,18 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
     end
 
     field_face_around_be = map(fields(space_trial)) do field_space_trial
+        m_trial = max_num_reference_dofs(field_space_trial)
         n_trial = max_num_faces_around(GT.domain(field_space_trial),domain)
         map(fields(space_test)) do field_space_test
+            m_test = max_num_reference_dofs(field_space_test)
             n_test = max_num_faces_around(GT.domain(field_space_test),domain)
             map(1:n_trial) do _
                 map(1:n_test) do _
-                    m_trial = max_num_reference_dofs(field_space_trial)
-                    m_test = max_num_reference_dofs(field_space_test)
-                    zeros(eltype(alloc),m_trial, m_test)
+                    zeros(eltype(alloc),m_test,m_trial)
                 end
             end
         end
     end
-
 
     nfields_trial = num_fields(space_trial)
     nfields_test = num_fields(space_test)
@@ -1363,6 +1421,14 @@ for op in (:+,:-,:*,:/,:\,:^)
       #(Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.uniform_quantity(b))
   end
 end
+
+for op in (:*,:/,:\,:^)
+    @eval begin
+        (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.uniform_quantity(a),b)
+        (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.uniform_quantity(b))
+    end
+end
+
 
 # LinearAlgebra
 

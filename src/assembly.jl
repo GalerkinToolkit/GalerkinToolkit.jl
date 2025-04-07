@@ -317,8 +317,8 @@ end
 function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
     (;setup,coo,counter_ref,matrix_strategy,free_or_dirichlet) = alloc.data
     counter = counter_ref[]
-    for (i,dof_test) in enumerate(dofs_test)
-        for (j,dof_trial) in enumerate(dofs_trial)
+    for (j,dof_trial) in enumerate(dofs_trial)
+        for (i,dof_test) in enumerate(dofs_test)
             counter = matrix_strategy.set!(coo,counter,setup,b[i,j],dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
         end
     end
