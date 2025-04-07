@@ -283,11 +283,11 @@ end
 
 function generate_dof_ids_step_0(space)
     # This is a function barrier to help type inference
-    domain = space |> GT.domain
+    domain = GT.domain(space)
     D = GT.num_dims(domain)
-    cell_to_Dface = domain |> GT.faces
-    mesh = domain |> GT.mesh
-    topology = mesh |> GT.topology
+    cell_to_Dface = GT.faces(domain) 
+    mesh = GT.mesh(domain)
+    topology =  GT.topology(mesh)
     ctype_to_reference_fe = space |> GT.reference_spaces
     d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
     d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
@@ -938,7 +938,20 @@ end
 
 function generate_workspace(fe::LagrangeFaceSpace)
     monomial_exponents = GT.monomial_exponents(fe)
-    (;monomial_exponents)
+    if fe.contents.dirichlet_boundary === nothing
+        ndofs = num_dofs(fe)
+        face_dofs = JaggedArray([collect(Int32,1:ndofs)])
+        free_dofs = Base.OneTo(ndofs)
+        dirichlet_dofs = Base.OneTo(ndofs)
+        dirichlet_dof_location = Int32[]
+    else
+        state = generate_dof_ids(fe)
+        face_dofs = state.Dface_to_dofs
+        free_dofs = state.free_dofs
+        dirichlet_dofs = state.dirichlet_dofs
+        dirichlet_dof_location = state.dirichlet_dof_location
+    end
+    workspace = (;monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
 end
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
@@ -1083,11 +1096,11 @@ function node_dofs(fe::LagrangeFaceSpace)
     nodes =  1:nnodes
     s = tensor_size(fe)
     if s === :scalar
-        return nodes
+        node_to_ldofs = nodes
     else
         ndofs_per_node = prod(tensor_size(fe))
         init_tensor = SArray{Tuple{tensor_size(fe)...},Tv}
-        node_to_dofs = map(nodes) do node
+        node_to_ldofs = map(nodes) do node
             t = ntuple(Val(ndofs_per_node)) do li
                 if major(fe) === :component
                     dof = (node-1)*ndofs_per_node + li
@@ -1099,7 +1112,12 @@ function node_dofs(fe::LagrangeFaceSpace)
             end
             init_tensor(t)
         end
-        return node_to_dofs
+    end
+    if fe.contents.dirichlet_boundary === nothing
+        node_to_ldofs
+    else
+        ldof_to_dof = first(face_dofs(fe))
+        map(ldofs->map(ldof->ldof_to_dof[ldof],ldofs),node_to_ldofs)
     end
 end
 
@@ -1800,7 +1818,11 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
     free_dof_to_node, diri_dof_to_node
 end
 
-function interpolate_impl!(f::AnalyticalField,u,space::LagrangeMeshSpace,free_or_diri;location=1)
+function interpolate_impl!(
+    f::AnalyticalField,
+    u::DiscreteField,
+    space::Union{LagrangeFaceSpace,LagrangeMeshSpace},
+    free_or_diri::FreeOrDirichlet;location=1)
     fun = f.definition
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)

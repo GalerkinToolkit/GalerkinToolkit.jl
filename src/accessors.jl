@@ -69,8 +69,8 @@ function shape_function_accessor_reference(f,space::AbstractSpace,measure::Abstr
 end
 
 function shape_function_accessor_reference_interior(f,space::AbstractSpace,measure::AbstractQuadrature)
-    mesh = GT.mesh(measure)
     dom = GT.domain(measure)
+    mesh = GT.mesh(dom)
     d = num_dims(dom)
     rid_to_point_to_x = map(coordinates,reference_quadratures(measure))
     # NB the TODOs below can be solved by introducing an extra nesting level

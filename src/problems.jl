@@ -44,7 +44,8 @@ quadrature(a::DomainContribution) = a.quadrature
 coefficient(a::DomainContribution) = a.coefficient
 
 function prototype(a::DomainContribution)
-    prototype(optimize(term(a,index(Val(0)))))
+    term = optimize(GT.term(a,index(Val(0))))
+    prototype(term)
 end
 
 function replace_coefficient(a::DomainContribution,coefficient)
@@ -77,6 +78,11 @@ struct Integral{A} <: AbstractType
 end
 
 contributions(i::Integral) = i.contributions
+
+function contributions(i::Number)
+    @assert i == 0
+    ()
+end
 
 function contribution(i::Integral,domain::AbstractDomain)
     for contribution in contributions(i)
@@ -127,7 +133,7 @@ function sample(f,quadrature::AbstractQuadrature;kwargs...)
     domain = GT.domain(quadrature)
     opts = QuantityOptions(domain,index)
     term = GT.optimize(GT.term(fx,opts))
-    T = eltype(GT.prototype(term))
+    T = typeof(GT.prototype(term))
     nfaces = num_faces(domain)
     face_npoints = num_points_accessor(quadrature)
     ptrs = zeros(Int32,nfaces+1)

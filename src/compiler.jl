@@ -437,9 +437,9 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             FormArgumentTerm(dependencies)
         else
             face_around_term = leaf_term(face_around_index(index,arg))
-            the_face_around_term = leaf_term(:the_face_around)
-            # the_face_around = leaf_term(:the_face_around, is_compile_constant=Val(true))
-            n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
+            the_face_around = :the_face_around
+            the_face_around_term = leaf_term(the_face_around)
+            n_faces_around = leaf_term(2;is_compile_constant=Val(true)) # Hard coded! But OK in practice.
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             SkeletonTerm(FormArgumentTerm(dependencies),n_faces_around,the_face_around)
         end
@@ -534,6 +534,16 @@ function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
     TabulatedTerm(term.callee,quadrature,point)
 end
 
+function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:DiscreteFieldTerm, <:CoordinateTerm}})
+    v = optimize(term.args[1]) 
+    coords = optimize(term.args[2])
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    (f,uh,domain,face,face_around) = dependencies(v)
+    new_deps = (term.callee,uh,domain,face,face_around)
+    v2 = replace_dependencies(v, new_deps)
+    TabulatedTerm(v2,quadrature,point)
+end
+
 struct TabulatedTerm{A,B,C} <: AbstractTerm
     parent::A
     quadrature::B
@@ -609,6 +619,12 @@ function optimize(term::RefTerm{<:SkeletonTerm})
     replace_the_face_around(term.container.parent,the_face_around)
 end
 
+function optimize(term::CallTerm{<:RefTerm{<:SkeletonTerm}})
+    callee = optimize(term.callee)
+    term2 = CallTerm(callee,term.args)
+    optimize(term2)
+end
+
 function physical_map(mesh::AbstractMesh,vD)
     quantity() do opts
         D = val_parameter(vD)
@@ -664,6 +680,62 @@ function expression(term::TabulatedTerm{<:PhysicalMapTerm})
     (f,mesh,vD,face) = map(expression,phys_map.dependencies)
     :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
 end
+
+#function reference_map(mesh::AbstractMesh,vd,vD)
+#    quantity() do opts
+#        d = val_parameter(vd)
+#        D = val_parameter(vD)
+#        domain = GT.domain(opts)
+#        @assert  d == num_dims(domain)
+#        @assert d != D
+#        face = GT.domain_face_index(opts.index)
+#        the_face_around = :the_face_around
+#        f = GT.value
+#        dependencies = map(leaf_term,(f,mesh,vd,vD,face,the_face_around))
+#        parent = ReferenceMapTerm(dependencies)
+#        n_faces_around = leaf_term(2;is_compile_constant=true)
+#        SkeletonTerm(parent,n_faces_around,the_face_around)
+#    end
+#end
+#
+#struct ReferenceMapTerm{A} <: AbstractTerm
+#    dependencies::A
+#end
+#
+#function dependencies(term::ReferenceMapTerm)
+#    term.dependencies
+#end
+#
+#function replace_dependencies(term::ReferenceMapTerm,dependencies)
+#    ReferenceMapTerm(dependencies)
+#end
+#
+#function replace_the_face_around(term::ReferenceMapTerm,the_face_around)
+#    (f,mesh,vd,vD,face,_) = term.dependencies
+#    deps = (f,mesh,vd,vD,face,the_face_around)
+#    replace_dependencies(term,deps)
+#end
+#
+#function optimize(term::CallTerm{<:ReferenceMapTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = optimize(term.args[1])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+#
+#function prototype(term::TabulatedTerm{<:ReferenceMapTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    (f,mesh,vD,face) = map(prototype,dependencies(parent))
+#    prototype(physical_map_accessor(f,quadrature,vD))
+#end
+#
+#function expression(term::TabulatedTerm{<:ReferenceMapTerm})
+#    point = expression(term.point)
+#    phys_map = term.parent
+#    quadrature = expression(term.quadrature)
+#    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+#    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+#end
 
 function dual_basis_quantity(space::AbstractSpace)
     quantity() do opts
@@ -1257,13 +1329,13 @@ end
 
 # Base
 
-for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint,:*,:/,:\,:^,:getindex)
-    @eval begin
-        function get_symbol!(index,val::typeof(Base.$op),name="";prefix=gensym)
-            $( Expr(:quote,op) )
-        end
-    end
-end
+#for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint,:*,:/,:\,:^,:getindex)
+#    @eval begin
+#        function get_symbol!(index,val::typeof(Base.$op),name="";prefix=gensym)
+#            $( Expr(:quote,op) )
+#        end
+#    end
+#end
 
 for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
   @eval begin
@@ -1272,12 +1344,17 @@ for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
 end
 
 function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
-    call(getindex,a,b)
+    quantity() do opts
+        term_a = term(a,opts)
+        term_b = term(b,opts)
+        RefTerm(term_a,term_b)
+    end
 end
 
-# function Base.getindex(a::AbstractQuantity,b::Number)
-#    call(getindex,a,compile_constant_quantity(b))
-# end
+ function Base.getindex(a::AbstractQuantity,b::Integer)
+    f = uniform_quantity(b;is_compile_constant=Val(true))
+    a[f]
+ end
 
 for op in (:+,:-,:*,:/,:\,:^)
   @eval begin
@@ -1291,18 +1368,18 @@ end
 
 for op in (:inv,:det,:norm,:tr)
   @eval begin
-      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
-          $( Expr(:quote,op) )
-      end
+      #function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+      #    $( Expr(:quote,op) )
+      #end
     (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
   end
 end
 
 for op in (:dot,:cross)
   @eval begin
-      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
-          $( Expr(:quote,op) )
-      end
+      #function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+      #    $( Expr(:quote,op) )
+      #end
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
     #   (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.uniform_quantity(a),b)
     #   (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.uniform_quantity(b))

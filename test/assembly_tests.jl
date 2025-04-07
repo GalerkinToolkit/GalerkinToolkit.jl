@@ -18,6 +18,7 @@ mesh = GT.mesh(Ω)
 
 order = 2
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+GT.free_dofs(V)
 V² = V × V
 GT.allocate_vector(Float64,V²,Ω)
 GT.allocate_matrix(Float64,V²,V²,Ω)
@@ -133,19 +134,19 @@ s = dof_s(dof)
 
 T = Float64
 uh = GT.zero_field(T,V)
-ufun = sum
+ufun = x->0.0
 u = GT.analytical_field(ufun,Ω)
 GT.interpolate_dirichlet!(u,uh)
-face_dirichlet! = GT.dirichlet_accessor(uh,Ω)
-dirichlet! = face_dirichlet!(face)
-
+#face_dirichlet! = GT.dirichlet_accessor(uh,Ω)
+#dirichlet! = face_dirichlet!(face)
+#
 face_dofs = GT.dofs_accessor(V,Ω)
-
+#
 n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
 Auu = zeros(T,n,n)
 bu = zeros(T,n)
-dirichlet!(Auu,bu)
-@show bu
+#dirichlet!(Auu,bu)
+#@show bu
 
 dofs = face_dofs(face)
 
@@ -173,7 +174,7 @@ for face in 1:GT.num_faces(Ω)
     point_dof_∇s = face_point_dof_∇s(face)
     npoints = face_npoints(face)
     dofs = face_dofs(face)
-    dirichlet! = face_dirichlet!(face)
+    #dirichlet! = face_dirichlet!(face)
     fill!(Auu,zero(eltype(Auu)))
     fill!(bu,zero(eltype(bu)))
     for point in 1:npoints
@@ -192,7 +193,7 @@ for face in 1:GT.num_faces(Ω)
             end
         end
     end
-    dirichlet!(Auu,bu)
+    #dirichlet!(Auu,bu)
     GT.contribute!(b_alloc,bu,dofs)
     GT.contribute!(A_alloc,Auu,dofs,dofs)
 end
@@ -267,221 +268,15 @@ D = GT.num_dims(mesh)
 
 Γ = GT.physical_domain(Γref)
 
-V = GT.lagrange_space(Ωref,1;dirichlet_boundary=Γdiri)
+V = GT.lagrange_space(Ω,1;dirichlet_boundary=Γdiri)
 @show GT.num_free_dofs(V)
 @show GT.num_dirichlet_dofs(V)
 
-
 degree = 2
-dΩref = GT.measure(Ωref,degree)
-ϕ = GT.physical_map(mesh,D)
+dΩ = GT.measure(Ω,degree)
+dΓ = GT.measure(Γ,degree)
+dΛ = GT.measure(Λ,degree)
 
-dΓref = GT.measure(Γref,degree)
-α = GT.physical_map(mesh,D-1)
-β = GT.reference_map(mesh,D-1,D)
-
-Λref = GT.skeleton(mesh;
-                 is_reference_domain=true,
-                 physical_names=["interior_faces"])
-
-Λ = GT.physical_domain(Λref)
-dΛref = GT.measure(Λref,degree)
-ϕ_Λref_Λ = GT.physical_map(mesh,D-1)
-ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
-
-function dV(J)
-    abs(det(J))
-end
-
-function dS(J)
-    Jt = transpose(J)
-    sqrt(det(Jt*J))
-end
-
-jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
-
-@show GT.is_boundary(Γref)
-
-function l(v)
-    ∫(dΩref) do q
-        J = ForwardDiff.jacobian(ϕ,q)
-        v(q)*dV(J)
-    end +
-    ∫(dΓref) do p
-        q = β(p)
-        J = ForwardDiff.jacobian(α,p)
-        v(q)*dS(J)
-    end +
-    ∫(dΛref) do p
-        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v,ϕ_Λref_Ωref,p)*dS(J)
-    end
-end
-
-b = GT.assemble_vector(l,Float64,V)
-
-@test length(b) == GT.num_free_dofs(V)
-
-
-function l(v)
-    ∫(dΛref) do p
-        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v,ϕ_Λref_Ωref,p)*dS(J)
-    end
-end
-
-b = GT.assemble_vector(l,Float64,V)
-@test sum(b)+1 ≈ 1
-
-V² = V × V
-
-function l((v1,v2))
-    ∫(dΩref) do q
-        J = ForwardDiff.jacobian(ϕ,q)
-        v1(q)*v2(q)*dV(J)
-    end +
-    ∫(dΛref) do p
-        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*dS(J)
-    end
-end
-
-b = GT.assemble_vector(l,Float64,V²)
-
-function a(u,v)
-    ∫(dΩref) do q
-        J = ForwardDiff.jacobian(ϕ,q)
-        u(q)*v(q)*dV(J)
-    end +
-    ∫(dΓref) do p
-        q = β(p)
-        J = ForwardDiff.jacobian(α,p)
-        u(q)*v(q)*dS(J)
-    end +
-    ∫(dΛref) do p
-        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        index = GT.generate_index(Λ)
-        jump(v,ϕ_Λref_Ωref,p)*jump(u,ϕ_Λref_Ωref,p)*dS(J)
-    end
-end
-
-A = GT.assemble_matrix(a,Float64,V,V)
-@test size(A,1) == GT.num_free_dofs(V)
-
-function a((u1,u2),(v1,v2))
-    ∫(dΩref) do q
-        J = ForwardDiff.jacobian(ϕ,q)
-        v1(q)*v2(q)*u1(q)*u2(q)*dV(J)
-    end +
-    ∫(dΛref) do p
-        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*jump(u1,ϕ_Λref_Ωref,p)*jump(u2,ϕ_Λref_Ωref,p)*dS(J)
-    end
-end
-
-A = GT.assemble_matrix(a,Float64,V²,V²)
-
-x = similar(b,axes(A,2))
-fill!(x,0)
-uh = GT.solution_field(V²,x)
-uh1,uh2 = uh
-fill!(GT.free_values(uh2),1)
-@test x[end] == 1
-
-function dV(ϕ,q)
-    J = ForwardDiff.jacobian(ϕ,q)
-    abs(det(J))
-end
-
-a(u,v) = ∫( q->u(q)*v(q)*dV(ϕ,q), dΩref)
-
-f = GT.analytical_field(sum,Ω)
-
-l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
-
-V = GT.lagrange_space(Ωref,1)#;dirichlet_boundary=Γdiri)
-
-p = GT.linear_problem(Float64,V,a,l)
-A = PS.matrix(p)
-b = PS.rhs(p)
-display(A)
-@show GT.num_free_dofs(V)
-@test size(A,1) == GT.num_free_dofs(V)
-@test length(b) == GT.num_free_dofs(V)
-x = PS.matrix(p)\PS.rhs(p)
-uh = GT.solution_field(V,x)
-
-function ∇(u,phi,q)
-   J = ForwardDiff.jacobian(phi,q)
-   g = ForwardDiff.gradient(u,q)
-   J\g
-end
-
-a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
-l(v) = 0
-
-p = GT.linear_problem(uh,a,l)
-display(PS.matrix(p))
-x = PS.matrix(p)\PS.rhs(p)
-
-# Poisson solve (reference domain)
-
-domain = (0,1,0,1)
-cells = (4,4)
-mesh = GT.cartesian_mesh(domain,cells)
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
-
-Ω = GT.interior(mesh)
-Ωref = GT.reference_domain(Ω)
-D = GT.num_dims(mesh)
-ϕ = GT.physical_map(mesh,D)
-
-Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
-
-#V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
-
-order = 3
-V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
-
-u = GT.analytical_field(sum,Ω)
-uhd = GT.zero_dirichlet_field(Float64,V)
-# TODO
-#GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
-GT.interpolate_dirichlet!(u∘ϕ,uhd)
-
-function ∇(u,q)
-   J = ForwardDiff.jacobian(ϕ,q)
-   g = ForwardDiff.gradient(u,q)
-   J\g
-end
-
-function dV(q)
-    J = ForwardDiff.jacobian(ϕ,q)
-    abs(det(J))
-end
-
-degree = 2*order
-dΩref = GT.measure(Ωref,degree)
-
-a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
-l(v) = 0
-
-p = GT.linear_problem(uhd,a,l)
-x = PS.matrix(p)\PS.rhs(p)
-uh = GT.solution_field(uhd,x)
-
-# TODO
-# Functions like this ones should
-# work as AbstractQuantities?
-eh(q) = u(ϕ(q)) - uh(q)
-∇eh(q) = ForwardDiff.gradient(u,ϕ(q)) - ∇(uh,q)
-
-tol = 1.e-12
-el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
-@test el2 < tol
-
-eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
-@test el2 < tol
 
 # Poisson solve (API in physical domain)
 
@@ -489,8 +284,6 @@ V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
 
 uhd = GT.zero_dirichlet_field(Float64,V)
 GT.interpolate_dirichlet!(u,uhd)
-
-dΩ = GT.measure(Ω,degree)
 
 ∇(u,q) = ForwardDiff.gradient(u,q)
 
@@ -509,6 +302,290 @@ el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
 
 eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 @test el2 < tol
+
+
+jump(v,p) = v[2](p) - v[1](p)
+
+function a(u,v)
+    ∫(dΩ) do q
+        u(q)*v(q)
+    end +
+    ∫(dΓ) do q
+        u(q)*v(q)
+    end +
+    ∫(dΛ) do p
+        jump(u,p)*jump(v,p)
+    end
+end
+
+A = GT.assemble_matrix(a,Float64,V,V)
+@test size(A,1) == GT.num_free_dofs(V)
+
+V² = V × V
+
+function a((u1,u2),(v1,v2))
+    ∫(dΩ) do q
+        (v1(q)+v2(q))*(u1(q)+u2(q))
+    end +
+    ∫(dΛ) do q
+        jump(u1,q)*jump(v2,q)
+    end
+end
+
+A = GT.assemble_matrix(a,Float64,V²,V²)
+
+function l(v)
+    ∫(dΛ) do p
+        jump(v,p)
+    end
+end
+
+b = GT.assemble_vector(l,Float64,V)
+@test sum(b)+1 ≈ 1
+
+function l(v)
+    ∫(dΩ) do q
+        v(q)
+    end +
+    ∫(dΓ) do p
+        v(p)
+    end +
+    ∫(dΛ) do p
+        jump(v,p)
+    end
+end
+
+b = GT.assemble_vector(l,Float64,V)
+
+@test length(b) == GT.num_free_dofs(V)
+
+function l((v1,v2))
+    ∫(dΩ) do q
+        v1(q)*v2(q)
+    end +
+    ∫(dΛ) do p
+        jump(v1,p)*jump(v2,p)
+    end
+end
+
+b = GT.assemble_vector(l,Float64,V²)
+
+
+#V = GT.lagrange_space(Ωref,1;dirichlet_boundary=Γdiri)
+#@show GT.num_free_dofs(V)
+#@show GT.num_dirichlet_dofs(V)
+#
+#degree = 2
+#dΩref = GT.measure(Ωref,degree)
+#ϕ = GT.physical_map(mesh,D)
+#
+#dΓref = GT.measure(Γref,degree)
+#α = GT.physical_map(mesh,D-1)
+#β = GT.reference_map(mesh,D-1,D)
+#
+#Λref = GT.skeleton(mesh;
+#                 is_reference_domain=true,
+#                 physical_names=["interior_faces"])
+#
+#Λ = GT.physical_domain(Λref)
+#dΛref = GT.measure(Λref,degree)
+#ϕ_Λref_Λ = GT.physical_map(mesh,D-1)
+#ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
+#
+#function dV(J)
+#    abs(det(J))
+#end
+#
+#function dS(J)
+#    Jt = transpose(J)
+#    sqrt(det(Jt*J))
+#end
+#
+#jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
+#
+#@show GT.is_boundary(Γref)
+#
+#function l(v)
+#    ∫(dΩref) do q
+#        J = ForwardDiff.jacobian(ϕ,q)
+#        v(q)*dV(J)
+#    end +
+#    ∫(dΓref) do p
+#        q = β(p)
+#        J = ForwardDiff.jacobian(α,p)
+#        v(q)*dS(J)
+#    end +
+#    ∫(dΛref) do p
+#        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#        jump(v,ϕ_Λref_Ωref,p)*dS(J)
+#    end
+#end
+#
+#b = GT.assemble_vector(l,Float64,V)
+#
+#@test length(b) == GT.num_free_dofs(V)
+#
+#
+#function l(v)
+#    ∫(dΛref) do p
+#        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#        jump(v,ϕ_Λref_Ωref,p)*dS(J)
+#    end
+#end
+#
+#b = GT.assemble_vector(l,Float64,V)
+#@test sum(b)+1 ≈ 1
+#
+#V² = V × V
+#
+#function l((v1,v2))
+#    ∫(dΩref) do q
+#        J = ForwardDiff.jacobian(ϕ,q)
+#        v1(q)*v2(q)*dV(J)
+#    end +
+#    ∫(dΛref) do p
+#        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*dS(J)
+#    end
+#end
+#
+#b = GT.assemble_vector(l,Float64,V²)
+#
+#function a(u,v)
+#    ∫(dΩref) do q
+#        J = ForwardDiff.jacobian(ϕ,q)
+#        u(q)*v(q)*dV(J)
+#    end +
+#    ∫(dΓref) do p
+#        q = β(p)
+#        J = ForwardDiff.jacobian(α,p)
+#        u(q)*v(q)*dS(J)
+#    end +
+#    ∫(dΛref) do p
+#        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#        index = GT.generate_index(Λ)
+#        jump(v,ϕ_Λref_Ωref,p)*jump(u,ϕ_Λref_Ωref,p)*dS(J)
+#    end
+#end
+#
+#A = GT.assemble_matrix(a,Float64,V,V)
+#@test size(A,1) == GT.num_free_dofs(V)
+#
+#function a((u1,u2),(v1,v2))
+#    ∫(dΩref) do q
+#        J = ForwardDiff.jacobian(ϕ,q)
+#        v1(q)*v2(q)*u1(q)*u2(q)*dV(J)
+#    end +
+#    ∫(dΛref) do p
+#        J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#        jump(v1,ϕ_Λref_Ωref,p)*jump(v2,ϕ_Λref_Ωref,p)*jump(u1,ϕ_Λref_Ωref,p)*jump(u2,ϕ_Λref_Ωref,p)*dS(J)
+#    end
+#end
+#
+#A = GT.assemble_matrix(a,Float64,V²,V²)
+#
+#x = similar(b,axes(A,2))
+#fill!(x,0)
+#uh = GT.solution_field(V²,x)
+#uh1,uh2 = uh
+#fill!(GT.free_values(uh2),1)
+#@test x[end] == 1
+#
+#function dV(ϕ,q)
+#    J = ForwardDiff.jacobian(ϕ,q)
+#    abs(det(J))
+#end
+#
+#a(u,v) = ∫( q->u(q)*v(q)*dV(ϕ,q), dΩref)
+#
+#f = GT.analytical_field(sum,Ω)
+#
+#l(v) = ∫( q->f(ϕ(q))*v(q)*dV(ϕ,q), dΩref)
+#
+#V = GT.lagrange_space(Ωref,1)#;dirichlet_boundary=Γdiri)
+#
+#p = GT.linear_problem(Float64,V,a,l)
+#A = PS.matrix(p)
+#b = PS.rhs(p)
+#display(A)
+#@show GT.num_free_dofs(V)
+#@test size(A,1) == GT.num_free_dofs(V)
+#@test length(b) == GT.num_free_dofs(V)
+#x = PS.matrix(p)\PS.rhs(p)
+#uh = GT.solution_field(V,x)
+#
+#function ∇(u,phi,q)
+#   J = ForwardDiff.jacobian(phi,q)
+#   g = ForwardDiff.gradient(u,q)
+#   J\g
+#end
+#
+#a(u,v) = ∫( q->∇(u,ϕ,q)⋅∇(v,ϕ,q)*dV(ϕ,q), dΩref)
+#l(v) = 0
+#
+#p = GT.linear_problem(uh,a,l)
+#display(PS.matrix(p))
+#x = PS.matrix(p)\PS.rhs(p)
+#
+## Poisson solve (reference domain)
+#
+#domain = (0,1,0,1)
+#cells = (4,4)
+#mesh = GT.cartesian_mesh(domain,cells)
+#GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+#
+#Ω = GT.interior(mesh)
+#Ωref = GT.reference_domain(Ω)
+#D = GT.num_dims(mesh)
+#ϕ = GT.physical_map(mesh,D)
+#
+#Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
+#
+##V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
+#
+#order = 3
+#V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)
+#
+#u = GT.analytical_field(sum,Ω)
+#uhd = GT.zero_dirichlet_field(Float64,V)
+## TODO
+##GT.interpolate_dirichlet!(q->u(ϕ(q)),uh)
+#GT.interpolate_dirichlet!(u∘ϕ,uhd)
+#
+#function ∇(u,q)
+#   J = ForwardDiff.jacobian(ϕ,q)
+#   g = ForwardDiff.gradient(u,q)
+#   J\g
+#end
+#
+#function dV(q)
+#    J = ForwardDiff.jacobian(ϕ,q)
+#    abs(det(J))
+#end
+#
+#degree = 2*order
+#dΩref = GT.measure(Ωref,degree)
+#
+#a(u,v) = ∫( q->∇(u,q)⋅∇(v,q)*dV(q), dΩref)
+#l(v) = 0
+#
+#p = GT.linear_problem(uhd,a,l)
+#x = PS.matrix(p)\PS.rhs(p)
+#uh = GT.solution_field(uhd,x)
+#
+## TODO
+## Functions like this ones should
+## work as AbstractQuantities?
+#eh(q) = u(ϕ(q)) - uh(q)
+#∇eh(q) = ForwardDiff.gradient(u,ϕ(q)) - ∇(uh,q)
+#
+#tol = 1.e-12
+#el2 = ∫( q->abs2(eh(q))*dV(q), dΩref) |> sum |> sqrt
+#@test el2 < tol
+#
+#eh1 = ∫( q->∇eh(q)⋅∇eh(q)*dV(q), dΩref) |> sum |> sqrt
+#@test el2 < tol
+
 
 # Nonlinear case
 
@@ -547,42 +624,42 @@ l(v) = 0
 p = GT.linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
 
-tini = 0.0
-tend = 10.0
-domain = (0,1,0,1)
-cells = (20,20)
-mesh = GT.cartesian_mesh(domain,cells)
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
-Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
-g = x -> t -> exp(-2*t)*sinpi(t*x[1])*(x[2]^2-1)
-g0(t) = GT.analytical_field(x->g(x)(t),Ω)
-g1(t) = GT.analytical_field(x->ForwardDiff.derivative(g(x),t),Ω)
-α2(t) = GT.analytical_field(x->1+sin(t)*(x[1]^2+x[2]^2)/4, Ω)
-f2(t) = GT.analytical_field(x->sin(t)*sinpi(x[1])*sinpi(x[2]), Ω)
-order = 1
-dΩ = GT.measure(Ω,2*order)
-∇2 = ForwardDiff.gradient
-m(t,dtu,v) = ∫( x -> v(x)*dtu(x), dΩ)
-a(t,u,v) = ∫( x-> α2(t)(x)*∇2(v,x)⋅∇2(u,x), dΩ)
-l(t,v) = ∫( x->v(x)*f2(t)(x),dΩ)
-res(t,(u0,u1)) = v -> m(t,u1,v) + a(t,u0,v) - l(t,v)
-jac0(t,(u0,u1)) = (du,v) -> a(t,du,v)
-jac1(t,(u0,u1)) = (du,v) -> m(t,du,v)
-V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
-ut0 = GT.semi_discrete_field(Float64,V) do t,uh
-    GT.interpolate_dirichlet!(g0(t),uh)
-end
-ut1 = GT.semi_discrete_field(Float64,V) do t,uh
-    GT.interpolate_dirichlet!(g1(t),uh)
-end
-GT.interpolate_free!(g0(tini),ut0(tini))
-#TODO
-#this one is linear actually
-p = GT.nonlinear_ode((ut0,ut1),tini:tend,res,(jac0,jac1))
-x0 = GT.free_values(ut0(tini))
-x1 = GT.free_values(ut1(tini))
-PS.update(p,solution=(tini,x0,x1))
+#tini = 0.0
+#tend = 10.0
+#domain = (0,1,0,1)
+#cells = (20,20)
+#mesh = GT.cartesian_mesh(domain,cells)
+#GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+#Ω = GT.interior(mesh)
+#Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
+#g = x -> t -> exp(-2*t)*sinpi(t*x[1])*(x[2]^2-1)
+#g0(t) = GT.analytical_field(x->g(x)(t),Ω)
+#g1(t) = GT.analytical_field(x->ForwardDiff.derivative(g(x),t),Ω)
+#α2(t) = GT.analytical_field(x->1+sin(t)*(x[1]^2+x[2]^2)/4, Ω)
+#f2(t) = GT.analytical_field(x->sin(t)*sinpi(x[1])*sinpi(x[2]), Ω)
+#order = 1
+#dΩ = GT.measure(Ω,2*order)
+#∇2 = ForwardDiff.gradient
+#m(t,dtu,v) = ∫( x -> v(x)*dtu(x), dΩ)
+#a(t,u,v) = ∫( x-> α2(t)(x)*∇2(v,x)⋅∇2(u,x), dΩ)
+#l(t,v) = ∫( x->v(x)*f2(t)(x),dΩ)
+#res(t,(u0,u1)) = v -> m(t,u1,v) + a(t,u0,v) - l(t,v)
+#jac0(t,(u0,u1)) = (du,v) -> a(t,du,v)
+#jac1(t,(u0,u1)) = (du,v) -> m(t,du,v)
+#V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+#ut0 = GT.semi_discrete_field(Float64,V) do t,uh
+#    GT.interpolate_dirichlet!(g0(t),uh)
+#end
+#ut1 = GT.semi_discrete_field(Float64,V) do t,uh
+#    GT.interpolate_dirichlet!(g1(t),uh)
+#end
+#GT.interpolate_free!(g0(tini),ut0(tini))
+##TODO
+##this one is linear actually
+#p = GT.nonlinear_ode((ut0,ut1),tini:tend,res,(jac0,jac1))
+#x0 = GT.free_values(ut0(tini))
+#x1 = GT.free_values(ut1(tini))
+#PS.update(p,solution=(tini,x0,x1))
 
 
 
