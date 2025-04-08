@@ -203,7 +203,7 @@ function optimize_RefTerm(container,index)
 end
 
 function optimize_CallTerm(callee::RefTerm,args...)
-    optimize_CallTerm_RefTerm(callee.container,cellee,args...)
+    optimize_CallTerm_RefTerm(callee.container,callee,args...)
 end
 
 function optimize_CallTerm_RefTerm(container,callee,args...)
@@ -593,7 +593,7 @@ function optimize_CallTerm_LeafTerm(
     ::typeof(ForwardDiff.gradient),callee::LeafTerm,v::DiscreteFieldTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
     (f,uh,domain,face,face_around) = dependencies(v)
-    new_deps = (term.callee,uh,domain,face,face_around)
+    new_deps = (callee,uh,domain,face,face_around)
     v2 = replace_dependencies(v, new_deps)
     TabulatedTerm(v2,quadrature,point)
 end
