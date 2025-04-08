@@ -932,18 +932,19 @@ function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadratu
     face_point_dof_s = shape_function_accessor(f,space,measure)
     prototype = GT.prototype(face_point_dof_s)
     the_field = field
+    z = zero(prototype)
     function face_point_dof_a(face,face_around=nothing)
         the_face_around = face_around
         point_dof_s = face_point_dof_s(face,face_around)
         function point_dof_a(point)
             dof_s = point_dof_s(point)
             function dof_a(dof,field=1,face_around=nothing)
-                s = dof_s(dof)
                 mask = face_around == the_face_around && field == the_field
                 if mask
+                    s = dof_s(dof)
                     s
                 else
-                    zero(s)
+                    z
                 end
             end
         end

@@ -524,13 +524,17 @@ function optimize_CallTerm(callee::FormArgumentTerm,coords::CoordinateTerm)
     TabulatedTerm(callee,quadrature,point)
 end
 
-function optimize_CallTerm_LeafTerm(
-    ::typeof(ForwardDiff.gradient),callee::LeafTerm,v::FormArgumentTerm,coords::CoordinateTerm)
-    (quadrature,face,point) = map(optimize,dependencies(coords))
-    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(v)
-    new_deps = (callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
-    v2 = replace_dependencies(v, new_deps)
-    TabulatedTerm(v2,quadrature,point)
+for op in [:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian)]
+    @eval begin
+        function optimize_CallTerm_LeafTerm(
+                ::typeof($op),callee::LeafTerm,v::FormArgumentTerm,coords::CoordinateTerm)
+            (quadrature,face,point) = map(optimize,dependencies(coords))
+            (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(v)
+            new_deps = (callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
+            v2 = replace_dependencies(v, new_deps)
+            TabulatedTerm(v2,quadrature,point)
+        end
+    end
 end
 
 #function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
@@ -589,13 +593,17 @@ end
 #    TabulatedTerm(term.callee,quadrature,point)
 #end
 
-function optimize_CallTerm_LeafTerm(
-    ::typeof(ForwardDiff.gradient),callee::LeafTerm,v::DiscreteFieldTerm,coords::CoordinateTerm)
-    (quadrature,face,point) = map(optimize,dependencies(coords))
-    (f,uh,domain,face,face_around) = dependencies(v)
-    new_deps = (callee,uh,domain,face,face_around)
-    v2 = replace_dependencies(v, new_deps)
-    TabulatedTerm(v2,quadrature,point)
+for op in [:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian)]
+    @eval begin
+        function optimize_CallTerm_LeafTerm(
+                ::typeof($op),callee::LeafTerm,v::DiscreteFieldTerm,coords::CoordinateTerm)
+            (quadrature,face,point) = map(optimize,dependencies(coords))
+            (f,uh,domain,face,face_around) = dependencies(v)
+            new_deps = (callee,uh,domain,face,face_around)
+            v2 = replace_dependencies(v, new_deps)
+            TabulatedTerm(v2,quadrature,point)
+        end
+    end
 end
 
 #function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:DiscreteFieldTerm, <:CoordinateTerm}})

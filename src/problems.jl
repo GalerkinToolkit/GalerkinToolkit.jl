@@ -428,7 +428,7 @@ function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
     U = GT.space(uhd)
-    xd = dirichlet_values(uhd)
+    xd = collect(dirichlet_values(uhd)) # Collect can be removed once BArray supports indexing.
     T = eltype(xd)
     A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;matrix_strategy,vector_strategy)
     mul!(b,Ad,xd,-1,1)
