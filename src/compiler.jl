@@ -212,6 +212,14 @@ function optimize_CallTerm_RefTerm(container,callee,args...)
     CallTerm(callee2,args2)
 end
 
+function optimize_CallTerm_LeafTerm(value,callee::LeafTerm,u::RefTerm,x)
+    callee2 = optimize(callee)
+    u2 = optimize(u)
+    x2 = optimize(x)
+    term = call_term(callee2,u2,x2)
+    optimize(term)
+end
+
 function prototype(a::RefTerm)
     #zero(eltype(prototype(a.container)))
     if length(prototype(a.container)) > 0
@@ -1359,7 +1367,7 @@ end
 function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
-    space_domain = GT.domain(space)
+    #space_domain = GT.domain(space)
     face_npoints = num_points_accessor(quadrature)
     field_face_n_faces_around = map(fields(space)) do field_space
         num_faces_around_accesor(GT.domain(field_space),domain)
