@@ -24,7 +24,7 @@ function visualization_mesh(mesh::AbstractMesh,dim,ids=num_faces(mesh,dim);order
         end
         nrefids = length(refid_to_srefid_to_oid)
         i_to_oid = reduce(vcat,refid_to_srefid_to_oid)
-        i_to_vrefface = reduce(vcat,refid_to_srefid_to_vrefface)
+        i_to_vrefface = reduce(vcat,map(collect,refid_to_srefid_to_vrefface))
         refid_to_srefid_to_i = Vector{Vector{Int}}(undef,nrefids)
         i = 0
         for refid in 1:nrefids
@@ -693,55 +693,52 @@ function plot!(field,plt::Plot;label)
 end
 
 function plot!(plt::Plot,field;label)
-    q = GT.coordinates(plt)
-    f_q = field(q)
-    term = GT.term(f_q)
-    plot_impl!(plt,term,label)
+    quad = quadrature(plt)
+    vals = sample(field,quad)
+    plt.node_data[label] = vals.data
+    plt
 end
 
 function plot!(plt::PPlot,field;label)
-    q = GT.coordinates(plt)
-    f_q = field(q)
-    term = GT.term(f_q)
-    map(partition(plt),term) do myplt, myterm
-        plot_impl!(myplt,myterm,label)
+    foreach(partition(plt),partition(field)) do myplt,myfield
+        plot!(myplt,myfield;label)
     end
     plt
 end
 
-function plot_impl!(plt,term,label)
-    vmesh  = plt.mesh
-    vglue = plt.cache.glue
-    nnodes = GT.num_nodes(vmesh)
-    index = GT.generate_index(domain(plt))
-    d = target_dim(index)
-    face_to_nodes = GT.get_symbol!(index,vglue.face_fine_nodes,"face_to_nodes")
-    t = term(index)
-    T = typeof(prototype(t))
-    data = zeros(T,nnodes)
-    expr1 = expression(t) |> simplify
-    face = face_index(index,d)
-    point = point_index(index)
-    deps = (face,point)
-    v = GT.topological_sort(expr1,deps)
-    expr = quote
-        (data,state) -> begin
-            $(unpack_index_storage(index,:state))
-            $(v[1])
-            for $face in 1:length($face_to_nodes)
-                nodes = $face_to_nodes[$face]
-                $(v[2])
-                for $point in 1:length(nodes)
-                    data[nodes[$point]] = $(v[3])
-                end
-            end
-        end
-    end
-    filldata! = eval(expr)
-    invokelatest(filldata!,data,GT.index_storage(index))
-    plt.node_data[label] = data
-    plt
-end
+#function plot_impl!(plt,term,label)
+#    vmesh  = plt.mesh
+#    vglue = plt.cache.glue
+#    nnodes = GT.num_nodes(vmesh)
+#    index = GT.generate_index(domain(plt))
+#    d = target_dim(index)
+#    face_to_nodes = GT.get_symbol!(index,vglue.face_fine_nodes,"face_to_nodes")
+#    t = term(index)
+#    T = typeof(prototype(t))
+#    data = zeros(T,nnodes)
+#    expr1 = expression(t) |> simplify
+#    face = face_index(index,d)
+#    point = point_index(index)
+#    deps = (face,point)
+#    v = GT.topological_sort(expr1,deps)
+#    expr = quote
+#        (data,state) -> begin
+#            $(unpack_index_storage(index,:state))
+#            $(v[1])
+#            for $face in 1:length($face_to_nodes)
+#                nodes = $face_to_nodes[$face]
+#                $(v[2])
+#                for $point in 1:length(nodes)
+#                    data[nodes[$point]] = $(v[3])
+#                end
+#            end
+#        end
+#    end
+#    filldata! = eval(expr)
+#    invokelatest(filldata!,data,GT.index_storage(index))
+#    plt.node_data[label] = data
+#    plt
+#end
 
 function quadrature(plt::Plot)
     domain = GT.domain(plt)
@@ -792,16 +789,16 @@ end
 
 domain(plt::Union{Plot,PPlot}) = plt.cache.domain
 
-function coordinates(plt::Union{Plot,PPlot})
-    domain = plt |> GT.domain
-    q = GT.reference_coordinates(plt)
-    if is_reference_domain(domain)
-        return q
-    end
-    d = num_dims(GT.domain(plt))
-    phi = physical_map(GT.mesh(GT.domain(plt)),d)
-    phi(q)
-end
+#function coordinates(plt::Union{Plot,PPlot})
+#    domain = plt |> GT.domain
+#    q = GT.reference_coordinates(plt)
+#    if is_reference_domain(domain)
+#        return q
+#    end
+#    d = num_dims(GT.domain(plt))
+#    phi = physical_map(GT.mesh(GT.domain(plt)),d)
+#    phi(q)
+#end
 
 #function coordinates(plt::Union{Plot,PPlot},::ReferenceDomain)
 #    GT.reference_coordinates(plt)

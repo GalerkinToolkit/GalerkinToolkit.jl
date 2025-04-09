@@ -60,9 +60,8 @@ function setup_interpolation_accessors(state)
     face_dofs = GT.dofs_accessor(V,Ω)
     face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
     face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
-    face_dirichlet! = GT.dirichlet_accessor(uhd,Ω)
     interpolation = (;
-        face_dofs,face_point_dof_s,face_point_dof_∇s,face_dirichlet!)
+        face_dofs,face_point_dof_s,face_point_dof_∇s)
     (;interpolation,state...)
 end
 nothing # hide
@@ -82,7 +81,6 @@ function face_tensors!(Auu,bu,face,state)
     point_dof_s = interpolation.face_point_dof_s(face)
     point_dof_∇s = interpolation.face_point_dof_∇s(face)
     dofs = interpolation.face_dofs(face)
-    dirichlet! = interpolation.face_dirichlet!(face)
 
     #Reset face matrix and vector
     fill!(Auu,zero(eltype(Auu)))
@@ -110,9 +108,6 @@ function face_tensors!(Auu,bu,face,state)
         end
     end
 
-    #Apply Dirichlet conditions on face vector
-    dirichlet!(Auu,bu)
-
     #Return dof ids for this face
     dofs
 end
@@ -123,7 +118,7 @@ nothing # hide
 function assemble_problem(state)
 
     (;example) = state
-    (;V,Ω,f) = example
+    (;V,Ω,f,uhd) = example
 
     #Allocate auxiliary face matrix and vector
     n = GT.max_num_reference_dofs(V)
@@ -134,6 +129,7 @@ function assemble_problem(state)
     #Allocate space for the global matrix and vector
     b_alloc = GT.allocate_vector(T,V,Ω)
     A_alloc = GT.allocate_matrix(T,V,V,Ω)
+    Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet=(GT.FREE,GT.DIRICHLET))
 
     #Loop over the faces of the domain
     for face in 1:GT.num_faces(Ω)
@@ -144,14 +140,20 @@ function assemble_problem(state)
         #Add face contribution to global allocation
         GT.contribute!(b_alloc,bu,dofs)
         GT.contribute!(A_alloc,Auu,dofs,dofs)
+        GT.contribute!(Ad_alloc,Auu,dofs,dofs)
     end
 
     #Compress matrix and vector into the final format
     b = GT.compress(b_alloc)
     A = GT.compress(A_alloc)
+    Ad = GT.compress(Ad_alloc)
 
     #Allocate space for the solution
     sol = similar(b,axes(A,2))
+
+    #Apply Dirichlet to RHS
+    xd = GT.dirichlet_values(uhd)
+    mul!(b,Ad,xd,-1,1)
 
     #Create linear problem object
     problem = PS.linear_problem(sol,A,b)

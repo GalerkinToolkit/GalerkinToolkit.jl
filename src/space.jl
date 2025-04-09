@@ -2,7 +2,7 @@
 
 #domain(space::AbstractSpace,field) = domain(space)
 mesh(a::AbstractSpace) = GT.mesh(GT.domain(a))
-num_dims(a::AbstractSpace) = num_dims(mesh(a))
+num_dims(a::AbstractSpace) = num_dims(domain(a))
 num_free_dofs(a::AbstractSpace) = length(free_dofs(a))
 num_dirichlet_dofs(a::AbstractSpace) = length(dirichlet_dofs(a))
 num_dofs(a::AbstractSpace) = num_free_dofs(a) + num_dirichlet_dofs(a)
@@ -169,33 +169,33 @@ function pull_back(a::AbstractSpace,qty)
     qty
 end
 
-function shape_function_quantity(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
-    domain = GT.domain(a)
-    qty = shape_function_quantity(refid_to_funs,domain;reference=true,face_reference_id=face_to_refid,dof)
-    if reference
-        return qty
-    end
-    D = num_dims(domain)
-    ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    push_forward(a,qty)∘ϕinv
-end
-
-function form_argument_quantity(a::AbstractSpace,axis,field=1)
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
-    domain = GT.domain(a)
-    qty = form_argument(axis,field,refid_to_funs,domain;reference=true)# TODO,face_reference_id=face_to_refid)
-    if is_reference_domain(GT.domain(a))
-        return qty
-    end
-    D = num_dims(domain)
-    ϕinv = GT.inverse_physical_map(mesh(domain),D)
-    push_forward(a,qty)∘ϕinv
-end
+#function shape_function_quantity(a::AbstractSpace,dof;reference=is_reference_domain(GT.domain(a)))
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+#    domain = GT.domain(a)
+#    qty = shape_function_quantity(refid_to_funs,domain;reference=true,face_reference_id=face_to_refid,dof)
+#    if reference
+#        return qty
+#    end
+#    D = num_dims(domain)
+#    ϕinv = GT.inverse_physical_map(mesh(domain),D)
+#    push_forward(a,qty)∘ϕinv
+#end
+#
+#function form_argument_quantity(a::AbstractSpace,axis,field=1)
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.shape_functions,refid_to_reffes)
+#    domain = GT.domain(a)
+#    qty = form_argument(axis,field,refid_to_funs,domain;reference=true)# TODO,face_reference_id=face_to_refid)
+#    if is_reference_domain(GT.domain(a))
+#        return qty
+#    end
+#    D = num_dims(domain)
+#    ϕinv = GT.inverse_physical_map(mesh(domain),D)
+#    push_forward(a,qty)∘ϕinv
+#end
 
 function free_or_dirichlet_value(free_vals,diri_vals,dof)
     if dof < 0
@@ -205,87 +205,75 @@ function free_or_dirichlet_value(free_vals,diri_vals,dof)
     end
 end
 
-function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
-    ldof = gensym("fe-dof")
-    s = shape_function_quantity(a,ldof;reference=true)
-    # TODO ugly
-    if is_physical_domain(GT.domain(a))
-        s = push_forward(a,s)
-    end
-    face_to_dofs = GT.face_dofs(a)
-    D = num_dims(domain(a))
-    qty = quantity() do index
-        face_to_dofs_sym = get_symbol!(index,face_to_dofs,"face_to_dofs")
-        free_vals_sym = get_symbol!(index,free_vals,"free_vals")
-        diri_vals_sym = get_symbol!(index,diri_vals,"diri_vals")
-        face = face_index(index,D)
-        expr = @term begin
-            dof = $face_to_dofs_sym[$face][$ldof]
-            GalerkinToolkit.free_or_dirichlet_value($free_vals_sym,$diri_vals_sym,dof)
-        end
-        p = zero(eltype(free_vals))
-        coeffs = expr_term([D],expr,p,index)
-        expr = @term begin
-            length($face_to_dofs_sym[$face])
-        end
-        ndofs = expr_term([D],expr,0,index)
-        shapes = term(s,index)
-        discrete_function_term(coeffs,shapes,ldof,ndofs)
-    end
-    # TODO ugly
-    if is_reference_domain(GT.domain(a))
-        return qty
-    end
-    ϕinv = GT.inverse_physical_map(mesh(domain(a)),D)
-    qty∘ϕinv
-end
+#function discrete_field_quantity(a::AbstractSpace,free_vals,diri_vals)
+#    ldof = gensym("fe-dof")
+#    s = shape_function_quantity(a,ldof;reference=true)
+#    # TODO ugly
+#    if is_physical_domain(GT.domain(a))
+#        s = push_forward(a,s)
+#    end
+#    face_to_dofs = GT.face_dofs(a)
+#    D = num_dims(domain(a))
+#    qty = quantity() do index
+#        face_to_dofs_sym = get_symbol!(index,face_to_dofs,"face_to_dofs")
+#        free_vals_sym = get_symbol!(index,free_vals,"free_vals")
+#        diri_vals_sym = get_symbol!(index,diri_vals,"diri_vals")
+#        face = face_index(index,D)
+#        expr = @term begin
+#            dof = $face_to_dofs_sym[$face][$ldof]
+#            GalerkinToolkit.free_or_dirichlet_value($free_vals_sym,$diri_vals_sym,dof)
+#        end
+#        p = zero(eltype(free_vals))
+#        coeffs = expr_term([D],expr,p,index)
+#        expr = @term begin
+#            length($face_to_dofs_sym[$face])
+#        end
+#        ndofs = expr_term([D],expr,0,index)
+#        shapes = term(s,index)
+#        discrete_function_term(coeffs,shapes,ldof,ndofs)
+#    end
+#    # TODO ugly
+#    if is_reference_domain(GT.domain(a))
+#        return qty
+#    end
+#    ϕinv = GT.inverse_physical_map(mesh(domain(a)),D)
+#    qty∘ϕinv
+#end
 
-function discrete_field(space::AbstractSpace,free_values)
-    @assert num_dirichlet_dofs(space) == 0 "This space has Dirichlet DOFs. You should provide dirichlet_values."
-    dirichlet_values = similar(free_values,dirichlet_dofs(space))
-    discrete_field(space,free_values,dirichlet_values)
-end
-
-function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
-    qty = discrete_field_quantity(space,free_values,dirichlet_values)
-    mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values,qty)
-end
-
-function dual_basis_quantity(a::AbstractSpace,dof)
-    face_to_refid = face_reference_id(a)
-    refid_to_reffes = reference_spaces(a)
-    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
-    domain = GT.domain(a)
-    D = num_dims(domain)
-    prototype = first(first(refid_to_funs))
-    s = GT.quantity() do index
-        face_to_sface = get_symbol!(index,inverse_faces(domain),"face_to_sface")
-        sface_to_refid_sym = get_symbol!(index,face_to_refid,"sface_to_refid")
-        refid_to_funs_sym = get_symbol!(index,refid_to_funs,"refid_to_funs")
-        face = face_index(index,D)
-        expr = @term begin
-            sface = $face_to_sface[$face]
-            refid = $sface_to_refid_sym[sface]
-            $refid_to_funs_sym[refid][$dof]
-        end
-        expr_term([D],expr,prototype,index;dof)
-    end
-    if is_reference_domain(GT.domain(a))
-        return s
-    end
-    ϕ = GT.physical_map(mesh(domain),D)
-    s2 = pull_back(a,s)
-    call(dual_compose,s2,ϕ)
-end
+#function dual_basis_quantity(a::AbstractSpace,dof)
+#    face_to_refid = face_reference_id(a)
+#    refid_to_reffes = reference_spaces(a)
+#    refid_to_funs = map(GT.dual_basis,refid_to_reffes)
+#    domain = GT.domain(a)
+#    D = num_dims(domain)
+#    prototype = first(first(refid_to_funs))
+#    s = GT.quantity() do index
+#        face_to_sface = get_symbol!(index,inverse_faces(domain),"face_to_sface")
+#        sface_to_refid_sym = get_symbol!(index,face_to_refid,"sface_to_refid")
+#        refid_to_funs_sym = get_symbol!(index,refid_to_funs,"refid_to_funs")
+#        face = face_index(index,D)
+#        expr = @term begin
+#            sface = $face_to_sface[$face]
+#            refid = $sface_to_refid_sym[sface]
+#            $refid_to_funs_sym[refid][$dof]
+#        end
+#        expr_term([D],expr,prototype,index;dof)
+#    end
+#    if is_reference_domain(GT.domain(a))
+#        return s
+#    end
+#    ϕ = GT.physical_map(mesh(domain),D)
+#    s2 = pull_back(a,s)
+#    call(dual_compose,s2,ϕ)
+#end
 
 function dual_compose(s,g)
     f -> s(f∘g)
 end
 
-function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.prefix)
-    :(GalerkinToolkit.dual_compose)
-end
+#function get_symbol!(index,::typeof(dual_compose),name="";prefix=index.data.prefix)
+#    :(GalerkinToolkit.dual_compose)
+#end
 
 function generate_dof_ids(space::AbstractSpace)
     state0 = generate_dof_ids_step_0(space)
@@ -295,11 +283,11 @@ end
 
 function generate_dof_ids_step_0(space)
     # This is a function barrier to help type inference
-    domain = space |> GT.domain
+    domain = GT.domain(space)
     D = GT.num_dims(domain)
-    cell_to_Dface = domain |> GT.faces
-    mesh = domain |> GT.mesh
-    topology = mesh |> GT.topology
+    cell_to_Dface = GT.faces(domain) 
+    mesh = GT.mesh(domain)
+    topology =  GT.topology(mesh)
     ctype_to_reference_fe = space |> GT.reference_spaces
     d_to_ctype_to_ldface_to_own_dofs = map(d->GT.reference_face_own_dofs(space,d),0:D)
     d_to_ctype_to_ldface_to_pindex_to_perm = map(d->GT.reference_face_own_dof_permutations(space,d),0:D)
@@ -329,8 +317,8 @@ function generate_dof_ids_step_1(space,state0)
     mesh = domain |> GT.mesh
     topology = mesh |> GT.topology
     d_to_ndfaces = map(d->GT.num_faces(topology,d),0:D)
-    cell_to_ctype = space |> GT.face_reference_id
-    ncells = length(cell_to_ctype)
+    Dface_to_ctype = space |> GT.face_reference_id
+    ncells = length(cell_to_Dface)
     nDfaces = num_faces(topology,D)
     d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
@@ -342,8 +330,8 @@ function generate_dof_ids_step_1(space,state0)
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ndfaces = length(dface_to_dof_offset)
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldface_to_num_own_dofs = ctype_to_ldface_to_num_own_dofs[ctype]
             ldface_to_dface = Dface_to_dfaces[Dface]
             nldfaces = length(ldface_to_num_own_dofs)
@@ -362,7 +350,8 @@ function generate_dof_ids_step_1(space,state0)
     ndofs = dof_offset
     Dface_to_ptrs = zeros(Int32,nDfaces+1)
     for cell in 1:ncells
-        ctype = cell_to_ctype[cell]
+        Dface = cell_to_Dface[cell]
+        ctype = Dface_to_ctype[Dface]
         num_dofs = ctype_to_num_dofs[ctype]
         Dface = cell_to_Dface[cell]
         Dface_to_ptrs[Dface+1] = num_dofs
@@ -380,8 +369,8 @@ function generate_dof_ids_step_1(space,state0)
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
         Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldof_to_dof = Dface_to_dofs[Dface]
             ldface_to_dface = Dface_to_dfaces[Dface]
             ldface_to_own_ldofs = ctype_to_ldface_to_own_ldofs[ctype]
@@ -408,7 +397,7 @@ function generate_dof_ids_step_1(space,state0)
     dof_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(ndofs,))
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
-     cell_to_ctype,cell_to_Dface,dof_local_indices)
+     Dface_to_ctype,cell_to_Dface,dof_local_indices)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
@@ -423,7 +412,7 @@ end
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
     #physical_names = dirichlet_boundary |> GT.physical_names
@@ -436,8 +425,8 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
         Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
         ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
         for cell in 1:ncells
-            ctype = cell_to_ctype[cell]
             Dface = cell_to_Dface[cell]
+            ctype = Dface_to_ctype[Dface]
             ldof_to_dof = Dface_to_dofs[Dface]
             ldface_to_dface = Dface_to_dfaces[Dface]
             ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
@@ -475,99 +464,99 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     (;Dface_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(space,state,q::AbstractField)
-    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dirichlet_boundary = domain(q)
-    dof_to_tag = zeros(Int32,ndofs)
-    N = GT.num_dims(dirichlet_boundary)
-    #physical_names = dirichlet_boundary |> GT.physical_names
-    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-    mesh = dirichlet_boundary |> GT.mesh
-    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
-    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
-    ncells = length(cell_to_Dface)
-    dim = 1
-    ldof = :ldof
-    sigma = GT.dual_basis_quantity(space,ldof)
-    index1 = generate_index(domain(space))
-    Dface = face_index(index1,num_dims(domain(space)))
-    sigma_expr = term(sigma,index1) |> expression |> simplify
-    index2 = GT.generate_index(dirichlet_boundary)
-    dface = face_index(index2,num_dims(dirichlet_boundary))
-    q_expr = term(q,index2) |> expression |> simplify
-    sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
-    # TODO Why empty?
-    #q_texpr = topological_sort(q_expr,(dface,))
-    expr = quote
-        (args,storage1,storage2) -> begin
-            $(unpack_index_storage(index1,:storage1))
-            $(unpack_index_storage(index2,:storage2))
-            d = args.d
-            Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
-            ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
-            $(sigma_texpr[1])
-            for cell in 1:args.ncells
-                ctype = args.cell_to_ctype[cell]
-                $Dface = args.cell_to_Dface[cell]
-                $(sigma_texpr[2])
-                ldface_to_dface = Dface_to_dfaces[$Dface]
-                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
-                nldfaces = length(ldface_to_dface)
-                Dface = args.cell_to_Dface[cell]
-                dofs = args.Dface_to_dofs[Dface]
-                for ldface in 1:nldfaces
-                    ldofs = ldface_to_ldofs[ldface]
-                    $dface = ldface_to_dface[ldface]
-                    Nface = $dface
-                    tag = args.Nface_to_tag[Nface]
-                    if tag == 0
-                        continue
-                    end
-                    qfun = $(q_expr)
-                    for ldof in ldofs
-                        sfun = $(sigma_texpr[3])
-                        mask = sfun(qfun)
-                        if !(abs(mask) + 1 ≈ 1)
-                            dof = dofs[ldof]
-                            args.dof_to_tag[dof] = tag
-                        end
-                    end
-                end
-            end
-        end
-    end
-    loop! = eval(expr)
-    storage1 = GT.index_storage(index1)
-    storage2 = GT.index_storage(index2)
-    d = N
-    args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
-    invokelatest(loop!,args,storage1,storage2)
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
-    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
-    n_free_dofs = length(first(free_and_dirichlet_dofs))
-    f = dof -> begin
-        dof2 = dof_permutation[dof]
-        T = typeof(dof2)
-        if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
-        end
-        dof2
-    end
-    data = Dface_to_dofs.data
-    data .= f.(data)
-    ndiri = length(last(free_and_dirichlet_dofs))
-    dirichlet_dof_location = ones(Int32,ndiri)
-    free_dofs = Base.OneTo(n_free_dofs)
-    dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
-end
+#function generate_dof_ids_step_2(space,state,q::AbstractField)
+#    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
+#     d_to_ctype_to_ldface_to_dofs,
+#     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
+#    dirichlet_boundary = domain(q)
+#    dof_to_tag = zeros(Int32,ndofs)
+#    N = GT.num_dims(dirichlet_boundary)
+#    #physical_names = dirichlet_boundary |> GT.physical_names
+#    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+#    mesh = dirichlet_boundary |> GT.mesh
+#    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
+#    ncells = length(cell_to_Dface)
+#    dim = 1
+#    ldof = :ldof
+#    sigma = GT.dual_basis_quantity(space,ldof)
+#    index1 = generate_index(domain(space))
+#    Dface = face_index(index1,num_dims(domain(space)))
+#    sigma_expr = term(sigma,index1) |> expression |> simplify
+#    index2 = GT.generate_index(dirichlet_boundary)
+#    dface = face_index(index2,num_dims(dirichlet_boundary))
+#    q_expr = term(q,index2) |> expression |> simplify
+#    sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
+#    # TODO Why empty?
+#    #q_texpr = topological_sort(q_expr,(dface,))
+#    expr = quote
+#        (args,storage1,storage2) -> begin
+#            $(unpack_index_storage(index1,:storage1))
+#            $(unpack_index_storage(index2,:storage2))
+#            d = args.d
+#            Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
+#            ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
+#            $(sigma_texpr[1])
+#            for cell in 1:args.ncells
+#                ctype = args.cell_to_ctype[cell]
+#                $Dface = args.cell_to_Dface[cell]
+#                $(sigma_texpr[2])
+#                ldface_to_dface = Dface_to_dfaces[$Dface]
+#                ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+#                nldfaces = length(ldface_to_dface)
+#                Dface = args.cell_to_Dface[cell]
+#                dofs = args.Dface_to_dofs[Dface]
+#                for ldface in 1:nldfaces
+#                    ldofs = ldface_to_ldofs[ldface]
+#                    $dface = ldface_to_dface[ldface]
+#                    Nface = $dface
+#                    tag = args.Nface_to_tag[Nface]
+#                    if tag == 0
+#                        continue
+#                    end
+#                    qfun = $(q_expr)
+#                    for ldof in ldofs
+#                        sfun = $(sigma_texpr[3])
+#                        mask = sfun(qfun)
+#                        if !(abs(mask) + 1 ≈ 1)
+#                            dof = dofs[ldof]
+#                            args.dof_to_tag[dof] = tag
+#                        end
+#                    end
+#                end
+#            end
+#        end
+#    end
+#    loop! = eval(expr)
+#    storage1 = GT.index_storage(index1)
+#    storage2 = GT.index_storage(index2)
+#    d = N
+#    args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
+#    invokelatest(loop!,args,storage1,storage2)
+#    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+#    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+#    n_free_dofs = length(first(free_and_dirichlet_dofs))
+#    f = dof -> begin
+#        dof2 = dof_permutation[dof]
+#        T = typeof(dof2)
+#        if dof2 > n_free_dofs
+#            return T(n_free_dofs-dof2)
+#        end
+#        dof2
+#    end
+#    data = Dface_to_dofs.data
+#    data .= f.(data)
+#    ndiri = length(last(free_and_dirichlet_dofs))
+#    dirichlet_dof_location = ones(Int32,ndiri)
+#    free_dofs = Base.OneTo(n_free_dofs)
+#    dirichlet_dofs = Base.OneTo(ndiri)
+#    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+#end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
     dof_to_location = zeros(Int32,ndofs)
     D = length(d_to_ndfaces)-1
     for d in D:-1:0
@@ -585,8 +574,8 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
             ctype_to_ldface_to_ldofs = d_to_ctype_to_ldface_to_dofs[d+1]
             for cell in 1:ncells
-                ctype = cell_to_ctype[cell]
                 Dface = cell_to_Dface[cell]
+                ctype = Dface_to_ctype[Dface]
                 ldof_to_dof = Dface_to_dofs[Dface]
                 ldface_to_dface = Dface_to_dfaces[Dface]
                 ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
@@ -625,102 +614,102 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
 end
 
-function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
-    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
-     d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
-    dof_to_tag = zeros(Int32,ndofs)
-    D = length(d_to_ndfaces)-1
-    for d in D:-1:0
-        for (location,q) in enumerate(q_all.fields)
-            dirichlet_boundary = domain(q)
-            N = GT.num_dims(dirichlet_boundary)
-            if d != N
-                continue
-            end
-            #physical_names = dirichlet_boundary |> GT.physical_names
-            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
-            mesh = dirichlet_boundary |> GT.mesh
-            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
-            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
-            ncells = length(cell_to_Dface)
-            dim = 1
-            ldof = :ldof
-            sigma = GT.dual_basis_quantity(space,ldof)
-            index1 = generate_index(domain(space))
-            Dface = face_index(index1,num_dims(domain(space)))
-            sigma_expr = term(sigma,index1) |> expression |> simplify
-            index2 = GT.generate_index(dirichlet_boundary)
-            dface = face_index(index2,num_dims(dirichlet_boundary))
-            q_expr = term(q,index2) |> expression |> simplify
-            sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
-            # TODO Why empty?
-            #q_texpr = topological_sort(q_expr,(dface,))
-            expr = quote
-                (args,storage1,storage2) -> begin
-                    $(unpack_index_storage(index1,:storage1))
-                    $(unpack_index_storage(index2,:storage2))
-                    d = args.d
-                    Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
-                    ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
-                    $(sigma_texpr[1])
-                    for cell in 1:args.ncells
-                        ctype = args.cell_to_ctype[cell]
-                        $Dface = args.cell_to_Dface[cell]
-                        $(sigma_texpr[2])
-                        ldface_to_dface = Dface_to_dfaces[$Dface]
-                        ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
-                        nldfaces = length(ldface_to_dface)
-                        Dface = args.cell_to_Dface[cell]
-                        dofs = args.Dface_to_dofs[Dface]
-                        for ldface in 1:nldfaces
-                            ldofs = ldface_to_ldofs[ldface]
-                            $dface = ldface_to_dface[ldface]
-                            Nface = $dface
-                            tag = args.Nface_to_tag[Nface]
-                            if tag == 0
-                                continue
-                            end
-                            qfun = $(q_expr)
-                            for ldof in ldofs
-                                sfun = $(sigma_texpr[3])
-                                mask = sfun(qfun)
-                                if !(abs(mask) + 1 ≈ 1)
-                                    dof = dofs[ldof]
-                                    args.dof_to_tag[dof] = tag
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            loop! = eval(expr)
-            storage1 = GT.index_storage(index1)
-            storage2 = GT.index_storage(index2)
-            d = N
-            args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
-            invokelatest(loop!,args,storage1,storage2)
-        end
-    end
-    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
-    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
-    n_free_dofs = length(first(free_and_dirichlet_dofs))
-    f = dof -> begin
-        dof2 = dof_permutation[dof]
-        T = typeof(dof2)
-        if dof2 > n_free_dofs
-            return T(n_free_dofs-dof2)
-        end
-        dof2
-    end
-    data = Dface_to_dofs.data
-    data .= f.(data)
-    ndiri = length(last(free_and_dirichlet_dofs))
-    dirichlet_dof_location = ones(Int32,ndiri)
-    free_dofs = Base.OneTo(n_free_dofs)
-    dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
-end
+#function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
+#    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
+#     d_to_ctype_to_ldface_to_dofs,
+#     d_to_ndfaces,cell_to_ctype,cell_to_Dface) = state
+#    dof_to_tag = zeros(Int32,ndofs)
+#    D = length(d_to_ndfaces)-1
+#    for d in D:-1:0
+#        for (location,q) in enumerate(q_all.fields)
+#            dirichlet_boundary = domain(q)
+#            N = GT.num_dims(dirichlet_boundary)
+#            if d != N
+#                continue
+#            end
+#            #physical_names = dirichlet_boundary |> GT.physical_names
+#            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
+#            mesh = dirichlet_boundary |> GT.mesh
+#            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
+#            ncells = length(cell_to_Dface)
+#            dim = 1
+#            ldof = :ldof
+#            sigma = GT.dual_basis_quantity(space,ldof)
+#            index1 = generate_index(domain(space))
+#            Dface = face_index(index1,num_dims(domain(space)))
+#            sigma_expr = term(sigma,index1) |> expression |> simplify
+#            index2 = GT.generate_index(dirichlet_boundary)
+#            dface = face_index(index2,num_dims(dirichlet_boundary))
+#            q_expr = term(q,index2) |> expression |> simplify
+#            sigma_texpr = topological_sort(sigma_expr,(Dface,ldof))
+#            # TODO Why empty?
+#            #q_texpr = topological_sort(q_expr,(dface,))
+#            expr = quote
+#                (args,storage1,storage2) -> begin
+#                    $(unpack_index_storage(index1,:storage1))
+#                    $(unpack_index_storage(index2,:storage2))
+#                    d = args.d
+#                    Dface_to_dfaces = args.d_to_Dface_to_dfaces[d+1]
+#                    ctype_to_ldface_to_ldofs = args.d_to_ctype_to_ldface_to_dofs[d+1]
+#                    $(sigma_texpr[1])
+#                    for cell in 1:args.ncells
+#                        ctype = args.cell_to_ctype[cell]
+#                        $Dface = args.cell_to_Dface[cell]
+#                        $(sigma_texpr[2])
+#                        ldface_to_dface = Dface_to_dfaces[$Dface]
+#                        ldface_to_ldofs = ctype_to_ldface_to_ldofs[ctype]
+#                        nldfaces = length(ldface_to_dface)
+#                        Dface = args.cell_to_Dface[cell]
+#                        dofs = args.Dface_to_dofs[Dface]
+#                        for ldface in 1:nldfaces
+#                            ldofs = ldface_to_ldofs[ldface]
+#                            $dface = ldface_to_dface[ldface]
+#                            Nface = $dface
+#                            tag = args.Nface_to_tag[Nface]
+#                            if tag == 0
+#                                continue
+#                            end
+#                            qfun = $(q_expr)
+#                            for ldof in ldofs
+#                                sfun = $(sigma_texpr[3])
+#                                mask = sfun(qfun)
+#                                if !(abs(mask) + 1 ≈ 1)
+#                                    dof = dofs[ldof]
+#                                    args.dof_to_tag[dof] = tag
+#                                end
+#                            end
+#                        end
+#                    end
+#                end
+#            end
+#            loop! = eval(expr)
+#            storage1 = GT.index_storage(index1)
+#            storage2 = GT.index_storage(index2)
+#            d = N
+#            args = (;d,ncells,dof_to_tag,Nface_to_tag,state...)
+#            invokelatest(loop!,args,storage1,storage2)
+#        end
+#    end
+#    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
+#    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+#    n_free_dofs = length(first(free_and_dirichlet_dofs))
+#    f = dof -> begin
+#        dof2 = dof_permutation[dof]
+#        T = typeof(dof2)
+#        if dof2 > n_free_dofs
+#            return T(n_free_dofs-dof2)
+#        end
+#        dof2
+#    end
+#    data = Dface_to_dofs.data
+#    data .= f.(data)
+#    ndiri = length(last(free_and_dirichlet_dofs))
+#    dirichlet_dof_location = ones(Int32,ndiri)
+#    free_dofs = Base.OneTo(n_free_dofs)
+#    dirichlet_dofs = Base.OneTo(ndiri)
+#    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+#end
 
 struct LastDof end
 
@@ -925,11 +914,14 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
        )
-    LagrangeFaceSpace(contents)
+    space = LagrangeFaceSpace(nothing,contents)
+    workspace = generate_workspace(space)
+    space2 = replace_workspace(space,workspace)
 end
 
-struct LagrangeFaceSpace{A} <: AbstractFaceSpace
-    contents::A
+@auto_hash_equals struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
+    workspace::A
+    contents::B
 end
 
 domain(a::LagrangeFaceSpace) = a.contents.domain
@@ -939,6 +931,28 @@ space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
 dirichlet_boundary(fe::LagrangeFaceSpace) = fe.contents.dirichlet_boundary
+
+function replace_workspace(fe::LagrangeFaceSpace,workspace)
+    LagrangeFaceSpace(workspace,fe.contents)
+end
+
+function generate_workspace(fe::LagrangeFaceSpace)
+    monomial_exponents = GT.monomial_exponents(fe)
+    if fe.contents.dirichlet_boundary === nothing
+        ndofs = num_dofs(fe)
+        face_dofs = JaggedArray([collect(Int32,1:ndofs)])
+        free_dofs = Base.OneTo(ndofs)
+        dirichlet_dofs = Base.OneTo(ndofs)
+        dirichlet_dof_location = Int32[]
+    else
+        state = generate_dof_ids(fe)
+        face_dofs = state.Dface_to_dofs
+        free_dofs = state.free_dofs
+        dirichlet_dofs = state.dirichlet_dofs
+        dirichlet_dof_location = state.dirichlet_dof_location
+    end
+    workspace = (;monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
+end
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
     if val_parameter(fe.contents.lib_to_user_nodes) === :default
@@ -963,6 +977,10 @@ function conformity(fe::LagrangeFaceSpace)
 end
 
 function monomial_exponents(a::LagrangeFaceSpace)
+    a.workspace.monomial_exponents
+end
+
+function monomial_exponents(a::LagrangeFaceSpace{Nothing})
     range_per_dir = map(k->0:k,order_per_dir(a))
     exponents_list = map(CartesianIndices(range_per_dir)) do ci
         exponent = Tuple(ci)
@@ -981,6 +999,7 @@ end
 
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
+# TODO cache it
 function node_coordinates(a::LagrangeFaceSpace)
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
@@ -1008,6 +1027,7 @@ function node_coordinates(a::LagrangeFaceSpace)
     user_node_to_coords
 end
 
+# TODO cache it
 function tensor_basis(fe::LagrangeFaceSpace)
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
@@ -1024,6 +1044,7 @@ function tensor_basis(fe::LagrangeFaceSpace)
     end
 end
 
+# TODO cache it
 function primal_basis(fe::LagrangeFaceSpace)
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
@@ -1038,6 +1059,7 @@ function primal_basis(fe::LagrangeFaceSpace)
     end
 end
 
+# TODO cache it
 function dual_basis(fe::LagrangeFaceSpace)
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
@@ -1074,11 +1096,11 @@ function node_dofs(fe::LagrangeFaceSpace)
     nodes =  1:nnodes
     s = tensor_size(fe)
     if s === :scalar
-        return nodes
+        node_to_ldofs = nodes
     else
         ndofs_per_node = prod(tensor_size(fe))
         init_tensor = SArray{Tuple{tensor_size(fe)...},Tv}
-        node_to_dofs = map(nodes) do node
+        node_to_ldofs = map(nodes) do node
             t = ntuple(Val(ndofs_per_node)) do li
                 if major(fe) === :component
                     dof = (node-1)*ndofs_per_node + li
@@ -1090,7 +1112,12 @@ function node_dofs(fe::LagrangeFaceSpace)
             end
             init_tensor(t)
         end
-        return node_to_dofs
+    end
+    if fe.contents.dirichlet_boundary === nothing
+        node_to_ldofs
+    else
+        ldof_to_dof = first(face_dofs(fe))
+        map(ldofs->map(ldof->ldof_to_dof[ldof],ldofs),node_to_ldofs)
     end
 end
 
@@ -1623,11 +1650,11 @@ end
 function face_reference_id(space::LagrangeMeshSpace)
     domain = space |> GT.domain
     mesh = domain |> GT.mesh
-    cell_to_Dface = domain |> GT.faces
+    #cell_to_Dface = domain |> GT.faces
     D = domain |> GT.num_dims
     Dface_to_ctype = GT.face_reference_id(mesh,D)
-    cell_to_ctype = Dface_to_ctype[cell_to_Dface]
-    cell_to_ctype
+    #cell_to_ctype = Dface_to_ctype[cell_to_Dface]
+    #cell_to_ctype
 end
 
 function reference_spaces(space::LagrangeMeshSpace)
@@ -1791,7 +1818,11 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
     free_dof_to_node, diri_dof_to_node
 end
 
-function interpolate_impl!(f::AnalyticalField,u,space::LagrangeMeshSpace,free_or_diri;location=1)
+function interpolate_impl!(
+    f::AnalyticalField,
+    u::DiscreteField,
+    space::Union{LagrangeFaceSpace,LagrangeMeshSpace},
+    free_or_diri::FreeOrDirichlet;location=1)
     fun = f.definition
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)
@@ -2183,11 +2214,12 @@ function flip_sign(space,qty)
         face = face_index(index,D)
         t = term(qty,index)
         dof = dof_index(t)
-        expr = @term begin
-            flip = $face_dof_flip($face)($dof)
-            s = $(expression(t))
-            x->flip*s(x)
-        end
+        expr = :($face_dof_flip($face)($dof) * $(expression(t))(x))
+        # expr = @term begin
+        #     flip = $face_dof_flip($face)($dof)
+        #     s = $(expression(t))
+        #     x->flip*s(x)
+        # end
         expr_term(D,expr,x->1*prototype(t)(x),index)
     end
 end

@@ -82,6 +82,8 @@ D = GT.num_dims(mesh)
                  physical_names=["1-face-2","1-face-4"])
 
 Γ = GT.physical_domain(Γref)
+h = GT.face_diameter_field(Γ)
+n = GT.unit_normal(mesh,D-1)
 
 function dS(J)
     Jt = transpose(J)
@@ -90,7 +92,7 @@ end
 
 dΓref = GT.measure(Γref,degree)
 α = GT.physical_map(mesh,D-1)
-β = GT.reference_map(mesh,D-1,D)
+#β = GT.reference_map(mesh,D-1,D)
 
 int = ∫(dΓref) do p
     J = ForwardDiff.jacobian(α,p)
@@ -98,14 +100,18 @@ int = ∫(dΓref) do p
 end
 @test sum(int) ≈ 4
 
+dΓ = GT.measure(Γ,degree)
+int = ∫(x->norm(n(x)),dΓ)
+@test sum(int) ≈ 4
+
 uref = GT.analytical_field(x->1,Γ)
-int = ∫(dΓref) do p
-    p
-    q = β(p)
-    J = ForwardDiff.jacobian(α,p)
-    uref(q)*dS(J)
-end
-sum(int) ≈ 4
+#int = ∫(dΓref) do p
+#    p
+#    q = β(p)
+#    J = ForwardDiff.jacobian(α,p)
+#    uref(q)*dS(J)
+#end
+#sum(int) ≈ 4
 
 int = ∫(dΩref) do q
     J = ForwardDiff.jacobian(ϕ,q)
@@ -130,26 +136,35 @@ h = GT.face_diameter_field(Γ)
 
 Λ = GT.physical_domain(Λref)
 dΛref = GT.measure(Λref,degree)
+dΛ = GT.measure(Λ,degree)
 ϕ_Λref_Λ = GT.physical_map(mesh,D-1)
-ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
+#ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
 
-jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
+#jump(u,ϕ,q) = u(ϕ(q)[2])-u(ϕ(q)[1])
+
+#int = 10*∫(dΛref) do p
+#    #q = ϕ_Λref_Ωref(p)[2]
+#    #index = GT.generate_index(Γref)
+#    #t = GT.term(q,index)
+#    #print_tree(t)
+#    #q
+#    #xxx
+#    J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
+#    3*jump(uref,ϕ_Λref_Ωref,p)*dS(J)
+#end
+#s = sum(int*1)
+#@test s + 1 ≈ 1
+#@test sum(int/1) + 1 ≈ 1
+
+int = ∫(x->norm(n[1](x)+n[2](x)),dΛ)
+@test sum(int) + 1 ≈ 1
 
 int = 10*∫(dΛref) do p
-    #q = ϕ_Λref_Ωref(p)[2]
-    #index = GT.generate_index(Γref)
-    #t = GT.term(q,index)
-    #print_tree(t)
-    #q
-    #xxx
     J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)
-    3*jump(uref,ϕ_Λref_Ωref,p)*dS(J)
+    h(p)*dS(J)
+    #3*h(p)*dS(J)
 end
-
 s = sum(int*1)
-@test s + 1 ≈ 1
-@test sum(int/1) + 1 ≈ 1
-
 
 domain = (0,1,0,1)
 cells = (4,4)

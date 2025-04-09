@@ -345,11 +345,6 @@ function face_contribution_impl(qty,measure,facemask)
     facevals
 end
 
-function face_diameter_field(Ω)
-    dims = GT.face_diameter(Ω)
-    face_constant_field(dims,Ω)
-end
-
 function Base.:+(int1::Integral,int2::Integral)
     # TODO merge contributions on the same domain?
     contribs = (GT.contributions(int1)...,GT.contributions(int2)...)

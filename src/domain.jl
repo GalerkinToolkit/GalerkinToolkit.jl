@@ -23,6 +23,19 @@ function is_boundary(dom::AbstractDomain)
     face_around(dom) !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
 end
 
+function max_num_faces_around(interpolation_domain::AbstractDomain,integration_domain::AbstractDomain)
+    D = num_dims(interpolation_domain)
+    d = num_dims(integration_domain)
+    face_around = GT.face_around(integration_domain)
+    if d == D
+        1
+    elseif d+1==D && face_around !== nothing
+        1
+    else
+        2
+    end
+end
+
 num_faces(geo::AbstractFaceDomain) = 1
 faces(geo::AbstractFaceDomain) = [1]
 inverse_faces(geo::AbstractFaceDomain) = [1]
@@ -138,6 +151,7 @@ is_simplex(geo::UnitNCube{1}) = true
 is_axis_aligned(geo::UnitNCube) = true
 is_unitary(geo::UnitNCube) = true
 is_reference_domain(geo::UnitNCube) = true
+is_physical_domain(geo::UnitNCube) = true
 reference_domain(geo::UnitNCube) = geo
 
 function bounding_box(geo::UnitNCube)
@@ -345,6 +359,7 @@ is_axis_aligned(geo::UnitSimplex) = true
 is_unitary(geo::UnitSimplex) = true
 bounding_box(geo::UnitSimplex) = bounding_box(unit_n_cube(Val(num_dims(geo)),options=options(geo)))
 is_reference_domain(geo::UnitSimplex) = true
+is_physical_domain(geo::UnitSimplex) = true
 reference_domain(geo::UnitSimplex) = geo
 
 function mesh(geom::UnitSimplex{0})

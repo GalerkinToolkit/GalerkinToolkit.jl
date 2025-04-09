@@ -2,6 +2,7 @@ module AccessorsTests
 
 import GalerkinToolkit as GT
 using ForwardDiff
+#using InteractiveUtils
 
 domain = (0,1,0,1)
 n = 4
@@ -18,6 +19,15 @@ V = GT.lagrange_space(Ω,k)
 dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
+
+# OK
+#@code_warntype GT.shape_function_accessor_reference(GT.value,V,dΩ)
+
+#@code_warntype GT.reference_spaces(V)
+#@code_warntype map(GT.num_dofs,GT.reference_spaces(V))
+#@code_warntype GT.num_dofs_accessor_interior(V,Ω)
+
+#@code_warntype GT.shape_function_accessor_physical(GT.value,V,dΩ)
 
 Ωface_point_x = GT.coordinate_accessor(dΩ)
 Γface_point_x = GT.coordinate_accessor(dΓ)
@@ -114,6 +124,35 @@ face_point_dof_s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΛ)
 @show face_point_dof_s(5,1)(1)(4)
 @show face_point_dof_s(5,2)(1)(4)
 
+#face_dof_s = GT.form_argument_accessor(GT.value,V)
+#@show face_dof_s(3)(1)([1,1])
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΩ)
+#@show face_point_dof_s(3)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΓ)
+#@show face_point_dof_s(5)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(GT.value,V,dΛ)
+#@show face_point_dof_s(5,1)(1)(4)
+#@show face_point_dof_s(5,2)(1)(4)
+#@show face_point_dof_s(5,1)(1)(4,1)
+#@show face_point_dof_s(5,2)(1)(4,1)
+#@show face_point_dof_s(5,1)(1)(4,2)
+#@show face_point_dof_s(5,2)(1)(4,2)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΩ)
+#@show face_point_dof_s(3)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΓ)
+#@show face_point_dof_s(5)(1)(4)
+#
+#face_point_dof_s = GT.form_argument_accessor(ForwardDiff.gradient,V,dΛ)
+#@show face_point_dof_s(5,1)(1)(4,1)
+#@show face_point_dof_s(5,2)(1)(4,1)
+#@show face_point_dof_s(5,1)(1)(4,2)
+#@show face_point_dof_s(5,2)(1)(4,2)
+
 uh = GT.rand_field(Float64,V)
 
 J = Ωface_point_J(3)(1)
@@ -154,12 +193,12 @@ face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΩ)
 face_point_dof_s = GT.update(face_point_dof_s,discrete_field=uh)
 @show face_point_dof_s(3)(1)
 
-face_diri! =  GT.dirichlet_accessor(uh,Ω)
-face_diri! =  GT.update(face_diri!,discrete_field=uh)
-A = ones(4,4)
-b = zeros(4)
-face_diri!(1)(A,b)
-@show b
+#face_diri! =  GT.dirichlet_accessor(uh,Ω)
+#face_diri! =  GT.update(face_diri!,discrete_field=uh)
+#A = ones(4,4)
+#b = zeros(4)
+#face_diri!(1)(A,b)
+#@show b
 
 face_point_n = GT.unit_normal_accessor(dΓ)
 @show face_point_n(6)(1)

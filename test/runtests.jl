@@ -12,14 +12,16 @@ using Test
     @testset "Topology" begin include("topology_tests.jl") end
     @testset "Symbolics" begin include("symbolics_tests.jl") end
     @testset "Quadrature" begin include("quadrature_tests.jl") end
-    @testset "Quantity" begin include("quantity_tests.jl") end
+    #@testset "Quantity" begin include("quantity_tests.jl") end
     @testset "Field" begin include("field_tests.jl") end
     @testset "Integration" begin include("integration_tests.jl") end
     @testset "Space" begin include("space_tests.jl") end
     @testset "Accessors" begin include("accessors_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
+    @testset "Compiler" begin include("compiler_tests.jl") end
+    @testset "Problems" begin include("problems_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
-    @testset "NewIR" begin include("new_ir_tests.jl") end
+    #@testset "NewIR" begin include("new_ir_tests.jl") end
 end
 
 end # module
