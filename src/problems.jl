@@ -449,7 +449,7 @@ end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh),
+function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh);
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )

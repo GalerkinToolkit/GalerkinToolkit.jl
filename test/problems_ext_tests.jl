@@ -50,8 +50,14 @@ order = 1
 degree = 2*order
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 dΩ = GT.measure(Ω,degree)
-u = GT.analytical_field(sum,Ω)
-uhd = GT.interpolate_dirichlet(u,V)
+uh = GT.zero_field(Float64,V)
 
+const q = 3
+flux(∇u) = norm(∇u)^(q-2) * ∇u
+dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
+res = u -> v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - v(x), dΩ)
+jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
+
+prob = GT.SciMLBase_NonlinearProblem(uh,res,jac)
 
 end # module
