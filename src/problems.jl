@@ -44,7 +44,8 @@ quadrature(a::DomainContribution) = a.quadrature
 coefficient(a::DomainContribution) = a.coefficient
 
 function prototype(a::DomainContribution)
-    prototype(optimize(term(a,index(Val(0)))))
+    term = optimize(GT.term(a,index(Val(0))))
+    prototype(term)
 end
 
 function replace_coefficient(a::DomainContribution,coefficient)
@@ -77,6 +78,11 @@ struct Integral{A} <: AbstractType
 end
 
 contributions(i::Integral) = i.contributions
+
+function contributions(i::Number)
+    @assert i == 0
+    ()
+end
 
 function contribution(i::Integral,domain::AbstractDomain)
     for contribution in contributions(i)
@@ -126,8 +132,8 @@ function sample(f,quadrature::AbstractQuadrature;kwargs...)
     index = GT.index(Val(0))
     domain = GT.domain(quadrature)
     opts = QuantityOptions(domain,index)
-    term = GT.term(fx,opts)
-    T = eltype(GT.prototype(term))
+    term = GT.optimize(GT.term(fx,opts))
+    T = typeof(GT.prototype(term))
     nfaces = num_faces(domain)
     face_npoints = num_points_accessor(quadrature)
     ptrs = zeros(Int32,nfaces+1)
@@ -422,7 +428,7 @@ function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
     U = GT.space(uhd)
-    xd = dirichlet_values(uhd)
+    xd = collect(dirichlet_values(uhd)) # Collect can be removed once BArray supports indexing.
     T = eltype(xd)
     A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;matrix_strategy,vector_strategy)
     mul!(b,Ad,xd,-1,1)
@@ -441,7 +447,7 @@ end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh0),
+function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh),
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
@@ -458,9 +464,9 @@ function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh0),
 end
 
 function nonlinear_problem_update(p)
-    (;uh0,residual_cache,jacobian_cache) = PS.workspace(p)
+    (;uh,residual_cache,jacobian_cache) = PS.workspace(p)
     x = PS.solution(p)
-    uh = solution_field(uh0,x)
+    uh = solution_field(uh,x)
     A = PS.jacobian(p)
     b = PS.residual(p)
     parameters = (uh,)

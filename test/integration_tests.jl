@@ -83,6 +83,7 @@ D = GT.num_dims(mesh)
 
 Γ = GT.physical_domain(Γref)
 h = GT.face_diameter_field(Γ)
+n = GT.unit_normal(mesh,D-1)
 
 function dS(J)
     Jt = transpose(J)
@@ -97,6 +98,10 @@ int = ∫(dΓref) do p
     J = ForwardDiff.jacobian(α,p)
     dS(J)
 end
+@test sum(int) ≈ 4
+
+dΓ = GT.measure(Γ,degree)
+int = ∫(x->norm(n(x)),dΓ)
 @test sum(int) ≈ 4
 
 uref = GT.analytical_field(x->1,Γ)
@@ -131,6 +136,7 @@ h = GT.face_diameter_field(Γ)
 
 Λ = GT.physical_domain(Λref)
 dΛref = GT.measure(Λref,degree)
+dΛ = GT.measure(Λ,degree)
 ϕ_Λref_Λ = GT.physical_map(mesh,D-1)
 #ϕ_Λref_Ωref = GT.reference_map(mesh,D-1,D)
 
@@ -149,6 +155,9 @@ dΛref = GT.measure(Λref,degree)
 #s = sum(int*1)
 #@test s + 1 ≈ 1
 #@test sum(int/1) + 1 ≈ 1
+
+int = ∫(x->norm(n[1](x)+n[2](x)),dΛ)
+@test sum(int) + 1 ≈ 1
 
 int = 10*∫(dΛref) do p
     J = ForwardDiff.jacobian(ϕ_Λref_Λ,p)

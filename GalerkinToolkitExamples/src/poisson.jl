@@ -35,8 +35,8 @@ laplacian(u::GT.AbstractQuantity,x::GT.AbstractQuantity) = GT.call(laplacian,u,x
 const ∇ = ForwardDiff.gradient
 const Δ = laplacian
 
-mean(u) = 0.5*(u[1]+u[2])
-jump(u,n) = u[2]*n[2] + u[1]*n[1]
+mean(f,u,x) = 0.5*(f(u[1],x)+f(u[2],x))
+jump(u,n,x) = u[2](x)*n[2](x) + u[1](x)*n[1](x)
 
 function main_automatic(params)
     timer = params[:timer]
@@ -57,8 +57,7 @@ function main_automatic(params)
     g(x) = n_Γn(x)⋅∇(u,x)
 
     interpolation_degree = params[:interpolation_degree]
-    γ = integration_degree*(integration_degree+1)
-    γ = γ/10.0
+    γ = GT.uniform_quantity(integration_degree*(integration_degree+1)/10.0)
 
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
@@ -97,7 +96,7 @@ function main_automatic(params)
         end
         if params[:discretization_method] === :interior_penalty
             r += ∫( x->
-                   (γ/h_Λ(x))*jump(v(x),n_Λ(x))⋅jump(u(x),n_Λ(x))-jump(v(x),n_Λ(x))⋅mean(∇(u,x))-mean(∇(v,x))⋅jump(u(x),n_Λ(x)), dΛ)
+                   (γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇,u,x)-mean(∇,v,x)⋅jump(u,n_Λ,x), dΛ)
         end
         r
     end

@@ -160,21 +160,30 @@ function allocate_vector(
     ) where T
     setup = vector_strategy.init(GT.dofs(space_test,free_or_dirichlet),T)
     counter = vector_strategy.counter(setup)
-    counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_to_mask
-        fields_test = ntuple(identity,Val(num_fields(space_test)))
-        field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
-        increment(counter1,fields_test,field_test_face_dofs) do counter2,field_test,face_dofs
-            mask = field_test_to_mask[field_test]
-            if mask
-                nfaces = num_faces(domain)
-                for face in 1:nfaces
-                    dofs = face_dofs(face)
-                    for dof_test in dofs
-                        counter2 = vector_strategy.count(counter2,setup,dof_test,field_test,free_or_dirichlet)
+    if length(domains) != 0
+        counter = increment(counter,domains,block_coupling) do counter1,domain,field_test_to_mask
+            fields_test = ntuple(identity,Val(num_fields(space_test)))
+            field_test_face_dofs = map(V->dofs_accessor(V,domain),fields(space_test))
+            field_test_face_n_faces_around_test = map(fields(space_test)) do field_space
+                num_faces_around_accesor(GT.domain(field_space),domain)
+            end
+            increment(counter1,fields_test,field_test_face_dofs) do counter2,field_test,face_dofs
+                mask = field_test_to_mask[field_test]
+                if mask
+                    face_n_faces_around_test = field_test_face_n_faces_around_test[field_test]
+                    nfaces = num_faces(domain)
+                    for face in 1:nfaces
+                        n_faces_around_test = face_n_faces_around_test(face)
+                        for face_around_test in 1:n_faces_around_test
+                            dofs = face_dofs(face,face_around_test)
+                            for dof_test in dofs
+                                counter2 = vector_strategy.count(counter2,setup,dof_test,field_test,free_or_dirichlet)
+                            end
+                        end
                     end
                 end
+                counter2
             end
-            counter2
         end
     end
     coo = vector_strategy.allocate(counter,setup)
@@ -252,17 +261,31 @@ function allocate_matrix(
         field_trial_face_dofs = map(V->dofs_accessor(V,domain),fields(space_trial))
         fields_test = ntuple(identity,Val(num_fields(space_test)))
         fields_trial = ntuple(identity,Val(num_fields(space_trial)))
+        field_test_face_n_faces_around_test = map(fields(space_test)) do field_space
+            num_faces_around_accesor(GT.domain(field_space),domain)
+        end
+        field_trial_face_n_faces_around_trial = map(fields(space_trial)) do field_space
+            num_faces_around_accesor(GT.domain(field_space),domain)
+        end
         increment(counter1,fields_trial,field_trial_face_dofs) do counter2,field_test,face_dofs_test
             increment(counter2,fields_trial,field_trial_face_dofs) do counter3,field_trial,face_dofs_trial
                 nfaces = num_faces(domain)
                 mask = field_test_trial_to_mask[field_test,field_trial]
                 if mask
+                    face_n_faces_around_test = field_test_face_n_faces_around_test[field_test]
+                    face_n_faces_around_trial = field_trial_face_n_faces_around_trial[field_trial]
                     for face in 1:nfaces
-                        dofs_test = face_dofs_test(face)
-                        dofs_trial = face_dofs_trial(face)
-                        for dof_test in dofs_test
-                            for dof_trial in dofs_trial
-                                counter3 = matrix_strategy.count(counter3,setup,dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
+                        n_faces_around_test = face_n_faces_around_test(face)
+                        n_faces_around_trial = face_n_faces_around_trial(face)
+                        for face_around_test in 1:n_faces_around_test
+                            dofs_test = face_dofs_test(face,face_around_test)
+                            for face_around_trial in 1:n_faces_around_trial
+                                dofs_trial = face_dofs_trial(face,face_around_trial)
+                                for dof_test in dofs_test
+                                    for dof_trial in dofs_trial
+                                        counter3 = matrix_strategy.count(counter3,setup,dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
+                                    end
+                                end
                             end
                         end
                     end
@@ -294,8 +317,8 @@ end
 function contribute!(alloc::MatrixAllocation,b,dofs_test,dofs_trial,field_test=1,field_trial=1)
     (;setup,coo,counter_ref,matrix_strategy,free_or_dirichlet) = alloc.data
     counter = counter_ref[]
-    for (i,dof_test) in enumerate(dofs_test)
-        for (j,dof_trial) in enumerate(dofs_trial)
+    for (j,dof_trial) in enumerate(dofs_trial)
+        for (i,dof_test) in enumerate(dofs_test)
             counter = matrix_strategy.set!(coo,counter,setup,b[i,j],dof_test,dof_trial,field_test,field_trial,free_or_dirichlet...)
         end
     end

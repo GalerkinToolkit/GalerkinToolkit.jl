@@ -193,12 +193,12 @@ face_point_dof_s = GT.discrete_field_accessor(GT.value,uh,dΩ)
 face_point_dof_s = GT.update(face_point_dof_s,discrete_field=uh)
 @show face_point_dof_s(3)(1)
 
-face_diri! =  GT.dirichlet_accessor(uh,Ω)
-face_diri! =  GT.update(face_diri!,discrete_field=uh)
-A = ones(4,4)
-b = zeros(4)
-face_diri!(1)(A,b)
-@show b
+#face_diri! =  GT.dirichlet_accessor(uh,Ω)
+#face_diri! =  GT.update(face_diri!,discrete_field=uh)
+#A = ones(4,4)
+#b = zeros(4)
+#face_diri!(1)(A,b)
+#@show b
 
 face_point_n = GT.unit_normal_accessor(dΓ)
 @show face_point_n(6)(1)

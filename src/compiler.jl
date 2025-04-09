@@ -57,14 +57,14 @@ function optimize(term::AbstractTerm)
 end
 
 # We want the leafs to be also AbstractTerm
-struct LeafTerm{A,B,C} <: AbstractTerm
-    value::A
-    prototype::B
-    is_compile_constant::Val{C}
+struct LeafTerm <: AbstractTerm
+    value::Any
+    prototype::Any
+    is_compile_constant::Bool
 end
 
 # The prototye is the same as the value by default
-leaf_term(v; prototype=v, is_compile_constant::Val=Val(false)) = LeafTerm(v, prototype, is_compile_constant)
+leaf_term(v; prototype=v, is_compile_constant = false) = LeafTerm(v, prototype, is_compile_constant)
 
 is_compile_constant(t::LeafTerm) = val_parameter(t.is_compile_constant)
 
@@ -90,9 +90,9 @@ function lambda_term(body::AbstractTerm,args::Symbol...)
     LambdaTerm(body,args)
 end
 
-struct LambdaTerm{A,B} <: AbstractTerm
-    body::A
-    args::B # all symbols in here get reduced,
+struct LambdaTerm <: AbstractTerm
+    body::AbstractTerm
+    args # Tuple of Symbols # all symbols in here get reduced,
 end
 
 # TODO this assumes that the prototype
@@ -127,11 +127,10 @@ function call_term(callee::AbstractTerm,args::AbstractTerm...)
     CallTerm(callee,args)
 end
 
-struct CallTerm{A,B} <: AbstractTerm
-    callee::A
-    args::B
+struct CallTerm <: AbstractTerm
+    callee::AbstractTerm
+    args # Tuple of AbstractTerm
 end
-
 
 function return_prototype(f,args...)
     f(args...)
@@ -168,9 +167,57 @@ function expression(term::CallTerm)
     :($(callee)($(args...)))
 end
 
-struct RefTerm{A,B} <: AbstractTerm
-    container::A
-    index::B
+function optimize(term::CallTerm)
+    optimize_CallTerm(term.callee,term.args...)
+end
+
+function optimize_CallTerm(callee,args...)
+    callee2 = optimize(callee)
+    args2 = map(optimize,args)
+    CallTerm(callee2,args2)
+end
+
+function optimize_CallTerm(callee::LeafTerm,args...)
+    optimize_CallTerm_LeafTerm(callee.value,callee,args...)
+end
+
+function optimize_CallTerm_LeafTerm(value,callee,args...)
+    callee2 = optimize(callee)
+    args2 = map(optimize,args)
+    CallTerm(callee2,args2)
+end
+
+struct RefTerm <: AbstractTerm
+    container::AbstractTerm
+    index::AbstractTerm
+end
+
+function optimize(term::RefTerm)
+    optimize_RefTerm(term.container,term.index)
+end
+
+function optimize_RefTerm(container,index)
+    container2 = optimize(container)
+    index2 = optimize(index)
+    RefTerm(container2,index2)
+end
+
+function optimize_CallTerm(callee::RefTerm,args...)
+    optimize_CallTerm_RefTerm(callee.container,callee,args...)
+end
+
+function optimize_CallTerm_RefTerm(container,callee,args...)
+    callee2 = optimize(callee)
+    args2 = map(optimize,args)
+    CallTerm(callee2,args2)
+end
+
+function optimize_CallTerm_LeafTerm(value,callee::LeafTerm,u::RefTerm,x)
+    callee2 = optimize(callee)
+    u2 = optimize(u)
+    x2 = optimize(x)
+    term = call_term(callee2,u2,x2)
+    optimize(term)
 end
 
 function prototype(a::RefTerm)
@@ -319,7 +366,7 @@ function term(qty::Quantity,opts)
 end
 
 function call(callee,args::AbstractQuantity...)
-    f = uniform_quantity(callee;is_compile_constant=Val(true))
+    f = uniform_quantity(callee;is_compile_constant=true)
     call(f,args...)
 end
 
@@ -335,7 +382,7 @@ function (f::AbstractQuantity)(x::AbstractQuantity)
     call(f,x)
 end
 
-function uniform_quantity(v;is_compile_constant=Val(false))
+function uniform_quantity(v;is_compile_constant=false)
     quantity() do opts
         leaf_term(v; is_compile_constant)
     end
@@ -350,8 +397,8 @@ function coordinate_quantity(quadrature)
     end
 end
 
-struct CoordinateTerm{A} <: AbstractTerm
-    dependencies::A
+struct CoordinateTerm <: AbstractTerm
+    dependencies
 end
 
 function prototype(term::CoordinateTerm)
@@ -386,8 +433,8 @@ function weight_quantity(quadrature)
     end
 end
 
-struct WeightTerm{A} <: AbstractTerm
-    dependencies::A
+struct WeightTerm <: AbstractTerm
+    dependencies
 end
 
 function prototype(term::WeightTerm)
@@ -421,34 +468,34 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         field = field_index(index,arg)
         dof = dof_index(index,arg)
 
-        f = leaf_term(GT.value; is_compile_constant=Val(true))
-        the_field_term = leaf_term(the_field; is_compile_constant=Val(true))
+        f = leaf_term(GT.value; is_compile_constant=true)
+        the_field_term = leaf_term(the_field; is_compile_constant=true)
         (space_term, domain_term, face_term, field_term, dof_term, face_around_term) = map(leaf_term, (space, domain, face, field, dof, face_around))
         to_leaf_term = x -> (x isa AbstractTerm) ? x : leaf_term(x)
 
         if D == d
-            the_face_around_term = leaf_term(nothing, is_compile_constant=Val(true))
+            the_face_around_term = leaf_term(nothing, is_compile_constant=true)
             face_around_term = leaf_term(nothing)
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
         elseif D==d+1 && face_around !== nothing
-            the_face_around_term = leaf_term(face_around, is_compile_constant=Val(true))
+            the_face_around_term = leaf_term(face_around, is_compile_constant=true)
             face_around_term = leaf_term(face_around)
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
         else
             face_around_term = leaf_term(face_around_index(index,arg))
-            the_face_around_term = leaf_term(:the_face_around)
-            # the_face_around = leaf_term(:the_face_around, is_compile_constant=Val(true))
-            n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
+            the_face_around = :the_face_around
+            the_face_around_term = leaf_term(the_face_around)
+            n_faces_around = leaf_term(2;is_compile_constant=true) # Hard coded! But OK in practice.
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             SkeletonTerm(FormArgumentTerm(dependencies),n_faces_around,the_face_around)
         end
     end
 end
 
-struct FormArgumentTerm{A} <: AbstractTerm
-    dependencies::A
+struct FormArgumentTerm <: AbstractTerm
+    dependencies
 end
 
 function prototype(term::FormArgumentTerm)
@@ -475,22 +522,37 @@ function expression(term::FormArgumentTerm)
     :(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
 end
 
-function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
-    coords = optimize(term.args[1])
+#function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = optimize(term.args[1])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+
+function optimize_CallTerm(callee::FormArgumentTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
-    TabulatedTerm(term.callee,quadrature,point)
+    TabulatedTerm(callee,quadrature,point)
 end
 
-# function optimize(term::CallTerm{<:LeafTerm})#{typeof(ForwardDiff.gradient)}})#,<:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
-function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
-    v = optimize(term.args[1]) 
-    coords = optimize(term.args[2])
-    (quadrature,face,point) = map(optimize,dependencies(coords))
-    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(v)
-    new_deps = (term.callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
-    v2 = replace_dependencies(v, new_deps)
-    TabulatedTerm(v2,quadrature,point)
+for op in [:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian)]
+    @eval begin
+        function optimize_CallTerm_LeafTerm(
+                ::typeof($op),callee::LeafTerm,v::FormArgumentTerm,coords::CoordinateTerm)
+            (quadrature,face,point) = map(optimize,dependencies(coords))
+            (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(v)
+            new_deps = (callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
+            v2 = replace_dependencies(v, new_deps)
+            TabulatedTerm(v2,quadrature,point)
+        end
+    end
 end
+
+#function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:FormArgumentTerm, <:CoordinateTerm}})
+#    v = optimize(term.args[1]) 
+#    coords = optimize(term.args[2])
+#    new_deps = (term.callee,space,domain,face,the_field,field,dof,the_face_around,face_around)
+#    v2 = replace_dependencies(v, new_deps)
+#    TabulatedTerm(v2,quadrature,point)
+#end
 
 function term(uh::DiscreteField,opts)
     space = GT.space(uh)
@@ -517,8 +579,8 @@ function term(uh::DiscreteField,opts)
     end
 end
 
-struct DiscreteFieldTerm{A} <: AbstractTerm
-    dependencies::A
+struct DiscreteFieldTerm <: AbstractTerm
+    dependencies
 end
 
 function dependencies(term::DiscreteFieldTerm)
@@ -529,16 +591,44 @@ function replace_dependencies(term::DiscreteFieldTerm,dependencies)
     DiscreteFieldTerm(dependencies)
 end
 
-function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
-    coords = term.args[1]
-    (quadrature,face,point) = dependencies(coords)
-    TabulatedTerm(term.callee,quadrature,point)
+function optimize_CallTerm(callee::DiscreteFieldTerm,coords::CoordinateTerm)
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    TabulatedTerm(callee,quadrature,point)
 end
 
-struct TabulatedTerm{A,B,C} <: AbstractTerm
-    parent::A
-    quadrature::B
-    point::C
+#function optimize(term::CallTerm{<:DiscreteFieldTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = term.args[1]
+#    (quadrature,face,point) = dependencies(coords)
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+
+for op in [:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian)]
+    @eval begin
+        function optimize_CallTerm_LeafTerm(
+                ::typeof($op),callee::LeafTerm,v::DiscreteFieldTerm,coords::CoordinateTerm)
+            (quadrature,face,point) = map(optimize,dependencies(coords))
+            (f,uh,domain,face,face_around) = dependencies(v)
+            new_deps = (callee,uh,domain,face,face_around)
+            v2 = replace_dependencies(v, new_deps)
+            TabulatedTerm(v2,quadrature,point)
+        end
+    end
+end
+
+#function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.gradient)}, <:Tuple{<:DiscreteFieldTerm, <:CoordinateTerm}})
+#    v = optimize(term.args[1]) 
+#    coords = optimize(term.args[2])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    (f,uh,domain,face,face_around) = dependencies(v)
+#    new_deps = (term.callee,uh,domain,face,face_around)
+#    v2 = replace_dependencies(v, new_deps)
+#    TabulatedTerm(v2,quadrature,point)
+#end
+
+struct TabulatedTerm <: AbstractTerm
+    parent::AbstractTerm
+    quadrature::AbstractTerm
+    point::AbstractTerm
 end
 
 function dependencies(term::TabulatedTerm)
@@ -550,41 +640,71 @@ function replace_dependencies(term::TabulatedTerm,dependencies)
     TabulatedTerm(parent,quadrature, point)
 end
 
-function prototype(term::TabulatedTerm{<:FormArgumentTerm})
-    parent = term.parent
-    quadrature = prototype(term.quadrature)
-    (space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
-    prototype(form_argument_accessor(space,domain,1))
+function prototype(term::TabulatedTerm)
+    prototype_TabulatedTerm(term.parent,prototype(term.quadrature),prototype(term.point))
 end
 
-function prototype(term::TabulatedTerm{<:DiscreteFieldTerm})
-    parent = term.parent
-    quadrature = prototype(term.quadrature)
+function expression(term::TabulatedTerm)
+    expression_TabulatedTerm(term.parent,expression(term.quadrature),expression(term.point))
+end
+
+function prototype_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
+    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
+    prototype(form_argument_accessor(f,space,quadrature))
+end
+
+#function prototype(term::TabulatedTerm{<:FormArgumentTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
+#    prototype(form_argument_accessor(space,domain,1))
+#end
+
+function prototype_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     (f,uh,domain,face,face_around) = map(prototype,dependencies(parent))
     prototype(discrete_field_accessor(f,uh,quadrature))
 end
 
-function expression(term::TabulatedTerm{<:FormArgumentTerm})
-    point = expression(term.point)
-    form_arg = term.parent
-    quadrature = expression(term.quadrature)
+#function prototype(term::TabulatedTerm{<:DiscreteFieldTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    (f,uh,domain,face,face_around) = map(prototype,dependencies(parent))
+#    prototype(discrete_field_accessor(f,uh,quadrature))
+#end
+
+function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
+    form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     J = :(jacobian_accessor($quadrature)($face)($point))
     :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
-function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
-    point = expression(term.point)
-    form_arg = term.parent
-    quadrature = expression(term.quadrature)
+#function expression(term::TabulatedTerm{<:FormArgumentTerm})
+#    point = expression(term.point)
+#    form_arg = term.parent
+#    quadrature = expression(term.quadrature)
+#    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
+#    :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point)($dof,$field,$face_around))
+#end
+
+function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
+    form_arg = parent
     (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
     :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
-struct SkeletonTerm{A,B,C} <: AbstractTerm
-    parent::A
-    n_faces_around::B
-    the_face_around::C # Gets reduced
+#function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
+#    point = expression(term.point)
+#    form_arg = term.parent
+#    quadrature = expression(term.quadrature)
+#    (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
+#    :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
+#end
+
+struct SkeletonTerm <: AbstractTerm
+    parent::AbstractTerm
+    n_faces_around::AbstractTerm
+    the_face_around::Symbol # Gets reduced
 end
 
 function bindings(term::SkeletonTerm)
@@ -606,10 +726,27 @@ function expression(term::SkeletonTerm)
     error()
 end
 
-function optimize(term::RefTerm{<:SkeletonTerm})
-    the_face_around = term.index
-    replace_the_face_around(term.container.parent,the_face_around)
+function optimize_RefTerm(container::SkeletonTerm,index)
+    the_face_around = index
+    replace_the_face_around(container.parent,the_face_around)
 end
+
+#function optimize(term::RefTerm{<:SkeletonTerm})
+#    the_face_around = term.index
+#    replace_the_face_around(term.container.parent,the_face_around)
+#end
+
+function optimize_CallTerm_RefTerm(container::SkeletonTerm,callee,args...)
+    callee = optimize(callee)
+    term2 = CallTerm(callee,args)
+    optimize(term2)
+end
+
+#function optimize(term::CallTerm{<:RefTerm{<:SkeletonTerm}})
+#    callee = optimize(term.callee)
+#    term2 = CallTerm(callee,term.args)
+#    optimize(term2)
+#end
 
 function physical_map(mesh::AbstractMesh,vD)
     quantity() do opts
@@ -624,8 +761,8 @@ function physical_map(mesh::AbstractMesh,vD)
     end
 end
 
-struct PhysicalMapTerm{A} <: AbstractTerm
-    dependencies::A
+struct PhysicalMapTerm <: AbstractTerm
+    dependencies
 end
 
 function dependencies(term::PhysicalMapTerm)
@@ -636,36 +773,190 @@ function replace_dependencies(term::PhysicalMapTerm,dependencies)
     PhysicalMapTerm(dependencies)
 end
 
-function optimize(term::CallTerm{<:PhysicalMapTerm,<:Tuple{<:CoordinateTerm}})
-    coords = optimize(term.args[1])
+function optimize_CallTerm(callee::PhysicalMapTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
-    TabulatedTerm(term.callee,quadrature,point)
+    TabulatedTerm(callee,quadrature,point)
 end
 
-function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.jacobian)}, <:Tuple{<:PhysicalMapTerm,<:CoordinateTerm}})
-    v = optimize(term.args[1]) 
-    coords = optimize(term.args[2])
+#function optimize(term::CallTerm{<:PhysicalMapTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = optimize(term.args[1])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+
+function optimize_CallTerm_LeafTerm(
+    ::typeof(ForwardDiff.jacobian),callee::LeafTerm,v::PhysicalMapTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
     (f,mesh,vD,face) = dependencies(v)
-    new_deps = (term.callee,mesh,vD,face)
+    new_deps = (callee,mesh,vD,face)
     v2 = replace_dependencies(v, new_deps)
     TabulatedTerm(v2,quadrature,point)
 end
 
-function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
-    parent = term.parent
-    quadrature = prototype(term.quadrature)
+#function optimize(term::CallTerm{<:LeafTerm{typeof(ForwardDiff.jacobian)}, <:Tuple{<:PhysicalMapTerm,<:CoordinateTerm}})
+#    v = optimize(term.args[1]) 
+#    coords = optimize(term.args[2])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    (f,mesh,vD,face) = dependencies(v)
+#    new_deps = (term.callee,mesh,vD,face)
+#    v2 = replace_dependencies(v, new_deps)
+#    TabulatedTerm(v2,quadrature,point)
+#end
+
+function prototype_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(prototype,dependencies(parent))
     prototype(physical_map_accessor(f,quadrature,vD))
 end
 
-function expression(term::TabulatedTerm{<:PhysicalMapTerm})
-    point = expression(term.point)
-    phys_map = term.parent
-    quadrature = expression(term.quadrature)
-    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+#function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    (f,mesh,vD,face) = map(prototype,dependencies(parent))
+#    prototype(physical_map_accessor(f,quadrature,vD))
+#end
+
+function expression_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
+    (f,mesh,vD,face) = map(expression,parent.dependencies)
     :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
 end
+
+#
+#function expression(term::TabulatedTerm{<:PhysicalMapTerm})
+#    point = expression(term.point)
+#    phys_map = term.parent
+#    quadrature = expression(term.quadrature)
+#    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+#    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+#end
+
+#function reference_map(mesh::AbstractMesh,vd,vD)
+#    quantity() do opts
+#        d = val_parameter(vd)
+#        D = val_parameter(vD)
+#        domain = GT.domain(opts)
+#        @assert  d == num_dims(domain)
+#        @assert d != D
+#        face = GT.domain_face_index(opts.index)
+#        the_face_around = :the_face_around
+#        f = GT.value
+#        dependencies = map(leaf_term,(f,mesh,vd,vD,face,the_face_around))
+#        parent = ReferenceMapTerm(dependencies)
+#        n_faces_around = leaf_term(2;is_compile_constant=true)
+#        SkeletonTerm(parent,n_faces_around,the_face_around)
+#    end
+#end
+#
+#struct ReferenceMapTerm{A} <: AbstractTerm
+#    dependencies::A
+#end
+#
+#function dependencies(term::ReferenceMapTerm)
+#    term.dependencies
+#end
+#
+#function replace_dependencies(term::ReferenceMapTerm,dependencies)
+#    ReferenceMapTerm(dependencies)
+#end
+#
+#function replace_the_face_around(term::ReferenceMapTerm,the_face_around)
+#    (f,mesh,vd,vD,face,_) = term.dependencies
+#    deps = (f,mesh,vd,vD,face,the_face_around)
+#    replace_dependencies(term,deps)
+#end
+#
+#function optimize(term::CallTerm{<:ReferenceMapTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = optimize(term.args[1])
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+#
+#function prototype(term::TabulatedTerm{<:ReferenceMapTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    (f,mesh,vD,face) = map(prototype,dependencies(parent))
+#    prototype(physical_map_accessor(f,quadrature,vD))
+#end
+#
+#function expression(term::TabulatedTerm{<:ReferenceMapTerm})
+#    point = expression(term.point)
+#    phys_map = term.parent
+#    quadrature = expression(term.quadrature)
+#    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
+#    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+#end
+
+function unit_normal(mesh::AbstractMesh,vd)
+    quantity() do opts
+        d = val_parameter(vd)
+        D = num_dims(mesh)
+        face = domain_face_index(opts.index)
+        @assert d == num_dims(domain(opts))
+        if GT.face_around(domain(opts)) === nothing
+            the_face_around = :the_face_around
+            dependencies = map(leaf_term,(face,the_face_around))
+            parent = UnitNormalTerm(dependencies)
+            n_faces_around = leaf_term(2;is_compile_constant=true)
+            SkeletonTerm(parent,n_faces_around,the_face_around)
+        else
+            the_face_around = nothing
+            dependencies = map(leaf_term,(face,the_face_around))
+            UnitNormalTerm(dependencies)
+        end
+    end
+end
+
+struct UnitNormalTerm <: AbstractTerm
+    dependencies
+end
+
+function dependencies(term::UnitNormalTerm)
+    term.dependencies
+end
+
+function replace_dependencies(term::UnitNormalTerm,deps)
+    UnitNormalTerm(deps)
+end
+
+function replace_the_face_around(term::UnitNormalTerm,the_face_around)
+    (face,_) = GT.dependencies(term)
+    newdeps = (face,the_face_around)
+    replace_dependencies(term,newdeps)
+end
+
+function optimize_CallTerm(callee::UnitNormalTerm,coords::CoordinateTerm)
+    (quadrature,face,point) = map(optimize,dependencies(coords))
+    TabulatedTerm(callee,quadrature,point)
+end
+
+#function optimize(term::CallTerm{<:UnitNormalTerm,<:Tuple{<:CoordinateTerm}})
+#    coords = term.args[1]
+#    (quadrature,face,point) = map(optimize,dependencies(coords))
+#    TabulatedTerm(term.callee,quadrature,point)
+#end
+
+function prototype_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
+    prototype(unit_normal_accessor(quadrature))
+end
+
+#function prototype(term::TabulatedTerm{<:UnitNormalTerm})
+#    parent = term.parent
+#    quadrature = prototype(term.quadrature)
+#    #(face,the_face_around) = map(prototype,dependencies(parent))
+#    prototype(unit_normal_accessor(quadrature))
+#end
+
+function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
+    (face,the_face_around) = map(expression,dependencies(parent))
+    :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+end
+
+#function expression(term::TabulatedTerm{<:UnitNormalTerm})
+#    parent = term.parent
+#    quadrature = expression(term.quadrature)
+#    point = expression(term.point)
+#    (face,the_face_around) = map(expression,dependencies(parent))
+#    :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+#end
 
 function dual_basis_quantity(space::AbstractSpace)
     quantity() do opts
@@ -811,11 +1102,11 @@ function write_sample(f,quadrature::AbstractQuadrature)
     SampleTerm(term,index,vals,vals_arg)
 end
 
-struct SampleTerm{A,B,C,D} <: AbstractTerm
-    term::A
-    index::B
-    vals::C
-    vals_arg::D
+struct SampleTerm <: AbstractTerm
+    term::AbstractTerm
+    index::Index{0}
+    vals::AbstractTerm
+    vals_arg::Symbol
 end
 
 function bindings(term::SampleTerm)
@@ -881,12 +1172,12 @@ function write_assemble_face_contribution(contribution::DomainContribution)
 end
 
 # Like ScalarAssemblyTerm but we store intermediate face results into a vector contribs
-struct FaceContributionTerm{A,B,C,D,E} <: AbstractTerm
-    term::A # <: Term
-    quadrature::B # <: Term
-    contribs::C
-    contribs_arg::D # gets reduced
-    index::E # gets reduced
+struct FaceContributionTerm <: AbstractTerm
+    term::AbstractTerm
+    quadrature::AbstractTerm
+    contribs::AbstractTerm
+    contribs_arg::Symbol # gets reduced
+    index::Index{0} # gets reduced
 end
 
 function bindings(term::FaceContributionTerm)
@@ -934,33 +1225,32 @@ function face_contribution_loop!(contribs,face_point_v,quadrature)
     contribs
 end
 
-struct ScalarAssemblyTerm{A,B,C,D,E} <: AbstractTerm
-    term::A # <: Term
-    quadrature::B # <: Term
-    init::C
-    init_arg::D # gets reduced
-    index::E # gets reduced
+struct ScalarAssemblyTerm <: AbstractTerm
+    term::AbstractTerm
+    quadrature::AbstractTerm
+    init::AbstractTerm
+    init_arg::Symbol
+    index::Index{0}
 end
 
-struct VectorAssemblyTerm{A,B,C,D,E,F} <: AbstractTerm
-    term::A # <: Term
-    space::B # <: Term
-    quadrature::C # <: Term
-    alloc::D
-    alloc_arg::E # gets reduced
-    index::F # gets reduced
+struct VectorAssemblyTerm <: AbstractTerm
+    term::AbstractTerm
+    space::AbstractTerm
+    quadrature::AbstractTerm
+    alloc::AbstractTerm
+    alloc_arg::Symbol
+    index::Index{1}
 end
 
-struct MatrixAssemblyTerm{A,B,C,D,E,F,G} <: AbstractTerm
-    term::A # <: Term
-    space_trial::B # <: Term
-    space_test::C
-    quadrature::D # <: Term
-    alloc::E
-    alloc_arg::F # gets reduced
-    index::G # gets reduced
+struct MatrixAssemblyTerm <: AbstractTerm
+    term::AbstractTerm
+    space_trial::AbstractTerm
+    space_test::AbstractTerm
+    quadrature::AbstractTerm
+    alloc::AbstractTerm
+    alloc_arg::Symbol # gets reduced
+    index::Index{2} # gets reduced
 end
-
 
 function bindings(term::ScalarAssemblyTerm)
     index = term.index
@@ -969,12 +1259,10 @@ function bindings(term::ScalarAssemblyTerm)
     (term.init_arg,face,point)
 end
 
-
 function dependencies(term::ScalarAssemblyTerm)
     (;term,quadrature,init) = term
     (term,quadrature,init)
 end
-
 
 function bindings(term::VectorAssemblyTerm)
     index = term.index
@@ -1037,8 +1325,6 @@ function expression(term::ScalarAssemblyTerm)
     expr
 end
 
-
-
 # We can specialize for particular cases if needed
 function expression(term::VectorAssemblyTerm)
     (term2,space,quadrature,alloc) = map(expression,dependencies(term))
@@ -1064,8 +1350,6 @@ function expression(term::MatrixAssemblyTerm)
     expr
 end
 
-
-
 function scalar_assembly_loop(face_point_v,init,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
@@ -1082,11 +1366,10 @@ function scalar_assembly_loop(face_point_v,init,quadrature)
     z
 end
 
-
 function vector_assembly_loop!(face_point_block_dof_v,alloc,space,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
-    space_domain = GT.domain(space)
+    #space_domain = GT.domain(space)
     face_npoints = num_points_accessor(quadrature)
     field_face_n_faces_around = map(fields(space)) do field_space
         num_faces_around_accesor(GT.domain(field_space),domain)
@@ -1165,21 +1448,20 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
     end
 
     field_face_around_be = map(fields(space_trial)) do field_space_trial
+        m_trial = max_num_reference_dofs(field_space_trial)
         n_trial = max_num_faces_around(GT.domain(field_space_trial),domain)
         map(fields(space_test)) do field_space_test
+            m_test = max_num_reference_dofs(field_space_test)
             n_test = max_num_faces_around(GT.domain(field_space_test),domain)
             # TODO: fix the type of tuple(tuple(vector(vector(matrix))))
             n_matrix::Vector{Vector{Matrix{eltype(alloc)}}} = map(1:n_trial) do _
                 map(1:n_test) do _
-                    m_trial = max_num_reference_dofs(field_space_trial)
-                    m_test = max_num_reference_dofs(field_space_test)
-                    zeros(eltype(alloc),m_trial, m_test)
+                    zeros(eltype(alloc),m_test,m_trial)
                 end
             end
             n_matrix
         end
     end
-
 
     nfields_trial = num_fields(space_trial)
     nfields_test = num_fields(space_test)
@@ -1263,13 +1545,13 @@ end
 
 # Base
 
-for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint,:*,:/,:\,:^,:getindex)
-    @eval begin
-        function get_symbol!(index,val::typeof(Base.$op),name="";prefix=gensym)
-            $( Expr(:quote,op) )
-        end
-    end
-end
+#for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint,:*,:/,:\,:^,:getindex)
+#    @eval begin
+#        function get_symbol!(index,val::typeof(Base.$op),name="";prefix=gensym)
+#            $( Expr(:quote,op) )
+#        end
+#    end
+#end
 
 for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
   @eval begin
@@ -1278,12 +1560,17 @@ for op in (:+,:-,:sqrt,:abs,:abs2,:real,:imag,:conj,:transpose,:adjoint)
 end
 
 function Base.getindex(a::AbstractQuantity,b::AbstractQuantity)
-    call(getindex,a,b)
+    quantity() do opts
+        term_a = term(a,opts)
+        term_b = term(b,opts)
+        RefTerm(term_a,term_b)
+    end
 end
 
-# function Base.getindex(a::AbstractQuantity,b::Number)
-#    call(getindex,a,compile_constant_quantity(b))
-# end
+ function Base.getindex(a::AbstractQuantity,b::Integer)
+    f = uniform_quantity(b;is_compile_constant=true)
+    a[f]
+ end
 
 for op in (:+,:-,:*,:/,:\,:^)
   @eval begin
@@ -1293,22 +1580,30 @@ for op in (:+,:-,:*,:/,:\,:^)
   end
 end
 
+for op in (:*,:/,:\,:^)
+    @eval begin
+        (Base.$op)(a::Number,b::AbstractQuantity) = call(Base.$op,GT.uniform_quantity(a),b)
+        (Base.$op)(a::AbstractQuantity,b::Number) = call(Base.$op,a,GT.uniform_quantity(b))
+    end
+end
+
+
 # LinearAlgebra
 
 for op in (:inv,:det,:norm,:tr)
   @eval begin
-      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
-          $( Expr(:quote,op) )
-      end
+      #function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+      #    $( Expr(:quote,op) )
+      #end
     (LinearAlgebra.$op)(a::AbstractQuantity) = call(LinearAlgebra.$op,a)
   end
 end
 
 for op in (:dot,:cross)
   @eval begin
-      function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
-          $( Expr(:quote,op) )
-      end
+      #function get_symbol!(index,val::typeof(LinearAlgebra.$op),name="";prefix=gensym)
+      #    $( Expr(:quote,op) )
+      #end
       (LinearAlgebra.$op)(a::AbstractQuantity,b::AbstractQuantity) = call(LinearAlgebra.$op,a,b)
     #   (LinearAlgebra.$op)(a::Number,b::AbstractQuantity) = call(LinearAlgebra.$op,GT.uniform_quantity(a),b)
     #   (LinearAlgebra.$op)(a::AbstractQuantity,b::Number) = call(LinearAlgebra.$op,a,GT.uniform_quantity(b))

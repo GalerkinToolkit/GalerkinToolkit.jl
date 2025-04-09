@@ -5,6 +5,14 @@ function change_of_measure(J)
     sqrt(det(transpose(J)*J))
 end
 
+function reference_quadratures(q::AbstractFaceQuadrature)
+    (q,)
+end
+
+function face_reference_id(q::AbstractFaceQuadrature)
+    [Int32(1),]
+end
+
 function face_quadrature(;domain,coordinates,weights)
     contents = (;domain,coordinates,weights)
     FaceQuadrature(contents)
