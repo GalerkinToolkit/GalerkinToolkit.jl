@@ -151,7 +151,7 @@ function assemble_problem(state)
     #Allocate space for the solution
     sol = similar(b,axes(A,2))
 
-    # Apply Dirichlet to RHS
+    #Apply Dirichlet to RHS
     xd = GT.dirichlet_values(uhd)
     mul!(b,Ad,xd,-1,1)
 
