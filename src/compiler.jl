@@ -783,7 +783,7 @@ end
 #end
 
 function optimize_CallTerm_LeafTerm(
-    ::typeof(ForwardDiff.gradient),callee::LeafTerm,v::PhysicalMapTerm,coords::CoordinateTerm)
+    ::typeof(ForwardDiff.jacobian),callee::LeafTerm,v::PhysicalMapTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
     (f,mesh,vD,face) = dependencies(v)
     new_deps = (callee,mesh,vD,face)
