@@ -555,28 +555,33 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             D = num_dims(domain(space))
             face_point_Dphi = jacobian_accessor(measure,Val(D))
             prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
-            P = typeof(prototype)
-            max_n_faces_around = 2
-            face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around)
+            # We rolled back this optimization since it introduces a bug
+            # when working on the skeleton
+            #P = typeof(prototype)
+            #max_n_faces_around = 2
+            #face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around)
             function face_point_dof_s(face,face_around=nothing)
                 point_dof_v = face_point_dof_v(face,face_around)
                 dof_modif = dface_to_modif(face,face_around)
                 ndofs = face_ndofs(face,face_around)
                 point_Dphi = face_point_Dphi(face,face_around)
-                if face_around === nothing
-                    dof_s = face_around_dof_s[1]
-                else
-                    dof_s = face_around_dof_s[face_around]
-                end
+                #if face_around === nothing
+                #    dof_s = face_around_dof_s[1]
+                #else
+                #    dof_s = face_around_dof_s[face_around]
+                #end
                 function point_dof_s(point,J)
                     dof_v = point_dof_v(point)
-                    for dof in 1:ndofs
-                        v = dof_v(dof)
-                        modif = dof_modif(dof)
-                        dof_s[dof] = modif(v,J)
-                    end
+                    #for dof in 1:ndofs
+                    #    v = dof_v(dof)
+                    #    modif = dof_modif(dof)
+                    #    dof_s[dof] = modif(v,J)
+                    #end
                     function dof_f(dof)
-                        dof_s[dof]
+                        modif = dof_modif(dof)
+                        v = dof_v(dof)
+                        modif(v,J)
+                        #dof_s[dof]
                     end
                 end
                 function point_dof_s(point,::Nothing)

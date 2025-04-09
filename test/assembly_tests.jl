@@ -245,6 +245,52 @@ tol = 1e-12
 @test sqrt(err[]) < tol
 
 
+# Poisson solve (API in physical domain)
+
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+D = GT.num_dims(mesh)
+Ω = GT.interior(mesh)
+Λ = GT.skeleton(mesh)
+Γdiri = GT.boundary(mesh)
+order = 1
+degree = 2*order
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
+dΩ = GT.measure(Ω,degree)
+dΛ = GT.measure(Λ,degree)
+uhd = GT.zero_dirichlet_field(Float64,V)
+u = GT.analytical_field(sum,Ω)
+GT.interpolate_dirichlet!(u,uhd)
+
+n_Λ = GT.unit_normal(mesh,GT.num_dims(mesh)-1)
+∇(u,q) = ForwardDiff.gradient(u,q)
+
+jump(v,p) = v[2](p) - v[1](p)
+jump(u,n,x) = u[2](x)*n[2](x) + u[1](x)*n[1](x)
+mean(f,u,x) = 0.5*(f(u[1],x)+f(u[2],x))
+γ = GT.uniform_quantity(1.0)
+h_Λ = GT.face_diameter_field(Λ)
+
+# The skeleton terms are not needed. They are added just
+# to make sure that they are computed correctly.
+a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ) + ∫(x->(γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇,u,x)-mean(∇,v,x)⋅jump(u,n_Λ,x),dΛ)
+l(v) = 0
+
+p = GT.linear_problem(uhd,a,l)
+
+x = PS.matrix(p)\PS.rhs(p)
+uh = GT.solution_field(uhd,x)
+
+eh(q) = u(q) - uh(q)
+∇eh(q) = ∇(u,q) - ∇(uh,q)
+
+tol = 1.0e-10
+el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
+@test eh1 < tol
 
 
 
@@ -267,6 +313,7 @@ D = GT.num_dims(mesh)
                  physical_names=["1-face-2","1-face-4"])
 
 Γ = GT.physical_domain(Γref)
+Λ = GT.skeleton(mesh)
 
 V = GT.lagrange_space(Ω,1;dirichlet_boundary=Γdiri)
 @show GT.num_free_dofs(V)
@@ -278,33 +325,6 @@ dΓ = GT.measure(Γ,degree)
 dΛ = GT.measure(Λ,degree)
 
 
-# Poisson solve (API in physical domain)
-
-V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
-
-uhd = GT.zero_dirichlet_field(Float64,V)
-GT.interpolate_dirichlet!(u,uhd)
-
-∇(u,q) = ForwardDiff.gradient(u,q)
-
-a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
-l(v) = 0
-
-p = GT.linear_problem(uhd,a,l)
-x = PS.matrix(p)\PS.rhs(p)
-uh = GT.solution_field(uhd,x)
-
-eh(q) = u(q) - uh(q)
-∇eh(q) = ∇(u,q) - ∇(uh,q)
-
-el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
-@test el2 < tol
-
-eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
-@test el2 < tol
-
-
-jump(v,p) = v[2](p) - v[1](p)
 
 function a(u,v)
     ∫(dΩ) do q
