@@ -2,6 +2,7 @@ module ProblemsExt
 
 import GalerkinToolkit as GT
 import LinearSolve
+import NonlinearSolve
 import ForwardDiff
 using Test
 using LinearAlgebra
@@ -14,7 +15,6 @@ cells = (n,n)
 mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh)
 order = 1
 degree = 2*order
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
@@ -45,13 +45,13 @@ cells = (n,n)
 mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh)
 order = 1
 degree = 2*order
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 dΩ = GT.measure(Ω,degree)
 uh = GT.zero_field(Float64,V)
 
+∇ = (u,q) -> ForwardDiff.gradient(u,q)
 const q = 3
 flux(∇u) = norm(∇u)^(q-2) * ∇u
 dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
@@ -59,5 +59,8 @@ res = u -> v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - v(x), dΩ)
 jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 
 prob = GT.SciMLBase_NonlinearProblem(uh,res,jac)
+sol = NonlinearSolve.solve(prob)
+uh = GT.solution_field(uh,sol)
+
 
 end # module

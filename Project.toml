@@ -31,8 +31,7 @@ SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 [extensions]
 GalerkinToolkitMakieExt = "Makie"
 GalerkinToolkitWriteVTKExt = "WriteVTK"
-GalerkinToolkitLinearSolveExt = "SciMLBase"
-GalerkinToolkitNonlinearSolveExt = "SciMLBase"
+GalerkinToolkitSciMLBaseExt = "SciMLBase"
 
 [compat]
 AbstractTrees = "0.4" 
