@@ -1502,7 +1502,7 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
                                 for dof_test in 1:ndofs_test
                                     # v = dof_v(dof_trial, dof_test)
                                     v = dof_test_v(dof_test)
-                                    be[dof_test, dof_trial] += v
+                                    be[dof_test, dof_trial] += v # TODO: This operation takes 50% of total time. can we store it in register?
                                 end
                             end
                         end

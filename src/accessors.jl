@@ -321,7 +321,9 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
     function face_point_phi(face,face_around=nothing)
         point_lnode_s = face_point_lnode_s(face,face_around)
         lnode_to_node = face_to_nodes(face,face_around)
-        function point_s(point)
+        function point_s(point) # type instability occurs when we compute 1 Jacobian for simplices, or we need to use conditions in the function
+            # also, currently this is not the bottleneck of the computation
+            # TODO: separate the quadrature?  
             lnode_s = point_lnode_s(point)
             nlnodes = length(lnode_to_node)
             sum(1:nlnodes) do lnode
@@ -376,7 +378,7 @@ function weight_accessor_reference(measure::AbstractQuadrature)
         dface = face_to_dface[face]
         rid = dface_to_rid[dface]
         point_to_w = rid_to_point_to_w[rid]
-        function point_v(point)
+        function point_v(point, J=nothing)
             point_to_w[point]
         end
     end
@@ -415,7 +417,7 @@ end
 
 function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
     function modifier(v,J)
-        transpose(J)\v
+        transpose(J)\v # TODO: bottleneck
     end
     function face_dof_modifier(face,face_around=nothing)
         function dof_modifier(dof)
