@@ -50,7 +50,7 @@ order = 1
 degree = 2*order
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 dΩ = GT.measure(Ω,degree)
-uh = GT.zero_field(Float64,V)
+uh = GT.rand_field(Float64,V)
 
 ∇ = (u,q) -> ForwardDiff.gradient(u,q)
 const q = 3
@@ -60,8 +60,11 @@ res = u -> v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - v(x), dΩ)
 jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 
 prob = GT.SciMLBase_NonlinearProblem(uh,res,jac)
-sol = NonlinearSolve.solve(prob)
+sol = NonlinearSolve.solve(prob;show_trace=Val(true))
+@test sol.retcode == NonlinearSolve.ReturnCode.Success
 uh = GT.solution_field(uh,sol)
+uhl2 = GT.∫( q->abs2(uh(q)), dΩ) |> sum |> sqrt
+@test abs(uhl2-0.09133166701839236)<tol
 
 
 end # module

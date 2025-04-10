@@ -29,8 +29,8 @@ function GT.SciMLBase_NonlinearProblem(uh::GT.DiscreteField,r,j)
     x = GT.free_values(uh)
     T = eltype(x)
     parameters = (uh,)
-    b,residual_cache = GT.assemble_vector(r(uh),T,V;parameters)
-    A,jacobian_cache = GT.assemble_matrix(j(uh),T,U,V;parameters)
+    b,residual_cache = GT.assemble_vector(r(uh),T,V;parameters,reuse=Val(true))
+    A,jacobian_cache = GT.assemble_matrix(j(uh),T,U,V;parameters,reuse=Val(true))
 
     function f(dx,x,p)
         duh = GT.solution_field(uh,x)
@@ -40,7 +40,7 @@ function GT.SciMLBase_NonlinearProblem(uh::GT.DiscreteField,r,j)
 
     function jac(J,x,p)
         duh = GT.solution_field(uh,x)
-        GT.update_matrix!(A,jacobian_cache;parameters=(duh,))
+        GT.update_matrix!(J,jacobian_cache;parameters=(duh,))
         J
     end
 
