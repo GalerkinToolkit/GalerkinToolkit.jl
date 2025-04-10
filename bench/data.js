@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744196023118,
+  "lastUpdate": 1744302370878,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1364,6 +1364,36 @@ window.BENCHMARK_DATA = {
             "value": 676533955,
             "unit": "ns",
             "extra": "gctime=26096891.5\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1fb3eae0e67670ab50f6402fdf09936ea20dc65f",
+          "message": "Merge pull request #201 from GalerkinToolkit/SciMLBaseExt",
+          "timestamp": "2025-04-10T18:22:20+02:00",
+          "tree_id": "57fdd031f04ce0158d124b2dc6f639c9fa9b93e4",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/1fb3eae0e67670ab50f6402fdf09936ea20dc65f"
+        },
+        "date": 1744302370543,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 671598692,
+            "unit": "ns",
+            "extra": "gctime=25987899.5\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
