@@ -59,5 +59,4 @@ function GT.solution_field(U::GT.DiscreteField,sol::SciMLBase.NonlinearSolution)
     GT.solution_field(U,x)
 end
 
-
 end # module
