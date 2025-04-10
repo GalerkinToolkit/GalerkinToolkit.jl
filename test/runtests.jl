@@ -20,6 +20,7 @@ using Test
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Compiler" begin include("compiler_tests.jl") end
     @testset "Problems" begin include("problems_tests.jl") end
+    @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
     #@testset "NewIR" begin include("new_ir_tests.jl") end
 end
