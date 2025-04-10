@@ -15,6 +15,7 @@ cells = (n,n)
 mesh = GT.cartesian_mesh(domain,cells)
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
 order = 1
 degree = 2*order
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
