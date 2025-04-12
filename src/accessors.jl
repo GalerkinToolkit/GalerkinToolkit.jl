@@ -318,20 +318,39 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
     node_to_x = node_coordinates(mesh)
     z = zero(eltype(node_to_x))
     prototype = outer(z,GT.prototype(face_point_lnode_s))
+
+    D = val_parameter(vD)
+    P = typeof(prototype)
+    jacobian_cache = Ref(zero(P)) # TODO: check if we indeed need just 1 jacobian matrix at a time
     function face_point_phi(face,face_around=nothing)
         point_lnode_s = face_point_lnode_s(face,face_around)
         lnode_to_node = face_to_nodes(face,face_around)
-        function point_s(point) # type instability occurs when we compute 1 Jacobian for simplices, or we need to use conditions in the function
-            # also, currently this is not the bottleneck of the computation
-            # TODO: separate the quadrature?  
+
+        nlnodes = length(lnode_to_node)
+        is_simplex = (nlnodes == D + 1) # TODO: find a better way to check whether it is a simplex
+        if is_simplex
+            lnode_s_1 = point_lnode_s(1)
+
+            jacobian_cache[] = sum(1:nlnodes) do lnode
+                node = lnode_to_node[lnode]
+                x = node_to_x[node]
+                s = lnode_s_1(lnode)
+                outer(x,s)
+            end
+        end
+        function point_s(point) 
+            if is_simplex
+                return jacobian_cache[]
+            end
             lnode_s = point_lnode_s(point)
-            nlnodes = length(lnode_to_node)
-            sum(1:nlnodes) do lnode
+            # nlnodes = length(lnode_to_node)
+            jacobian_cache[] = sum(1:nlnodes) do lnode
                 node = lnode_to_node[lnode]
                 x = node_to_x[node]
                 s = lnode_s(lnode)
                 outer(x,s)
             end
+            return jacobian_cache[]
         end
     end
     accessor(face_point_phi,prototype)
