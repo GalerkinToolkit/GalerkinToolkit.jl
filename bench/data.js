@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744303351412,
+  "lastUpdate": 1744536782443,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1424,6 +1424,36 @@ window.BENCHMARK_DATA = {
             "value": 666658795,
             "unit": "ns",
             "extra": "gctime=27400588\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a549a1de2498886658f0c4d782f580be361b6e47",
+          "message": "Merge pull request #203 from GalerkinToolkit/SciMLBaseExt\n\nIntegration with DifferentialEquations.jl",
+          "timestamp": "2025-04-13T11:29:12+02:00",
+          "tree_id": "5dc1ea51121a813b5a280b30e1157e399908c0d1",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/a549a1de2498886658f0c4d782f580be361b6e47"
+        },
+        "date": 1744536782118,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 669006387.5,
+            "unit": "ns",
+            "extra": "gctime=25214034\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
