@@ -125,11 +125,11 @@ function main_automatic(params)
     @timeit timer "assembly" begin
         if params[:dirichlet_method] === :strong
             # TODO give a hint when dirichlet BCS are homogeneous
-            p = GT.linear_problem(uhd,a,l)
+            p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
         elseif params[:dirichlet_method] === :multipliers
-            p = GT.linear_problem(Float64,VxQ,A,L)
+            p = GT.PartitionedSolvers_linear_problem(Float64,VxQ,A,L)
         else
-            p = GT.linear_problem(Float64,V,a,l)
+            p = GT.PartitionedSolvers_linear_problem(Float64,V,a,l)
         end
     end
 
