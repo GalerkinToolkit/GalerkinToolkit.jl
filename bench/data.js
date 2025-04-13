@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744536782443,
+  "lastUpdate": 1744559820646,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1454,6 +1454,36 @@ window.BENCHMARK_DATA = {
             "value": 669006387.5,
             "unit": "ns",
             "extra": "gctime=25214034\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "836d6123ac55408da9b73ad7c76f0021d4da7a3f",
+          "message": "Merge pull request #204 from GalerkinToolkit/SciMLBaseExt\n\nFurther enhancements associated with SciMLBase support.",
+          "timestamp": "2025-04-13T17:52:57+02:00",
+          "tree_id": "314cd6dab5a73d69555143fd9174918cfc0f127b",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/836d6123ac55408da9b73ad7c76f0021d4da7a3f"
+        },
+        "date": 1744559820188,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 681570229.5,
+            "unit": "ns",
+            "extra": "gctime=28792751.5\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
