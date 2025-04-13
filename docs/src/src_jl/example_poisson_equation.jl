@@ -110,7 +110,7 @@ nothing # hide
 
 # Assemble the problem using the automatic assembly loop generator
 
-p = GT.linear_problem(uhd,a,l)
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
 nothing # hide
 
 # Solve the problem

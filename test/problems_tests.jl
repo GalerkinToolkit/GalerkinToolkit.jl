@@ -79,7 +79,7 @@ function problems_tests_main()
     @test sum(A) ≈ 1
 
     uhd = GT.zero_dirichlet_field(T, V)
-    p = GT.linear_problem(uhd,a,l)
+    p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
     
 
     Δ(f,x) = tr(ForwardDiff.jacobian(y->∇(f,y),x))
@@ -90,7 +90,7 @@ function problems_tests_main()
     GT.interpolate_dirichlet!(g,uhd)
     a = (u,v) -> GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
     l = v -> GT.∫( x->v(x)*f(x), dΩ)
-    p = GT.linear_problem(uhd,a,l)
+    p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
     s = PS.LinearAlgebra_lu(p)
     s = PS.solve(s)
     uh = GT.solution_field(uhd,s)

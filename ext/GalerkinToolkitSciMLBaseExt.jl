@@ -6,7 +6,7 @@ import PartitionedSolvers as PS
 using LinearAlgebra
 
 function GT.SciMLBase_LinearProblem(args...)
-    p = GT.linear_problem(args...)
+    p = GT.PartitionedSolvers_linear_problem(args...)
     A = PS.matrix(p)
     b = PS.rhs(p)
     x = PS.solution(p)

@@ -31,6 +31,7 @@ using LinearAlgebra
 
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
+import NonlinearSolve
 import ForwardDiff
 import GLMakie as Makie
 import FileIO # hide
@@ -101,15 +102,44 @@ jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , 
 nothing # hide
 
 # Define non-linear problem using the automatic assembly loop generator.
+# We can define a problem object from `SciMLBase` that can be solved with `NonlinearSolve.jl`.
 
-p = GT.nonlinear_problem(uh,res,jac)
+p = GT.SciMLBase_NonlinearProblem(uh,res,jac)
 nothing # hide
 
-# Define a nonlinear solver and solve the problem, and visualize the solution.
+# Solve it with `NonlinearSolve.jl`.
+
+sol = NonlinearSolve.solve(p;show_trace=Val(true))
+@assert sol.retcode == NonlinearSolve.ReturnCode.Success
+nothing # hide
+
+# Get the FE solution object
+
+uh = GT.solution_field(uh,sol)
+nothing # hide
+
+# Visualize the solution
+
+Makie.plot(Ω;color=uh,strokecolor=:black)
+FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2-1.png"),Makie.current_figure()) # hide
+
+# ![](fig_p_laplacian_2-1.png)
+
+# We can also create a nonlinear problem object to be solved with `PartitionedSolvers`.
+# This is specially useful for the distributed case, but it also works for sequential runs.
+
+uh = GT.rand_field(Float64,V)
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
+nothing # hide
+
+# Define a nonlinear solver with and solve the problem `PartitionedSolvers.jl`
 
 s = PS.newton_raphson(p,verbose=true)
 s = PS.solve(s)
 uh = GT.solution_field(uh,s)
+
+# Visualize the solution
+
 Makie.plot(Ω;color=uh,strokecolor=:black)
 FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_3.png"),Makie.current_figure()) # hide
 
@@ -119,7 +149,7 @@ FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_3.png"),Makie.current_figure()) #
 
 uh = GT.rand_field(Float64,V)
 GT.interpolate_dirichlet!(g,uh)
-p = GT.nonlinear_problem(uh,res,jac)
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
 s = PS.newton_raphson(p)
 color = Makie.Observable(uh)
 fig = Makie.plot(Ω;color,strokecolor=:black)
