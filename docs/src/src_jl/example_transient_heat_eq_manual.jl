@@ -68,8 +68,10 @@ function setup_example(state)
     #Space
     k = 1
     V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γ)
-    #Time dependent dirichlet field
-    uh = GT.semi_discrete_field(Float64,V) do t,uht
+    #Field
+    uh = GT.undef_field(Float64,V)
+    #Time dependent Dirichlet function
+    function dirichlet_dynamics!(t,uht)
         α = sin(3*pi*t)
         g1 = GT.analytical_field(x->0.0,Ω)
         g2 = GT.analytical_field(x->1.0*α,Ω)
@@ -78,7 +80,7 @@ function setup_example(state)
     end
     #Initial condition
     u0 = GT.analytical_field(x->0.0,Ω)
-    (;Ω,V,uh,u0,state...)
+    (;Ω,V,uh,u0,dirichlet_dynamics!,state...)
 end
 
 # Create the accessor functions used later for integration
@@ -215,18 +217,18 @@ end
 # Do the time steps and record the solution with Makie.
 
 function time_steps_makie(state)
-    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd,dirichlet_dynamics!) = state
 
     #Initial condition
     t0 = 0
-    uht = uh(t0)
-    GT.interpolate_free!(u0,uht)
-    x = GT.free_values(uht)
-    xd = GT.dirichlet_values(uht)
+    GT.interpolate_free!(u0,uh)
+    dirichlet_dynamics!(t0,uh)
+    x = GT.free_values(uh)
+    xd = GT.dirichlet_values(uh)
 
     #Setup Makie scene
     axis = (aspect = Makie.DataAspect(),)
-    color = Makie.Observable(uht)
+    color = Makie.Observable(uh)
     fig = Makie.Figure()
     ax,sc = Makie.plot(fig[1,1],Ω;color,axis,colorrange=(-1,1))
     Makie.Colorbar(fig[1,2],sc)
@@ -240,8 +242,8 @@ function time_steps_makie(state)
         #Setup rhs
         mul!(b,M,x)
         mul!(b,Mfd,xd,1,1)
-        uht = uh(t)
-        xd = GT.dirichlet_values(uht)
+        dirichlet_dynamics!(t,uh)
+        xd = GT.dirichlet_values(uh)
         mul!(b,Mfd,xd,-1,1)
         mul!(b,Kfd,xd,-dt,1)
         #Update solver with the new rhs and solve
@@ -252,7 +254,7 @@ function time_steps_makie(state)
         #Get solution at the end of the step
         x = PS.solution(s)
         #Update Makie scene
-        color[] = GT.solution_field(uht,x)
+        color[] = GT.solution_field(uh,x)
     end
 
 end
@@ -260,14 +262,14 @@ end
 # Do the time steps and record the solution with VTK.
 
 function time_steps_vtk(state)
-    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd) = state
+    (;Ω,uh,u0,s,p,b,N,dt,M,Mfd,Kfd,dirichlet_dynamics!) = state
 
     #Initial condition
     t0 = 0
-    uht = uh(t0)
-    GT.interpolate_free!(u0,uht)
-    x = GT.free_values(uht)
-    xd = GT.dirichlet_values(uht)
+    dirichlet_dynamics!(t0,uh)
+    GT.interpolate_free!(u0,uh)
+    x = GT.free_values(uh)
+    xd = GT.dirichlet_values(uh)
 
     #Create the GT plot object
     plt = GT.plot(Ω)
@@ -280,17 +282,17 @@ function time_steps_vtk(state)
             t = dt*step + t0
             mul!(b,M,x)
             mul!(b,Mfd,xd,1,1)
-            uht = uh(t)
-            xd = GT.dirichlet_values(uht)
+            dirichlet_dynamics!(t,uh)
+            xd = GT.dirichlet_values(uh)
             mul!(b,Mfd,xd,-1,1)
             mul!(b,Kfd,xd,-dt,1)
             s = PS.update(s,rhs=b)
             s = PS.solve(s)
             x = PS.solution(s)
-            uht = GT.solution_field(uht,x)
+            uh = GT.solution_field(uh,x)
             #Save vtk file for this step
             WriteVTK.vtk_grid("$(file)_$(step)",plt) do plt
-                GT.plot!(plt,uht;label="uh")
+                GT.plot!(plt,uh;label="uh")
                 pvd[step] = plt
             end
         end
