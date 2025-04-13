@@ -606,7 +606,7 @@ nothing # hide
 # extract the solution field from it. This approach automatically handles
 # the Dirichlet boundary conditions.
 
-p = GT.linear_problem(u_d,a,ℓ)
+p = GT.PartitionedSolvers_linear_problem(u_d,a,ℓ)
 s = PS.solve(p)
 u_fem = GT.solution_field(u_d,s)
 nothing # hide

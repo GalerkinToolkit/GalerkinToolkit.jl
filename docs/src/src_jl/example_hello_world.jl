@@ -32,6 +32,7 @@ import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
 import GLMakie as Makie
+import LinearSolve
 import FileIO # hide
 
 # Generate the computational mesh.
@@ -104,9 +105,29 @@ a = (u,v) -> GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
 l = v -> GT.∫( x->v(x)*f(x), dΩ)
 nothing # hide
 
-# Assemble the problem using the automatic assembly loop generator
+# Assemble the problem using the automatic assembly loop generator.
+# We generate a `SciMLBase.LinearProblem` object that can be solved with `LinearSolve`.
 
-p = GT.linear_problem(uhd,a,l)
+p = GT.SciMLBase_LinearProblem(uhd,a,l)
+sol = LinearSolve.solve(p)
+nothing # hide
+
+# Transform the solution object into the FE solution object.
+
+uh = GT.solution_field(uhd,sol)
+nothing # hide
+
+# Visualize the solution.
+
+Makie.plot(Ω;color=uh,strokecolor=:black,axis)
+FileIO.save(joinpath(@__DIR__,"fig_poisson_2-1.png"),Makie.current_figure()) # hide
+
+# ![](fig_poisson_2-1.png)
+
+# We can also create a linear problem object to be solved with `PartitionedSolvers`.
+# This is specially useful for the distributed case, but it also works for sequential runs.
+
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
 nothing # hide
 
 # Solve the problem
@@ -161,7 +182,7 @@ function main(;domain,cells)
     dΩ = GT.measure(Ω,degree)
     a = (u,v) -> GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
     l = v -> GT.∫( x->v(x)*f(x), dΩ)
-    p = GT.linear_problem(uhd,a,l)
+    p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
     s = PS.LinearAlgebra_lu(p)
     s = PS.solve(s)
     uh = GT.solution_field(uhd,s)

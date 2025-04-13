@@ -423,7 +423,7 @@ end
 
 # Linear problems
 
-function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
+function PartitionedSolvers_linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
@@ -437,7 +437,7 @@ function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
     PS.linear_problem(x,A,b)
 end
 
-function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
+function PartitionedSolvers_linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
@@ -449,7 +449,7 @@ end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh);
+function PartitionedSolvers_nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh);
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
