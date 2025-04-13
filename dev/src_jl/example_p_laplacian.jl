@@ -9,14 +9,14 @@
 # ```math
 # \left\lbrace
 # \begin{aligned}
-# -\nabla \cdot \left( |\nabla u|^{p-2} \ \nabla u \right) = f\ &\text{in}\ \Omega,\\
+# -\nabla \cdot \sigma(u) = f\ &\text{in}\ \Omega,\\
 # u = -1 \ &\text{on} \ \Gamma_0,\\
 # u = 1 \ &\text{on} \ \Gamma_1,\\
-# \left( |\nabla u|^{p-2}\ \nabla u \right)\cdot n = 0 \ &\text{elsewhere on} \ \partial\Omega,
+# \sigma(u)\cdot n = 0 \ &\text{elsewhere on} \ \partial\Omega,
 # \end{aligned}
 # \right.
 # ```
-# with $p>2$.
+# with $\sigma(u) = |\nabla u|^{p-2} \ \nabla u$ and $p>2$.
 # The vector field $n$ is the outwards unit normal vector to $\partial\Omega$. The computational domains are defined in the mesh file `model.msh`. The domain $\Omega$ is represented by the 3D faces in this mesh. The domain $\Gamma_0$ is represented by the physical group named `"sides"` and $\Gamma_1$ is the union of the physical groups named `"circle"`, `"triangle"`, and `"square"`.  
 #  To solve this PDE, we use a conventional Galerkin finite element method with conforming Lagrangian FE spaces.
 
@@ -31,6 +31,7 @@ using LinearAlgebra
 
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
+import NonlinearSolve
 import ForwardDiff
 import GLMakie as Makie
 import FileIO # hide
@@ -101,15 +102,45 @@ jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , 
 nothing # hide
 
 # Define non-linear problem using the automatic assembly loop generator.
+# We can define a problem object from `SciMLBase` that can be solved with `NonlinearSolve`.
 
-p = GT.nonlinear_problem(uh,res,jac)
+p = GT.SciMLBase_NonlinearProblem(uh,res,jac)
 nothing # hide
 
-# Define a nonlinear solver and solve the problem, and visualize the solution.
+# Solve it with `NonlinearSolve.jl`.
+
+sol = NonlinearSolve.solve(p;show_trace=Val(true))
+@assert sol.retcode == NonlinearSolve.ReturnCode.Success
+nothing # hide
+
+# Get the FE solution object
+
+uh = GT.solution_field(uh,sol)
+nothing # hide
+
+# Visualize the solution
+
+Makie.plot(Ω;color=uh,strokecolor=:black)
+FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2-1.png"),Makie.current_figure()) # hide
+
+# ![](fig_p_laplacian_2-1.png)
+
+# We can also create a nonlinear problem object to be solved with `PartitionedSolvers`.
+# This is specially useful for the distributed case, but it also works for sequential runs.
+
+uh = GT.rand_field(Float64,V)
+GT.interpolate_dirichlet!(g,uh)
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
+nothing # hide
+
+# Define a nonlinear solver with and solve the problem `PartitionedSolvers`
 
 s = PS.newton_raphson(p,verbose=true)
 s = PS.solve(s)
 uh = GT.solution_field(uh,s)
+
+# Visualize the solution
+
 Makie.plot(Ω;color=uh,strokecolor=:black)
 FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_3.png"),Makie.current_figure()) # hide
 
@@ -119,7 +150,7 @@ FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_3.png"),Makie.current_figure()) #
 
 uh = GT.rand_field(Float64,V)
 GT.interpolate_dirichlet!(g,uh)
-p = GT.nonlinear_problem(uh,res,jac)
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
 s = PS.newton_raphson(p)
 color = Makie.Observable(uh)
 fig = Makie.plot(Ω;color,strokecolor=:black)

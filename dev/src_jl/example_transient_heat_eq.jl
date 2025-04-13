@@ -1,4 +1,4 @@
-# # Transient heat equation with DifferentialEquations.jl
+# # Transient heat equation
 # 
 # ![](fig_transient_heat_equation.gif)
 #
@@ -109,9 +109,11 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
     end
 
 end
+nothing # hide
 
 # Call the main function.
 
 main()
+nothing # hide
 
 # ![](fig_transient_heat_equation.gif)
