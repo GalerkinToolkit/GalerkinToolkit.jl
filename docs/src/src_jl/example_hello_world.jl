@@ -106,7 +106,7 @@ l = v -> GT.∫( x->v(x)*f(x), dΩ)
 nothing # hide
 
 # Assemble the problem using the automatic assembly loop generator.
-# We generate a `SciMLBase.LinearProblem` object that can be solved with LinearSolve.jl.
+# We generate a `SciMLBase.LinearProblem` object that can be solved with `LinearSolve`.
 
 p = GT.SciMLBase_LinearProblem(uhd,a,l)
 sol = LinearSolve.solve(p)
@@ -116,6 +116,13 @@ nothing # hide
 
 uh = GT.solution_field(uhd,sol)
 nothing # hide
+
+# Visualize the solution.
+
+Makie.plot(Ω;color=uh,strokecolor=:black,axis)
+FileIO.save(joinpath(@__DIR__,"fig_poisson_2-1.png"),Makie.current_figure()) # hide
+
+# ![](fig_poisson_2-1.png)
 
 # We can also create a linear problem object to be solved with `PartitionedSolvers`.
 # This is specially useful for the distributed case, but it also works for sequential runs.
