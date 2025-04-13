@@ -435,3 +435,16 @@ function face_diameter_field(Ω::AbstractDomain)
     face_constant_field(dims,Ω)
 end
 
+function interpolate!(f,u::SemiDiscreteField;free_or_diri=FREE_AND_DIRICHLET)
+    interpolate!(f,u.discrete_field;free_or_dirichlet)
+end
+
+function interpolate_free!(f,u::SemiDiscreteField)
+    interpolate_free!(f,u.discrete_field)
+end
+
+function interpolate_dirichlet!(f,u::SemiDiscreteField)
+    interpolate_dirichlet!(f,u.discrete_field)
+end
+
+

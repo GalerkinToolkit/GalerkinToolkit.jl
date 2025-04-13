@@ -354,8 +354,8 @@ index(a::QuantityOptions) = a.index
 
 # NB.To define a prototype for a quantity  we need a domain
 # It is easier to add the prototype to terms instead
-struct Quantity{A} <: AbstractQuantity
-    term::A
+struct Quantity <: AbstractQuantity
+    term::Any
 end
 function quantity(term)
     Quantity(term)
@@ -386,6 +386,25 @@ function uniform_quantity(v;is_compile_constant=false)
     quantity() do opts
         leaf_term(v; is_compile_constant)
     end
+end
+
+function parameter(v)
+    ParameterQuantity(v)
+end
+
+function parameter(v::DiscreteField)
+    v
+end
+
+struct ParameterQuantity{A} <: AbstractQuantity
+    value::A
+end
+
+value(q::ParameterQuantity) = q.value
+
+function term(q::ParameterQuantity,opts)
+    t1 = leaf_term(q)
+    t2 = call_term(GT.value,t1)
 end
 
 function coordinate_quantity(quadrature)
