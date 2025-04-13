@@ -38,13 +38,12 @@ From these items, the ones currently missing are:
 - Matrix-free 2-forms (expected by 2026).
 - Distributed computing (only partially available at the moment, expected by 2026).
 - Single- and multi-GPU support (ongoing PhD project, expected by 2027).
-- Integration with `DiferentialEquations.jl` (coming soon).
 
 ## Why
 
 GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique design features:
 
-- It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package. It provides a high-level API backed with automatic code generation, and also easy access to the low-level building blocks of FE codes.
+- It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package. It provides a high-level API backed with automatic code generation, and also easy access to the low-level building blocks of FE codes. See in the [Examples](@ref) section examples using the high-level API and automatic-code generation and also examples implementing the integration loops "by hand" using the low-level building blocks.
 - It is designed to blend with the Julia package ecosystem, and reuses as much as possible from it. For instance, GalerkinToolkit does not define differential operators, it simply uses the operators already defined in [`ForwardDiff.jl`](https://github.com/JuliaDiff/ForwardDiff.jl). It leverages [`PartitionedArrays.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl) for distributed linear algebra data structures. You can use [`StaticArrays.jl`](https://github.com/JuliaArrays/StaticArrays.jl) and [`Tensors.jl`](https://github.com/Ferrite-FEM/Tensors.jl), when working with vector- and tensor- valued PDEs. It also makes straight-forward to use external solvers to solve the algebraic systems you get after discretizing a PDE. For visualization, it defines recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and defines helper functions to save results with [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl) in [`vtk` format](https://vtk.org/).
 - It is based on a new form compiler, the GalerkinToolkit form compiler (GTFC), that fixes the rigidity of domain-specific languages like UFL. It introduces an alternative multi-level intermediate representation (MLIR) and leveraging the meta-programming features of the Julia programming language. 
 
