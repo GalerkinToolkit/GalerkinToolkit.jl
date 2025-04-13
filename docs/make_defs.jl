@@ -55,7 +55,7 @@ function main(;debug=false)
                       "example_p_laplacian.md",
                       "example_p_laplacian_manual.md",
                       "example_stokes.md",
-                      "example_transient_heat.md",
+                      "example_transient_heat_eq.md",
                       "example_transient_heat_eq_manual.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
