@@ -423,7 +423,7 @@ end
 
 # Linear problems
 
-function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
+function PartitionedSolvers_linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
@@ -433,21 +433,23 @@ function linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
     A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;matrix_strategy,vector_strategy)
     mul!(b,Ad,xd,-1,1)
     x = similar(b,axes(A,2))
+    fill!(x,zero(eltype(x)))
     PS.linear_problem(x,A,b)
 end
 
-function linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
+function PartitionedSolvers_linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     ) where T
     A,b = assemble_matrix_and_vector(a,l,T,U,V;matrix_strategy,vector_strategy)
     x = similar(b,axes(A,2))
+    fill!(x,zero(eltype(x)))
     PS.linear_problem(x,A,b)
 end
 
 # Nonlinear problems
 
-function nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh),
+function PartitionedSolvers_nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh);
         matrix_strategy = monolithic_matrix_assembly_strategy(),
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
@@ -544,4 +546,10 @@ end
 function free_values_from_solution(x::BVector,dofs::BRange)
     x
 end
+
+# Functions to be extended in the extension modules
+
+function SciMLBase_LinearProblem end
+function SciMLBase_NonlinearProblem end
+function SciMLBase_ODEProblem end
 

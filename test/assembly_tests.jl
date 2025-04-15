@@ -69,7 +69,7 @@ dΩ = GT.measure(Ω,degree)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ)
 l(v) = 0
 
-p = GT.linear_problem(uhd,a,l)
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
 
 A = PS.matrix(p)
 display(A)
@@ -277,7 +277,7 @@ h_Λ = GT.face_diameter_field(Λ)
 a(u,v) = ∫( q->∇(u,q)⋅∇(v,q), dΩ) + ∫(x->(γ/h_Λ(x))*jump(v,n_Λ,x)⋅jump(u,n_Λ,x)-jump(v,n_Λ,x)⋅mean(∇,u,x)-mean(∇,v,x)⋅jump(u,n_Λ,x),dΛ)
 l(v) = 0
 
-p = GT.linear_problem(uhd,a,l)
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
 
 x = PS.matrix(p)\PS.rhs(p)
 uh = GT.solution_field(uhd,x)
@@ -621,7 +621,7 @@ res(u) = v -> ∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)) - f(x)*v(x) , dΩ)
 jac(u) = (du,v) -> ∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 
 uh = GT.rand_field(Float64,V)
-p = GT.nonlinear_problem(uh,res,jac)
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
 
 linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
 s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)
@@ -641,7 +641,7 @@ dΩ = GT.measure(Ω,2*k)
 ∇3 = ForwardDiff.gradient
 a(u,v) = GT.∫( x->∇3(u,x)⋅∇3(v,x), dΩ)
 l(v) = 0
-p = GT.linear_problem(Float64,V,a,l)
+p = GT.PartitionedSolvers_linear_problem(Float64,V,a,l)
 PS.matrix(p) |> display
 
 #tini = 0.0
