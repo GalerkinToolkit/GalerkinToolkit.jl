@@ -694,7 +694,8 @@ end
 function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
-    J = :(jacobian_accessor($quadrature)($face)($point))
+    D = :(num_dims(domain($space)))
+    J = :(jacobian_accessor($quadrature, $D)($face, $face_around)($point))
     :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
