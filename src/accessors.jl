@@ -321,17 +321,19 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
 
     D = val_parameter(vD)
     P = typeof(prototype)
-    jacobian_cache = Ref(zero(P)) # TODO: check if we indeed need just 1 jacobian matrix at a time
+
+    max_n_faces_around = 2
+    jacobian_cache = zeros(P, max_n_faces_around)
     function face_point_phi(face,face_around=nothing)
         point_lnode_s = face_point_lnode_s(face,face_around)
         lnode_to_node = face_to_nodes(face,face_around)
-
+        index = face_around === nothing ? 1 : face_around
         nlnodes = length(lnode_to_node)
         is_simplex = (nlnodes == D + 1) # TODO: find a better way to check whether it is a simplex
         if is_simplex
             lnode_s_1 = point_lnode_s(1)
 
-            jacobian_cache[] = sum(1:nlnodes) do lnode
+            jacobian_cache[index] = sum(1:nlnodes) do lnode
                 node = lnode_to_node[lnode]
                 x = node_to_x[node]
                 s = lnode_s_1(lnode)
@@ -340,17 +342,17 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
         end
         function point_s(point) 
             if is_simplex
-                return jacobian_cache[]
+                return jacobian_cache[index]
             end
             lnode_s = point_lnode_s(point)
             # nlnodes = length(lnode_to_node)
-            jacobian_cache[] = sum(1:nlnodes) do lnode
+            jacobian_cache[index] = sum(1:nlnodes) do lnode
                 node = lnode_to_node[lnode]
                 x = node_to_x[node]
                 s = lnode_s(lnode)
                 outer(x,s)
             end
-            return jacobian_cache[]
+            return jacobian_cache[index]
         end
     end
     accessor(face_point_phi,prototype)
@@ -571,8 +573,6 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             D = num_dims(domain(space))
             face_point_Dphi = jacobian_accessor(measure,Val(D))
             prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
-            # We rolled back this optimization since it introduces a bug
-            # when working on the skeleton
             P = typeof(prototype)
             max_n_faces_around = 2
             # face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around) # incorrect, all elements have the same objectid

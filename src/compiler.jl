@@ -496,25 +496,27 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             the_face_around_term = leaf_term(nothing, is_compile_constant=true)
             face_around_term = leaf_term(nothing)
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            FormArgumentTerm(dependencies)
+            FormArgumentTerm(dependencies, D)
         elseif D==d+1 && face_around !== nothing
             the_face_around_term = leaf_term(face_around, is_compile_constant=true)
             face_around_term = leaf_term(face_around)
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            FormArgumentTerm(dependencies)
+            FormArgumentTerm(dependencies, D)
         else
             face_around_term = leaf_term(face_around_index(index,arg))
             the_face_around = :the_face_around
             the_face_around_term = leaf_term(the_face_around)
             n_faces_around = leaf_term(2;is_compile_constant=true) # Hard coded! But OK in practice.
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            SkeletonTerm(FormArgumentTerm(dependencies),n_faces_around,the_face_around)
+            SkeletonTerm(FormArgumentTerm(dependencies, D),n_faces_around,the_face_around)
         end
     end
 end
 
 struct FormArgumentTerm <: AbstractTerm
     dependencies
+    D::Int
+    #d::Int
 end
 
 function prototype(term::FormArgumentTerm)
@@ -527,13 +529,13 @@ function dependencies(term::FormArgumentTerm)
 end
 
 function replace_dependencies(term::FormArgumentTerm,dependencies)
-    FormArgumentTerm(dependencies)
+    FormArgumentTerm(dependencies, term.D)
 end
 
 function replace_the_face_around(term::FormArgumentTerm,the_face_around)
     (f,space,domain,face,the_field,field,dof,_,face_around) = term.dependencies
     dependencies = (f,space,domain,face,the_field,field,dof,the_face_around,face_around)
-    FormArgumentTerm(dependencies)
+    FormArgumentTerm(dependencies, term.D)
 end
 
 function expression(term::FormArgumentTerm)
@@ -694,8 +696,8 @@ end
 function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
-    D = :(num_dims(domain($space)))
-    J = :(jacobian_accessor($quadrature, $D)($face, $face_around)($point))
+    D = parent.D
+    J = :(jacobian_accessor($quadrature, $D)($face, $the_face_around)($point))
     :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
