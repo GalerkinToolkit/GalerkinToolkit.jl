@@ -697,7 +697,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    J = :(jacobian_accessor($quadrature, $D)($face, $the_face_around)($point))
+    J = :(jacobian_accessor($quadrature, Val($D))($face, $the_face_around)($point))
     :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
@@ -1054,8 +1054,9 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_0,captured_data)
+    # expr_1 = statements_expr(expr_0)
+    # f = evaluate(expr_1,captured_data)
     f
 end
 
@@ -1069,7 +1070,12 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
     quadrature_term = leaf_term(quadrature)
     alloc_arg = :alloc
     alloc = leaf_term(alloc_arg)
-    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index)
+
+    field_n_faces_around = map(fields(space)) do field_space
+        max_num_faces_around(GT.domain(field_space),domain)
+    end
+
+    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around)
 end
 
 
@@ -1262,6 +1268,7 @@ struct VectorAssemblyTerm <: AbstractTerm
     alloc::AbstractTerm
     alloc_arg::Symbol
     index::Index{1}
+    field_n_faces_around::Tuple
 end
 
 struct MatrixAssemblyTerm <: AbstractTerm
@@ -1325,8 +1332,8 @@ end
 
 function replace_dependencies(term::VectorAssemblyTerm,dependencies)
     (term2,space,quadrature,alloc) = dependencies
-    (;alloc_arg,index) = term
-    VectorAssemblyTerm(term2,space,quadrature,alloc,alloc_arg,index)
+    (;alloc_arg,index,field_n_faces_around) = term
+    VectorAssemblyTerm(term2,space,quadrature,alloc,alloc_arg,index,field_n_faces_around)
 end
 
 
@@ -1351,11 +1358,17 @@ end
 function expression(term::VectorAssemblyTerm)
     (term2,space,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field,face_around,dof) = bindings(term)
-    dof_v = :($dof -> $term2)
-    block_dof_v = :( ($field,$face_around) -> $dof_v)
-    point_block_dof_v = :($point -> $block_dof_v)
-    face_point_block_dof_v = :( $face -> $point_block_dof_v)
-    body = :(vector_assembly_loop!($face_point_block_dof_v,$alloc,$space,$quadrature))
+    # dof_v = :($dof -> $term2)
+    # block_dof_v = :( ($field,$face_around) -> $dof_v)
+    # point_block_dof_v = :($point -> $block_dof_v)
+    # face_point_block_dof_v = :( $face -> $point_block_dof_v)
+    # body = :(vector_assembly_loop!($face_point_block_dof_v,$alloc,$space,$quadrature))
+    # expr = :($alloc_arg->$body)
+    # expr
+
+    loop_vars = (face, point, field, face_around, dof)
+    expr_L = topological_sort(term2, loop_vars)
+    body = generate_vector_assembly_loop_body(term.field_n_faces_around, expr_L, (space,quadrature,alloc), loop_vars)
     expr = :($alloc_arg->$body)
     expr
 end
@@ -1553,6 +1566,184 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
     alloc
 end
 
+function last_symbol(expr_L)
+    for block in reverse(expr_L)
+        statements = block.args
+        if length(statements) > 0
+            return statements[end].args[1]
+        end
+    end
+    return nothing # if not found
+end
+
+function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, dependencies, bindings)
+    # expr_L: a list of block in the order of (global, face, point, field, face_around, dof)
+    # dependencies: (space, quadrature, alloc)
+    # bindings: (face, point, field, face_around, dof)
+    (space, quadrature, alloc) = dependencies
+    (face, point, field_symbol, face_around_symbol, dof) = bindings # TODO: replace field_symbol and face_around_symbol
+    v = last_symbol(expr_L)
+    block = Expr(:block)
+    nfields = length(field_n_faces_around)
+
+    assignment = :(domain = GT.domain($quadrature))
+    push!(block.args,assignment)
+
+    assignment = :(T = eltype($alloc))
+    push!(block.args, assignment)
+
+    assignment = :(z = zero(T))
+    push!(block.args, assignment)
+
+    assignment = :(nfaces = GT.num_faces(domain))
+    push!(block.args,assignment)
+
+    assignment = :(face_npoints = GT.num_points_accessor($quadrature))
+    push!(block.args,assignment)
+
+    # Get single field spaces
+    for field in 1:nfields
+        var = Symbol("space_for_$(field)")
+        expr = :(GT.field($space,$field))
+        assignment = :($var = $expr)
+        push!(block.args, assignment)
+    end
+
+    # Get face_dofs
+    for field in 1:nfields
+        space_field = Symbol("space_for_$(field)")
+        var_field = Symbol("face_dofs_for_$(field)")
+        expr = :(GT.dofs_accessor($space_field,domain))
+        assignment = :($var_field = $expr)
+        push!(block.args, assignment)
+    end
+
+    # Allocate face vectors
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            space_field = Symbol("space_for_$(field)")
+            var_face_around = Symbol("be_for_$(field)_$(face_around)")
+            expr = :(zeros(T,GT.max_num_reference_dofs($space_field)))
+            assignment = :($var_face_around = $expr)
+            push!(block.args, assignment)
+        end
+    end
+
+    # statements without deps
+    push!(block.args, expr_L[1].args...)
+
+    # Face loop
+    face_loop_head = :($face = 1:nfaces)
+    face_loop_body = Expr(:block)
+    face_loop = Expr(:for,face_loop_head,face_loop_body)
+    push!(block.args,face_loop)
+
+    assignment = :(npoints = face_npoints($face))
+    push!(face_loop_body.args,assignment)
+
+    # assignment = :(point_block_dof_v = face_point_block_dof_v(face)) # TODO: replace it 
+    # push!(face_loop_body.args,assignment)
+    # statements depend on face
+    push!(face_loop_body.args, expr_L[2].args...)
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            accessor = Symbol("face_dofs_for_$(field)")
+            assignment = :($dofs = $(accessor)($face,$face_around))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+            assignment = :($ndofs = length($(dofs)))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            be = Symbol("be_for_$(field)_$(face_around)")
+            assignment = :(fill!($be,z))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    # Point loop
+    point_loop_head = :($point = 1:npoints)
+    point_loop_body = Expr(:block)
+    point_loop = Expr(:for,point_loop_head,point_loop_body)
+    push!(face_loop_body.args,point_loop)
+
+    # assignment = :(block_dof_v = point_block_dof_v(point))
+    # push!(point_loop_body.args,assignment)
+    # statements depend on point
+    push!(point_loop_body.args, expr_L[3].args...)
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        # statements depend on field
+        push!(point_loop_body.args, :($field_symbol = $field))
+        push!(point_loop_body.args, expr_L[4].args...)
+        
+        for face_around in 1:n_faces_around
+            accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # assignment = :( $accessor = block_dof_v($field,$face_around)  )
+            # push!(point_loop_body.args,assignment)
+            # statements depend on face around
+            push!(point_loop_body.args, :($face_around_symbol = $face_around))
+            push!(point_loop_body.args, expr_L[5].args...)
+            
+            # DOF loop
+            # do just after the field and face_around computation, or otherwise we need to replace the variable names in expr_L 
+            ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+            dof_loop_head = :($dof = 1:$ndofs)
+            dof_loop_body = Expr(:block)
+            dof_loop = Expr(:for,dof_loop_head,dof_loop_body)
+            push!(point_loop_body.args,dof_loop)
+            be = Symbol("be_for_$(field)_$(face_around)")
+            accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # statements depend on dof
+            push!(dof_loop_body.args, expr_L[6].args...)
+            assignment = :($be[$dof] += $v)
+            push!(dof_loop_body.args,assignment)
+        end
+    end
+
+    # for field in 1:nfields
+    #     n_faces_around = field_n_faces_around[field]
+    #     for face_around in 1:n_faces_around
+    #         ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+    #         dof_loop_head = :(dof = 1:$ndofs)
+    #         dof_loop_body = Expr(:block)
+    #         dof_loop = Expr(:for,dof_loop_head,dof_loop_body)
+    #         push!(point_loop_body.args,dof_loop)
+    #         be = Symbol("be_for_$(field)_$(face_around)")
+    #         accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+    #         assignment = :($be[dof] += $accessor(dof))
+    #         push!(dof_loop_body.args,assignment)
+    #     end
+    # end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            be = Symbol("be_for_$(field)_$(face_around)")
+            assignment = :(GT.contribute!(alloc,$be,$dofs,$field))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    block
+end
 
 
 #for op in (:+,:-,:*,:/,:\,:^)
@@ -1641,6 +1832,78 @@ end
 
 
 # a copy of the older version. need to be compared with statements over terms
+
+
+function topological_sort(expr,deps)
+    # TODO: replace the gensym calls in this function. we need to generate the same result for each run 
+    temporary = gensym()
+    expr_L = [Expr(:block) for _ in 0:length(deps)]
+    marks = Dict{UInt,Any}()
+    marks_deps = Dict{UInt,Int}()
+    function visit(expr_n::Union{Symbol, Function, Number, Nothing})
+        id_n = hash(expr_n)
+        marks[id_n] = expr_n
+        i = findfirst(e->expr_n===e,deps)
+        j = i === nothing ? 0 : Int(i)
+        marks_deps[id_n] = j
+        expr_n , j
+    end
+
+    function setup_expr_default(expr_n)
+        args = expr_n.args
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = maximum(map(last,r))
+        expr_n_new = Expr(expr_n.head,args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_call(expr_n)
+        args = expr_n.args
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = maximum(map(last,r))
+        expr_n_new = Expr(expr_n.head,args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_lambda(expr_n)
+        body = expr_n.args[2]
+        body_sorted = topological_sort(body,())[1]
+        j = length(deps)
+        expr_n_new = Expr(expr_n.head,expr_n.args[1],body_sorted)
+        expr_n_new, j
+    end
+    function visit(expr_n)
+        id_n = hash(expr_n)
+        if haskey(marks,id_n)
+            if marks[id_n] !== temporary
+                return marks[id_n], marks_deps[id_n]
+            else
+                error("Graph has cycles! This is not possible.")
+            end
+        end
+        marks[id_n] = temporary
+        var = gensym()
+        if isa(expr_n,Expr)
+            if expr_n.head === :call # || expr_n.head === :ref
+                expr_n_new, j = setup_expr_call(expr_n)
+            elseif expr_n.head === :(->)
+                expr_n_new, j = setup_expr_lambda(expr_n)
+            else
+                expr_n_new, j = setup_expr_default(expr_n)
+            end
+            assignment = :($var = $expr_n_new)
+        else
+            j = 0
+            assignment = :($var = $expr_n)
+        end
+        marks[id_n] = var
+        marks_deps[id_n] = j
+        push!(expr_L[j+1].args,assignment)
+        var, j
+    end
+    visit(expr)
+    expr_L
+end
 
 
 function statements_expr(node)

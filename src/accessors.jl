@@ -576,7 +576,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             P = typeof(prototype)
             max_n_faces_around = 2
             # face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around) # incorrect, all elements have the same objectid
-            face_around_dof_s = [zeros(P,max_num_reference_dofs(space)) for _ in 1:max_n_faces_around]
+            face_around_dof_s::Vector{Vector{P}} = [zeros(P,max_num_reference_dofs(space)) for _ in 1:max_n_faces_around]
             function face_point_dof_s(face,face_around=nothing)
                 point_dof_v = face_point_dof_v(face,face_around)
                 dof_modif = dface_to_modif(face,face_around)
