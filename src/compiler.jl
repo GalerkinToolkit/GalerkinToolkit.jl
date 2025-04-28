@@ -448,12 +448,14 @@ function weight_quantity(quadrature)
         face = domain_face_index(opts.index)
         point = point_index(opts.index)
         dependencies = map(leaf_term,(quadrature,face,point))
-        WeightTerm(dependencies)
+        D = (num_dims(domain(quadrature)))
+        WeightTerm(dependencies, D) # this is required to tabulate jacobian accessors, so that we cannot reuse the compiled code for a different dimension size
     end
 end
 
 struct WeightTerm <: AbstractTerm
     dependencies
+    D::Int
 end
 
 function prototype(term::WeightTerm)
@@ -466,12 +468,13 @@ function dependencies(term::WeightTerm)
 end
 
 function replace_dependencies(term::WeightTerm,dependencies)
-    WeightTerm(dependencies)
+    WeightTerm(dependencies, term.D)
 end
 
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    J = :(jacobian_accessor($quadrature)($face)($point))
+    D = term.D
+    J = :(jacobian_accessor($quadrature, Val($D))($face)($point))
     :(weight_accessor($quadrature)($face)($point, $J) )
 end
 
@@ -1087,8 +1090,9 @@ function generate_assemble_matrix(contribution::DomainContribution,space_trial::
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_0,captured_data)
+    # expr_1 = statements_expr(expr_0)
+    # f = evaluate(expr_1,captured_data)
     f
 end
 
@@ -1103,7 +1107,16 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     quadrature_term = leaf_term(quadrature)
     alloc_arg = :alloc
     alloc = leaf_term(alloc_arg)
-    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index)
+
+    field_n_faces_around_trial = map(fields(space_trial)) do field_space
+        max_num_faces_around(GT.domain(field_space),domain)
+    end
+
+    field_n_faces_around_test = map(fields(space_test)) do field_space
+        max_num_faces_around(GT.domain(field_space),domain)
+    end
+
+    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test)
 end
 
 function generate_sample(f,quadrature::AbstractQuadrature;parameters=())
@@ -1279,6 +1292,8 @@ struct MatrixAssemblyTerm <: AbstractTerm
     alloc::AbstractTerm
     alloc_arg::Symbol # gets reduced
     index::Index{2} # gets reduced
+    field_n_faces_around_trial::Tuple
+    field_n_faces_around_test::Tuple
 end
 
 function bindings(term::ScalarAssemblyTerm)
@@ -1339,8 +1354,8 @@ end
 
 function replace_dependencies(term::MatrixAssemblyTerm,dependencies)
     (term2,space_trial,space_test,quadrature,alloc) = dependencies
-    (;alloc_arg,index) = term
-    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index)
+    (;alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test) = term
+    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test)
 end
 
 
@@ -1376,11 +1391,16 @@ end
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
-    dof_v = :(($dof_trial) -> ($dof_test) -> $term2)
-    block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
-    point_block_dof_v = :($point -> $block_dof_v)
-    face_point_block_dof_v = :( $face -> $point_block_dof_v)
-    body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
+    # dof_v = :(($dof_trial) -> ($dof_test) -> $term2)
+    # block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
+    # point_block_dof_v = :($point -> $block_dof_v)
+    # face_point_block_dof_v = :( $face -> $point_block_dof_v)
+    # body = :(matrix_assembly_loop!($face_point_block_dof_v,$alloc,$space_trial,$space_test,$quadrature))
+    # expr = :($alloc_arg->$body)
+    # expr
+    loop_vars = (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    expr_L = topological_sort(term2, loop_vars) 
+    body = generate_matrix_assembly_loop_body(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L, (space_trial, space_test, quadrature, alloc), loop_vars)
     expr = :($alloc_arg->$body)
     expr
 end
@@ -1576,6 +1596,10 @@ function last_symbol(expr_L)
     return nothing # if not found
 end
 
+function alloc_zeros(symbol, args...)
+    zeros(args...)
+end
+
 function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, dependencies, bindings)
     # expr_L: a list of block in the order of (global, face, point, field, face_around, dof)
     # dependencies: (space, quadrature, alloc)
@@ -1623,8 +1647,9 @@ function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, depend
         n_faces_around = field_n_faces_around[field]
         for face_around in 1:n_faces_around
             space_field = Symbol("space_for_$(field)")
-            var_face_around = Symbol("be_for_$(field)_$(face_around)")
-            expr = :(zeros(T,GT.max_num_reference_dofs($space_field)))
+            var_str = "be_for_$(field)_$(face_around)"
+            var_face_around = Symbol(var_str)
+            expr = :(alloc_zeros($var_str, T,GT.max_num_reference_dofs($space_field)))
             assignment = :($var_face_around = $expr)
             push!(block.args, assignment)
         end
@@ -1694,7 +1719,7 @@ function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, depend
         push!(point_loop_body.args, expr_L[4].args...)
         
         for face_around in 1:n_faces_around
-            accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
             # assignment = :( $accessor = block_dof_v($field,$face_around)  )
             # push!(point_loop_body.args,assignment)
             # statements depend on face around
@@ -1709,7 +1734,7 @@ function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, depend
             dof_loop = Expr(:for,dof_loop_head,dof_loop_body)
             push!(point_loop_body.args,dof_loop)
             be = Symbol("be_for_$(field)_$(face_around)")
-            accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
             # statements depend on dof
             push!(dof_loop_body.args, expr_L[6].args...)
             assignment = :($be[$dof] += $v)
@@ -1742,6 +1767,244 @@ function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, depend
         end
     end
 
+    block
+end
+
+
+
+
+function generate_matrix_assembly_loop_body(field_n_faces_around_trial, field_n_faces_around_test, expr_L, dependencies, bindings)
+    # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    # dependencies: (space_trial, space_test, quadrature, alloc)
+    # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    (space_trial, space_test, quadrature, alloc) = dependencies
+    (face, point, field_trial_symbol, field_test_symbol, face_around_trial_symbol, face_around_test_symbol, dof_trial, dof_test) = bindings # TODO: replace field_symbol and face_around_symbol
+    v = last_symbol(expr_L)
+    block = Expr(:block)
+    nfields_trial = length(field_n_faces_around_trial)
+    nfields_test = length(field_n_faces_around_test)
+
+    assignment = :(domain = GT.domain($quadrature))
+    push!(block.args,assignment)
+
+    assignment = :(T = eltype($alloc))
+    push!(block.args, assignment)
+
+    assignment = :(z = zero(T))
+    push!(block.args, assignment)
+
+    assignment = :(nfaces = GT.num_faces(domain))
+    push!(block.args,assignment)
+
+    assignment = :(face_npoints = GT.num_points_accessor($quadrature))
+    push!(block.args,assignment)
+
+    # Get single field spaces 
+    for field in 1:nfields_trial
+        var = Symbol("space_for_$(field)_trial")
+        expr = :(GT.field($space_trial,$field))
+        assignment = :($var = $expr)
+        push!(block.args, assignment)
+    end
+
+    for field in 1:nfields_test
+        var = Symbol("space_for_$(field)_test")
+        expr = :(GT.field($space_test,$field))
+        assignment = :($var = $expr)
+        push!(block.args, assignment)
+    end
+
+    # Get face_dofs
+    for field in 1:nfields_trial
+        space_field = Symbol("space_for_$(field)_trial")
+        var_field = Symbol("face_dofs_for_$(field)_trial")
+        expr = :(GT.dofs_accessor($space_field,domain))
+        assignment = :($var_field = $expr)
+        push!(block.args, assignment)
+    end
+
+    for field in 1:nfields_test
+        space_field = Symbol("space_for_$(field)_test")
+        var_field = Symbol("face_dofs_for_$(field)_test")
+        expr = :(GT.dofs_accessor($space_field,domain))
+        assignment = :($var_field = $expr)
+        push!(block.args, assignment)
+    end
+
+    
+    # Allocate face vectors
+    for field_trial in 1:nfields_trial
+        n_faces_around_trial = field_n_faces_around_trial[field_trial]
+        for field_test in 1:nfields_test
+            n_faces_around_test = field_n_faces_around_test[field_test]
+            for face_around_trial in 1:n_faces_around_trial
+                for face_around_test in 1:n_faces_around_test
+                    space_field_trial = Symbol("space_for_$(field_trial)_trial")
+                    space_field_test = Symbol("space_for_$(field_test)_test")
+                    var_str = "be_for_$(field_trial)_$(field_test)_$(face_around_trial)_$(face_around_test)"
+                    var_face_around = Symbol(var_str)
+                    expr = :(alloc_zeros($var_str,T,GT.max_num_reference_dofs($space_field_test),GT.max_num_reference_dofs($space_field_trial)))
+                    assignment = :($var_face_around = $expr)
+                    push!(block.args, assignment)
+                end
+            end
+        end
+    end
+
+    # statements without deps
+    push!(block.args, expr_L[1].args...)
+
+    # Face loop
+    face_loop_head = :($face = 1:nfaces)
+    face_loop_body = Expr(:block)
+    face_loop = Expr(:for,face_loop_head,face_loop_body)
+    push!(block.args,face_loop)
+
+    assignment = :(npoints = face_npoints($face))
+    push!(face_loop_body.args,assignment)
+
+
+    # statements depend on face
+    push!(face_loop_body.args, expr_L[2].args...)
+
+    # trial
+    for field in 1:nfields_trial
+        n_faces_around = field_n_faces_around_trial[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)_trial")
+            accessor = Symbol("face_dofs_for_$(field)_trial")
+            assignment = :($dofs = $(accessor)($face,$face_around))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    # test
+    for field in 1:nfields_test
+        n_faces_around = field_n_faces_around_test[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)_test")
+            accessor = Symbol("face_dofs_for_$(field)_test")
+            assignment = :($dofs = $(accessor)($face,$face_around))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    # trial
+    for field in 1:nfields_trial
+        n_faces_around = field_n_faces_around_trial[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)_trial")
+            ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_trial")
+            assignment = :($ndofs = length($(dofs)))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    # test
+    for field in 1:nfields_test
+        n_faces_around = field_n_faces_around_test[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)_test")
+            ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_test")
+            assignment = :($ndofs = length($(dofs)))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+
+    for field_trial in 1:nfields_trial
+        n_faces_around_trial = field_n_faces_around_trial[field_trial]
+        for field_test in 1:nfields_test
+            n_faces_around_test = field_n_faces_around_test[field_test]
+            for face_around_trial in 1:n_faces_around_trial
+                for face_around_test in 1:n_faces_around_test
+                    var_str = "be_for_$(field_trial)_$(field_test)_$(face_around_trial)_$(face_around_test)"
+                    be = Symbol(var_str)
+                    assignment = :(fill!($be,z))
+                    push!(face_loop_body.args,assignment)
+                end
+            end
+        end
+    end
+
+
+    # Point loop
+    point_loop_head = :($point = 1:npoints)
+    point_loop_body = Expr(:block)
+    point_loop = Expr(:for,point_loop_head,point_loop_body)
+    push!(face_loop_body.args,point_loop)
+
+
+    # statements depend on point
+    push!(point_loop_body.args, expr_L[3].args...)
+
+
+
+    for field_trial in 1:nfields_trial
+        n_faces_around_trial = field_n_faces_around_trial[field_trial]
+        # statements depend on field
+        push!(point_loop_body.args, :($field_trial_symbol = $field_trial))
+        push!(point_loop_body.args, expr_L[4].args...)
+        for field_test in 1:nfields_test
+            n_faces_around_test = field_n_faces_around_test[field_test]
+            # statements depend on field
+            push!(point_loop_body.args, :($field_test_symbol = $field_test))
+            push!(point_loop_body.args, expr_L[5].args...)
+
+            for face_around_trial in 1:n_faces_around_trial
+                # statements depend on face around
+                push!(point_loop_body.args, :($face_around_trial_symbol = $face_around_trial))
+                push!(point_loop_body.args, expr_L[6].args...)
+                for face_around_test in 1:n_faces_around_test
+                    # statements depend on face around
+                    push!(point_loop_body.args, :($face_around_test_symbol = $face_around_test))
+                    push!(point_loop_body.args, expr_L[7].args...)
+
+
+                    # DOF loop
+                    # do just after the field and face_around computation, or otherwise we need to replace the variable names in expr_L 
+                    ndofs_trial = Symbol("n_dofs_for_$(field_trial)_$(face_around_trial)_trial")
+                    dof_trial_loop_head = :($dof_trial = 1:$ndofs_trial)
+                    dof_trial_loop_body = Expr(:block)
+                    dof_trial_loop = Expr(:for,dof_trial_loop_head,dof_trial_loop_body)
+                    push!(point_loop_body.args,dof_trial_loop)
+                    push!(dof_trial_loop_body.args, expr_L[8].args...)
+
+
+                    ndofs_test = Symbol("n_dofs_for_$(field_test)_$(face_around_test)_test")
+                    dof_test_loop_head = :($dof_test = 1:$ndofs_test)
+                    dof_test_loop_body = Expr(:block)
+                    dof_test_loop = Expr(:for,dof_test_loop_head,dof_test_loop_body)
+                    push!(dof_trial_loop_body.args,dof_test_loop)
+                    push!(dof_test_loop_body.args, expr_L[9].args...)
+
+
+
+                    be = Symbol("be_for_$(field_trial)_$(field_test)_$(face_around_trial)_$(face_around_test)")
+                    # statements depend on dof
+                    
+                    assignment = :($be[$dof_test, $dof_trial] += $v)
+                    push!(dof_test_loop_body.args,assignment)
+                end
+            end
+        end
+    end
+
+    for field_trial in 1:nfields_trial
+        n_faces_around_trial = field_n_faces_around_trial[field_trial]
+        for field_test in 1:nfields_test
+            n_faces_around_test = field_n_faces_around_test[field_test]
+            for face_around_trial in 1:n_faces_around_trial
+                for face_around_test in 1:n_faces_around_test
+                    dofs_test = Symbol("dofs_for_$(field_test)_$(face_around_test)_test")
+                    dofs_trial = Symbol("dofs_for_$(field_trial)_$(face_around_trial)_trial")
+                    be = Symbol("be_for_$(field_trial)_$(field_test)_$(face_around_trial)_$(face_around_test)")
+                    assignment = :(GT.contribute!(alloc,$be,$dofs_test,$dofs_trial,$field_test,$field_trial))
+                    push!(face_loop_body.args,assignment)
+                end
+            end
+        end
+    end
     block
 end
 
