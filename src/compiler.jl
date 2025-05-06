@@ -474,7 +474,7 @@ end
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
     D = term.D
-    J = :(jacobian_accessor($quadrature, Val($D))($face)($point))
+    J = :(jacobian_accessor($quadrature, $(Val(D)))($face)($point))
     :(weight_accessor($quadrature)($face)($point, $J) )
 end
 
@@ -700,7 +700,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    J = :(jacobian_accessor($quadrature, Val($D))($face, $the_face_around)($point))
+    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
     :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
@@ -2101,7 +2101,7 @@ function topological_sort_bitmap(expr,deps)
     expr_L = [Expr(:block) for _ in 1:2^length(deps)]
     marks = Dict{UInt,Any}()
     marks_deps = Dict{UInt,Int}()
-    function visit(expr_n::Union{Symbol, Function, Number, Nothing})
+    function visit(expr_n::Union{Symbol, Function, Number, Nothing, Val})
         id_n = hash(expr_n)
         marks[id_n] = expr_n
         i = findfirst(e->expr_n===e,deps)
@@ -2184,7 +2184,7 @@ function topological_sort(expr,deps)
     expr_L = [Expr(:block) for _ in 0:length(deps)]
     marks = Dict{UInt,Any}()
     marks_deps = Dict{UInt,Int}()
-    function visit(expr_n::Union{Symbol, Function, Number, Nothing})
+    function visit(expr_n::Union{Symbol, Function, Number, Nothing, Val})
         id_n = hash(expr_n)
         marks[id_n] = expr_n
         i = findfirst(e->expr_n===e,deps)
@@ -2265,7 +2265,7 @@ function statements_expr(node)
         if haskey(hash_scope, hash)
             return [hash_scope[hash]]
         end
-        if node isa Symbol || node isa Number || node isa Function || node isa Nothing
+        if node isa Symbol || node isa Number || node isa Function || node isa Nothing || node isa Val
             scopes = [root]
             hash_expr[hash] = node
             hash_scope[hash] = root 
@@ -2375,7 +2375,7 @@ function statements_expr_with_loops(node)
         if haskey(hash_scope, hash)
             return [hash_scope[hash]]
         end
-        if node isa Symbol || node isa Number || node isa Function || node isa Nothing
+        if node isa Symbol || node isa Number || node isa Function || node isa Nothing || node isa Val
             scopes = [root]
             hash_expr[hash] = node
             hash_scope[hash] = root 
