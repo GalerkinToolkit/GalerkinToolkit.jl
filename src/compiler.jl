@@ -2095,7 +2095,88 @@ end
 
 
 # a copy of the older version. need to be compared with statements over terms
+function topological_sort_bitmap(expr,deps)
+    # TODO: replace the gensym calls in this function. we need to generate the same result for each run 
+    temporary = gensym()
+    expr_L = [Expr(:block) for _ in 1:2^length(deps)]
+    marks = Dict{UInt,Any}()
+    marks_deps = Dict{UInt,Int}()
+    function visit(expr_n::Union{Symbol, Function, Number, Nothing})
+        id_n = hash(expr_n)
+        marks[id_n] = expr_n
+        i = findfirst(e->expr_n===e,deps)
+        j = i === nothing ? 0 : (1<<(Int(i)-1))
+        marks_deps[id_n] = j
+        expr_n , j
+    end
 
+    function setup_expr_default(expr_n)
+        args = expr_n.args
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = reduce(|, map(last,r))
+        expr_n_new = Expr(expr_n.head,args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_call(expr_n)
+        args = expr_n.args
+        r = map(visit,args)
+        args_var = map(first,r)
+        j = reduce(|, map(last,r))
+        expr_n_new = Expr(expr_n.head,args_var...)
+        expr_n_new, j
+    end
+    function setup_expr_lambda(expr_n) # TODO: do topological sort with deps & new deps, get a list of exprs and merge
+        body = expr_n.args[2]
+        args = (expr_n.args[1] isa Symbol) ? (expr_n.args[1], ) : expr_n.args[1].args
+        new_deps = (deps..., args...)
+        body_sorted = topological_sort_bitmap(body, new_deps) # TODO: is it efficient?
+        # TODO: last var if it is a constant, or replace the function calls as a constant
+
+        for i in 1:2^length(deps) # hoisting
+            push!(expr_L[i].args, body_sorted[i].args...)
+        end
+
+        # compute dependencies
+        j = reduce(|, filter(i -> length(body_sorted[i]) > 0, 1:2^length(new_deps) ))
+        j &= 2^length(deps) - 1 # remove lambda arg deps
+
+        merged_body_sorted = vcat(map(x -> x.args, body_sorted[2^length(deps) + 1: 2^length(new_deps)])...)
+        expr_n_new = Expr(expr_n.head,expr_n.args[1],merged_body_sorted)
+        expr_n_new, j
+    end
+    function visit(expr_n)
+        id_n = hash(expr_n)
+        if haskey(marks,id_n)
+            if marks[id_n] !== temporary
+                return marks[id_n], marks_deps[id_n]
+            else
+                error("Graph has cycles! This is not possible.")
+            end
+        end
+        marks[id_n] = temporary
+        var = gensym()
+        if isa(expr_n,Expr)
+            if expr_n.head === :call # || expr_n.head === :ref
+                expr_n_new, j = setup_expr_call(expr_n)
+            elseif expr_n.head === :(->)
+                expr_n_new, j = setup_expr_lambda(expr_n)
+            else
+                expr_n_new, j = setup_expr_default(expr_n)
+            end
+            assignment = :($var = $expr_n_new)
+        else
+            j = 0
+            assignment = :($var = $expr_n)
+        end
+        marks[id_n] = var
+        marks_deps[id_n] = j
+        push!(expr_L[j+1].args,assignment)
+        var, j
+    end
+    visit(expr)
+    expr_L
+end
 
 function topological_sort(expr,deps)
     # TODO: replace the gensym calls in this function. we need to generate the same result for each run 
@@ -2277,3 +2358,167 @@ function statements_expr(node)
     scope_block[root]
 end
 
+
+# TODO: just a backup. maybe not needed any more.
+function statements_expr_with_loops(node)
+    # @assert lambda_args_once(node) # keep hash_scope but make an error check. In some cases it will be a bug if we have a lambda function arg name more than once in the term
+    root = :root
+    scope_level = Dict{Symbol,Int}()
+    scope_level[root] = 0
+    hash_scope = Dict{UInt,Symbol}()
+    scope_rank = Dict{Symbol,Int}()
+    scope_rank[root] = 0
+    hash_expr = Dict{UInt, Any}()
+    scope_block = Dict(root=>Expr(:block))
+    function visit(node, depth = 0, last_scope = :root; has_value = true) # if the terms here are immutable (no terms "appended" after construction) then we can assume there is no graph cycle
+        hash = Base.hash(node)
+        if haskey(hash_scope, hash)
+            return [hash_scope[hash]]
+        end
+        if node isa Symbol || node isa Number || node isa Function || node isa Nothing
+            scopes = [root]
+            hash_expr[hash] = node
+            hash_scope[hash] = root 
+            return scopes
+        elseif node isa Expr
+            if  node.head === :call || node.head ===  :ref || node.head ===  :block || node.head === :tuple
+                
+                # args = (node.head === :call) ? (node.callee, node.args...) : (node.array, node.index)
+                args = filter(x->!(x isa LineNumberNode), node.args)
+                scopes_nested = map(args) do arg
+                    visit(arg, depth, last_scope)
+                end
+                scopes = reduce(vcat,scopes_nested) |> unique
+                scope = argmax(x->scope_level[x],scopes)
+                hash_scope[hash] = scope
+                rank = 1 + scope_rank[scope]
+                scope_rank[scope] = rank
+
+                args_var = map(args) do arg
+                    arg_hash = Base.hash(arg)
+                    hash_expr[arg_hash]
+                end
+                
+                if node.head === :block && length(args_var) == 1
+                    hash_expr[hash] = args_var[1]
+                elseif has_value
+                    var = Symbol("var_$(scope)_$(rank)")
+                    hash_expr[hash] = var
+                    expr = Expr(node.head,args_var...)
+                    assignment = :($var = $expr)
+                    block = scope_block[scope]
+                    push!(block.args, assignment)
+                end
+                return scopes
+            elseif node.head === :(->)
+                body = node.args[2]
+                args = (node.args[1] isa Expr) ? node.args[1].args : (node.args[1], )
+                block = Expr(:block)
+
+                scope = (length(args) > 0) ? args[1] : gensym()
+                scope_level[scope] = depth + 1
+                scope_rank[scope] = 0                
+                scope_block[scope] = block
+    
+                for arg in args 
+                    arg_hash = Base.hash(arg)
+                    hash_expr[arg_hash] = arg
+                    hash_scope[arg_hash] = scope
+                end
+                
+                scopes = visit(body, depth + 1, scope)
+                if length(block.args) == 0 # at least 1 statement
+                    arg_hash = Base.hash(body)
+                    arg_var = hash_expr[arg_hash]
+                    push!(block.args, arg_var)
+                    # push!(block.args, :($(gensym()) = $arg_var))
+                end
+
+                scopes = setdiff(scopes,[scope])
+                scope = argmax(scope->scope_level[scope],scopes)
+                hash_scope[hash] = scope
+                rank = 1 + scope_rank[scope]
+                scope_rank[scope] = rank
+    
+                var = Symbol("var_$(scope)_$(rank)")
+                hash_expr[hash] = var
+    
+                expr = Expr(:(->), node.args[1], block) #  LambdaTerm(block, node.args, x -> prototype(node))
+    
+                assignment = :($var = $expr) #  StatementTerm(var_term, expr, prototype(node))
+                block = scope_block[scope]
+                push!(block.args, assignment)
+                return scopes
+            elseif node.head === :for
+                body = node.args[2]
+                for_variables = node.args[1].args[1]
+                args = (for_variables isa Expr) ? for_variables : (for_variables, )
+                block = Expr(:block)
+                # TODO: optimize loop ranges?
+
+                scope = (length(args) > 0) ? args[1] : gensym()
+                scope_level[scope] = depth + 1
+                scope_rank[scope] = 0                
+                scope_block[scope] = block
+    
+                for arg in args 
+                    arg_hash = Base.hash(arg)
+                    hash_expr[arg_hash] = arg
+                    hash_scope[arg_hash] = scope
+                end
+                
+                scopes = visit(body, depth + 1, scope; has_value = false)
+                # if length(block.args) == 0 # at least 1 statement
+                #     arg_hash = Base.hash(body)
+                #     arg_var = hash_expr[arg_hash]
+                #     push!(block.args, arg_var)
+                #     # push!(block.args, :($(gensym()) = $arg_var))
+                # end
+
+                scope = last_scope
+                scopes = [scope]
+                hash_scope[hash] = scope
+                hash_expr[hash] = :nothing
+                
+                expr = Expr(:for, node.args[1], block)
+                block = scope_block[scope]
+                push!(block.args, expr)
+                return scopes
+            elseif node.head in [:(=), :(+=), :(-=), :(*=), :(/=)] # TODO: do we need to make it complete? other operators: \=  ÷=  %=  ^=  &=  |=  ⊻=  >>>=  >>=  <<=
+                args = node.args[2]
+                var = node.args[1]
+                visit(args, depth, last_scope)
+                scope = last_scope
+                scopes = [scope]
+                hash_scope[hash] = scope
+                
+                rank = 1 + scope_rank[scope]
+                scope_rank[scope] = rank
+
+                hash_expr[hash] = :nothing
+                hash_expr[Base.hash(var)] = var
+                expr = hash_expr[Base.hash(args)]
+
+                assignment = Expr(node.head, var, expr)
+                # assignment = :($var $(node.head) $expr)
+                block = scope_block[scope]
+                push!(block.args, assignment)
+                return scopes
+            else
+                @show node
+                dump(node)
+                @show typeof(node)
+                error("A")
+            end
+        else
+            @show node
+            @show typeof(node)
+            error("B")
+        end
+
+
+    end
+
+    visit(node; has_value = false)
+    scope_block[root]
+end
