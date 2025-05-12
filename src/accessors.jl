@@ -991,6 +991,12 @@ function num_faces_around_accesor_skeleton(space_domain,domain)
     accessor(n_faces_around,1)
 end
 
+
+function max_num_points(measure::AbstractQuadrature)
+    lengths = map(x -> length(weights(x)), reference_quadratures(measure))
+    return reduce(max, lengths)
+end
+
 # remove it as we use quadrature directly
 # function num_points_accessor(measure::Measure)
 #     num_points_accessor(quadrature(measure))
