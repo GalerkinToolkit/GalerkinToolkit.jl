@@ -7,8 +7,9 @@ CurrentModule = GalerkinToolkit
 Welcome to the documentation page of GalerkinToolkit!
 
 !!! note
-    Galerking is already useful in many situations, but keep it mind that it is under active development. This documentation page
-    is under construction.
+    GalerkinToolkit is already useful in many situations, but keep it mind that it is under active development.
+!!! note
+    This documentation page is under construction.
 
 ## Contents
 
@@ -20,8 +21,7 @@ Welcome to the documentation page of GalerkinToolkit!
 
 ## What
 
-GalerkinToolkit provides a collection of tools to build computer codes to solve partial differential equations (PDEs)
-using finite element methods (FEMs) on different computing platforms, from laptops to modern GPU-based supercomputers.
+GalerkinToolkit provides a collection of tools to build computer codes to solve partial differential equations (PDEs).  It provides the building blocks of finite element methods (FEMs) and supports different computing platforms, from laptops to modern GPU-based supercomputers.
 GalerkingToolkit is fully implemented in the [Julia programming language](https://julialang.org/) and provides (or it will soon provide) tools for:
 
 - Reading and partitioning computational meshes generated from external mesh generators ([`Gmsh`](https://gmsh.info/) at this moment).
@@ -45,7 +45,14 @@ GalerkinToolkit is definitively not the first FEM software project out there, bu
 
 - It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package. It provides a high-level API backed with automatic code generation, and also easy access to the low-level building blocks of FE codes. See in the [Examples](@ref) section examples using the high-level API and automatic-code generation and also examples implementing the integration loops "by hand" using the low-level building blocks.
 - It is designed to blend with the Julia package ecosystem, and reuses as much as possible from it. For instance, GalerkinToolkit does not define differential operators, it simply uses the operators already defined in [`ForwardDiff.jl`](https://github.com/JuliaDiff/ForwardDiff.jl). You can use [`StaticArrays.jl`](https://github.com/JuliaArrays/StaticArrays.jl) and [`Tensors.jl`](https://github.com/Ferrite-FEM/Tensors.jl), when working with vector- and tensor- valued PDEs. It also makes straight-forward to use external solvers to solve the algebraic systems you get after discretizing a PDE. For visualization, it defines recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and defines helper functions to save results with [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl) in [`vtk` format](https://vtk.org/).
-- It is based on a new form compiler, the GalerkinToolkit form compiler (GTFC), that fixes the rigidity of domain-specific languages like UFL. It introduces an alternative multi-level intermediate representation (MLIR) and leveraging the meta-programming features of the Julia programming language. 
+- It is based on a new form compiler, the GalerkinToolkit form compiler (GTFC) that leverages the meta-programming features of the Julia programming language. The GTFC is similar in spirit to other form compilers like FFC and TSFC, but it has its own features. It is not based on the UFL domain specific language, but in a subset of the Julia programming language. This allows one to easily include user-defined types and operations in the PDE weak form, and simplifies the compiler implementation as it reuses the Julia compiler and the LLVM when possible. In addition, GTFC allows the definition of highly sophisticated weak forms combining arguments and integrals defined on domains of different number of space dimensions. For instance, you can have multi-field weak forms coupling arguments defined in a volume and on a surface, while allowing DG-like penalty terms for the argument defined on the volume. The GTFC also allows one to parametrize the weak form and its generated code for non-linear and time-dependent problems.
+- GalerkinToolkit started as a complete re-write of the core of the [Gridap](https://github.com/gridap/Gridap.jl) project. If you liked Gridap, you will provably like GalerkinToolkit.
+
+## Getting started
+
+Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Lectures](@ref) section. In the [Manual](@ref) section you will find explanations about the software design and guides for users and developers.
+
+You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia use the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
 
 
 ## Help and discussion
