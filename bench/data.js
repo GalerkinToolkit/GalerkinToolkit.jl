@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744559820646,
+  "lastUpdate": 1747154020405,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1484,6 +1484,36 @@ window.BENCHMARK_DATA = {
             "value": 681570229.5,
             "unit": "ns",
             "extra": "gctime=28792751.5\nmemory=434400384\nallocs=14376635\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6916c6d54092f53cbedbb60e888ebc82eb8508aa",
+          "message": "Merge pull request #205 from GalerkinToolkit/docs",
+          "timestamp": "2025-05-13T18:29:24+02:00",
+          "tree_id": "383118108cc480c1c5e602f8a290e1bfd8385227",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/6916c6d54092f53cbedbb60e888ebc82eb8508aa"
+        },
+        "date": 1747154019873,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 694060862.5,
+            "unit": "ns",
+            "extra": "gctime=28025061.5\nmemory=434346240\nallocs=14376059\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
