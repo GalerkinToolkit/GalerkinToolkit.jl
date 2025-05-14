@@ -1401,6 +1401,8 @@ function expression(term::MatrixAssemblyTerm)
     loop_vars = (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     expr_L = topological_sort(term2, loop_vars) 
     body = generate_matrix_assembly_loop_body(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L, (space_trial, space_test, quadrature, alloc), loop_vars)
+    expr = :($alloc_arg->$body)
+
     expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
     # for (i, expr) in enumerate(expr_L)
     #     display((i-1, expr))
@@ -1411,8 +1413,9 @@ function expression(term::MatrixAssemblyTerm)
     #     end
     # end
     body_bitmap = generate_matrix_assembly_loop_body_bitmap(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L_bitmap, (space_trial, space_test, quadrature, alloc), loop_vars)
-    display(body_bitmap)
-    expr = :($alloc_arg->$body)
+    # display(body_bitmap)
+    expr = :($alloc_arg -> $body_bitmap)
+    
     expr
 end
 
@@ -2028,8 +2031,8 @@ function lca_deps(a::Int, b::Int, len::Int)
         lowbit = diff & (-diff) # trick to get the lowest bit of an integer.
         lca = (lowbit - 1) & a
     end
-
-    return a & (~lca) # bitmap a - lca
+    result = a & ~(lca)
+    return result # bitmap a - lca
 end
 
 function binomial_tree_tabulation(expr_L)
@@ -2039,18 +2042,21 @@ function binomial_tree_tabulation(expr_L)
     len_deps = trailing_zeros(len_expr)
 
     function binomial_tree_tabulation_impl(position, last_dep)
-        # display((position, last_dep))
-
+        function check_used(a)
+        end
+        function check_used(a::Expr)
+            map(check_used, a.args)
+        end
+        function check_used(a::Symbol)
+            if haskey(used_vars_to_node, a)
+                result[a] = lca_deps(used_vars_to_node[a], position, len_deps)
+            end
+        end
         # step 1: Check if the variables used in this block are in the used var dict. 
         # For all variables used but exist, insert them into the result $r$. 
         # the mem alloc size is updated as the loop path from the Least Common Ancestor LCA(a, s[v]) to v. 
         for statement in expr_L[position + 1].args
-            if statement.head === :(=) && statement.args[1] isa Symbol
-                var = statement.args[1] # TODO: get data types
-                if haskey(used_vars_to_node, var)
-                    result[var] = lca_deps(used_vars_to_node[var], position + 1, len_deps)
-                end
-            end
+            check_used(statement)
         end
         # step 2: Traverse over the binomial tree, DFS in the left-most order and call the same step 2.  
         for i in len_deps:-1:(last_dep + 1)
@@ -2114,7 +2120,7 @@ function replace_vars(expr_L, tabulated_variables, bindings, max_lengths_symbol 
         # TODO: type
         deps = :()
         for i in len_deps:-1:1
-            if v & (2 ^ (i-1))
+            if v & (2 ^ (i-1)) != 0
                 push!(deps.args, :($max_lengths_symbol[$i]))
             end
         end
@@ -2131,7 +2137,7 @@ function replace_vars(expr_L, tabulated_variables, bindings, max_lengths_symbol 
             result = Expr(:ref, a)
             v = tabulated_variables[a]
             for i in len_deps:-1:1
-                if v & (2 ^ (i-1))
+                if v & (2 ^ (i-1)) != 0
                     push!(result.args, bindings[i])
                 end
             end
@@ -2162,8 +2168,10 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     unroll_loops = (false, false, true, true, true, true, false, false)
 
     v = last_symbol(expr_L)
+    new_v = gensym("result")
+    push!(expr_L[end].args, :($new_v = $v)) # TODO: find a better way to unroll it
+    v = new_v
     tabulated_variables = binomial_tree_tabulation(expr_L)
-    display("binomial_tree_tabulation")
     expr_alloc, expr_L = replace_vars(expr_L, tabulated_variables, bindings)
     
 
@@ -2266,6 +2274,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     (:($dof_test = 1:ndofs_test_local), ),    # TODO: this should depend on face
     )
 
+    # TODO: include heuristic loop fusion?
     function get_side_loops(position, current_dep)
         result = Expr(:block)
         len = length(bindings)
@@ -2316,22 +2325,21 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     push!(loop_body.args, expr_L[pos+1].args...)
                     # TODO: update_ndofs
                     if last_dep == 5 && unrolled_vars[3] != 0 # assuming that is in the main face loop
-                        ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_trial")
+                        ndofs = Symbol("n_dofs_for_$(unrolled_vars[3])_$(unrolled_vars[5])_trial")
                         assignment = :(ndofs_trial_local = $ndofs)
                         push!(loop_body.args, assignment)
                     elseif last_dep == 6 && unrolled_vars[4] != 0
-                        ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_test")
+                        ndofs = Symbol("n_dofs_for_$(unrolled_vars[4])_$(unrolled_vars[6])_test")
                         assignment = :(ndofs_test_local = $ndofs)
                         push!(loop_body.args, assignment)
                     end
-                    for i in len:-1:last_dep + 1
-                        loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (i - 1)), i)
+                    for j in len:-1:(last_dep + 1)
+                        loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (j - 1)), j)
                         if n_statements_child > 0
                             push!(loop_body.args, loop_expr)
                             n_statements += n_statements_child
                         end
                     end
-                    # TODO: add subtree loops
                 end
                 unrolled_vars[last_dep] = 0
 
@@ -2352,12 +2360,12 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
 
     push!(block.args, expr_alloc.args...)
 
+    
+    # statements without deps
+    push!(block.args, expr_L[1].args...)
     # TODO: side loops
     loops = get_side_loops(0, 0)
     push!(block.args, loops.args...)
-    # statements without deps
-    push!(block.args, expr_L[1].args...)
-
 
     # Face loop
     face_loop_head = :($face = 1:nfaces)
@@ -2370,9 +2378,9 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
 
     # TODO: do not unroll the field & face around loop. unroll it later, with macros.
     # statements depend on face
+    push!(face_loop_body.args, expr_L[2].args...)
     loops = get_side_loops(1, 1)
     push!(face_loop_body.args, loops.args...)
-    push!(face_loop_body.args, expr_L[2].args...)
 
     # trial
     for field in 1:nfields_trial
@@ -2441,40 +2449,56 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     point_loop = Expr(:for,point_loop_head,point_loop_body)
     push!(face_loop_body.args,point_loop)
 
-    loops = get_side_loops(3, 2)
-    push!(point_loop_body.args, loops.args...)
+    # TODO: this is simplifying the problem. do unrolling and then we can remove this
+    ndofs = Symbol("n_dofs_for_1_1_trial")
+    assignment = :(ndofs_trial_local = $ndofs)
+    push!(point_loop_body.args, assignment)
+
+    ndofs = Symbol("n_dofs_for_1_1_test")
+    assignment = :(ndofs_test_local = $ndofs)
+    push!(point_loop_body.args, assignment)
+
+
+
     # statements depend on point
     push!(point_loop_body.args, expr_L[4].args...)
+    loops = get_side_loops(3, 2)
+    push!(point_loop_body.args, loops.args...)
+
+
 
     for field_trial in 1:nfields_trial
         n_faces_around_trial = field_n_faces_around_trial[field_trial]
         # statements depend on field
         push!(point_loop_body.args, :($field_trial_symbol = $field_trial))
+
+        push!(point_loop_body.args, expr_L[8].args...)
         loops = get_side_loops(7, 3)
         push!(point_loop_body.args, loops.args...)
-        push!(point_loop_body.args, expr_L[8].args...)
 
         for field_test in 1:nfields_test
             n_faces_around_test = field_n_faces_around_test[field_test]
             # statements depend on field
             push!(point_loop_body.args, :($field_test_symbol = $field_test))
+
+            push!(point_loop_body.args, expr_L[16].args...)
             loops = get_side_loops(15, 4)
             push!(point_loop_body.args, loops.args...)
-            push!(point_loop_body.args, expr_L[16].args...)
 
             for face_around_trial in 1:n_faces_around_trial
                 # statements depend on face around
                 push!(point_loop_body.args, :($face_around_trial_symbol = $face_around_trial))
+
+                push!(point_loop_body.args, expr_L[32].args...)
                 loops = get_side_loops(31, 6)
                 push!(point_loop_body.args, loops.args...)
-                push!(point_loop_body.args, expr_L[32].args...)
                 for face_around_test in 1:n_faces_around_test
                     # statements depend on face around
                     push!(point_loop_body.args, :($face_around_test_symbol = $face_around_test))
+
+                    push!(point_loop_body.args, expr_L[64].args...)
                     loops = get_side_loops(63, 7)
                     push!(point_loop_body.args, loops.args...)
-                    push!(point_loop_body.args, expr_L[64].args...)
-                    
 
                     # DOF loop
                     # do just after the field and face_around computation, or otherwise we need to replace the variable names in expr_L 
@@ -2483,20 +2507,20 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     dof_trial_loop_body = Expr(:block)
                     dof_trial_loop = Expr(:for,dof_trial_loop_head,dof_trial_loop_body)
                     push!(point_loop_body.args,dof_trial_loop)
+                    
+                    push!(dof_trial_loop_body.args, expr_L[128].args...)
                     loops = get_side_loops(127, 8)
                     push!(dof_trial_loop_body.args, loops.args...)
-                    push!(dof_trial_loop_body.args, expr_L[128].args...)
-
 
                     ndofs_test = Symbol("n_dofs_for_$(field_test)_$(face_around_test)_test")
                     dof_test_loop_head = :($dof_test = 1:$ndofs_test)
                     dof_test_loop_body = Expr(:block)
                     dof_test_loop = Expr(:for,dof_test_loop_head,dof_test_loop_body)
                     push!(dof_trial_loop_body.args,dof_test_loop)
-                    loops = get_side_loops(255, 9)
-                    push!(dof_test_loop_body.args, loops.args...)
-                    push!(dof_test_loop_body.args, expr_L[256].args...)
-
+                    
+                    push!(dof_test_loop_body.args, expr_L[256].args...) # assuming that the last block is not empty
+                    # loops = get_side_loops(255, 9)
+                    # push!(dof_test_loop_body.args, loops.args...)
 
 
                     be = Symbol("be_for_$(field_trial)_$(field_test)_$(face_around_trial)_$(face_around_test)")
