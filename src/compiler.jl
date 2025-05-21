@@ -2022,14 +2022,17 @@ function generate_matrix_assembly_loop_body(field_n_faces_around_trial, field_n_
     block
 end
 
+function lowbit(a::Int)
+    a & (-a) # trick to get the lowest bit of an integer.
+end
+
 function lca_deps(a::Int, b::Int, len::Int)
     lca = 0
     if a == b
         lca = a
     else
         diff = a ⊻ b
-        lowbit = diff & (-diff) # trick to get the lowest bit of an integer.
-        lca = (lowbit - 1) & a
+        lca = (lowbit(diff) - 1) & a
     end
     result = a & ~(lca)
     return result # bitmap a - lca
@@ -2042,7 +2045,11 @@ function binomial_tree_tabulation(expr_L)
     len_deps = trailing_zeros(len_expr)
 
     function binomial_tree_tabulation_impl(position, last_dep)
-        function check_used(a)
+        function check_used(a) # TODO: many functions defined here. check performance
+        end
+
+        function check_used(a::Union{Array, Tuple})
+            map(check_used, a)
         end
         function check_used(a::Expr)
             map(check_used, a.args)
@@ -2052,29 +2059,183 @@ function binomial_tree_tabulation(expr_L)
                 result[a] = lca_deps(used_vars_to_node[a], position, len_deps)
             end
         end
+
+        function insert_variables!(a)
+        end
+        function insert_variables!(a::Union{Array, Tuple})
+            map(insert_variables!, a)
+        end
+        function insert_variables!(a::Expr) 
+            if a.head === :(=) && a.args[1] isa Symbol
+                var = a.args[1]
+                used_vars_to_node[var] = position
+            end
+            map(insert_variables!, a.args)
+        end
+
         # step 1: Check if the variables used in this block are in the used var dict. 
         # For all variables used but exist, insert them into the result $r$. 
         # the mem alloc size is updated as the loop path from the Least Common Ancestor LCA(a, s[v]) to v. 
-        for statement in expr_L[position + 1].args
-            check_used(statement)
-        end
+
+        check_used(expr_L[position + 1])
         # step 2: Traverse over the binomial tree, DFS in the left-most order and call the same step 2.  
         for i in len_deps:-1:(last_dep + 1)
             binomial_tree_tabulation_impl(position | (2 ^ (i - 1)), i)
         end
         # step 3: Insert all variables defined in this block
-        for statement in expr_L[position + 1].args
-            if statement.head === :(=) && statement.args[1] isa Symbol
-                var = statement.args[1]
-                used_vars_to_node[var] = position
-            end
-        end
+        insert_variables!(expr_L[position+1])
     end
     
     binomial_tree_tabulation_impl(0, 0)
     return result
 end
 
+# TODO: loops in lambda functions? we need to tabulate the computation of that
+
+
+# input expr_L: expression in bitmap
+# output: an expression (bitmap) array for each unrolled subset. 
+# unrolled_expr_L has a length of 2^l where l is the number of vars
+# each of them is a nested array, representing the dependency of each unrolled var
+function unroll_expr_L(expr_L, bindings, unrolled_deps_and_length)
+    unrolled_expr_L::Vector{Any} = [nothing for i in expr_L]
+    status = [0 for _ in bindings] # status of unrolled variables
+    len_deps = length(bindings)
+
+    var_deps = Dict() # deps of unrolled variables. this is used to generate new names for each unrolled loop
+    
+    function replace_statement_deps_unroll(a::Symbol)
+        if haskey(var_deps, a)
+            suffix = map(x -> "_$(status[x]), ", var_deps[a])
+            result_str = string(a, suffix...)
+            Symbol(result_str)
+        else
+            a
+        end
+    end
+        
+    function replace_statement_deps_unroll(a)
+        a
+    end
+    function replace_statement_deps_unroll(a::Expr)
+        Expr(a.head, map(replace_statement_deps_unroll, a.args)...)
+    end
+
+    function generate_similar_block_array(statement, unrolled_index)
+        if length(unrolled_index) == 0
+            replace_statement_deps_unroll(statement)
+        else 
+            new_unrolled_index = unrolled_index[2:end]
+            last_dep = unrolled_index[1]
+            dep = unrolled_deps_and_length[last_dep] # must be an unrolled var
+            len_unroll = if dep[1] === nothing
+                dep[2]
+            else
+                len_unroll = if dep[1] isa Tuple
+                    result = dep[2]
+                    for i in dep[1]
+                        result = result[status[i]]
+                    end
+                    result
+                else
+                    dep[2][status[dep[1]]]
+                end
+            end
+            
+            map(1:len_unroll) do x
+                status[last_dep] = x
+                result = generate_similar_block_array(statement, new_unrolled_index)
+                status[last_dep] = 0
+                result
+            end
+
+        end
+    end
+
+    function unroll_expr_L_impl!(position, last_dep, last_unrolled_index = ())
+        # alloc array or use a single block
+        is_unrolled = (last_dep > 0) && (unrolled_deps_and_length[last_dep] !== nothing)
+        new_unrolled_index = is_unrolled ? (last_unrolled_index..., last_dep) : last_unrolled_index
+        
+        for statement in expr_L[position+1].args # update deps
+            if statement.head === :(=) && statement.args[1] isa Symbol
+                var = statement.args[1]
+                var_deps[var] = new_unrolled_index
+            end
+        end
+        unrolled_expr_L[position+1] = generate_similar_block_array(expr_L[position+1], new_unrolled_index)
+        for i in (last_dep+1):len_deps
+            unroll_expr_L_impl!(position | (2 ^ (i - 1)), i, new_unrolled_index)
+        end
+    end
+    
+    unroll_expr_L_impl!(0, 0, ())
+    return unrolled_expr_L
+end
+
+function expr_L_protos(expr_L, bindings, unroll_loop_length)
+    proto_block = Expr(:block)
+    var_proto::Dict{Symbol, Symbol} = Dict()
+    len_expr = length(expr_L)
+    len_deps = trailing_zeros(len_expr)
+    status = [1 for _ in bindings] # status of unrolled variables
+    binding_index = Dict([(binding => i)  for (i, binding) in enumerate(bindings)])
+
+    function replace_vars_proto(a)
+        a
+    end
+
+    function replace_vars_proto(a::Symbol)
+        if haskey(var_proto, a)
+            var_proto[a]
+        elseif haskey(binding_index, a)
+            index = binding_index[a]
+            status[index]
+        else
+            a
+        end
+    end
+
+    function replace_vars_proto(a::Expr)
+        if a.head === :(=) && a.args[1] isa Symbol && !haskey(var_proto, a.args[1])
+            var = a.args[1]
+            var_proto[var] = gensym()
+        end
+        Expr(a.head, map(replace_vars_proto, a.args)...)
+    end
+
+    function replace_vars_proto_unrolled!(statements, position)
+        if statements isa Expr
+            for statement in statements.args
+                new_statement = replace_vars_proto(statement)
+                push!(proto_block.args, new_statement) 
+            end
+        else
+            next_unroll = 0
+            new_position = position
+            while next_unroll == 0 || unroll_loop_length[next_unroll] === nothing
+                next_unroll = trailing_zeros(new_position) + 1
+                new_position -= 2 ^ (next_unroll - 1)
+            end
+            dep = unroll_loop_length[next_unroll]
+            len_unroll = (dep[1] === nothing) ? dep[2] : dep[2][status[dep[1]]] # TODO: handle tuples
+            @assert len_unroll = length(statements)
+            for i in 1:len_unroll
+                status[next_unroll] = i
+                replace_vars_proto_unrolled!(statements[i], new_position)
+            end
+            status[next_unroll] = 1
+        end
+    end
+
+    for position in 0:(len_expr - 1)
+        statements = expr_L[position+1]
+        replace_vars_proto_unrolled!(statements, position)
+    end
+    return proto_block, var_proto
+end
+
+# TODO: remove it, split it into multiple funcs
 function replace_vars(expr_L, tabulated_variables, bindings, max_lengths_symbol = :array_lengths)
     
     alloc_block = Expr(:block)
@@ -2166,14 +2327,18 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     (space_trial, space_test, quadrature, alloc) = dependencies
     (face, point, field_trial_symbol, field_test_symbol, face_around_trial_symbol, face_around_test_symbol, dof_trial, dof_test) = bindings 
     unroll_loops = (false, false, true, true, true, true, false, false)
+    unroll_loop_length  = (nothing, nothing, (nothing, length(field_n_faces_around_trial)), (3, field_n_faces_around_trial), (nothing, length(field_n_faces_around_test)), (3, field_n_faces_around_test), nothing, nothing)
 
     v = last_symbol(expr_L)
     new_v = gensym("result")
     push!(expr_L[end].args, :($new_v = $v)) # TODO: find a better way to unroll it
     v = new_v
-    tabulated_variables = binomial_tree_tabulation(expr_L)
-    expr_alloc, expr_L = replace_vars(expr_L, tabulated_variables, bindings)
-    
+
+    unrolled_expr_L = unroll_expr_L(expr_L, bindings, unroll_loop_length)
+    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L)
+    proto_block, var_proto = expr_L_protos(unrolled_expr_L, bindings, unroll_loop_length)
+        # TODO: we are here, update the following code
+    expr_alloc, unrolled_expr_L = replace_vars(unrolled_expr_L, tabulated_variables, bindings)
 
 
     block = Expr(:block)
@@ -2233,7 +2398,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     max_num_dofs_trial = :(())
     max_num_dofs_test = :(())
     # Allocate face vectors
-    for field_trial in 1:nfields_trial
+    for field_trial in 1:nfields_trial # TODO: insert it into expr_L
         n_faces_around_trial = field_n_faces_around_trial[field_trial]
         for field_test in 1:nfields_test
             n_faces_around_test = field_n_faces_around_test[field_test]
