@@ -127,12 +127,13 @@ mesh_size = 0.3
 R = 1 #Radius
 mesh = GT.with_gmsh() do gmsh
     dim = 2
+    gmsh.option.set_number("General.Verbosity", 2)
     circle_tag = gmsh.model.occ.add_circle(0,0,0,R)
     circle_curve_tag = gmsh.model.occ.add_curve_loop([circle_tag])
     circle_surf_tag = gmsh.model.occ.add_plane_surface([circle_curve_tag])
     gmsh.model.occ.synchronize()
     gmsh.model.model.add_physical_group(dim,[circle_surf_tag],-1,"Omega")
-    gmsh.option.setNumber("Mesh.MeshSizeMax",mesh_size)
+    gmsh.option.set_number("Mesh.MeshSizeMax",mesh_size)
     gmsh.model.mesh.generate(dim)
     GT.mesh_from_gmsh(gmsh)
 end

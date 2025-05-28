@@ -24,6 +24,7 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
     mesh = GT.with_gmsh() do gmsh
         R = 0.15
         dim = 2
+        gmsh.option.set_number("General.Verbosity", 2)
         rect_tag = gmsh.model.occ.add_rectangle(0,0,0,1,1)
         circle_tag = gmsh.model.occ.add_circle(0.5,0.5,0,R)
         circle_curve_tag = gmsh.model.occ.add_curve_loop([circle_tag])
@@ -36,7 +37,7 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
         gmsh.model.model.add_physical_group(dim,domain_tags,-1,"domain")
         gmsh.model.model.add_physical_group(dim-1,outer_tags,-1,"outer")
         gmsh.model.model.add_physical_group(dim-1,inner_tags,-1,"inner")
-        gmsh.option.setNumber("Mesh.MeshSizeMax",mesh_size)
+        gmsh.option.set_number("Mesh.MeshSizeMax",mesh_size)
         gmsh.model.mesh.generate(dim)
         GT.mesh_from_gmsh(gmsh)
     end
@@ -90,7 +91,8 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
     dt = T/N
     solver = DifferentialEquations.Rodas5P(autodiff=false);
     integrator = DifferentialEquations.init(problem,solver;
-        initializealg=DifferentialEquations.NoInit(),dt,adaptive=false)
+        initializealg=DifferentialEquations.NoInit(),dt,
+        adaptive=false,save_on=false)
 
     #Setup Makie scene
     axis = (aspect = Makie.DataAspect(),)
@@ -102,10 +104,8 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
     #Record Makie scene while solving
     fn = "fig_transient_heat_equation.gif"
     file = joinpath(@__DIR__,fn)
-    Makie.record(fig,file,DifferentialEquations.intervals(integrator)) do interval
-        x,t = interval
-        dirichlet_dynamics!(t,uh)
-        color[] = GT.solution_field(uh,x)
+    Makie.record(fig,file,integrator) do integrator
+        color[] = GT.solution_field(integrator)
     end
 
 end
