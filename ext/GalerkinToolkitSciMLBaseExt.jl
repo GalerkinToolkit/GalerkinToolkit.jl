@@ -73,6 +73,7 @@ function GT.SciMLBase_ODEProblem(interval,uh::GT.DiscreteField,m,r,j;dirichlet_d
     M,Md = GT.assemble_matrix_with_free_and_dirichlet_columns(m,T,U,V)
     xd = GT.dirichlet_values(uh)
     vhd = GT.dirichlet_field(U,similar(xd))
+    uhd = GT.dirichlet_field(U,similar(xd))
 
     function f(dx,x,p,t)
         if dirichlet_dynamics! !== nothing
@@ -99,15 +100,10 @@ function GT.SciMLBase_ODEProblem(interval,uh::GT.DiscreteField,m,r,j;dirichlet_d
     jac_prototype = A
     mass_matrix = M
     nlfun = SciMLBase.ODEFunction{true,SciMLBase.NoSpecialize}(f;mass_matrix,jac,jac_prototype)
-    SciMLBase.ODEProblem(nlfun,x,interval)
+    workspace = (;uhd,vhd,dirichlet_dynamics!)
+    p = workspace
+    SciMLBase.ODEProblem(nlfun,x,interval,p)
 end
 
-#function GT.solution_field(integrator::SciMLBase.ODEIntegrator)
-#    workspace = integrator.p
-#    (;uh,vhd,dirichlet_dynamics!) = workspace
-#    t = integrator.t
-#
-#
-#end
 
 end # module

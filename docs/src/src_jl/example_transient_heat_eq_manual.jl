@@ -37,6 +37,7 @@ function setup_mesh(state)
     mesh = GT.with_gmsh() do gmsh
         R = 0.15
         dim = 2
+        gmsh.option.set_number("General.Verbosity", 2)
         rect_tag = gmsh.model.occ.add_rectangle(0,0,0,1,1)
         circle_tag = gmsh.model.occ.add_circle(0.5,0.5,0,R)
         circle_curve_tag = gmsh.model.occ.add_curve_loop([circle_tag])
@@ -49,7 +50,7 @@ function setup_mesh(state)
         gmsh.model.model.add_physical_group(dim,domain_tags,-1,"domain")
         gmsh.model.model.add_physical_group(dim-1,outer_tags,-1,"outer")
         gmsh.model.model.add_physical_group(dim-1,inner_tags,-1,"inner")
-        gmsh.option.setNumber("Mesh.MeshSizeMax",mesh_size)
+        gmsh.option.set_number("Mesh.MeshSizeMax",mesh_size)
         gmsh.model.mesh.generate(dim)
         GT.mesh_from_gmsh(gmsh)
     end
