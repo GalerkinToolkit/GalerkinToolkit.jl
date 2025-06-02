@@ -496,13 +496,20 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         to_leaf_term = x -> (x isa AbstractTerm) ? x : leaf_term(x)
 
         if D == d
-            the_face_around_term = leaf_term(nothing, is_compile_constant=true)
-            face_around_term = leaf_term(nothing)
+            # the_face_around_term = leaf_term(nothing, is_compile_constant=true)
+            the_face_around = 1
+            the_face_around_term = leaf_term(the_face_around;is_compile_constant=true)
+            # face_around_term = leaf_term(nothing)
+            face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies, D)
         elseif D==d+1 && face_around !== nothing
-            the_face_around_term = leaf_term(face_around, is_compile_constant=true)
-            face_around_term = leaf_term(face_around)
+            # the_face_around_term = leaf_term(face_around, is_compile_constant=true)
+            # face_around_term = leaf_term(face_around)
+            the_face_around = 1
+            the_face_around_term = leaf_term(the_face_around;is_compile_constant=true)
+            # face_around_term = leaf_term(nothing)
+            face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies, D)
         else
@@ -1399,21 +1406,14 @@ function expression(term::MatrixAssemblyTerm)
     # expr = :($alloc_arg->$body)
     # expr
     loop_vars = (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+
     # expr_L = topological_sort(term2, loop_vars) 
     # body = generate_matrix_assembly_loop_body(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L, (space_trial, space_test, quadrature, alloc), loop_vars)
     # expr = :($alloc_arg->$body)
 
     expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
-    # for (i, expr) in enumerate(expr_L)
-    #     display((i-1, expr))
-    # end
-    # for (i, expr) in enumerate(expr_L_bitmap)
-    #     if length(expr.args) > 0 
-    #         display((bitstring(i-1)[end-10:end], expr))
-    #     end
-    # end
     body_bitmap = generate_matrix_assembly_loop_body_bitmap(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L_bitmap, (space_trial, space_test, quadrature, alloc), loop_vars)
-    display(body_bitmap)
+    # display(body_bitmap)
     expr = :($alloc_arg -> $body_bitmap)
     
     expr
@@ -2309,7 +2309,290 @@ function expr_replace_tabulates(expr_L, unrolled_var_deps, tabulated_variables, 
     alloc_block, expr_L
 end
 
-# TODO: topological_sort_bitmap?
+
+# TODO: include heuristic loop fusion?
+function get_side_loops(position, current_dep, bindings, unroll_loops, unrolled_expr_L, unroll_loop_length,
+        loop_range, unroll_deps_length, unroll_deps_length_symbol, current_unrolled_vars_status = [])
+    result = Expr(:block)
+    len = length(bindings)
+    unrolled_vars = zeros(Int, length(unroll_loops))
+    for (i, j) in current_unrolled_vars_status
+        unrolled_vars[i] = j
+    end
+    function get_side_loops_impl!(pos, last_dep)
+        n_statements = 0
+        loop_body = Expr(:block)
+        # select the correct block
+        statements = unrolled_expr_L[pos+1]
+        for i in 1:len
+            if unrolled_vars[i] != 0
+                statements = statements[unrolled_vars[i]]
+            end
+        end
+        if unroll_loops[last_dep] == false
+            pre_loop = loop_range[last_dep][1:end - 1]
+            push!(loop_body.args, pre_loop...)
+
+            loop_head = loop_range[last_dep][end]
+            loop = Expr(:for,loop_head,loop_body)
+            
+            n_statements += length(statements.args)
+            push!(loop_body.args, statements.args...)
+
+            for i in len:-1:last_dep + 1
+                loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (i - 1)), i)
+                if n_statements_child > 0
+                    push!(loop_body.args, loop_expr)
+                    n_statements += n_statements_child
+                end
+            end
+            
+            # TODO: this is ugly. use unroll_deps_length for these branches
+            if unroll_deps_length[last_dep] !== nothing
+                assignment = unroll_deps_length_symbol(unrolled_vars, last_dep) 
+                loop = Expr(:block, assignment, loop)
+            end
+            return  loop, n_statements
+        else
+            loop_length = 0 
+            loop_dep = unroll_loop_length[last_dep]
+            if loop_dep[1] === nothing
+                loop_length = loop_dep[2]
+            elseif unrolled_vars[loop_dep[1]] == 0
+                return loop_body, 0
+            else
+                loop_length = loop_dep[2][unrolled_vars[loop_dep[1]]]
+            end
+            loop_var = loop_range[last_dep][end][1]
+            for i in 1:loop_length
+                unrolled_vars[last_dep] = i
+                assignment = :($(loop_var) = $i)
+                push!(loop_body.args, assignment)
+                local_statements = statements[i]
+                n_statements += length(local_statements.args)
+                push!(loop_body.args, local_statements.args...)
+                # update_ndofs
+                for j in len:-1:(last_dep + 1)
+                    loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (j - 1)), j)
+                    if n_statements_child > 0
+                        push!(loop_body.args, loop_expr)
+                        n_statements += n_statements_child
+                    end
+                end
+            end
+            unrolled_vars[last_dep] = 0
+
+            return  loop_body, n_statements
+        end
+    end
+
+    for i in len:-1:current_dep + 2
+        loop_expr, n_statements = get_side_loops_impl!(position | (2 ^ (i - 1)), i)
+        if n_statements > 0
+            push!(result.args, loop_expr)
+        end
+    end
+    return result
+end
+
+
+
+
+function generate_vector_assembly_loop_body_bitmap(field_n_faces_around, expr_L, dependencies, bindings)
+    # expr_L: a list of block in the order of (global, face, point, field, face_around, dof)
+    # dependencies: (space, quadrature, alloc)
+    # bindings: (face, point, field, face_around, dof)
+    (space, quadrature, alloc) = dependencies
+    (face, point, field_symbol, face_around_symbol, dof) = bindings # TODO: replace field_symbol and face_around_symbol
+    unroll_loops = (false, false, true, true, false)
+    unroll_loop_length  = (nothing, nothing, (nothing, length(field_n_faces_around)), (3, field_n_faces_around), nothing)
+    unroll_deps_length = (nothing, nothing, nothing, nothing, 3)
+    unroll_deps_length_symbol = (status, last_dep) -> begin
+                 if last_dep == 5  # dof trial
+                    field = max(status[3], 1)
+                    face_around = max(status[4], 1)
+                    ndofs = Symbol("n_dofs_for_$(field)_$(face_around)")
+                    assignment = :(ndofs_local = $ndofs)
+                end  
+    end
+
+    v = last_symbol(expr_L)
+    new_v = Symbol("vector_contribution_result")
+    push!(expr_L[end].args, :($new_v = $v)) # TODO: find a better way to unroll it
+    v = new_v
+
+    unrolled_expr_L, unrolled_var_deps = unroll_expr_L(expr_L, bindings, unroll_loop_length)
+    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L)
+    proto_block, var_proto = expr_L_protos(unrolled_expr_L, bindings, unroll_loop_length)
+    expr_alloc, unrolled_expr_L = expr_replace_tabulates(unrolled_expr_L, unrolled_var_deps, tabulated_variables, bindings, var_proto, unroll_loop_length, unroll_deps_length)
+
+
+    block = Expr(:block)
+    nfields = length(field_n_faces_around)
+
+    assignment = :(domain = GT.domain($quadrature))
+    push!(block.args,assignment)
+
+    assignment = :(T = eltype($alloc))
+    push!(block.args, assignment)
+
+    assignment = :(z = zero(T))
+    push!(block.args, assignment)
+
+    assignment = :(nfaces = GT.num_faces(domain))
+    push!(block.args,assignment)
+
+    assignment = :(face_npoints = GT.num_points_accessor($quadrature))
+    push!(block.args,assignment)
+
+    # Get single field spaces
+    for field in 1:nfields
+        var = Symbol("space_for_$(field)")
+        expr = :(GT.field($space,$field))
+        assignment = :($var = $expr)
+        push!(block.args, assignment)
+    end
+
+    # Get face_dofs
+    for field in 1:nfields
+        space_field = Symbol("space_for_$(field)")
+        var_field = Symbol("face_dofs_for_$(field)")
+        expr = :(GT.dofs_accessor($space_field,domain))
+        assignment = :($var_field = $expr)
+        push!(block.args, assignment)
+    end
+
+    # Allocate face vectors
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            space_field = Symbol("space_for_$(field)")
+            var_str = "be_for_$(field)_$(face_around)"
+            var_face_around = Symbol(var_str)
+            expr = :(alloc_zeros($var_str, T,GT.max_num_reference_dofs($space_field)))
+            assignment = :($var_face_around = $expr)
+            push!(block.args, assignment)
+        end
+    end
+
+    # statements without deps
+    push!(block.args, expr_L[1].args...)
+
+    # Face loop
+    face_loop_head = :($face = 1:nfaces)
+    face_loop_body = Expr(:block)
+    face_loop = Expr(:for,face_loop_head,face_loop_body)
+    push!(block.args,face_loop)
+
+    assignment = :(npoints = face_npoints($face))
+    push!(face_loop_body.args,assignment)
+
+    # assignment = :(point_block_dof_v = face_point_block_dof_v(face)) # TODO: replace it 
+    # push!(face_loop_body.args,assignment)
+    # statements depend on face
+    push!(face_loop_body.args, expr_L[2].args...)
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            accessor = Symbol("face_dofs_for_$(field)")
+            assignment = :($dofs = $(accessor)($face,$face_around))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+            assignment = :($ndofs = length($(dofs)))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            be = Symbol("be_for_$(field)_$(face_around)")
+            assignment = :(fill!($be,z))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    # Point loop
+    point_loop_head = :($point = 1:npoints)
+    point_loop_body = Expr(:block)
+    point_loop = Expr(:for,point_loop_head,point_loop_body)
+    push!(face_loop_body.args,point_loop)
+
+    # assignment = :(block_dof_v = point_block_dof_v(point))
+    # push!(point_loop_body.args,assignment)
+    # statements depend on point
+    push!(point_loop_body.args, expr_L[3].args...)
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        # statements depend on field
+        push!(point_loop_body.args, :($field_symbol = $field))
+        push!(point_loop_body.args, expr_L[4].args...)
+        
+        for face_around in 1:n_faces_around
+            # accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # assignment = :( $accessor = block_dof_v($field,$face_around)  )
+            # push!(point_loop_body.args,assignment)
+            # statements depend on face around
+            push!(point_loop_body.args, :($face_around_symbol = $face_around))
+            push!(point_loop_body.args, expr_L[5].args...)
+            
+            # DOF loop
+            # do just after the field and face_around computation, or otherwise we need to replace the variable names in expr_L 
+            ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+            dof_loop_head = :($dof = 1:$ndofs)
+            dof_loop_body = Expr(:block)
+            dof_loop = Expr(:for,dof_loop_head,dof_loop_body)
+            push!(point_loop_body.args,dof_loop)
+            be = Symbol("be_for_$(field)_$(face_around)")
+            # accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+            # statements depend on dof
+            push!(dof_loop_body.args, expr_L[6].args...)
+            assignment = :($be[$dof] += $v)
+            push!(dof_loop_body.args,assignment)
+        end
+    end
+
+    # for field in 1:nfields
+    #     n_faces_around = field_n_faces_around[field]
+    #     for face_around in 1:n_faces_around
+    #         ndofs = Symbol("n_dofs_for_$(field)_$face_around")
+    #         dof_loop_head = :(dof = 1:$ndofs)
+    #         dof_loop_body = Expr(:block)
+    #         dof_loop = Expr(:for,dof_loop_head,dof_loop_body)
+    #         push!(point_loop_body.args,dof_loop)
+    #         be = Symbol("be_for_$(field)_$(face_around)")
+    #         accessor = Symbol("dofs_v_for_$(field)_$(face_around)")
+    #         assignment = :($be[dof] += $accessor(dof))
+    #         push!(dof_loop_body.args,assignment)
+    #     end
+    # end
+
+    for field in 1:nfields
+        n_faces_around = field_n_faces_around[field]
+        for face_around in 1:n_faces_around
+            dofs = Symbol("dofs_for_$(field)_$(face_around)")
+            be = Symbol("be_for_$(field)_$(face_around)")
+            assignment = :(GT.contribute!(alloc,$be,$dofs,$field))
+            push!(face_loop_body.args,assignment)
+        end
+    end
+
+    block
+end
+
+
+
+
 function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, field_n_faces_around_test, expr_L, dependencies, bindings)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
@@ -2321,13 +2604,13 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     unroll_deps_length = [nothing, nothing, nothing, nothing, nothing, nothing, 3, 4]
     unroll_deps_length_symbol = (status, last_dep) -> begin
                  if last_dep == 7  # dof trial
-                    field = max(unrolled_vars[3], 1)
-                    face_around = max(unrolled_vars[5], 1)
+                    field = max(status[3], 1)
+                    face_around = max(status[5], 1)
                     ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_trial")
                     assignment = :(ndofs_trial_local = $ndofs)
                 elseif last_dep == 8 # dof test
-                    field = max(unrolled_vars[4], 1)
-                    face_around = max(unrolled_vars[6], 1)
+                    field = max(status[4], 1)
+                    face_around = max(status[6], 1)
                     ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_test")
                     assignment = :(ndofs_test_local = $ndofs)
                 end  
@@ -2339,27 +2622,6 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     v = new_v
 
     unrolled_expr_L, unrolled_var_deps = unroll_expr_L(expr_L, bindings, unroll_loop_length)
-    # function get_statements(statements_zipped)
-    #     return statements_zipped
-    # end
-    # function get_statements(statements_zipped::Expr)
-    #     return statements_zipped.args
-    # end
-    # function get_statements(statements_zipped::Union{Array, Tuple})
-    #     arrays = map(get_statements, statements_zipped)
-    #     result = []
-    #     for i in arrays
-    #         push!(result, i...)
-    #     end
-    #     result
-    # end
-    # for (i, statements_zipped) in enumerate(unrolled_expr_L)
-    #     statements = get_statements(statements_zipped)
-    #     if length(statements) > 0
-    #         display((i, statements))
-    #     end
-    # end
-
     tabulated_variables = binomial_tree_tabulation(unrolled_expr_L)
     proto_block, var_proto = expr_L_protos(unrolled_expr_L, bindings, unroll_loop_length)
     expr_alloc, unrolled_expr_L = expr_replace_tabulates(unrolled_expr_L, unrolled_var_deps, tabulated_variables, bindings, var_proto, unroll_loop_length, unroll_deps_length)
@@ -2471,101 +2733,8 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     (:($dof_test = 1:ndofs_test_local), ),    # TODO: this should depend on face
     )
 
-    # TODO: include heuristic loop fusion?
-    # args: bindings, unroll_loops,   unrolled_expr_L, loop_range, 
-    function get_side_loops(position, current_dep, current_unrolled_vars_status = [])
-        result = Expr(:block)
-        len = length(bindings)
-        unrolled_vars = zeros(Int, length(unroll_loops))
-        for (i, j) in current_unrolled_vars_status
-            unrolled_vars[i] = j
-        end
-        function get_side_loops_impl!(pos, last_dep)
-            n_statements = 0
-            loop_body = Expr(:block)
-            # select the correct block
-            statements = unrolled_expr_L[pos+1]
-            for i in 1:len
-                if unrolled_vars[i] != 0
-                    statements = statements[unrolled_vars[i]]
-                end
-            end
-            if unroll_loops[last_dep] == false
-                pre_loop = loop_range[last_dep][1:end - 1]
-                push!(loop_body.args, pre_loop...)
-
-                loop_head = loop_range[last_dep][end]
-                loop = Expr(:for,loop_head,loop_body)
-                
-                n_statements += length(statements.args)
-                push!(loop_body.args, statements.args...)
-
-                for i in len:-1:last_dep + 1
-                    loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (i - 1)), i)
-                    if n_statements_child > 0
-                        push!(loop_body.args, loop_expr)
-                        n_statements += n_statements_child
-                    end
-                end
-                
-                # TODO: this is ugly. use unroll_deps_length for these branches
-                # if unroll_deps_length[last_dep] !== nothing
-                    
-                # end
-                if last_dep == 7  # dof trial
-                    field = max(unrolled_vars[3], 1)
-                    face_around = max(unrolled_vars[5], 1)
-                    ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_trial")
-                    assignment = :(ndofs_trial_local = $ndofs)
-                    loop = Expr(:block, assignment, loop)
-                elseif last_dep == 8 # dof test
-                    field = max(unrolled_vars[4], 1)
-                    face_around = max(unrolled_vars[6], 1)
-                    ndofs = Symbol("n_dofs_for_$(field)_$(face_around)_test")
-                    assignment = :(ndofs_test_local = $ndofs)
-                    loop = Expr(:block, assignment, loop)
-                end
-                return  loop, n_statements
-            else
-                loop_length = 0 
-                loop_dep = unroll_loop_length[last_dep]
-                if loop_dep[1] === nothing
-                    loop_length = loop_dep[2]
-                elseif unrolled_vars[loop_dep[1]] == 0
-                    return loop_body, 0
-                else
-                    loop_length = loop_dep[2][unrolled_vars[loop_dep[1]]]
-                end
-                loop_var = loop_range[last_dep][end][1]
-                for i in 1:loop_length
-                    unrolled_vars[last_dep] = i
-                    assignment = :($(loop_var) = $i)
-                    push!(loop_body.args, assignment)
-                    local_statements = statements[i]
-                    n_statements += length(local_statements.args)
-                    push!(loop_body.args, local_statements.args...)
-                    # update_ndofs
-                    for j in len:-1:(last_dep + 1)
-                        loop_expr, n_statements_child = get_side_loops_impl!(pos | (2 ^ (j - 1)), j)
-                        if n_statements_child > 0
-                            push!(loop_body.args, loop_expr)
-                            n_statements += n_statements_child
-                        end
-                    end
-                end
-                unrolled_vars[last_dep] = 0
-
-                return  loop_body, n_statements
-            end
-        end
-
-        for i in len:-1:current_dep + 2
-            loop_expr, n_statements = get_side_loops_impl!(position | (2 ^ (i - 1)), i)
-            if n_statements > 0
-                push!(result.args, loop_expr)
-            end
-        end
-        return result
+    function get_side_loops_local(position, current_dep, current_unrolled_vars_status = [])
+        get_side_loops(position, current_dep, bindings, unroll_loops, unrolled_expr_L, unroll_loop_length, loop_range, unroll_deps_length, unroll_deps_length_symbol, current_unrolled_vars_status)
     end
 
     push!(block.args, assignment)
@@ -2577,7 +2746,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     # statements without deps
     push!(block.args, unrolled_expr_L[1].args...)
 
-    loops = get_side_loops(0, 0)
+    loops = get_side_loops_local(0, 0)
     push!(block.args, loops.args...)
 
     # Face loop
@@ -2591,7 +2760,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
 
     # statements depend on face
     push!(face_loop_body.args, unrolled_expr_L[2].args...)
-    loops = get_side_loops(1, 1)
+    loops = get_side_loops_local(1, 1)
     push!(face_loop_body.args, loops.args...)
 
     # trial
@@ -2674,7 +2843,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
 
     # statements depend on point
     push!(point_loop_body.args, unrolled_expr_L[4].args...)
-    loops = get_side_loops(3, 2)
+    loops = get_side_loops_local(3, 2)
     push!(point_loop_body.args, loops.args...)
 
 
@@ -2684,7 +2853,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
         push!(point_loop_body.args, :($field_trial_symbol = $field_trial))
         push!(point_loop_body.args, unrolled_expr_L[8][field_trial].args...)
         unrolled_var_status = ((3, field_trial),)
-        loops = get_side_loops(7, 3, unrolled_var_status)
+        loops = get_side_loops_local(7, 3, unrolled_var_status)
         push!(point_loop_body.args, loops.args...)
 
 
@@ -2694,7 +2863,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
             push!(point_loop_body.args, :($field_test_symbol = $field_test))
             push!(point_loop_body.args, unrolled_expr_L[16][field_trial][field_test].args...)
             unrolled_var_status = ((3, field_trial), (4, field_test))
-            loops = get_side_loops(15, 4, unrolled_var_status)
+            loops = get_side_loops_local(15, 4, unrolled_var_status)
             push!(point_loop_body.args, loops.args...)
 
             for face_around_trial in 1:n_faces_around_trial
@@ -2702,14 +2871,14 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                 push!(point_loop_body.args, :($face_around_trial_symbol = $face_around_trial))
                 push!(point_loop_body.args, unrolled_expr_L[32][field_trial][field_test][face_around_trial].args...)
                 unrolled_var_status = ((3, field_trial), (4, field_test), (5, face_around_trial))
-                loops = get_side_loops(31, 5, unrolled_var_status)
+                loops = get_side_loops_local(31, 5, unrolled_var_status)
                 push!(point_loop_body.args, loops.args...)
                 for face_around_test in 1:n_faces_around_test
                     # statements depend on face around
                     push!(point_loop_body.args, :($face_around_test_symbol = $face_around_test))
                     push!(point_loop_body.args, unrolled_expr_L[64][field_trial][field_test][face_around_trial][face_around_test].args...)
                     unrolled_var_status = ((3, field_trial), (4, field_test), (5, face_around_trial), (6, face_around_test))
-                    loops = get_side_loops(63, 6, unrolled_var_status)
+                    loops = get_side_loops_local(63, 6, unrolled_var_status)
                     push!(point_loop_body.args, loops.args...)
 
                     # DOF loop
@@ -2721,7 +2890,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     push!(point_loop_body.args,dof_trial_loop)
                     
                     push!(dof_trial_loop_body.args, unrolled_expr_L[128][field_trial][field_test][face_around_trial][face_around_test].args...)
-                    loops = get_side_loops(127, 7, unrolled_var_status)
+                    loops = get_side_loops_local(127, 7, unrolled_var_status)
                     push!(dof_trial_loop_body.args, loops.args...)
 
                     ndofs_test = Symbol("n_dofs_for_$(field_test)_$(face_around_test)_test")
