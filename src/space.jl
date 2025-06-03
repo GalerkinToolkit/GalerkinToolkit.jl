@@ -905,13 +905,14 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
     )
+
     contents = (;
         domain,
         order_per_dir,
-        space_type,
+        space_type=Val(val_parameter(space_type)),
         lib_to_user_nodes,
-        major,
-        tensor_size,
+        major=Val(val_parameter(major)),
+        tensor_size=Val(val_parameter(tensor_size)),
         dirichlet_boundary,
        )
     space = LagrangeFaceSpace(nothing,contents)
@@ -926,7 +927,7 @@ end
 
 
 domain(a::LagrangeFaceSpace) = a.contents.domain
-order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
+order_per_dir(a::LagrangeFaceSpace) = map(val_parameter, a.contents.order_per_dir)
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
 space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
@@ -1050,11 +1051,14 @@ function tensor_basis(fe::LagrangeFaceSpace{Nothing})
     else
         cis = CartesianIndices(s)
         l = prod(s)
-        init_tensor = SArray{Tuple{s...},Tv}
+        vl = Val(l)
+        init_tensor = SArray{Tuple{s...},Tv, length(s), l}
         cis_flat = cis[:]
-        return map(cis_flat) do ci
-            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
+        result::Vector{init_tensor} = map(cis_flat) do ci
+            tensor = init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,vl))
+            tensor 
         end
+        return result
     end
 end
 
@@ -1068,9 +1072,13 @@ function primal_basis(fe::LagrangeFaceSpace{Nothing})
     if tensor_size(fe) === :scalar
         return scalar_basis
     else
-        primal_nested = map(scalar_basis) do monomial
-            map(tensor_basis(fe))  do e
-                x -> monomial(x)*e
+        # TODO: ugly
+        tb = tensor_basis(fe)
+        func_template = (e, monomial) -> x -> monomial(x)*e
+        proto = func_template(tb[1], scalar_basis[1])
+        primal_nested::Vector{Vector{typeof(proto)}} = map(scalar_basis) do monomial
+            map(tb) do e
+                func_template(e, monomial)
             end
         end
         return reduce(vcat,primal_nested)
@@ -1089,16 +1097,15 @@ function dual_basis(fe::LagrangeFaceSpace{Nothing})
     if ts === :scalar
         return scalar_basis
     else
-        if major(fe) === :component
-            dual_nested = map(node_coordinates_reffe) do x
-                map(tensor_basis(fe)) do e
-                    f->contraction(e,f(x))
-                end
-            end
-        elseif major(fe) === :node
-            dual_nested = map(tensor_basis(fe)) do e
-                map(node_coordinates_reffe) do x
-                    f->contraction(e,f(x))
+        tb = tensor_basis(fe)
+        # TODO: ugly
+        if major(fe) === :component || major(fe) === :node
+            func_template = (a, b) -> f -> contraction(a, f(b))
+            proto = func_template(tb[1], node_coordinates_reffe[1])
+            dual_nested::Vector{Vector{typeof(proto)}} = map(node_coordinates_reffe) do x
+                temp::Vector{typeof(proto)} = map(tb) do e
+                    temp2::typeof(proto) = func_template(e, x)
+                    # f->contraction(e,f(x))
                 end
             end
         else
@@ -1598,12 +1605,12 @@ function lagrange_mesh_space(;
     )
     contents = (;
         domain,
-        order,
+        order=Val(val_parameter(order)),
         conformity,
         dirichlet_boundary,
-        space_type,
-        major,
-        tensor_size,
+        space_type=Val(val_parameter(space_type)),
+        major=Val(val_parameter(major)),
+        tensor_size=Val(val_parameter(tensor_size)),
         workspace,
        )
     LagrangeMeshSpace(mesh(domain),contents)
