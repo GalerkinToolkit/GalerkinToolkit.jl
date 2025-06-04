@@ -110,19 +110,28 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
     dface_to_drid = face_reference_id(mesh,d)
     # NB the TODOs below can be solved by introducing two extra nesting levels
     # TODO this assumes the same reffes for mesh and quadrature
-    drid_Drid_ldface_perm_to_tab = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
+
+    point_to_x = drid_to_point_to_x[1]
+    refdface = drid_to_refdface[1]
+    reffe,refDface = Drid_to_reffe[1], Drid_to_refDface[1]
+    lpv = reference_map(refdface,refDface)[1][1]
+    p2q = lpv.(point_to_x)
+    prototype_tab = tabulator(reffe)(f,p2q)
+    prototype = first(prototype_tab)
+
+    drid_Drid_ldface_perm_to_tab::Tuple{Vector{Vector{Vector{typeof(prototype_tab)}}}} = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
         # TODO this assumes the same reffes for mesh and interpolation
         map(Drid_to_reffe,Drid_to_refDface) do reffe,refDface
             ldface_perm_varphi = reference_map(refdface,refDface)
             map(ldface_perm_varphi) do perm_varphi
                 map(perm_varphi) do varphi
                     point_to_q = varphi.(point_to_x)
-                    tabulator(reffe)(f,point_to_q)
+                    elem::typeof(prototype_tab) = tabulator(reffe)(f,point_to_q)
                 end
             end
         end
     end
-    prototype = first(first(first(first(first(drid_Drid_ldface_perm_to_tab)))))
+    
     function face_point_dof_s(face,face_around)
         dface = face_to_dface[face]
         Dfaces = dface_to_Dfaces[dface]
