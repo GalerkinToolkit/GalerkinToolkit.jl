@@ -119,7 +119,13 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
     prototype_tab = tabulator(reffe)(f,p2q)
     prototype = first(prototype_tab)
 
-    drid_Drid_ldface_perm_to_tab::Tuple{Vector{Vector{Vector{typeof(prototype_tab)}}}} = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
+    prototype_inner = Vector{Vector{typeof(prototype_tab)}}
+    prototype_outer = if Drid_to_reffe isa Tuple
+        Tuple{Tuple{prototype_inner}}
+    else
+        Tuple{Vector{prototype_inner}}
+    end
+    drid_Drid_ldface_perm_to_tab::prototype_outer = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
         # TODO this assumes the same reffes for mesh and interpolation
         map(Drid_to_reffe,Drid_to_refDface) do reffe,refDface
             ldface_perm_varphi = reference_map(refdface,refDface)
