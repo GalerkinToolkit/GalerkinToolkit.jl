@@ -553,6 +553,7 @@ end
 
 function expression(term::FormArgumentTerm)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,term.dependencies)
+    # TODO: not tabulated. we need another solution to tabulate it or this cannot be tabulated anyway
     :(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
 end
 
@@ -711,7 +712,9 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
     J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
-    :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
+    # TODO: inline form accessor
+    form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around)
+    # :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
 #function expression(term::TabulatedTerm{<:FormArgumentTerm})
@@ -1530,7 +1533,7 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
         map(fields(space_test)) do field_space_test
             m_test = max_num_reference_dofs(field_space_test)
             n_test = max_num_faces_around(GT.domain(field_space_test),domain)
-            # TODO: fix the type of tuple(tuple(vector(vector(matrix))))
+            # fix the type of tuple(tuple(vector(vector(matrix))))
             n_matrix::Vector{Vector{Matrix{eltype(alloc)}}} = map(1:n_trial) do _
                 map(1:n_test) do _
                     zeros(eltype(alloc),m_test,m_trial)
@@ -1546,7 +1549,7 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
 
     for face in 1:nfaces
         point_block_dof_v = face_point_block_dof_v(face)
-        # TODO: Reset
+        # Reset
         for field_test_face_around_be in field_face_around_be
             for face_around_be in field_test_face_around_be
                 for face_around_test_be in face_around_be
@@ -1579,7 +1582,7 @@ function matrix_assembly_loop!(face_point_block_dof_v,alloc,space_trial,space_te
                                 for dof_test in 1:ndofs_test
                                     # v = dof_v(dof_trial, dof_test)
                                     v = dof_test_v(dof_test)
-                                    be[dof_test, dof_trial] += v # TODO: This operation takes 50% of total time. can we store it in register?
+                                    be[dof_test, dof_trial] += v 
                                 end
                             end
                         end
@@ -1689,8 +1692,6 @@ function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, depend
     assignment = :(npoints = face_npoints($face))
     push!(face_loop_body.args,assignment)
 
-    # assignment = :(point_block_dof_v = face_point_block_dof_v(face)) # TODO: replace it 
-    # push!(face_loop_body.args,assignment)
     # statements depend on face
     push!(face_loop_body.args, expr_L[2].args...)
 
@@ -2046,11 +2047,18 @@ function lca_deps(a::Int, b::Int, len::Int)
     return result # bitmap a - lca
 end
 
-function binomial_tree_tabulation(expr_L)
+function binomial_tree_tabulation(expr_L, unroll_loops)
     result = Dict()
     used_vars_to_node = Dict()
     len_expr = length(expr_L)
     len_deps = trailing_zeros(len_expr)
+    loop_bits = 0
+    for (i, is_unrolled) in enumerate(unroll_loops)
+        if !is_unrolled
+            display(2^(i-1))
+            loop_bits += 2^(i-1)
+        end
+    end
 
     function binomial_tree_tabulation_impl(position, last_dep)
         function check_used(a) # TODO: many functions defined here. check performance
@@ -2065,7 +2073,9 @@ function binomial_tree_tabulation(expr_L)
         function check_used(a::Symbol)
             if haskey(used_vars_to_node, a)
                 deps = lca_deps(used_vars_to_node[a], position, len_deps)
+                # if  (deps & loop_bits) != 0  &&  (position - used_vars_to_node[a]) & loop_bits != 0
                 result[a] = deps
+                # end
             end
         end
 
@@ -2271,7 +2281,7 @@ function expr_replace_tabulates(expr_L, unrolled_var_deps, tabulated_variables, 
         end
         for i in len_deps:-1:1
             if v & (2 ^ (i-1)) != 0 && unroll_loop_length[i] === nothing
-                # TODO: get exact length with unrolled deps
+                # get exact length with unrolled deps
                 dep = if unroll_deps_length[i] === nothing
                     :($max_lengths_symbol[$i])
                 else
@@ -2426,11 +2436,11 @@ function generate_vector_assembly_loop_body_bitmap(field_n_faces_around, expr_L,
 
     v = last_symbol(expr_L)
     new_v = Symbol("vector_contribution_result")
-    push!(expr_L[end].args, :($new_v = $v)) # TODO: find a better way to unroll it
+    push!(expr_L[end].args, :($new_v = $v)) 
     v = new_v
 
     unrolled_expr_L, unrolled_var_deps = unroll_expr_L(expr_L, bindings, unroll_loop_length)
-    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L)
+    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L, unroll_loops)
     proto_block, var_proto = expr_L_protos(unrolled_expr_L, bindings, unroll_loop_length)
     expr_alloc, unrolled_expr_L = expr_replace_tabulates(unrolled_expr_L, unrolled_var_deps, tabulated_variables, bindings, var_proto, unroll_loop_length, unroll_deps_length)
 
@@ -2501,7 +2511,7 @@ function generate_vector_assembly_loop_body_bitmap(field_n_faces_around, expr_L,
                     (:(npoints = face_npoints($face)), :($point = 1:npoints)), 
                     ((field, nfields), ),
                     ((face_around_symbol, nothing), ),
-                    (:($dof = 1:ndofs_local), ),  # TODO: this should depend on face 
+                    (:($dof = 1:ndofs_local), ),  # this should depend on face 
     )
 
     function get_side_loops_local(position, current_dep, current_unrolled_vars_status = [])
@@ -2528,8 +2538,6 @@ function generate_vector_assembly_loop_body_bitmap(field_n_faces_around, expr_L,
     assignment = :(npoints = face_npoints($face))
     push!(face_loop_body.args,assignment)
 
-    # assignment = :(point_block_dof_v = face_point_block_dof_v(face)) # TODO: replace it 
-    # push!(face_loop_body.args,assignment)
     # statements depend on face
     push!(face_loop_body.args, unrolled_expr_L[2].args...)
     loops = get_side_loops_local(1, 1)
@@ -2655,11 +2663,11 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
 
     v = last_symbol(expr_L)
     new_v = Symbol("matrix_contribution_result")
-    push!(expr_L[end].args, :($new_v = $v)) # TODO: find a better way to unroll it
+    push!(expr_L[end].args, :($new_v = $v))
     v = new_v
 
     unrolled_expr_L, unrolled_var_deps = unroll_expr_L(expr_L, bindings, unroll_loop_length)
-    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L)
+    tabulated_variables = binomial_tree_tabulation(unrolled_expr_L, unroll_loops)
     proto_block, var_proto = expr_L_protos(unrolled_expr_L, bindings, unroll_loop_length)
     expr_alloc, unrolled_expr_L = expr_replace_tabulates(unrolled_expr_L, unrolled_var_deps, tabulated_variables, bindings, var_proto, unroll_loop_length, unroll_deps_length)
 
@@ -2766,8 +2774,8 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
                     ((field_test_symbol, nfields_test), ),
                     ((face_around_trial_symbol, nothing), ),
                     ((face_around_test_symbol, nothing), ),
-                    (:($dof_trial = 1:ndofs_trial_local), ),  # TODO: this should depend on face 
-                    (:($dof_test = 1:ndofs_test_local), ),    # TODO: this should depend on face
+                    (:($dof_trial = 1:ndofs_trial_local), ),  # this should depend on face 
+                    (:($dof_test = 1:ndofs_test_local), ),    # this should depend on face
     )
 
     function get_side_loops_local(position, current_dep, current_unrolled_vars_status = [])
@@ -2867,7 +2875,7 @@ function generate_matrix_assembly_loop_body_bitmap(field_n_faces_around_trial, f
     point_loop = Expr(:for,point_loop_head,point_loop_body)
     push!(face_loop_body.args,point_loop)
 
-    # TODO: this is simplifying the problem. do unrolling and then we can remove this
+
     ndofs = Symbol("n_dofs_for_1_1_trial")
     assignment = :(ndofs_trial_local = $ndofs)
     push!(point_loop_body.args, assignment)
@@ -3058,7 +3066,6 @@ end
 
 # a copy of the older version. need to be compared with statements over terms
 function topological_sort_bitmap(expr,deps)
-    # TODO: replace the gensym calls in this function. we need to generate the same result for each run 
     temporary = gensym()
     expr_L = [Expr(:block) for _ in 1:2^length(deps)]
     marks = Dict{UInt,Any}()
@@ -3090,7 +3097,7 @@ function topological_sort_bitmap(expr,deps)
         expr_n_new = Expr(expr_n.head,args_var...)
         expr_n_new, j
     end
-    function setup_expr_lambda(expr_n) # TODO: do topological sort with deps & new deps, get a list of exprs and merge
+    function setup_expr_lambda(expr_n) # do topological sort with deps & new deps, get a list of exprs and merge
         body = expr_n.args[2]
         args = (expr_n.args[1] isa Symbol) ? (expr_n.args[1], ) : expr_n.args[1].args
         new_deps = (deps..., args...)
@@ -3144,7 +3151,6 @@ function topological_sort_bitmap(expr,deps)
 end
 
 function topological_sort(expr,deps)
-    # TODO: replace the gensym calls in this function. we need to generate the same result for each run 
     temporary = gensym()
     expr_L = [Expr(:block) for _ in 0:length(deps)]
     marks = Dict{UInt,Any}()
