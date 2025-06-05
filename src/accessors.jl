@@ -26,7 +26,7 @@ function shape_function_accessor(f,space::AbstractSpace)
 end
 
 # Tabulated
-function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature)
+function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature, field=1)
     if is_reference_domain(domain(space))
         shape_function_accessor_reference(f,space,measure)
     else
@@ -579,6 +579,7 @@ function shape_function_accessor_physical(f,space::AbstractSpace,measure::Abstra
 end
 
 # Tabulated
+# TODO: inline this to avoid memory allocations here.
 for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
     @eval begin
         function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature)

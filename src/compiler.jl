@@ -712,7 +712,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
     J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
-    # TODO: inline form accessor
+    # TODO: inline form Accessor. How can we know whether it is physical or reference?
     form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around)
     # :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
@@ -1401,6 +1401,7 @@ function expression(term::VectorAssemblyTerm)
 
     expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
     body_bitmap = generate_vector_assembly_loop_body_bitmap(term.field_n_faces_around, expr_L_bitmap, (space, quadrature, alloc), loop_vars)
+    # display(body_bitmap)
     expr = :($alloc_arg -> $body_bitmap)
 
     expr
@@ -2055,7 +2056,6 @@ function binomial_tree_tabulation(expr_L, unroll_loops)
     loop_bits = 0
     for (i, is_unrolled) in enumerate(unroll_loops)
         if !is_unrolled
-            display(2^(i-1))
             loop_bits += 2^(i-1)
         end
     end
@@ -2073,9 +2073,9 @@ function binomial_tree_tabulation(expr_L, unroll_loops)
         function check_used(a::Symbol)
             if haskey(used_vars_to_node, a)
                 deps = lca_deps(used_vars_to_node[a], position, len_deps)
-                # if  (deps & loop_bits) != 0  &&  (position - used_vars_to_node[a]) & loop_bits != 0
-                result[a] = deps
-                # end
+                if  (deps & loop_bits) != 0   # &&  (position - used_vars_to_node[a]) & loop_bits != 0
+                    result[a] = deps
+                end
             end
         end
 
@@ -2117,6 +2117,7 @@ end
 # unrolled_expr_L has a length of 2^l where l is the number of vars
 # each of them is a nested array, representing the dependency of each unrolled var
 function unroll_expr_L(expr_L, bindings, unrolled_deps_and_length)
+    # TODO: block extraction here. be careful with the dependencies. The simplified code may not depend on a loop var but it is implicitly dependent bacause of block extraction.
     unrolled_expr_L::Vector{Any} = [nothing for i in expr_L]
     status = [0 for _ in bindings] # status of unrolled variables
     len_deps = length(bindings)
@@ -2274,6 +2275,7 @@ function expr_replace_tabulates(expr_L, unrolled_var_deps, tabulated_variables, 
 
     for (k, v) in tabulated_variables
         deps = :()
+        fill!(status, 0)
         if haskey(unrolled_var_deps, k)
             for (i, j) in zip(unrolled_var_deps[k]...)
                 status[i] = j
@@ -2284,6 +2286,8 @@ function expr_replace_tabulates(expr_L, unrolled_var_deps, tabulated_variables, 
                 # get exact length with unrolled deps
                 dep = if unroll_deps_length[i] === nothing
                     :($max_lengths_symbol[$i])
+                elseif status[unroll_deps_length[i]] == 0
+                    :(reduce(max, $max_lengths_symbol[$i]))
                 else
                     :($max_lengths_symbol[$i][$(status[unroll_deps_length[i]])]) # TODO: tuples?
                 end
@@ -2377,7 +2381,7 @@ function get_side_loops(position, current_dep, bindings, unroll_loops, unrolled_
             if loop_dep[1] === nothing
                 loop_length = loop_dep[2]
             elseif unrolled_vars[loop_dep[1]] == 0
-                return loop_body, 0
+                loop_length = reduce(max, loop_dep[2])
             else
                 loop_length = loop_dep[2][unrolled_vars[loop_dep[1]]]
             end
@@ -2509,7 +2513,7 @@ function generate_vector_assembly_loop_body_bitmap(field_n_faces_around, expr_L,
     
     loop_range = ((:($face = 1:nfaces),), 
                     (:(npoints = face_npoints($face)), :($point = 1:npoints)), 
-                    ((field, nfields), ),
+                    ((field_symbol, nfields), ),
                     ((face_around_symbol, nothing), ),
                     (:($dof = 1:ndofs_local), ),  # this should depend on face 
     )
@@ -3129,7 +3133,7 @@ function topological_sort_bitmap(expr,deps)
         variable_count += 1
         var = Symbol("var_$variable_count")
         if isa(expr_n,Expr)
-            if expr_n.head === :call # || expr_n.head === :ref
+            if expr_n.head === :call # || expr_n.head === :if  # || expr_n.head === :ref
                 expr_n_new, j = setup_expr_call(expr_n)
             elseif expr_n.head === :(->)
                 expr_n_new, j = setup_expr_lambda(expr_n)
