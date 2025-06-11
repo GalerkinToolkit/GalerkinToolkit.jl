@@ -428,7 +428,8 @@ function PartitionedSolvers_linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
     U = GT.space(uhd)
-    xd = collect(dirichlet_values(uhd)) # Collect can be removed once BArray supports indexing.
+    diri_vals = dirichlet_values(uhd)
+    xd = vector_strategy.values_to_solution(diri_vals)
     T = eltype(xd)
     A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;matrix_strategy,vector_strategy)
     mul!(b,Ad,xd,-1,1)
@@ -454,10 +455,8 @@ function PartitionedSolvers_nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(u
         vector_strategy = monolithic_vector_assembly_strategy(),
     )
     U = GT.space(uh)
-    #b0,residual_cache = assemble_residual(r,uh,V;reuse=Val(true),vector_strategy)
-    #A0,jacobian_cache = assemble_jacobian(j,uh,V,reuse=Val(true),matrix_strategy)
     parameters = (uh,)
-    x = free_values(uh)
+    x = vector_strategy.values_to_solution(free_values(uh))
     T = eltype(x)
     b,residual_cache = assemble_vector(r(uh),T,V;parameters,vector_strategy)
     A,jacobian_cache = assemble_matrix(j(uh),T,U,V;parameters,matrix_strategy)
@@ -468,7 +467,7 @@ end
 function nonlinear_problem_update(p)
     (;uh,residual_cache,jacobian_cache) = PS.workspace(p)
     x = PS.solution(p)
-    uh = solution_field(uh,x)
+    solution_field!(uh,x)
     A = PS.jacobian(p)
     b = PS.residual(p)
     parameters = (uh,)
@@ -485,24 +484,28 @@ end
 
 # Solution fields
 
-function solution_field(U::AbstractSpace,x::AbstractVector)
+function solution_field(U::AbstractSpace,x::AbstractVector;kwargs...)
     T = eltype(x)
     uhd = zero_dirichlet_field(T,U)
-    solution_field(uhd,x)
+    solution_field(uhd,x;kwargs...)
 end
 
-function solution_field(uhd::DiscreteField,x::AbstractVector)
+function solution_field(uhd::DiscreteField,x::AbstractVector;
+        vector_strategy=monolithic_vector_assembly_strategy()
+    )
     diri_vals = dirichlet_values(uhd)
+    T = eltype(diri_vals)
     U = GT.space(uhd)
-    free_vals = free_values_from_solution(x,free_dofs(U))
-    discrete_field(U,free_vals,diri_vals)
+    free_vals = vector_strategy.solution_to_values(free_dofs(U),x)
+    uh = discrete_field(U,free_vals,diri_vals)
 end
 
-function solution_field!(uh::DiscreteField,x::AbstractVector)
+function solution_field!(uh::DiscreteField,x::AbstractVector;
+        vector_strategy=monolithic_vector_assembly_strategy()
+    )
     U = GT.space(uh)
-    free_vals_src = free_values_from_solution(x,free_dofs(U))
-    free_vals_dest = free_values(uh)
-    copyto!(free_vals_dest,free_vals_src)
+    free_vals = free_values(uh)
+    vector_strategy.solution_to_values!(free_vals,x)
     uh
 end
 
@@ -530,22 +533,22 @@ function solution_field!(uh::DiscreteField,p::PS.AbstractSolver)
     solution_field!(uh,PS.solution(p))
 end
 
-function free_values_from_solution(x,dofs)
-    x
-end
-
-function free_values_from_solution(x,dofs::BRange)
-    nfields = blocklength(dofs)
-    map(1:nfields) do field
-        pend = blocklasts(dofs)[field]
-        pini = 1 + pend - length(blocks(dofs)[field])
-        view(x,pini:pend)
-    end |> BVector
-end
-
-function free_values_from_solution(x::BVector,dofs::BRange)
-    x
-end
+#function free_values_from_solution(x,dofs)
+#    x
+#end
+#
+#function free_values_from_solution(x,dofs::BRange)
+#    nfields = blocklength(dofs)
+#    map(1:nfields) do field
+#        pend = blocklasts(dofs)[field]
+#        pini = 1 + pend - length(blocks(dofs)[field])
+#        view(x,pini:pend)
+#    end |> BVector
+#end
+#
+#function free_values_from_solution(x::BVector,dofs::BRange)
+#    x
+#end
 
 # Functions to be extended in the extension modules
 
