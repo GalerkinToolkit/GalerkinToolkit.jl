@@ -78,7 +78,7 @@ tspan = (0.0,T)
 dt = T/N
 GT.interpolate_free!(u0,uh)
 @time prob = GT.SciMLBase_ODEProblem(tspan,uh,m,r,j;dirichlet_dynamics!)
-@time timestepper = DifferentialEquations.Rodas5P(autodiff=false);
+@time timestepper = DifferentialEquations.QNDF(autodiff=false);
 @time integrator = DifferentialEquations.init(
     prob, timestepper; initializealg=DifferentialEquations.NoInit(),
     dt,adaptive=false,save_on=false)
