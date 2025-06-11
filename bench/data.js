@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1748445780464,
+  "lastUpdate": 1749650962568,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1574,6 +1574,36 @@ window.BENCHMARK_DATA = {
             "value": 682872358.5,
             "unit": "ns",
             "extra": "gctime=27305827\nmemory=434346240\nallocs=14376059\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9926d7ce8100904b92ef8280c66301874ae65df3",
+          "message": "Merge pull request #209 from GalerkinToolkit/multifield\n\nMisc fixes and improvements for multifield.",
+          "timestamp": "2025-06-11T16:05:19+02:00",
+          "tree_id": "daf533cbc7aa22df2e723e61de277b47920d2845",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/9926d7ce8100904b92ef8280c66301874ae65df3"
+        },
+        "date": 1749650962013,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 670756399.5,
+            "unit": "ns",
+            "extra": "gctime=26339499.5\nmemory=434346240\nallocs=14376059\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
