@@ -89,7 +89,7 @@ function main(;mesh_size=0.02,R=0.15,T=2,N=100)
 
     #Selection and setup of the ODE solver
     dt = T/N
-    solver = DifferentialEquations.Rodas5P(autodiff=false);
+    solver = DifferentialEquations.QNDF(autodiff=false);
     integrator = DifferentialEquations.init(problem,solver;
         initializealg=DifferentialEquations.NoInit(),dt,
         adaptive=false,save_on=false)

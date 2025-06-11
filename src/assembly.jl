@@ -1,5 +1,8 @@
 
-function monolithic_vector_assembly_strategy()
+function monolithic_vector_assembly_strategy(
+    ;layout=:block, # or :cyclic
+    )
+    @assert layout === :block ## Assumes block layout for the moment
     function init(dofs,::Type{T}) where T
         n_total_dofs = length(dofs)
         offsets = [0]
@@ -59,10 +62,63 @@ function monolithic_vector_assembly_strategy()
         PartitionedArrays.dense_vector!(vec,I,V)
         vec
     end
-    (;init,scalar_type,counter,count,allocate,set!,compress,compress!)
+    function solution_to_values!(coeffs,x)
+        if coeffs !== x
+            copyto!(coeffs,x)
+        end
+        coeffs
+    end
+    function solution_to_values!(coeffs::BVector,x)
+        dofs = axes(coeffs,1)
+        nfields = blocklength(dofs)
+        for field in 1:nfields
+            pend = blocklasts(dofs)[field]
+            pini = 1 + pend - length(blocks(dofs)[field])
+            copyto!(coeffs[Block(field)],view(x,pini:pend))
+        end
+        coeffs
+    end
+    function solution_to_values(dofs,x)
+        x
+    end
+    function solution_to_values(dofs::BRange,x)
+        nfields = blocklength(dofs)
+        map(1:nfields) do field
+            pend = blocklasts(dofs)[field]
+            pini = 1 + pend - length(blocks(dofs)[field])
+            x[pini:pend]
+        end |> BVector
+    end
+    function values_to_solution!(x,coeffs)
+        if coeffs !== x
+            copyto!(x,coeffs)
+        end
+        x
+    end
+    function values_to_solution!(x,coeffs::BVector)
+        dofs = axes(coeffs,1)
+        nfields = blocklength(dofs)
+        for field in 1:nfields
+            pend = blocklasts(dofs)[field]
+            pini = 1 + pend - length(blocks(dofs)[field])
+            copyto!(view(x,pini:pend),coeffs[Block(field)])
+        end
+        x
+    end
+    function values_to_solution(coeffs)
+        coeffs
+    end
+    function values_to_solution(coeffs::BVector)
+        collect(coeffs)
+    end
+    (;init,scalar_type,counter,count,allocate,set!,compress,compress!,solution_to_values!,solution_to_values,values_to_solution,values_to_solution!)
 end
 
-function monolithic_matrix_assembly_strategy(;matrix_type=nothing)
+function monolithic_matrix_assembly_strategy(;
+    matrix_type=nothing,
+    layout=:block, # or :cyclic
+    )
+    @assert layout === :block
     function init(dofs_test,dofs_trial,::Type{T}) where T
         n_total_rows = length(dofs_test)
         n_total_cols = length(dofs_trial)
