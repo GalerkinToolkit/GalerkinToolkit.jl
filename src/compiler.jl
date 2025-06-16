@@ -1410,6 +1410,8 @@ end
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
+
+    # V0: hand-written
     # dof_v = :(($dof_trial) -> ($dof_test) -> $term2)
     # block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
     # point_block_dof_v = :($point -> $block_dof_v)
@@ -1419,14 +1421,28 @@ function expression(term::MatrixAssemblyTerm)
     # expr
     loop_vars = (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
 
+    # V1: normal hoisting
     # expr_L = topological_sort(term2, loop_vars) 
     # body = generate_matrix_assembly_loop_body(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L, (space_trial, space_test, quadrature, alloc), loop_vars)
+    # # display(body)
     # expr = :($alloc_arg->$body)
 
-    expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
-    body_bitmap = generate_matrix_assembly_loop_body_bitmap(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L_bitmap, (space_trial, space_test, quadrature, alloc), loop_vars)
+    # V2: bitmap tabulation
+    # expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
+    # body_bitmap = generate_matrix_assembly_loop_body_bitmap(term.field_n_faces_around_trial, term.field_n_faces_around_test, expr_L_bitmap, (space_trial, space_test, quadrature, alloc), loop_vars)
+    # expr = :($alloc_arg -> $body_bitmap)
+
+
     # display(body_bitmap)
-    expr = :($alloc_arg -> $body_bitmap)
+
+    # V3: split
+    # generate loops for term
+    body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars)
+    # rewrite
+    body_optimized = ast_optimize(body)
+    # display(body_optimized)
+    expr = :($alloc_arg->$body_optimized)
+    
     
     expr
 end
@@ -1623,7 +1639,11 @@ function last_symbol(expr_L)
 end
 
 function alloc_zeros(symbol, args...)
-    zeros(args...)
+    if args[1] === Any
+        Array{args[1]}(undef, args[2:end])
+    else
+        zeros(args...)
+    end
 end
 
 function generate_vector_assembly_loop_body(field_n_faces_around, expr_L, dependencies, bindings)
@@ -3496,4 +3516,127 @@ function statements_expr_with_loops(node)
 
     visit(node; has_value = false)
     scope_block[root]
+end
+
+
+function ast_optimize(expr)
+    # TODO: ugly. find a better way to simplify it
+    unrolled_vars = Set([:field_1, :field_2])
+    expr2 = ast_loop_unroll(expr, unrolled_vars) |> ast_constant_folding
+
+    unrolled_vars_2 = Set([:face_around_1 , :face_around_2])
+    expr3 = ast_loop_unroll(expr2, unrolled_vars_2) |> ast_constant_folding
+
+
+    expr4, var_count = ast_flatten(expr3, 0)
+    expr4
+
+    expr5 = ast_array_unroll(expr4)
+
+    # TODO: for loop ranges in tabulate. find a proper way to allocate the memory
+    # expr6, _ = ast_tabulate(expr5) 
+
+    # expr6
+    # expr7 = ast_remove_dead_code(expr6)
+
+    # expr8 = ast_topological_sort(expr7)
+end
+
+function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)
+    expr_L = term
+    # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    # dependencies: (space_trial, space_test, quadrature, alloc)
+    # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    (space_trial, space_test, quadrature, alloc) = dependencies
+    (face, point, field_trial_symbol, field_test_symbol, face_around_trial_symbol, face_around_test_symbol, dof_trial, dof_test) = bindings # TODO: replace field_symbol and face_around_symbol
+    # v = last_symbol(expr_L)
+
+    nfields_trial = length(field_n_faces_around_trial)
+    nfields_test = length(field_n_faces_around_test)
+
+    max_face_around_trial = max(field_n_faces_around_trial...)
+    max_face_around_test = max(field_n_faces_around_test...)
+
+    field_n_faces_around_trial = :(($(field_n_faces_around_trial...), ))
+    field_n_faces_around_test = :(($(field_n_faces_around_test...), ))
+    assignment = quote
+        domain = GT.domain($quadrature)
+        T = eltype($alloc)
+        z = zero(T)
+        nfaces = GT.num_faces(domain)
+        face_npoints = GT.num_points_accessor($quadrature)
+
+        be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
+        for $field_trial_symbol in 1:$nfields_trial
+            n_faces_around_trial_init = $field_n_faces_around_trial[$field_trial_symbol]
+            for $field_test_symbol in 1:$nfields_test
+                n_faces_around_test_init = $field_n_faces_around_test[$field_test_symbol]
+                for $face_around_trial_symbol in 1:n_faces_around_trial_init
+                    for $face_around_test_symbol in 1:n_faces_around_test_init
+                        var_str_init = "be_for_$($field_trial_symbol)_$($field_test_symbol)_$($face_around_trial_symbol)_$($face_around_test_symbol)"
+                        be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol] = 
+                            alloc_zeros(var_str_init, T, GT.max_num_reference_dofs(GT.field($space_test,$field_test_symbol)), GT.max_num_reference_dofs(GT.field($space_trial,$field_trial_symbol)))
+                    end
+                end
+            end
+        end
+
+        for $face = 1:nfaces
+            npoints = face_npoints($face)
+            for $field_trial_symbol in 1:$nfields_trial
+                n_faces_around_trial_zero = $field_n_faces_around_trial[$field_trial_symbol]
+                for $field_test_symbol in 1:$nfields_test
+                    n_faces_around_test_zero = $field_n_faces_around_test[$field_test_symbol]
+                    for $face_around_trial_symbol in 1:n_faces_around_trial_zero
+                        for $face_around_test_symbol in 1:n_faces_around_test_zero
+                            fill!(be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol], z)
+                        end
+                    end
+                end
+            end
+
+            for $point in 1:npoints
+                for $field_trial_symbol in 1:$nfields_trial
+                    n_faces_around_trial = $field_n_faces_around_trial[$field_trial_symbol]
+                    for $field_test_symbol in 1:$nfields_test
+                        n_faces_around_test = $field_n_faces_around_test[$field_test_symbol]
+                        for $face_around_trial_symbol in 1:n_faces_around_trial
+                            dofs_trial = GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol)
+                            ndofs_trial = length(dofs_trial)
+                            for $face_around_test_symbol in 1:n_faces_around_test
+                                dofs_test = GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol)
+                                ndofs_test = length(dofs_test)
+                                for $dof_trial in 1:ndofs_trial
+                                    for $dof_test in 1:ndofs_test
+                                        v = $term
+                                        be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol][$dof_test, $dof_trial] += v
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for $field_trial_symbol in 1:$nfields_trial
+                n_faces_around_trial_contribute = $field_n_faces_around_trial[$field_trial_symbol]
+                for $field_test_symbol in 1:$nfields_test
+                    n_faces_around_test_contribute = $field_n_faces_around_test[$field_test_symbol]
+                    for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
+                        for $face_around_test_symbol in 1:n_faces_around_test_contribute
+                            GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
+                                                GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol),
+                                                GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol),
+                                                $field_test_symbol,$field_trial_symbol)
+                        end
+                    end
+                end
+            end
+
+        end
+    end
+
+    block = assignment
+    ast_clean_up!(block)
+    block
 end

@@ -41,5 +41,6 @@ include("compiler.jl")
 #include("quantity.jl")
 include("visualization.jl")
 #include("new_ir.jl")
+include("passes.jl")
 
 end # module

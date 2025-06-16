@@ -1055,7 +1055,7 @@ function form_argument_accessor_term(f,space,measure,the_field, face,the_face_ar
     mask = :(($face_around == $the_face_around && $field == $the_field))
     z = :( $zero($(GT.prototype)(shape_function_accessor($f,$space,$measure))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
     shape_function = :(shape_function_accessor($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
-    :($mask ? $shape_function : $z)
+    :(ifelse($mask, $shape_function, $z))
 
 end
 
