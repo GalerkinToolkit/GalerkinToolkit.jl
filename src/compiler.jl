@@ -1399,13 +1399,23 @@ function expression(term::VectorAssemblyTerm)
     # body = generate_vector_assembly_loop_body(term.field_n_faces_around, expr_L, (space,quadrature,alloc), loop_vars)
     # expr = :($alloc_arg->$body)
 
-    expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
-    body_bitmap = generate_vector_assembly_loop_body_bitmap(term.field_n_faces_around, expr_L_bitmap, (space, quadrature, alloc), loop_vars)
-    # display(body_bitmap)
-    expr = :($alloc_arg -> $body_bitmap)
+    # expr_L_bitmap = topological_sort_bitmap(term2, loop_vars) 
+    # body_bitmap = generate_vector_assembly_loop_body_bitmap(term.field_n_faces_around, expr_L_bitmap, (space, quadrature, alloc), loop_vars)
+    # expr = :($alloc_arg -> $body_bitmap)
+
+    body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars)
+
+    nfields = length(term.field_n_faces_around)
+    ndofs = [:(GT.max_num_reference_dofs(GT.field($space,$i))) for i in 1:nfields]
+
+    loop_var_range = Dict(dof => :(max($(ndofs...),)) )
+
+    body_optimized = ast_optimize(body, loop_var_range)
+    expr = :($alloc_arg->$body_optimized)
 
     expr
 end
+
 
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
@@ -1439,10 +1449,18 @@ function expression(term::MatrixAssemblyTerm)
     # generate loops for term
     body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars)
     # rewrite
-    body_optimized = ast_optimize(body)
+
+    nfields_trial = length(term.field_n_faces_around_trial)
+    nfields_test = length(term.field_n_faces_around_test)
+    ndofs_test = [:(GT.max_num_reference_dofs(GT.field($space_test,$i))) for i in 1:nfields_test]
+    ndofs_trial = [:(GT.max_num_reference_dofs(GT.field($space_trial,$i))) for i in 1:nfields_trial]
+
+    loop_var_range = Dict(dof_trial => :(max($(ndofs_trial...),)), 
+                            dof_test => :(max($(ndofs_test...),)))
+
+    body_optimized = ast_optimize(body, loop_var_range)
     # display(body_optimized)
     expr = :($alloc_arg->$body_optimized)
-    
     
     expr
 end
@@ -3519,7 +3537,8 @@ function statements_expr_with_loops(node)
 end
 
 
-function ast_optimize(expr)
+function ast_optimize(expr, loop_var_range)
+
     # TODO: ugly. find a better way to simplify it
     unrolled_vars = Set([:field_1, :field_2])
     expr2 = ast_loop_unroll(expr, unrolled_vars) |> ast_constant_folding
@@ -3533,17 +3552,20 @@ function ast_optimize(expr)
 
     expr5 = ast_array_unroll(expr4)
 
-    # TODO: for loop ranges in tabulate. find a proper way to allocate the memory
-    # expr6, _ = ast_tabulate(expr5) 
-
+          
+    expr6, _ = ast_tabulate(expr5, 0, loop_var_range) 
+    
     # expr6
-    # expr7 = ast_remove_dead_code(expr6)
 
-    # expr8 = ast_topological_sort(expr7)
+    expr7 = ast_remove_dead_code(expr6)
+
+    expr8 = ast_topological_sort(expr7)
+    expr8, var_count = ast_flatten(expr8, var_count)
+    expr8 = ast_topological_sort(expr8)
+    expr8
 end
 
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)
-    expr_L = term
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -3559,12 +3581,13 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
 
     field_n_faces_around_trial = :(($(field_n_faces_around_trial...), ))
     field_n_faces_around_test = :(($(field_n_faces_around_test...), ))
+
     assignment = quote
-        domain = GT.domain($quadrature)
+        domain = $(GT.domain)($quadrature)
         T = eltype($alloc)
         z = zero(T)
-        nfaces = GT.num_faces(domain)
-        face_npoints = GT.num_points_accessor($quadrature)
+        nfaces = $(GT.num_faces)(domain)
+        face_npoints = $(GT.num_points_accessor)($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
         for $field_trial_symbol in 1:$nfields_trial
@@ -3575,7 +3598,7 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $face_around_test_symbol in 1:n_faces_around_test_init
                         var_str_init = "be_for_$($field_trial_symbol)_$($field_test_symbol)_$($face_around_trial_symbol)_$($face_around_test_symbol)"
                         be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol] = 
-                            alloc_zeros(var_str_init, T, GT.max_num_reference_dofs(GT.field($space_test,$field_test_symbol)), GT.max_num_reference_dofs(GT.field($space_trial,$field_trial_symbol)))
+                            alloc_zeros(var_str_init, T, $(GT.max_num_reference_dofs)($(GT.field)($space_test,$field_test_symbol)),$(GT.max_num_reference_dofs)($(GT.field)($space_trial,$field_trial_symbol)))
                     end
                 end
             end
@@ -3601,10 +3624,10 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $field_test_symbol in 1:$nfields_test
                         n_faces_around_test = $field_n_faces_around_test[$field_test_symbol]
                         for $face_around_trial_symbol in 1:n_faces_around_trial
-                            dofs_trial = GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol)
+                            dofs_trial = $(GT.dofs_accessor)($(GT.field)($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol)
                             ndofs_trial = length(dofs_trial)
                             for $face_around_test_symbol in 1:n_faces_around_test
-                                dofs_test = GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol)
+                                dofs_test = $(GT.dofs_accessor)($(GT.field)($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol)
                                 ndofs_test = length(dofs_test)
                                 for $dof_trial in 1:ndofs_trial
                                     for $dof_test in 1:ndofs_test
@@ -3624,13 +3647,87 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     n_faces_around_test_contribute = $field_n_faces_around_test[$field_test_symbol]
                     for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
                         for $face_around_test_symbol in 1:n_faces_around_test_contribute
-                            GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
-                                                GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol),
-                                                GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol),
+                            $(GT.contribute!)($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
+                                                $(GT.dofs_accessor)($(GT.field)($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol),
+                                                $(GT.dofs_accessor)($(GT.field)($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol),
                                                 $field_test_symbol,$field_trial_symbol)
                         end
                     end
                 end
+            end
+
+        end
+    end
+
+    block = assignment
+    ast_clean_up!(block)
+    block
+end
+
+
+
+function generate_vector_assembly_template(term, field_n_faces_around, dependencies, bindings)
+    # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    # dependencies: (space_trial, space_test, quadrature, alloc)
+    # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
+    (space, quadrature, alloc) = dependencies
+    (face, point, field_symbol, face_around_symbol, dof) = bindings
+    # v = last_symbol(expr_L)
+
+    nfields = length(field_n_faces_around)
+
+    max_face_around = max(field_n_faces_around...)
+
+    field_n_faces_around = :(($(field_n_faces_around...), ))
+
+    assignment = quote
+        domain = $(GT.domain)($quadrature)
+        T = eltype($alloc)
+        z = zero(T)
+        nfaces = $(GT.num_faces)(domain)
+        face_npoints = $(GT.num_points_accessor)($quadrature)
+
+        be = alloc_zeros("be",Any, $max_face_around, $nfields)
+        for $field_symbol in 1:$nfields
+            n_faces_around_init = $field_n_faces_around[$field_symbol]
+            for $face_around_symbol in 1:n_faces_around_init
+                var_str_init = "be_for_$($field_symbol)_$($face_around_symbol)"
+                be[$face_around_symbol, $field_symbol] = 
+                    alloc_zeros(var_str_init, T, $(GT.max_num_reference_dofs)($(GT.field)($space,$field_symbol)) )
+            end
+        end
+
+        for $face = 1:nfaces
+            npoints = face_npoints($face)
+            for $field_symbol in 1:$nfields
+                n_faces_around_zero = $field_n_faces_around[$field_symbol]
+                for $face_around_symbol in 1:n_faces_around_zero
+                    fill!(be[$face_around_symbol, $field_symbol], z)
+                end
+            end
+
+            for $point in 1:npoints
+                for $field_symbol in 1:$nfields
+                    n_faces_around = $field_n_faces_around[$field_symbol]
+                    for $face_around_symbol in 1:n_faces_around
+                        dofs = $(GT.dofs_accessor)($(GT.field)($space,$field_symbol),domain)($face,$face_around_symbol)
+                        ndofs = length(dofs)
+                        for $dof in 1:ndofs
+                            v = $term
+                            be[$face_around_symbol, $field_symbol][$dof] += v
+                        end
+                    end
+                end
+            end
+
+            for $field_symbol in 1:$nfields
+                n_faces_around_contribute = $field_n_faces_around[$field_symbol]
+                for $face_around_symbol in 1:n_faces_around_contribute
+                    $(GT.contribute!)($alloc,be[$face_around_symbol, $field_symbol],
+                                        $(GT.dofs_accessor)($(GT.field)($space,$field_symbol),domain)($face,$face_around_symbol),
+                                        $field_symbol)
+                end
+
             end
 
         end

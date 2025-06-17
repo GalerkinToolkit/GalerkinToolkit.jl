@@ -114,7 +114,8 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
     point_to_x = drid_to_point_to_x[1]
     refdface = drid_to_refdface[1]
     reffe,refDface = Drid_to_reffe[1], Drid_to_refDface[1]
-    lpv = reference_map(refdface,refDface)[1][1]
+    lpv0 = reference_map(refdface,refDface)
+    lpv = lpv0[1][1]
     p2q = lpv.(point_to_x)
     prototype_tab = tabulator(reffe)(f,p2q)
     prototype = first(prototype_tab)

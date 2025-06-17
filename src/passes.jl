@@ -405,25 +405,27 @@ function ast_proto_block(ast, var_count = 0)
     return block, var_proto, var_count
 end
 
-function lowbit(a::Int)
-    a & (-a) # trick to get the lowest bit of an integer.
-end
+
 
 # a: define, b: use
 function lca_deps(a::Int, b::Int)
+    function low_bit(a::Int)
+        a & (-a) # trick to get the lowest bit of an integer.
+    end
+
     lca = 0
     if a == b
         lca = a
     else
         diff = a ⊻ b
-        lca = (lowbit(diff) - 1) & a
+        lca = (low_bit(diff) - 1) & a
     end
     result = a & ~(lca)
     return result # bitmap a - lca
 end
 
 # Note: must be applied after flatten
-function ast_tabulate(ast, var_count = 0)
+function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
     var_dependencies = Dict() # bitset
     var_alloc_shape = Dict()
     loop_index_range = Dict()
@@ -433,6 +435,9 @@ function ast_tabulate(ast, var_count = 0)
 
     binomial_tree_blocks = [ast_block()]
     accumulate_vars = ast_accumulate_vars(ast)
+
+    # 1 get prototype (prototype init code block & Dict original code var => prototype var )
+    proto_block, var_proto, var_count = ast_proto_block(ast, var_count)
 
 
     function get_deps_impl!(node, deps_list)
@@ -492,7 +497,18 @@ function ast_tabulate(ast, var_count = 0)
         if ast_is_loop(node)
             loop_idx = ast_loop_index(node)
             loop_signature = ast_loop_signature(node)
-            loop_range = ast_loop_signature_upperbound(loop_signature) # TODO: find the exact max dim size
+            loop_range = ast_loop_signature_upperbound(loop_signature)
+            if ast_is_number(loop_range)
+                # pass 
+            elseif haskey(loop_var_maxlength, loop_idx)
+                # TODO: find the exact max dim size
+                loop_range = loop_var_maxlength[loop_idx]
+            elseif haskey(var_proto, loop_range)
+                loop_range = var_proto[loop_range] # TODO: maybe incorrect.
+            else
+                error("loop range not found!")
+            end
+            
             loop_index_depth[loop_idx] = depth
             push!(dependencies, loop_idx)
             loop_index_range[loop_idx] = loop_range
@@ -562,12 +578,9 @@ function ast_tabulate(ast, var_count = 0)
         end
     end
     
-    # 1 tabulate the code, without mem alloc
+    # 2 tabulate the code, without mem alloc
     ast_tabulate_impl!(ast)
     tabulated_block = binomial_tree_blocks[1]
-
-    # 2 get prototype (prototype init code block & Dict original code var => prototype var )
-    proto_block, var_proto, var_count = ast_proto_block(ast, var_count)
 
     # 3 allocate memory for tabulated arrays
     alloc_block = ast_tabulate_alloc_block(var_alloc_shape, var_proto)
@@ -885,7 +898,7 @@ function ast_flatten(ast, var_count_init = 0)
             else
                 return node
             end
-        elseif ast_is_block(node) # TODO: check correctness
+        elseif ast_is_block(node) 
             for i in ast_children(node)
                 ast_flatten_impl!(i, block, expr_var, -1)
             end
@@ -896,7 +909,7 @@ function ast_flatten(ast, var_count_init = 0)
             # TODO: do we need to flatten loop ranges?
             ast_block_append_statements!(block, expr)
             return expr
-        elseif ast_is_definition(node)
+        elseif ast_is_definition(node) # TODO: this is not correct for general cases. when a = c and b = c appear in 2 loop levels, we cannot refer that
             lhs, rhs = ast_children(node)
             new_rhs = ast_flatten_impl!(rhs, block, expr_var, 1)
             if ast_is_leaf(new_rhs) && ast_is_leaf(lhs)
@@ -1342,26 +1355,30 @@ function ast_topological_sort(ast)
     accumulate_vars = ast_accumulate_vars(ast)
     function ast_topological_sort_impl(node, depth = 1)
         if haskey(expr_var, node)
-            expr_var[node]
+            return expr_var[node]
         elseif ast_is_leaf(node)
-            node
+            return node
         elseif ast_is_loop(node)
             push!(var_depth, Set())
-            body = ast_topological_sort_impl(ast_loop_body(node), depth + 1)
             signature = ast_loop_signature(node)
+            signature_children = map(x -> ast_topological_sort_impl(x, depth), ast_children(signature))
+            new_signature = ast_replace_children(signature, signature_children...)
+            body = ast_topological_sort_impl(ast_loop_body(node), depth + 1)
+            
             for i in var_depth[end]
                 delete!(expr_var, i)
             end
             pop!(var_depth)
-            ast_for(signature, body)
+            return ast_for(new_signature, body)
         else
             new_children = map(ast_children(node)) do child
-                ast_topological_sort_impl(child, depth)
+                new_child = ast_topological_sort_impl(child, depth)
+                haskey(expr_var, new_child) ? expr_var[new_child] : new_child
             end 
             new_children_filtered = filter(x -> x !== nothing, new_children)
             
             new_node = ast_replace_children(node, new_children_filtered...)
-            if ast_is_definition(node) && ast_is_leaf(ast_lhs(node)) && !(ast_lhs(node) in accumulate_vars)
+            if ast_is_definition(new_node) && ast_is_leaf(ast_lhs(new_node)) && !(ast_lhs(new_node) in accumulate_vars)
                 lhs = ast_lhs(new_node)
                 rhs = ast_rhs(new_node)
                 if ast_is_leaf(rhs)
@@ -1371,6 +1388,7 @@ function ast_topological_sort(ast)
                 else
                     expr_var[rhs] = lhs
                     push!(var_depth[depth], rhs)
+                    return new_node
                 end
             end
             new_node 
