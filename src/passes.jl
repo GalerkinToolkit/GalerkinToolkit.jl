@@ -125,6 +125,10 @@ function ast_is_bool(t)
     t isa Bool
 end
 
+function ast_is_nothing(t)
+    return t === nothing || t == :nothing
+end
+
 
 function ast_is_zero(t)
     return   ((t isa Number) && t == 0.0) || (ast_is_call(t) && ast_children(t)[1] == :zero)
@@ -1006,7 +1010,7 @@ function ast_constant_folding(ast)
             else 
                 map(x -> ast_constant_folding_impl(x, false), args_0)
             end
-            args = filter(x -> x !== nothing, args_1)
+            args = ast_is_block(args_1) ? filter(x -> x !== nothing, args_1) : args_1
 
             if ast_is_definition(node) && ast_is_call(args[2]) && (ast_children(args[2])[1] in zero_calls) && ast_is_leaf(ast_lhs(node)) && !(ast_lhs(node) in accumulate_vars)
                 zero_vars[ast_lhs(node)] = args[2]
@@ -1031,7 +1035,7 @@ function ast_constant_folding(ast)
             elseif ast_is_call(node)
                 if args[1] == ast_leaf(:(==))
                     lhs, rhs = args[2:3]
-                    if ast_is_number(lhs) && ast_is_number(rhs) 
+                    if (ast_is_number(lhs) && ast_is_number(rhs)) || (ast_is_nothing(lhs) && ast_is_nothing(rhs))
                         return lhs == rhs
                     end
                 elseif args[1] == ast_leaf(:ifelse) 
@@ -1375,7 +1379,7 @@ function ast_topological_sort(ast)
                 new_child = ast_topological_sort_impl(child, depth)
                 haskey(expr_var, new_child) ? expr_var[new_child] : new_child
             end 
-            new_children_filtered = filter(x -> x !== nothing, new_children)
+            new_children_filtered = ast_is_block(node) ? filter(x -> x !== nothing, new_children) : new_children
             
             new_node = ast_replace_children(node, new_children_filtered...)
             if ast_is_definition(new_node) && ast_is_leaf(ast_lhs(new_node)) && !(ast_lhs(new_node) in accumulate_vars)

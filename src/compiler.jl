@@ -497,6 +497,7 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         the_field_term = leaf_term(the_field; is_compile_constant=true)
         (space_term, domain_term, face_term, field_term, dof_term, face_around_term) = map(leaf_term, (space, domain, face, field, dof, face_around))
         to_leaf_term = x -> (x isa AbstractTerm) ? x : leaf_term(x)
+        is_reference = is_reference_domain(space_domain)
 
         if D == d
             # the_face_around_term = leaf_term(nothing, is_compile_constant=true)
@@ -505,7 +506,7 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             # face_around_term = leaf_term(nothing)
             face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            FormArgumentTerm(dependencies, D)
+            FormArgumentTerm(dependencies, D, is_reference, :interior)
         elseif D==d+1 && face_around !== nothing
             # the_face_around_term = leaf_term(face_around, is_compile_constant=true)
             # face_around_term = leaf_term(face_around)
@@ -514,14 +515,14 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             # face_around_term = leaf_term(nothing)
             face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            FormArgumentTerm(dependencies, D)
+            FormArgumentTerm(dependencies, D, is_reference, :boundary)
         else
             face_around_term = leaf_term(face_around_index(index,arg))
             the_face_around = :the_face_around
             the_face_around_term = leaf_term(the_face_around)
             n_faces_around = leaf_term(2;is_compile_constant=true) # Hard coded! But OK in practice.
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
-            SkeletonTerm(FormArgumentTerm(dependencies, D),n_faces_around,the_face_around)
+            SkeletonTerm(FormArgumentTerm(dependencies, D, is_reference, :skeleton), n_faces_around,the_face_around)
         end
     end
 end
@@ -529,6 +530,8 @@ end
 struct FormArgumentTerm <: AbstractTerm
     dependencies
     D::Int
+    is_reference::Bool
+    integral_type::Symbol
     #d::Int
 end
 
@@ -542,13 +545,13 @@ function dependencies(term::FormArgumentTerm)
 end
 
 function replace_dependencies(term::FormArgumentTerm,dependencies)
-    FormArgumentTerm(dependencies, term.D)
+    FormArgumentTerm(dependencies, term.D, term.is_reference, term.integral_type)
 end
 
 function replace_the_face_around(term::FormArgumentTerm,the_face_around)
     (f,space,domain,face,the_field,field,dof,_,face_around) = term.dependencies
     dependencies = (f,space,domain,face,the_field,field,dof,the_face_around,face_around)
-    FormArgumentTerm(dependencies, term.D)
+    FormArgumentTerm(dependencies, term.D, term.is_reference, term.integral_type)
 end
 
 function expression(term::FormArgumentTerm)
@@ -713,7 +716,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     D = parent.D
     J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
     # TODO: inline form Accessor. How can we know whether it is physical or reference?
-    form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around)
+    form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around, parent.is_reference, parent.integral_type)
     # :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
 end
 
