@@ -1463,8 +1463,14 @@ function expression(term::MatrixAssemblyTerm)
 
     body_optimized = ast_optimize(body, loop_var_range)
     # display(body_optimized)
-    expr = :($alloc_arg->$body_optimized)
-    
+    expr = quote 
+        $alloc_arg -> begin
+            if GT.num_faces(GT.domain($quadrature)) == 0
+                return
+            end
+            $body_optimized
+        end
+    end
     expr
 end
 
