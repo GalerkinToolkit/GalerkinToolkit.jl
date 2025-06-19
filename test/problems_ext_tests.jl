@@ -64,7 +64,7 @@ uh = GT.zero_field(Float64,V)
 
 u0 = GT.analytical_field(x->0.0,Ω)
 
-degree = 2*GT.order(V)
+degree = 2*GT.val_parameter(GT.order(V))
 dΩ = GT.measure(Ω,degree)
 
 C = 10
