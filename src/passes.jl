@@ -550,6 +550,12 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             var_dependencies[ast_lhs(node)] = node_deps
             ast_block_append_statements!(binomial_tree_blocks[node_deps + 1], node)
         else # do not hoist. these are fill!, contribute!, +=, and init loop vars. push to the last binomial tree node #TODO: do we need to hoist the entire sum loop? is it possible?
+            expr = ast_is_incremental(node) ? ast_rhs(node) : node
+            children_deps = get_deps(expr)           
+            node_deps = (2^depth) - 1
+            for (child_var, child_deps) in children_deps
+                update_alloc_info(child_var, node_deps, child_deps)
+            end
             ast_block_append_statements!(binomial_tree_blocks[end], node)
         end
     end
