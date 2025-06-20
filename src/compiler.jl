@@ -3571,7 +3571,9 @@ function ast_optimize(expr, loop_var_range)
     expr8 = ast_topological_sort(expr7)
     expr8, var_count = ast_flatten(expr8, var_count)
     expr8 = ast_topological_sort(expr8)
-    expr8
+
+    expr9 = ast_array_aliasing(expr8)
+    expr9
 end
 
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)

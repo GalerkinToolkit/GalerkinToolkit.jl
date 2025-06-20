@@ -26,11 +26,12 @@ function shape_function_accessor(f,space::AbstractSpace)
 end
 
 # Tabulated
-function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature, field=1)
+function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation=Val(false))
     if is_reference_domain(domain(space))
+        # TODO: do we need to remove the tabulation or inline this?
         shape_function_accessor_reference(f,space,measure)
     else
-        shape_function_accessor_physical(f,space,measure)
+        shape_function_accessor_physical(f,space,measure,disable_tabulation)
     end
 end
 
@@ -562,7 +563,7 @@ function shape_function_accessor_physical(f,space::AbstractSpace)
 end
 
 # This gets tabulated only for particular instances of f.
-function shape_function_accessor_physical(f,space::AbstractSpace,measure::AbstractQuadrature)
+function shape_function_accessor_physical(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation)
     if num_dims(domain(space)) != num_dims(domain(measure))
         error("case not implemented")
     end
@@ -587,7 +588,7 @@ end
 # Tabulated
 for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
     @eval begin
-        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature)
+        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{false})
             face_point_dof_v = shape_function_accessor_reference(f,space,measure)
             face_ndofs = num_dofs_accessor(space,GT.domain(measure))
             dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
@@ -619,6 +620,37 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                     end
                     function dof_f(dof)
                         dof_s[dof]
+                    end
+                end
+                function point_dof_s(point,J = nothing)
+                    J2 = J === nothing ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
+                end
+                return point_dof_s
+            end
+            accessor(face_point_dof_s,prototype)
+        end # function
+
+
+        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{true})
+            face_point_dof_v = shape_function_accessor_reference(f,space,measure)
+            face_ndofs = num_dofs_accessor(space,GT.domain(measure))
+            dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
+            D = num_dims(domain(space))
+            face_point_Dphi = jacobian_accessor(measure,Val(D))
+            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
+            
+            function face_point_dof_s(face,face_around=nothing)
+                point_dof_v = face_point_dof_v(face,face_around)
+                dof_modif = dface_to_modif(face,face_around)
+                point_Dphi = face_point_Dphi(face,face_around)
+                
+                function point_J_dof_s(point,J)
+                    dof_v = point_dof_v(point)
+                    function dof_f(dof)
+                        v = dof_v(dof)
+                        modif = dof_modif(dof)
+                        modif(v,J)
                     end
                 end
                 function point_dof_s(point,J = nothing)
@@ -1163,9 +1195,10 @@ end
 function form_argument_accessor_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)
 
     mask = :(($face_around == $the_face_around && $field == $the_field))
+    disable_tabulation = :(Val(true))
     # shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
-    z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
-    shape_function = :(shape_function_accessor($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+    z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure,$disable_tabulation))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
+    shape_function = :(shape_function_accessor($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, $J)($dof))
     :(ifelse($mask, $shape_function, $z))
 
 end

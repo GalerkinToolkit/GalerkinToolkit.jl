@@ -892,7 +892,128 @@ end
 # end
 
 
+# this should be after flatten, and we assume that all array indices are loop vars (is it true?). we do not look into the rhs expression
+# (a[i] = f(i), b = f(j) -> b = a[j]) (a[i] = f(i), b[j] = f(j) -> b === a)
+function ast_array_aliasing(ast)
+    # key: callee & arg length 
+    # val: a dict (array symbol -> dependencies)
+    expr_array_indexing = Dict() # TODO: brute force matching. find an algorithm to optimize that, or show that it is not the bottleneck
+    
+    array_alias = Dict()
 
+    loop_index_arrays = Dict()
+    loop_indices = []
+
+
+    function check_processed(t)
+        children = ast_children(t)
+        callee = (children[1], length(children))
+        # fixed_args = [(i, child) for (i, child) in enumerate(children_rhs)]
+        if !haskey(expr_array_indexing, callee)
+            return nothing
+        end
+        
+        array_indexing = expr_array_indexing[callee]
+
+        for (array, (alloc_index_length, indexing)) in array_indexing
+
+            new_indices = Array{Any}(missing, alloc_index_length)
+            found = true
+            for i in 1:length(children)
+                if indexing[i][1] === nothing
+                    if children[i] != indexing[i][2]
+                        found = false
+                        break
+                    end
+                else
+                    idx = indexing[i][1]
+                    if new_indices[idx] !== missing && new_indices[idx] != children[i]
+                        found = false
+                        break
+                    end
+                    new_indices[idx] = children[i]
+                end
+            end
+            if found && all(x -> (x !== missing), new_indices)
+                return ast_index(array, new_indices...)
+            end
+        end
+        nothing
+    end
+
+    
+    function ast_array_aliasing_impl(node)
+        if ast_is_block(node)
+            children = map(ast_array_aliasing_impl, ast_children(node))
+            ast_replace_children(node, children...)
+        elseif ast_is_loop(node)
+            signature = ast_loop_signature(node)
+            loop_index = ast_loop_index(node)
+
+            loop_index_arrays[loop_index] = []
+            push!(loop_indices, loop_index)
+
+            body = ast_array_aliasing_impl(ast_loop_body(node))
+            
+            for (array, callee) in loop_index_arrays[loop_index]
+                delete!(expr_array_indexing[callee], array)
+            end
+            delete!(loop_index_arrays, loop_index)
+            pop!(loop_indices)
+
+            ast_for(signature, body)
+        elseif (ast_is_incremental(node) || ast_is_definition(node)) && ast_is_call(ast_rhs(node))
+            lhs = ast_lhs(node)
+            rhs = ast_rhs(node)
+            rhs_children = ast_children(rhs)
+            callee = (rhs_children[1], length(rhs_children))
+            
+            # check whether that is processed 
+
+            last_array = check_processed(rhs)
+
+            if last_array !== nothing
+                # if yes, have a new rhs (indexing an existing array, aliasing the array, or slicing with view(not sure whether that is needed))
+                if ast_is_definition(node) && ast_is_index(lhs)
+                    ast_definition(lhs, last_array) # TODO: array aliasing
+                else
+                    ast_definition(lhs, last_array)
+                end
+                
+            else # if not, update the function and args template (index positions)
+                if ast_is_definition(node) && ast_is_index(lhs)
+                    indices = ast_children(lhs)[2:end]
+                    index_position = Dict(map(((i, v),) -> (v => i), enumerate(indices)))
+                    array_symbol = ast_children(lhs)[1]
+                    
+
+                    rhs_indexing = map(rhs_children) do child
+                        if haskey(index_position, child)
+                            child_pos = index_position[child]
+                            (child_pos, child)
+                        else
+                            (nothing, child)
+                        end
+                    end
+                    
+                    if length(loop_indices) >= length(indices)
+                        dealloc_symbol = loop_indices[end - length(indices)]
+                        push!(loop_index_arrays[dealloc_symbol], (array_symbol, callee))
+                    end
+                    if !haskey(expr_array_indexing, callee)
+                        expr_array_indexing[callee] = Dict()
+                    end
+                    expr_array_indexing[callee][array_symbol] = (length(indices), rhs_indexing)
+                end
+                node
+            end
+        else
+            node
+        end
+    end
+
+    ast_array_aliasing_impl(ast)
+end
 
 
 function ast_flatten(ast, var_count_init = 0)
@@ -1367,7 +1488,7 @@ function ast_remove_dead_code(ast)
 end
 
 
-# TODO: topological sort. input ast is already flattened
+# topological sort. input ast is already flattened
 function ast_topological_sort(ast)
     # TODO: do we need to alias arrays?
     expr_var = Dict()
@@ -1434,7 +1555,11 @@ end
 
 
 # GT.something should be treated as a leaf node + (we still have inlined functions but not symbols, but that is from the user input)
-# TODO: Deactivate tabulation in shape function accessory adding an optional argument. (Not related with compiler passes)
+# Deactivate tabulation in shape function accessory adding an optional argument. (Not related with compiler passes) +
+# array aliasing.  (a[i] = f(i), b = f(j) -> b = a[j]) +
 # TODO: auto unroll detection
 # TODO: array unroll: treat this as an expression
+# TODO: check whether flatten includes topo sort
+
 # TODO: Find more issues and solve them
+# TODO: other aliasing optimizations (a[i] = f(i), b[j] = f(j) -> b === a) 
