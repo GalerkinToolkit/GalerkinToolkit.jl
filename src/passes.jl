@@ -113,8 +113,16 @@ function ast_is_block(t::Expr)
     t.head === :block
 end
 
+const leaf_dot_lhs = Set([:GT, :GalerkinToolkit, :ForwardDiff])
+
 function ast_is_leaf(t)
-    length(ast_children(t)) == 0
+    if length(ast_children(t)) == 0 
+        true
+    elseif (t.head == :.) && ast_is_leaf(t.args[1]) && (t.args[1] in leaf_dot_lhs) && (t.args[2] isa QuoteNode) # ForwardDiff.gradient, GT.domain, ...
+        true
+    else 
+        false
+    end
 end
 
 function ast_is_number(t)
@@ -1061,9 +1069,11 @@ function ast_constant_folding(ast)
                         end
                     end
                     return ast_call(ast_leaf(:zero), ast_call(args[1], new_args...))
-                elseif args[1] == ast_leaf(:+) || args[1] == ast_leaf(+) # a + b [+...]
+                elseif args[1] == ast_leaf(:+) || args[1] == ast_leaf(+) # a + b [+...], assume that all of them are of the same type
                     new_args = filter(x -> !is_zero(x), args[2:end])
-                    if length(new_args) == 1
+                    if length(new_args) == 0
+                        return args[2]
+                    elseif length(new_args) == 1
                         return new_args[1]
                     else
                         return ast_call(args[1], new_args...)
@@ -1420,3 +1430,11 @@ end
 # pass orders 1:   loop unroll  -> loop fusion -> lambdas to loops -> constant folding -> flatten -> tabulate -> topo sort (with array aliasing) -> cleanup
 # pass orders 2:   lambdas to loops -> flatten -> topo sort -> loop unroll  -> loop fusion -> constant folding ->  tabulate -> loop fusion -> cleanup
 # constant folding -> flatten, because we need to fold zero operations like (zero(T1) + a = a)
+
+
+
+# GT.something should be treated as a leaf node + (we still have inlined functions but not symbols, but that is from the user input)
+# TODO: Deactivate tabulation in shape function accessory adding an optional argument. (Not related with compiler passes)
+# TODO: auto unroll detection
+# TODO: array unroll: treat this as an expression
+# TODO: Find more issues and solve them

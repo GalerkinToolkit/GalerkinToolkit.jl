@@ -459,7 +459,7 @@ end
 
 function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
     function modifier(v,J)
-        transpose(J)\v # TODO: bottleneck
+        transpose(J)\v 
     end
     function face_dof_modifier(face,face_around=nothing)
         function dof_modifier(dof)
@@ -585,7 +585,6 @@ function shape_function_accessor_physical(f,space::AbstractSpace,measure::Abstra
 end
 
 # Tabulated
-# TODO: inline this to avoid memory allocations here.
 for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
     @eval begin
         function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature)
@@ -1062,12 +1061,12 @@ end
 function shape_function_accessor_modifier_term(f, v, J)
     if f == value
         v
-    elseif f == ForwardDiff.jacobian
+    elseif f == ForwardDiff.jacobian 
         :($v/$J)
     elseif f == ForwardDiff.gradient
         :(transpose($J)\$v)
     else
-        error("shape function accessor modifier not supported for this function f")
+        error("shape function accessor modifier not supported for this function f: $f")
     end
 end
 
@@ -1164,9 +1163,9 @@ end
 function form_argument_accessor_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)
 
     mask = :(($face_around == $the_face_around && $field == $the_field))
-    shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
-    z = :( $zero($(GT.prototype)(shape_function_accessor($f,$space,$measure))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
-    # shape_function = :(shape_function_accessor($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+    # shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
+    z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
+    shape_function = :(shape_function_accessor($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
     :(ifelse($mask, $shape_function, $z))
 
 end
