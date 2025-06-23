@@ -1238,8 +1238,8 @@ end
 
 # assuming that the loop range of unrolled loops are all constant integers
 # unroll_loops: a set of unroll loop variables
-function ast_loop_unroll(ast, unroll_loops)
-
+function ast_loop_unroll(ast)
+    MAX_UNROLL_SIZE = 10 # TODO: define the max loop length for unrolling. if not, we can do partial unrolling with it
     unroll_indices = []
     loop_var_unrolled_val = Dict()
     var_unrolled = Dict()
@@ -1279,9 +1279,9 @@ function ast_loop_unroll(ast, unroll_loops)
             loop_var = ast_loop_index(node)
             loop_signature = ast_loop_signature(node)
             body = ast_loop_body(node)
-            if loop_var in unroll_loops
+            range = ast_loop_signature_upperbound(node)
+            if ast_is_number(range) && ast_leaf_value(range) <= MAX_UNROLL_SIZE
                 result = ast_block()
-                range = ast_loop_signature_upperbound(node)
                 @assert ast_is_number(range)
                 range = ast_leaf_value(range)
                 push!(unroll_indices, 1)
@@ -1472,7 +1472,11 @@ function ast_remove_dead_code(ast)
             ast_remove_dead_code_impl(ast_loop_signature_upperbound(node))
             signature = ast_loop_signature(node)
             body = ast_remove_dead_code_impl(ast_loop_body(node))
-            return ast_for(signature, body)
+            if ast_is_leaf(body) # empty block
+                return nothing
+            else
+                return ast_for(signature, body)
+            end
         elseif ast_is_block(node)
             children = reverse(ast_children(node))
             new_children = reverse(map(ast_remove_dead_code_impl, children))
@@ -1557,9 +1561,9 @@ end
 # GT.something should be treated as a leaf node + (we still have inlined functions but not symbols, but that is from the user input)
 # Deactivate tabulation in shape function accessory adding an optional argument. (Not related with compiler passes) +
 # array aliasing.  (a[i] = f(i), b = f(j) -> b = a[j]) +
-# TODO: auto unroll detection
-# TODO: array unroll: treat this as an expression
+# auto unroll detection +
+# array unroll: treat this as an expression (we cannot do this. a[i, j] = f(i, j) -> b = a[i, j], b = f(i, j). we need to identify constant array indexing)
 # TODO: check whether flatten includes topo sort
 
 # TODO: Find more issues and solve them
-# TODO: other aliasing optimizations (a[i] = f(i), b[j] = f(j) -> b === a) 
+# TODO: other aliasing optimizations (a[i] = f(i), b[j] = f(j) -> b === a) (a[i] = f1(i) / f2, b = f1(j) / f2 -> b = a[j])

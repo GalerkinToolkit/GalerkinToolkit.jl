@@ -477,7 +477,7 @@ end
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
     D = term.D
-    J = :(jacobian_accessor($quadrature, $(Val(D)))($face)($point))
+    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, 1)($point))
     :(weight_accessor($quadrature)($face)($point, $J) )
 end
 
@@ -3548,21 +3548,18 @@ end
 
 function ast_optimize(expr, loop_var_range)
 
-    # TODO: ugly. find a better way to simplify it
-    unrolled_vars = Set([:field_1, :field_2])
-    expr2 = ast_loop_unroll(expr, unrolled_vars) |> ast_constant_folding
+    expr2 = ast_loop_unroll(expr) |> ast_constant_folding
 
-    unrolled_vars_2 = Set([:face_around_1 , :face_around_2])
-    expr3 = ast_loop_unroll(expr2, unrolled_vars_2) |> ast_constant_folding
+    expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
+    var_count = 0
 
-
-    expr4, var_count = ast_flatten(expr3, 0)
+    expr4, var_count = ast_flatten(expr3, var_count)
     expr4
 
     expr5 = ast_array_unroll(expr4)
 
           
-    expr6, _ = ast_tabulate(expr5, 0, loop_var_range) 
+    expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
     
     # expr6
 
@@ -3572,7 +3569,7 @@ function ast_optimize(expr, loop_var_range)
     expr8, var_count = ast_flatten(expr8, var_count)
     expr8 = ast_topological_sort(expr8)
 
-    expr9 = ast_array_aliasing(expr8)
+    expr9 = ast_array_aliasing(expr8) |> ast_remove_dead_code
     expr9
 end
 
