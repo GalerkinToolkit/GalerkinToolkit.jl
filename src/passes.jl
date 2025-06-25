@@ -194,7 +194,7 @@ function ast_accumulate_vars(ast)
             return 
         elseif ast_is_definition(node) || ast_is_incremental(node)
             lhs = ast_lhs(node)
-            if lhs in lhs_vars
+            if (lhs in lhs_vars) && ast_is_incremental(node)
                 push!(result, lhs)
             else
                 push!(lhs_vars, lhs)
@@ -357,11 +357,6 @@ function ast_clean_up!(ast)
 end
 
 
-function ast_array_aliasing(ast)
-    
-    # TODO: this is another hard optimization. maybe we need to use the same tabulator for test and trial
-end
-
 
 function ast_proto_block(ast, var_count = 0)
     # TODO: remove dead code, including mem allocs.
@@ -518,13 +513,21 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             elseif haskey(var_proto, loop_range)
                 loop_range = var_proto[loop_range] # TODO: maybe incorrect.
             else
-                error("loop range not found!")
+                # pass
             end
             
             loop_index_depth[loop_idx] = depth
             push!(dependencies, loop_idx)
             loop_index_range[loop_idx] = loop_range
             var_dependencies[loop_idx] = 2^(depth)
+
+
+            expr = ast_loop_signature_upperbound(loop_signature)
+            children_deps = get_deps(expr)           
+            node_deps = (2^depth) - 1
+            for (child_var, child_deps) in children_deps
+                update_alloc_info(child_var, node_deps, child_deps)
+            end
 
             # grow binomial tree 
             size_binomial_tree = length(binomial_tree_blocks)
@@ -941,6 +944,21 @@ function ast_array_aliasing(ast)
         nothing
     end
 
+    function ast_array_replace(node)
+        if ast_is_definition(node) && ast_is_index(ast_lhs(node)) && haskey(array_alias, ast_children(ast_lhs(node))[1])
+            nothing
+        elseif ast_is_leaf(node)
+            if haskey(array_alias, node)
+                array_alias[node]
+            else
+                node
+            end
+        else
+            new_children = map(ast_array_replace, ast_children(node))
+            ast_replace_children(node, new_children...)
+        end
+    end
+
     
     function ast_array_aliasing_impl(node)
         if ast_is_block(node)
@@ -962,6 +980,17 @@ function ast_array_aliasing(ast)
             pop!(loop_indices)
 
             ast_for(signature, body)
+        elseif ast_is_definition(node) && ast_is_index(ast_rhs(node)) && ast_is_index(ast_lhs(node))
+            lhs = ast_lhs(node)
+            rhs = ast_rhs(node)
+            if ast_children(lhs)[2:end] == ast_children(rhs)[2:end]
+                rhs_array = ast_children(rhs)[1]
+                if haskey(array_alias, rhs_array)
+                    rhs_array = array_alias[rhs_array]
+                end
+                array_alias[ast_children(lhs)[1]] = rhs_array
+            end
+            ast_array_replace(node)
         elseif (ast_is_incremental(node) || ast_is_definition(node)) && ast_is_call(ast_rhs(node))
             lhs = ast_lhs(node)
             rhs = ast_rhs(node)
@@ -974,12 +1003,12 @@ function ast_array_aliasing(ast)
 
             if last_array !== nothing
                 # if yes, have a new rhs (indexing an existing array, aliasing the array, or slicing with view(not sure whether that is needed))
-                if ast_is_definition(node) && ast_is_index(lhs)
+                new_node = if ast_is_definition(node) && ast_is_index(lhs)
                     ast_definition(lhs, last_array) # TODO: array aliasing
                 else
                     ast_definition(lhs, last_array)
                 end
-                
+                ast_array_replace(new_node)
             else # if not, update the function and args template (index positions)
                 if ast_is_definition(node) && ast_is_index(lhs)
                     indices = ast_children(lhs)[2:end]
@@ -1005,14 +1034,14 @@ function ast_array_aliasing(ast)
                     end
                     expr_array_indexing[callee][array_symbol] = (length(indices), rhs_indexing)
                 end
-                node
+                ast_array_replace(node)
             end
         else
-            node
+            ast_array_replace(node)
         end
     end
 
-    ast_array_aliasing_impl(ast)
+    expr = ast_array_aliasing_impl(ast)
 end
 
 
@@ -1044,7 +1073,13 @@ function ast_flatten(ast, var_count_init = 0)
             return nothing
         elseif ast_is_loop(node)
             args = ast_children(node)
-            expr = ast_for(args[1], ast_flatten_impl_block(args[2]))
+            signature = args[1]
+            upperbound = ast_flatten_impl!(ast_loop_signature_upperbound(signature), block, expr_var, 1)
+            children = ast_children(signature)
+            new_range = ast_replace_children(children[2], ast_children(children[2])[1:2]..., upperbound)
+            new_signature = ast_replace_children(signature, children[1], new_range)
+            
+            expr = ast_for(new_signature, ast_flatten_impl_block(args[2]))
             # TODO: do we need to flatten loop ranges?
             ast_block_append_statements!(block, expr)
             return expr
@@ -1147,8 +1182,14 @@ function ast_constant_folding(ast)
             end
             args = ast_is_block(args_1) ? filter(x -> x !== nothing, args_1) : args_1
 
-            if ast_is_definition(node) && ast_is_call(args[2]) && (ast_children(args[2])[1] in zero_calls) && ast_is_leaf(ast_lhs(node)) && !(ast_lhs(node) in accumulate_vars)
-                zero_vars[ast_lhs(node)] = args[2]
+            if ast_is_definition(node)  && !(ast_lhs(node) in accumulate_vars)
+                if ast_is_call(args[2]) && (ast_children(args[2])[1] in zero_calls)
+                    zero_vars[ast_lhs(node)] = args[2]
+                elseif haskey(zero_vars, ast_rhs(node))
+                    zero_vars[ast_lhs(node)] = zero_vars[ast_rhs(node)]
+                else
+                    delete!(zero_vars, ast_lhs(node))
+                end
             end
 
             if ast_is_definition(node) && ast_is_iterable(args[2]) && ast_is_leaf(ast_lhs(node)) && !(ast_lhs(node) in accumulate_vars)
@@ -1200,9 +1241,13 @@ function ast_constant_folding(ast)
                         return ast_call(args[1], new_args...)
                     end
                 elseif args[1] == ast_leaf(:-) || args[1] == ast_leaf(-) # a - b
-                    if is_zero(args[2])
+                    if length(args) == 2
+                        return ast_call(ast_leaf(:-), args[2])
+                    elseif args[2] == args[3]
+                        return ast_call(ast_leaf(:zero), ast_call(ast_leaf(:-), get_zero_proto(args[2]), get_zero_proto(args[3])) )
+                    elseif is_zero(args[2])
                         if is_zero(args[3])
-                            return ast_call( ast_leaf(:zero), ast_call(ast_leaf(:-), get_zero_proto(args[2]), get_zero_proto(args[3])) )
+                            return ast_call(ast_leaf(:zero), ast_call(ast_leaf(:-), get_zero_proto(args[2]), get_zero_proto(args[3])) )
                         else
                             return ast_call(ast_leaf(:-), args[3])
                         end
@@ -1242,12 +1287,15 @@ function ast_loop_unroll(ast)
     MAX_UNROLL_SIZE = 10 # TODO: define the max loop length for unrolling. if not, we can do partial unrolling with it
     unroll_indices = []
     loop_var_unrolled_val = Dict()
+    loop_vars = Set()
     var_unrolled = Dict()
 
     function replace_var_unroll(node)
         if ast_is_leaf(node)
             if haskey(loop_var_unrolled_val, node)
                 loop_var_unrolled_val[node]
+            elseif node in loop_vars
+                node
             elseif haskey(var_unrolled, node)
                 return var_unrolled[node]
             else
@@ -1294,10 +1342,12 @@ function ast_loop_unroll(ast)
                 pop!(unroll_indices)
                 return result
             else
+                push!(loop_vars, loop_var)
                 new_body = ast_loop_unroll_impl(body)
                 range = ast_children(loop_signature)[2]
                 new_range = ast_loop_unroll_impl(range)
                 new_signature = ast_definition(loop_var, new_range)
+                pop!(loop_vars, loop_var)
                 ast_for(new_signature, new_body)
             end
         else
@@ -1459,10 +1509,16 @@ function ast_remove_dead_code(ast)
         if ast_is_leaf(node)
             used_vars[node] = true
             return node
-        elseif ast_is_definition(node) && ast_is_leaf(ast_lhs(node))
+        elseif ast_is_definition(node) 
             lhs = ast_lhs(node)
+            if ast_is_index(lhs)
+                map(ast_remove_dead_code_impl, ast_children(lhs)[2:end])
+                lhs = ast_children(lhs)[1]
+            end
             if haskey(used_vars, lhs) && used_vars[lhs] == true
-                used_vars[lhs] = false
+                if ast_is_leaf(ast_lhs(node))
+                    used_vars[lhs] = false
+                end
                 ast_remove_dead_code_impl(ast_rhs(node))
                 return node
             else
@@ -1495,6 +1551,7 @@ end
 # topological sort. input ast is already flattened
 function ast_topological_sort(ast)
     # TODO: do we need to alias arrays?
+    alloc_funcs = Set(map(ast_leaf, [:alloc_zeros, :zeros])) # TODO: decouple
     expr_var = Dict()
     var_depth = [Set()]
     accumulate_vars = ast_accumulate_vars(ast)
@@ -1516,23 +1573,37 @@ function ast_topological_sort(ast)
             pop!(var_depth)
             return ast_for(new_signature, body)
         else
-            new_children = map(ast_children(node)) do child
+            if ast_is_definition(node)
+                child = ast_children(node)[2]
                 new_child = ast_topological_sort_impl(child, depth)
-                haskey(expr_var, new_child) ? expr_var[new_child] : new_child
-            end 
+                new_child = haskey(expr_var, new_child) ? expr_var[new_child] : new_child
+                new_children = (ast_children(node)[1], new_child)
+            else
+                new_children = map(ast_children(node)) do child
+                    new_child = ast_topological_sort_impl(child, depth)
+                    haskey(expr_var, new_child) ? expr_var[new_child] : new_child
+                end 
+            end
+            
             new_children_filtered = ast_is_block(node) ? filter(x -> x !== nothing, new_children) : new_children
             
             new_node = ast_replace_children(node, new_children_filtered...)
             if ast_is_definition(new_node) && ast_is_leaf(ast_lhs(new_node)) && !(ast_lhs(new_node) in accumulate_vars)
                 lhs = ast_lhs(new_node)
                 rhs = ast_rhs(new_node)
-                if ast_is_leaf(rhs)
-                    expr_var[lhs] = rhs
-                    push!(var_depth[depth], lhs)
-                    return nothing
+                if ast_is_leaf(rhs)                     
+                    if ast_is_call(ast_rhs(node)) && (ast_children(ast_rhs(node))[1] in alloc_funcs)
+                        return new_node
+                    else
+                        expr_var[lhs] = rhs
+                        push!(var_depth[depth], lhs)
+                        return nothing
+                    end
                 else
-                    expr_var[rhs] = lhs
-                    push!(var_depth[depth], rhs)
+                    if !(ast_is_call(ast_rhs(node)) && (ast_children(ast_rhs(node))[1] in alloc_funcs))
+                        expr_var[rhs] = lhs
+                        push!(var_depth[depth], rhs)
+                    end
                     return new_node
                 end
             end
