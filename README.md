@@ -6,8 +6,3 @@
 [![DOI](https://zenodo.org/badge/497260571.svg)](https://doi.org/10.5281/zenodo.13938389)
 
 Go to the [**documentation**](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/dev/) to learn about GalerkinToolkit.
-
-
-
-
-
