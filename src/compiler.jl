@@ -1413,7 +1413,7 @@ function expression(term::VectorAssemblyTerm)
 
     loop_var_range = Dict(dof => :(max($(ndofs...),)) )
 
-    body_optimized = ast_optimize(body, loop_var_range)
+    body_optimized = ast_optimize_2(body, loop_var_range)
     expr = :($alloc_arg->$body_optimized)
 
     expr
@@ -1461,7 +1461,7 @@ function expression(term::MatrixAssemblyTerm)
     loop_var_range = Dict(dof_trial => :(max($(ndofs_trial...),)), 
                             dof_test => :(max($(ndofs_test...),)))
 
-    body_optimized = ast_optimize(body, loop_var_range)
+    body_optimized = ast_optimize_2(body, loop_var_range)
     # display(body_optimized)
     expr = quote 
         $alloc_arg -> begin
@@ -3571,6 +3571,36 @@ function ast_optimize(expr, loop_var_range)
 
     expr9 = ast_array_aliasing(expr8) |> ast_remove_dead_code
     expr9
+end
+
+
+
+function ast_optimize_2(expr, loop_var_range)
+    var_count = 0
+
+    
+    
+    expr2, var_count = ast_flatten(expr, var_count)
+
+    expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
+     
+    expr4 = ast_loop_unroll(expr3) |> ast_constant_folding 
+
+    expr5 = ast_loop_unroll(expr4) |> ast_constant_folding |> ast_array_unroll
+    
+    # expr6 = expr5 |> ast_loop_unroll |> ast_constant_folding |> ast_array_unroll |> ast_topological_sort
+    expr6 = ast_remove_dead_code(expr5)
+
+    expr7 = ast_topological_sort(expr6)
+
+    expr8 = ast_array_aliasing(expr7) |> ast_remove_dead_code
+
+    expr9, var_count = ast_flatten(expr8, var_count) 
+
+    expr10 = expr9 |> ast_constant_folding |> ast_topological_sort
+    display(expr6)
+    return expr6
+    expr10
 end
 
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)

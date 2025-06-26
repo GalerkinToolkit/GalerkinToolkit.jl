@@ -519,11 +519,12 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             loop_index_depth[loop_idx] = depth
             push!(dependencies, loop_idx)
             loop_index_range[loop_idx] = loop_range
-            var_dependencies[loop_idx] = 2^(depth)
+           
 
 
             expr = ast_loop_signature_upperbound(loop_signature)
-            children_deps = get_deps(expr)           
+            children_deps = get_deps(expr)   
+             var_dependencies[loop_idx] = 2^(depth) | reduce_deps(children_deps)        
             node_deps = (2^depth) - 1
             for (child_var, child_deps) in children_deps
                 update_alloc_info(child_var, node_deps, child_deps)
@@ -549,7 +550,7 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             
         elseif ast_is_block(node) 
             map(x -> ast_tabulate_impl!(x, depth), ast_children(node))
-        elseif ast_is_definition(node) && ((ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node))) # push to the last binomial tree node
+        elseif ast_is_definition(node) && ((ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) || ast_is_index(ast_rhs(node))) # push to the last binomial tree node
             var_dependencies[ast_lhs(node)] = (2^depth)-1
             ast_block_append_statements!(binomial_tree_blocks[end], node)
         elseif ast_is_definition(node)
@@ -1418,7 +1419,7 @@ function ast_array_unroll(ast)
             new_rhs_children = [ast_children(rhs)[1:end-len]..., alloc_indices...]
             new_rhs = ast_replace_children(rhs, new_rhs_children...)
             
-            if any(x -> x > 0, unroll_indices)
+            if all(x -> x > 0, unroll_indices)
                 return nothing
             elseif any(x -> x > 0, unroll_indices)
                 result = ast_block()
