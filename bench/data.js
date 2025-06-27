@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1749650962568,
+  "lastUpdate": 1751028298804,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1604,6 +1604,36 @@ window.BENCHMARK_DATA = {
             "value": 670756399.5,
             "unit": "ns",
             "extra": "gctime=26339499.5\nmemory=434346240\nallocs=14376059\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "df72c183aa9a36736d7ac4575ad0dba5dada95f8",
+          "message": "Merge pull request #212 from raar1/investigate_CI_caching\n\nInvestigate CI Caching",
+          "timestamp": "2025-06-27T14:40:46+02:00",
+          "tree_id": "6e0bf1123193b961e0487070b3b70a671b2c1b0d",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/df72c183aa9a36736d7ac4575ad0dba5dada95f8"
+        },
+        "date": 1751028298414,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 680419485.5,
+            "unit": "ns",
+            "extra": "gctime=27056607\nmemory=434346256\nallocs=14376060\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
