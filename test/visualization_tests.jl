@@ -5,7 +5,7 @@ using GLMakie
 using WriteVTK
 using PartitionedArrays
 
-for s in  (true,false)
+for s in  (false,true)
 
     domain = (0,1,0,1,0,1)
     cells = (4,4,4)
@@ -27,8 +27,8 @@ for s in  (true,false)
 
     plt = GT.plot(pmesh)
 
-    fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),strokecolor=:black)
-    display(fig)
+    #fig = Makie.plot(plt;color=GT.FaceData("__OWNER__"),strokecolor=:black)
+    #display(fig)
 
     for mesh2 in (mesh,)#pmesh)
 
@@ -79,9 +79,9 @@ for s in  (true,false)
     GT.plot!(plt,v;label="v")
     fig = Makie.plot(plt,color=GT.NodeData("u"))
     Makie.plot!(plt,color=nothing,strokecolor=:black,warp_by_vector=GT.NodeData("v"),warp_scale=0.1)
-    Makie.arrows!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
-    Makie.arrows!(v;lengthscale=0.1,color=u)
-    display(fig)
+    #Makie.arrows2d!(plt,GT.NodeData("v"),lengthscale=0.1,color=GT.NodeData("u"))
+    #Makie.arrows2d!(v;lengthscale=0.1,color=u)
+    #display(fig)
 
     fig = Makie.plot(Ω;color=u)
     Makie.plot!(Ω;color=nothing,strokecolor=:black,warp_by_vector=v,warp_scale=0.1)
