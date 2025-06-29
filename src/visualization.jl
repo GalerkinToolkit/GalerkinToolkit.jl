@@ -583,6 +583,9 @@ function restrict(plt::Plot,newnodes,newfaces)
 end
 
 function shrink(plt::Plot;scale=0.75)
+    if scale == false
+        return plt
+    end
     mesh = plt.mesh
     D = num_dims(mesh)
     nnewnodes = 0
@@ -638,6 +641,10 @@ function shrink(pplt::PPlot;scale=0.75)
     PPlot(plts)
 end
 
+function warp_by_vector(plt::Plot,vec::Nothing;scale=1)
+    plt
+end
+
 function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
     mesh = plt.mesh
     node_to_x = node_coordinates(mesh)
@@ -646,6 +653,10 @@ function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
     mesh2 = replace_node_coordinates(mesh,node_to_x)
     plt2 = replace_mesh(plt,mesh2)
     plt2
+end
+
+function warp_by_scalar(plt::Plot,data::Nothing;scale=1)
+    plt
 end
 
 function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
