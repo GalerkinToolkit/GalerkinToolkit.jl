@@ -550,12 +550,13 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             
         elseif ast_is_block(node) 
             map(x -> ast_tabulate_impl!(x, depth), ast_children(node))
-        elseif ast_is_definition(node) && ((ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) || ast_is_index(ast_rhs(node))) # push to the last binomial tree node
-            var_dependencies[ast_lhs(node)] = (2^depth)-1
-            ast_block_append_statements!(binomial_tree_blocks[end], node)
         elseif ast_is_definition(node)
             children_deps = get_deps(ast_rhs(node))
-            node_deps = reduce_deps(children_deps)
+            node_deps = if (ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) || ast_is_index(ast_rhs(node))
+                (2^depth)-1
+            else
+                reduce_deps(children_deps)
+            end
             for (child_var, child_deps) in children_deps
                 update_alloc_info(child_var, node_deps, child_deps)
             end
@@ -1364,6 +1365,7 @@ function ast_array_unroll(ast)
     array_def = Dict() # the last n elements represent the array shape
     array_unroll_indices = Dict()
     alloc_funcs = Set(map(ast_leaf, [:alloc_zeros, :zeros])) # TODO: decouple
+    array_unroll_vars = Dict()
 
     function identify_array_unrolls(node)
         if ast_is_index(node) && ast_is_leaf(ast_children(node)[1])
@@ -1386,7 +1388,7 @@ function ast_array_unroll(ast)
         end
     end
 
-    function ast_array_unroll_impl(node)
+    function ast_array_unroll_impl(node, is_def = false)
         if ast_is_index(node) && ast_is_leaf(ast_children(node)[1]) && haskey(array_def, ast_children(node)[1])
             # usage
             var = ast_children(node)[1]
@@ -1403,8 +1405,19 @@ function ast_array_unroll(ast)
             new_var = ast_leaf(Symbol(new_var_str))
             if length(new_indices) > 0
                 return ast_index(new_var, new_indices...)
+            elseif haskey(array_unroll_vars, new_var)
+                if is_def
+                   array_unroll_vars[new_var] += 1
+                end
+                return ast_leaf(Symbol(string(new_var_str, "_", array_unroll_vars[new_var])))
             else
-                return new_var
+                if is_def
+                   array_unroll_vars[new_var] = 1 
+                   return ast_leaf(Symbol(string(new_var_str, "_", array_unroll_vars[new_var])))
+                else
+                    return new_var
+                end
+                
             end
 
         elseif ast_is_definition(node) && haskey(array_def, ast_lhs(node)) && haskey(array_unroll_indices, ast_lhs(node))
@@ -1441,7 +1454,12 @@ function ast_array_unroll(ast)
             return node
         else
             children = map(ast_array_unroll_impl, ast_children(node))
-            ast_replace_children(node, children...)
+            if ast_is_definition(node) && ast_is_index(ast_lhs(node)) && ast_is_leaf(children[1])
+                new_symbol = ast_array_unroll_impl(ast_children(node)[1], true)
+                ast_replace_children(node, new_symbol, children[2])
+            else
+                ast_replace_children(node, children...)
+            end
         end
     end
 
@@ -1549,7 +1567,7 @@ function ast_remove_dead_code(ast)
 end
 
 
-# topological sort. input ast is already flattened
+# topological sort. input ast is already flattened# 
 function ast_topological_sort(ast)
     # TODO: do we need to alias arrays?
     alloc_funcs = Set(map(ast_leaf, [:alloc_zeros, :zeros])) # TODO: decouple
