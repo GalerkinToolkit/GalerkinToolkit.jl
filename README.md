@@ -1,4 +1,6 @@
-# GalerkinToolkit
+
+
+<img src="https://raw.githubusercontent.com/GalerkinToolkit/GalerkinToolkit.jl/refs/heads/logo/docs/src/assets/logo-with-name.png" width="150" title="GalerkinToolkit" alt="GalerkinToolkit"/>
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/dev/)
 [![Build Status](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/actions/workflows/CI.yml?query=branch%3Amain)
