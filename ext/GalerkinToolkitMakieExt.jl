@@ -1,7 +1,10 @@
 module GalerkinToolkitMakieExt
+using LinearAlgebra
+using StaticArrays
 
 #TODOS
 #shadows
+#physical groups
 #linewidth
 #arrows
 #pplot,pmesh,pdomain
@@ -143,7 +146,6 @@ Makie.@recipe MakiePlot begin
     color      = :lightblue
     colormap   = :bluesreds
     colorrange = Makie.Automatic()
-    shading    = Makie.NoShading
     cycle      = nothing
     refinement = nothing
 end
@@ -235,7 +237,7 @@ function Makie.plot!(p::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
     attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
     attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
     map!(p.attributes,attrs_in,attrs_out) do domain,refinement,color,vec,scal
-        plt = GT.plot(domain;refinement)
+        plt = plot_for_makie(domain,refinement)
         if isa(color,GT.AbstractQuantity) || isa(color,Function)
             label = string(gensym())
             GT.plot!(plt,color;label)
@@ -267,6 +269,34 @@ function Makie.plot!(p::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
     p
 end
 
+function plot_for_makie(domain::GT.AbstractDomain,refinement)
+    if GT.num_dims(domain) == 3
+        domain2 = GT.boundary(domain)
+    else
+        domain2 = domain
+    end
+    plt = GT.plot(domain2;refinement)
+    if GT.num_dims(domain) == 3
+        face_n = collect_face_normals(domain2)
+        vface_face = plt.cache.glue.parent_face
+        vface_n = face_n[vface_face]
+        GT.face_data(plt,2)[GT.PLOT_NORMALS_KEY] = vface_n
+    end
+    plt
+end
+
+function collect_face_normals(Γ::GT.AbstractDomain)
+    dΓ = GT.measure(Γ,0)
+    dface_point_n = GT.unit_normal_accessor(dΓ)
+    Tn = typeof(GT.prototype(dface_point_n))
+    ndfaces = GT.num_faces(Γ)
+    dface_to_n = zeros(Tn,ndfaces)
+    for dface in 1:ndfaces
+        dface_to_n[dface] = dface_point_n(dface,1)(1)
+    end
+    dface_to_n
+end
+
 # TODO not sure about this
 # what if u is not scalar-valued?
 #Makie.plottype(::GT.AbstractQuantity) = MakiePlot
@@ -279,56 +309,26 @@ end
 #    makieplot!(sc,valid_attributes,dom)
 #end
 
-function vector_of_observables(a)
-    #TODO remove trick for DebugArray
-    function start(v)
-        first(v)
-    end
-    function rest(v)
-        v[2:end]
-    end
-    if length(a[]) == 1
-        b = Makie.lift(first,a)
-        return [b,]
-    else
-        b = Makie.lift(start,a)
-        c = Makie.lift(rest,a)
-        return [b,vector_of_observables(c)...]
-    end
-end
+#function vector_of_observables(a)
+#    #TODO remove trick for DebugArray
+#    function start(v)
+#        first(v)
+#    end
+#    function rest(v)
+#        v[2:end]
+#    end
+#    if length(a[]) == 1
+#        b = Makie.lift(first,a)
+#        return [b,]
+#    else
+#        b = Makie.lift(start,a)
+#        c = Makie.lift(rest,a)
+#        return [b,vector_of_observables(c)...]
+#    end
+#end
 
-function makie_volumes_impl(plt::GT.Plot;simplexify=Val(false))
-    @assert GT.num_dims(plt.mesh) == 3
-    D=3
-    d=2
-    mesh = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
-    topo = GT.topology(mesh)
-    face_to_cells = GT.face_incidence(topo,d,D)
-    face_isboundary = map(cells->length(cells)==1,face_to_cells)
-    mesh2 = GT.restrict_to_dim(mesh,d)
-    newnodes = 1:GT.num_nodes(mesh2)
-    newfaces = [ Int[] for _ in 0:d ]
-    newfaces[end] = findall(face_isboundary)
-    mesh3 = GT.restrict(mesh2,newnodes,newfaces)
-    face_to_cell = map(first,face_to_cells)
-    newface_to_cell = face_to_cell[newfaces[end]]
-    celldata = copy(GT.face_data(plt,D;merge_dims=true))
-    for (k,v) in celldata
-        celldata[k] = v[newface_to_cell]
-    end
-    fd = map(0:d) do i
-        if i == d
-            celldata
-        else
-            typeof(celldata)()
-        end
-    end
-    plt3 = GT.Plot(mesh3,fd,GT.node_data(plt))
-    if GT.val_parameter(simplexify)
-        GT.simplexify(plt3)
-    else
-        plt3
-    end
+function makie_volumes_impl(plt::GT.Plot)
+    GT.skin(plt)
 end
 
 function setup_colorrange_impl(plt,color,colorrange)
@@ -345,6 +345,9 @@ function setup_colorrange_impl(plt,color,colorrange)
 end
 
 function setup_colors_impl(plt,color,d)
+    if GT.num_faces(plt.mesh,d) == 0
+        return (plt,:pink)
+    end
     if isa(color,GT.FaceData)
         if d == 2
             plt = GT.shrink(plt;scale=1)
@@ -382,10 +385,23 @@ function setup_colors_impl(plt,color,d)
 end
 
 function makie_faces_impl(plt,color)
+    D = GT.num_ambient_dims(plt.mesh)
+    # Makie seems to not like vertices not touched by any element
+    # for the shading.
+    plt = GT.restrict_to_dim(plt,2)
+    plt = GT.shrink(plt;scale=1)
     plt = GT.simplexify(plt)
     d = 2
-    #plt = shrink(plt,scale=0.995)
     plt,color = setup_colors_impl(plt,color,d)
+    vert,conn = makie_faces_mesh(plt)
+    if D == 3
+        makie_faces_mesh_orient!(conn,plt)
+    end
+    (vert,conn,color)
+end
+
+function makie_faces_mesh(plt)
+    d = 2
     mesh = plt.mesh
     D = GT.num_ambient_dims(mesh)
     nnodes = GT.num_nodes(mesh)
@@ -404,9 +420,32 @@ function makie_faces_impl(plt,color)
         vert = ones(Float64,3,D)
         conn = zeros(Int32,1,3)
         conn[:] = 1:3
-        color =:pink
     end
-    (vert,conn,color)
+    (vert,conn)
+end
+
+function makie_faces_mesh_orient!(conn,plt)
+    d=2
+    mesh = plt.mesh
+    node_x = GT.node_coordinates(mesh)
+    face_nodes = GT.face_nodes(mesh,2)
+    nfaces = size(conn,1)
+    face_n = GT.face_data(plt,d)[GT.PLOT_NORMALS_KEY]
+    for face in 1:nfaces
+        nodes = face_nodes[face]
+        x1 = node_x[nodes[1]]
+        x2 = node_x[nodes[2]]
+        x3 = node_x[nodes[3]]
+        v1 = x2-x1
+        v2 = x3-x1
+        n1 = cross(v1,v2)
+        n2 = face_n[face]
+        if dot(n1,n2) < 0
+            c3 = conn[face,3]
+            conn[face,3] = conn[face,2]
+            conn[face,2] = c3
+        end
+    end
 end
 
 function makie_face_edges_impl(plt)

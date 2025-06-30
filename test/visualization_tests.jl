@@ -5,6 +5,65 @@ using GLMakie
 using WriteVTK
 using PartitionedArrays
 
+using StaticArrays
+
+S = SVector{2,Float64}
+vertices = S[(0,0),(1,0),(0,1),(1,1),(0,1),(1,1),(0,2),(1,2)]
+conn = [1 2 3; 2 4 3; 5 7 6; 6 7 8]
+fig = Makie.mesh(vertices,conn;color=:pink)
+display(fig)
+
+S = SVector{3,Float64}
+vertices1 = S[(0,0,0),(1,0,0),(0,0,1),(1,0,1),(0,0,1),(1,0,1),(0,0,2),(1,0,2)]
+vertices2 = vertices1 .+ Ref(S(0,0.1,0))
+conn1 = [1 2 3; 2 4 3; 5 7 6; 6 7 8]
+conn2 = [1 3 2; 2 3 4; 5 6 7; 6 8 7]
+vertices = vcat(vertices1,vertices2)
+conn = vcat(conn1,conn2 .+ length(vertices1))
+fig = Makie.mesh(vertices,conn;color=:pink)
+display(fig)
+
+domain = (0,1,0,1,0,1)
+n = 4
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+
+fig = Makie.plot(mesh;dim=0:3,shrink=0.6,strokecolor=:darkblue)
+display(fig)
+xxx
+
+plt = GT.plot(mesh)
+
+
+#plt = GT.shrink(plt;scale=0.7)
+#plt = GT.restrict_to_dim(plt,2)
+#vtk_grid("kk",plt) |> close
+
+fig = GT.makie3d(plt)
+GT.makie3d1d!(plt,color=:red)
+GT.makie2d!(plt;color=:pink)
+GT.makie2d1d!(plt,color=:cyan)
+GT.makie1d!(plt,color=:green)
+GT.makie0d!(plt,color=:black)
+display(fig)
+
+xxx
+
+
+
+
+plt = GT.plot(mesh)
+fig = Makie.plot(plt)
+display(fig)
+
+Ω = GT.interior(mesh)
+fig = Makie.plot(Ω;color=:pink)
+display(fig)
+
+plt = GT.plot(Ω)
+fig = Makie.plot(plt)
+display(fig)
+
 for s in  (false,true)
 
     domain = (0,1,0,1,0,1)
@@ -88,9 +147,9 @@ for s in  (false,true)
     display(fig)
 
     plt = GT.plot(mesh)
-    fig = GT.makie3d(plt;shading=Makie.NoShading,color=:blue)
+    fig = GT.makie3d(plt)
     GT.makie3d1d!(plt,color=:red)
-    GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
+    fig = GT.makie2d(plt;shading=Makie.NoShading)
     GT.makie2d1d!(plt,color=:cyan)
     GT.makie1d!(plt,color=:green)
     GT.makie0d!(plt,color=:black)
@@ -98,8 +157,8 @@ for s in  (false,true)
 
     color = GT.FaceData("1-face-1")
     fig = GT.makie3d1d(plt;color)
-    GT.makie3d!(plt;shading=Makie.NoShading,color=:blue)
-    GT.makie2d!(plt;shading=Makie.NoShading,color=:pink)
+    GT.makie3d!(plt;color=:blue)
+    GT.makie2d!(plt;color=:pink)
     GT.makie2d1d!(plt;color)
     GT.makie1d!(plt;color)
     GT.makie0d!(plt;color)
@@ -120,6 +179,7 @@ for s in  (false,true)
 
     fig = Makie.plot(mesh;dim=0:3,shrink=0.6,strokecolor=:darkblue)
     display(fig)
+    xxx
 
 end
 

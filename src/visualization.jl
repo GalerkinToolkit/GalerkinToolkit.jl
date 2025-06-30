@@ -466,12 +466,30 @@ function simplexify(plt::Plot)
 end
 
 function plot(mesh::AbstractMesh)
-    Plot(mesh,face_data(mesh),node_data(mesh))
+    fd = face_data(mesh)
+    if num_dims(mesh) == 3
+        Γ = GT.domain(mesh,Val(2))
+        dΓ = GT.measure(Γ,0)
+        dface_point_n = GT.unit_normal_accessor(dΓ)
+        Tn = typeof(GT.prototype(dface_point_n))
+        ndfaces = GT.num_faces(Γ)
+        dface_to_n = zeros(Tn,ndfaces)
+        for dface in 1:ndfaces
+            dface_to_n[dface] = dface_point_n(dface,1)(1)
+        end
+    elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
+        dface_to_n = outward_normals(mesh)
+    end
+    fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+    phys_names = label_boundary_faces!(mesh)
+    Plot(mesh,fd,node_data(mesh))
 end
+
+const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
-    dict = Dict{String,Vector{Int32}}()
+    dict = Dict{String,Any}()
     for group in physical_faces(mesh,d)
         name,faces = group
         face_mask = zeros(Int32,ndfaces)
@@ -482,14 +500,14 @@ function face_data(mesh::AbstractMesh,d)
     faceids = face_local_indices(mesh,d)
     part = part_id(faceids)
     dict["__OWNER__"] = local_to_owner(faceids)
-    dict["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+    dict["__IS_LOCAL__"] = Int32.(local_to_owner(faceids) .== part)
     dict["__PART__"] = fill(part,ndfaces)
     dict
 end
 
 function node_data(mesh::AbstractMesh)
     nnodes = num_nodes(mesh)
-    dict = Dict{String,Vector{Int32}}()
+    dict = Dict{String,Any}()
     #for group in physical_nodes(mesh;merge_dims=Val(true))
     #    name,nodes = group
     #    node_mask = zeros(Int32,nnodes)
@@ -500,7 +518,7 @@ function node_data(mesh::AbstractMesh)
     nodeids = node_local_indices(mesh)
     part = part_id(nodeids)
     dict["__OWNER__"] = local_to_owner(nodeids)
-    dict["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+    dict["__IS_LOCAL__"] = Int32.(local_to_owner(nodeids) .== part)
     dict["__PART__"] = fill(part,nnodes)
     dict
 end
@@ -580,6 +598,60 @@ function restrict(plt::Plot,newnodes,newfaces)
         dict
     end
     Plot(mesh,facedata,nodedata)
+end
+
+function skin(plt::GT.Plot)
+    @assert GT.num_dims(plt.mesh) == 3
+    D=3
+    d=2
+    mesh = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
+    topo = GT.topology(mesh)
+    face_to_cells = GT.face_incidence(topo,d,D)
+    Γ = GT.boundary(mesh)
+    boundary_names = GT.physical_names(Γ)
+    @assert length(boundary_names) == 1
+    boundary_name = first(boundary_names)
+    newdfaces = GT.physical_faces(mesh,d)[boundary_name]
+    nnodes = num_nodes(mesh)
+    node_count = zeros(Int32,nnodes)
+    dface_nodes = face_nodes(mesh,d)
+    for nodes in dface_nodes
+        for node in nodes
+            node_count[node] += 1
+        end
+    end
+    newnodes = findall(count->count!=0,node_count)
+    newfaces = [ Int[] for _ in 0:d ]
+    newfaces[end] = newdfaces
+    mesh2 = GT.restrict_to_dim(mesh,d)
+    mesh3 = GT.restrict(mesh2,newnodes,newfaces)
+    face_to_cell = map(first,face_to_cells)
+    newface_to_cell = face_to_cell[newfaces[end]]
+    celldata = copy(GT.face_data(plt,D;merge_dims=true))
+    for (k,v) in celldata
+        celldata[k] = v[newface_to_cell]
+    end
+    nodedata = copy(GT.node_data(plt))
+    for (k,v) in nodedata
+        nodedata[k] = v[newnodes]
+    end
+    dΓ = GT.measure(Γ,0)
+    dface_point_n = GT.unit_normal_accessor(dΓ)
+    Tn = typeof(GT.prototype(dface_point_n))
+    ndfaces = GT.num_faces(Γ)
+    face_to_n = zeros(Tn,ndfaces)
+    for dface in 1:ndfaces
+        face_to_n[dface] = dface_point_n(dface,1)(1)
+    end
+    celldata[PLOT_NORMALS_KEY] = face_to_n
+    fd = map(0:d) do i
+        if i == d
+            celldata
+        else
+            typeof(celldata)()
+        end
+    end
+    plt3 = GT.Plot(mesh3,fd,nodedata)
 end
 
 function shrink(plt::Plot;scale=0.75)
@@ -676,15 +748,12 @@ function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
 end
 
 function plot(domain::AbstractDomain;kwargs...)
+    #TODO if we emit faces, then we need to provie the normals
     mesh = GT.mesh(domain)
     d = GT.num_dims(domain)
     domface_to_face = GT.faces(domain)
     vismesh = GT.visualization_mesh(mesh,d,domface_to_face;kwargs...)
     node_data = Dict{String,Any}()
-    #quad = PlotQuadrature(mesh,domain,vismesh)
-    #foreach(pairs(fields)) do (sym,field)
-    #    node_data[string(sym)] = plot_field(quad,field)
-    #end
     vmesh,glue = vismesh
     cache = (;glue,domain)
     Plot(vmesh,face_data(vmesh),node_data,cache)
