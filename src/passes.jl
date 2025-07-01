@@ -552,7 +552,7 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             map(x -> ast_tabulate_impl!(x, depth), ast_children(node))
         elseif ast_is_definition(node)
             children_deps = get_deps(ast_rhs(node))
-            node_deps = if (ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) || ast_is_index(ast_rhs(node))
+            node_deps = if (ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) # || ast_is_index(ast_rhs(node))
                 (2^depth)-1
             else
                 reduce_deps(children_deps)

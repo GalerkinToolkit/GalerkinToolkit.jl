@@ -3570,6 +3570,7 @@ function ast_optimize(expr, loop_var_range)
     expr8 = ast_topological_sort(expr8)
 
     expr9 = ast_array_aliasing(expr8) |> ast_remove_dead_code
+
     expr9
 end
 
@@ -3577,16 +3578,14 @@ end
 
 function ast_optimize_2(expr, loop_var_range)
     var_count = 0
-
-    
     
     expr2, var_count = ast_flatten(expr, var_count)
 
     expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
-     
-    expr4 = ast_loop_unroll(expr3) |> ast_constant_folding 
+    
+    expr4 = ast_loop_unroll(expr3)  |> ast_array_unroll |> ast_constant_folding
 
-    expr5 = ast_loop_unroll(expr4) |> ast_constant_folding |> ast_array_unroll
+    expr5 = ast_loop_unroll(expr4)  |> ast_array_unroll |> ast_constant_folding
     
     # remove dead code twice. this is important because we have ifelse statements flattened
     expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
@@ -3596,6 +3595,7 @@ function ast_optimize_2(expr, loop_var_range)
     expr8 = ast_array_aliasing(expr7) |> ast_remove_dead_code
 
     expr9, var_count = ast_flatten(expr8, var_count) 
+    # expr9, var_count = ast_tabulate(expr9, var_count, loop_var_range) 
 
     expr10 = expr9 |> ast_constant_folding |> ast_topological_sort |> ast_remove_dead_code
 
