@@ -477,10 +477,11 @@ function plot(mesh::AbstractMesh)
         for dface in 1:ndfaces
             dface_to_n[dface] = dface_point_n(dface,1)(1)
         end
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
         dface_to_n = outward_normals(mesh)
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
-    fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     phys_names = label_boundary_faces!(mesh)
     Plot(mesh,fd,node_data(mesh))
 end
@@ -589,7 +590,10 @@ end
 
 function restrict(plt::Plot,newnodes,newfaces)
     mesh = restrict(plt.mesh,newnodes,newfaces)
-    nodedata = node_data(plt)[newnodes]
+    nodedata = copy(node_data(plt))
+    for (k,v) in nodedata
+        nodedata[k] = v[newnodes]
+    end
     facedata = map(face_data(plt),newfaces) do data,nfs
         dict = copy(data)
         for (k,v) in dict
@@ -966,20 +970,14 @@ function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
-function makieplot end
-function makieplot! end
 function makie0d end
 function makie0d! end
 function makie1d end
 function makie1d! end
 function makie2d end
 function makie2d! end
-function makie2d1d end
-function makie2d1d! end
 function makie3d end
 function makie3d! end
-function makie3d1d end
-function makie3d1d! end
 
 # handler for displaying a hint in case the user tries to call functions defined in the extension module
 # https://github.com/JuliaLang/julia/blob/b9d9b69165493f6fc03870d975be05c67f14a30b/base/errorshow.jl#L1039
