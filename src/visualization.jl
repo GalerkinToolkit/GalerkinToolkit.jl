@@ -721,26 +721,30 @@ function warp_by_vector(plt::Plot,vec::Nothing;scale=1)
     plt
 end
 
-function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+function warp_by_vector(plt::Plot,vec::AbstractArray;scale=1)
     mesh = plt.mesh
     node_to_x = node_coordinates(mesh)
-    node_to_vec = plt.node_data[vec.name]
+    node_to_vec = vec
     node_to_x = node_to_x .+ scale .* node_to_vec
     mesh2 = replace_node_coordinates(mesh,node_to_x)
     plt2 = replace_mesh(plt,mesh2)
     plt2
 end
 
+function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+    node_to_vec = plt.node_data[vec.name]
+    warp_by_vector(plt,node_to_vec;scale)
+end
+
 function warp_by_scalar(plt::Plot,data::Nothing;scale=1)
     plt
 end
 
-function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+function warp_by_scalar(plt::Plot,node_to_z::AbstractArray;scale=1)
     mesh = plt.mesh
     @assert num_dims(mesh) == 2
     @assert num_ambient_dims(mesh) == 2
     node_to_xy = node_coordinates(mesh)
-    node_to_z = plt.node_data[data.name]
     nnodes = length(node_to_z)
     node_to_xyz = map(node_to_xy,node_to_z) do xy,z
         x,y = xy
@@ -748,7 +752,13 @@ function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
     end
     mesh2 = replace_node_coordinates(mesh,node_to_xyz)
     plt2 = replace_mesh(plt,mesh2)
+    face_data(plt,2)[PLOT_NORMALS_KEY] = fill(SVector(0,0,1),num_faces(mesh,2))
     plt2
+end
+
+function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+    node_to_z = plt.node_data[data.name]
+    warp_by_scalar(plt,node_to_z;scale)
 end
 
 function plot(domain::AbstractDomain;kwargs...)

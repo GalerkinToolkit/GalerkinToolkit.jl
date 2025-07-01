@@ -90,6 +90,46 @@ GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
 display(fig)
 
+fig = Figure()
+ax = Axis(fig[1,1],aspect=DataAspect())
+warp_by_vector=fill(SVector(0.1,0.1),GT.num_nodes(plt.mesh))
+warp_scale = 1
+GT.makie2d!(plt)
+GT.makie2d!(plt;warp_by_vector,warp_scale,color=:red)
+GT.makie1d!(plt;warp_by_vector,warp_scale,color=:black)
+GT.makie0d!(plt;warp_by_vector,warp_scale,color=:black)
+display(fig)
+
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+warp_by_scalar=fill(0.1,GT.num_nodes(plt.mesh))
+warp_scale = 1
+GT.makie2d!(plt)
+GT.makie2d!(plt;warp_by_scalar,warp_scale,color=:red)
+GT.makie1d!(plt;warp_by_scalar,warp_scale,color=:black)
+GT.makie0d!(plt;warp_by_scalar,warp_scale,color=:black)
+display(fig)
+
+plt = GT.plot(mesh)
+fig = Figure()
+ax = Axis(fig[1,1],aspect=DataAspect())
+shrink = 0.6
+GT.makie0d!(plt;dim=2,shrink,color=:blue)
+GT.makie0d!(plt;dim=1,shrink,color=:black)
+GT.makie0d!(plt;dim=0,shrink,color=:green)
+GT.makie1d!(plt;dim=2,shrink,color=:blue)
+GT.makie1d!(plt;dim=1,shrink,color=:black)
+GT.makie2d!(plt;dim=2,shrink,color=:blue)
+display(fig)
+
+GT.node_data(plt)["aux"] = rand(GT.num_nodes(plt.mesh))
+fig = Figure()
+ax = Axis(fig[1,1],aspect=DataAspect())
+color = GT.NodeData("aux")
+GT.makie2d!(plt;dim=2,color)
+GT.makie1d!(plt;dim=1,color)
+GT.makie0d!(plt;dim=0,color)
+display(fig)
 
 
 #xxx

@@ -30,7 +30,10 @@ function Makie.preferred_axis_type(p::Makie0d)
 end
 
 function Makie.plot!(p::Makie0d{<:Tuple{<:GT.Plot}})
-    attrs_in = [:converted_1,:dim,:color,:colorrange]
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
     attrs_out = [:points,:newcolor,:newcolorrange]
     map!(setup_makie0d,p.attributes,attrs_in,attrs_out)
     valid_attributes = Makie.shared_attributes(p, Makie.Scatter)
@@ -75,7 +78,10 @@ function Makie.preferred_axis_type(p::Makie1d)
 end
 
 function Makie.plot!(p::Makie1d{<:Tuple{<:GT.Plot}})
-    attrs_in = [:converted_1,:dim,:color,:colorrange]
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
     attrs_out = [:points,:newcolor,:newcolorrange]
     map!(setup_makie1d,p.attributes,attrs_in,attrs_out)
     valid_attributes = Makie.shared_attributes(p, Makie.LineSegments)
@@ -120,7 +126,10 @@ function Makie.preferred_axis_type(p::Makie2d)
 end
 
 function Makie.plot!(p::Makie2d{<:Tuple{<:GT.Plot}})
-    attrs_in = [:converted_1,:dim,:color,:colorrange]
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
     attrs_out = [:vert,:conn,:newcolor,:newcolorrange]
     map!(setup_makie2d,p.attributes,attrs_in,attrs_out)
     valid_attributes = Makie.shared_attributes(p, Makie.Mesh)
@@ -299,6 +308,20 @@ function setup_colors_impl(plt,color,d)
     end
     plt,color
 end
+
+function setup_plt_changes(plt,vector,scalar,scale,shrink)
+    if vector !== nothing
+        plt = GT.warp_by_vector(plt,vector;scale)
+    end
+    if scalar !== nothing
+        plt = GT.warp_by_scalar(plt,scalar;scale)
+    end
+    if shrink !== nothing
+        plt = GT.shrink(plt;scale=shrink)
+    end
+    (plt,)
+end
+
 
 #Makie.@recipe Makie0d begin
 #    Makie.documented_attributes(Makie.Scatter)...
