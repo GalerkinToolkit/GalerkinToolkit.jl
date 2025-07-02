@@ -959,6 +959,62 @@ function reference_coordinates(plt::PPlot)
     GT.quantity(term,prototype,plt.cache.domain)
 end
 
+function PartitionedArrays.centralize(plt::PPlot)
+    function concatenate_meshes(meshes)
+        p_nxs = map(GT.node_coordinates,meshes)
+        node_coordinates = reduce(vcat,p_nxs)
+        D = num_dims(first(meshes))
+        p_nnodes = map(length,p_nxs)
+        P = length(p_nnodes)
+        face_nodes = map(0:D) do d
+            offset = 0
+            p_fn = map(meshes,1:P) do m,p
+                ns = map(GT.face_nodes(m,d)) do nodes
+                    nodes .+ offset
+                end
+                offset += p_nnodes[p]
+                ns
+            end
+            JaggedArray(reduce(vcat,p_fn))
+        end
+        face_reference_id = map(0:D) do d
+            reduce(vcat,map(m->GT.face_reference_id(m,d),meshes))
+        end
+        reference_spaces = GT.reference_spaces(first(meshes))
+        GT.mesh(;
+            node_coordinates,
+            face_nodes,
+            face_reference_id,
+            reference_spaces,
+           )
+    end
+    function concatenate_dicts(dicts)
+        a = Dict{String,Any}()
+        ks = keys(first(dicts))
+        for k in ks
+            a[k] = reduce(vcat,map(d->d[k],dicts))
+        end
+        a
+    end
+    meshes = collect(map(p->p.mesh,plt.partition))
+    mesh = concatenate_meshes(meshes)
+    nds = collect(map(node_data,plt.partition))
+    nd = concatenate_dicts(nds)
+    D = num_dims(mesh)
+    P = length(meshes)
+    fd = map(0:D) do d
+        fds = collect(map(p->GT.face_data(p,d),plt.partition))
+        concatenate_dicts(fds)
+    end
+    plt = Plot(mesh,fd,nd)
+    newfaces = map(fd) do f
+        mask = f["__OWNER__"] .== f["__PART__"]
+        findall(mask)
+    end
+    newnodes = 1:num_nodes(mesh)
+    restrict(plt,newnodes,newfaces)
+end
+
 # VTK
 
 struct VTKPlot{A,B} <: AbstractType

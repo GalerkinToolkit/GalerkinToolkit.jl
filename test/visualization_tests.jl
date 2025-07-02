@@ -47,6 +47,31 @@ Makie.linesegments!(segments;linewidth=2,color=:black)
 Makie.arrows3d!(vertices,directions,lengthscale=0.5,color=norm.(directions))
 display(fig)
 
+
+domain = (0,1,0,1,0,1)
+n = 10
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+np = 5
+parts = DebugArray(LinearIndices((np,)))
+pmesh = GT.partition_mesh(mesh,np;parts,renumber=true)
+
+pplt = GT.plot(pmesh)
+plt = GT.centralize(pplt)
+
+
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidespines!(ax)
+hidedecorations!(ax)
+GT.makie2d!(plt;color=GT.FaceData("__OWNER__"))
+GT.makie1d!(plt;color=:black)
+display(fig)
+xxx
+
+
+
+
 # Visualizing plot objects
 domain = (0,1,0,1,0,1)
 n = 3
@@ -192,6 +217,8 @@ GT.makie2d!(plt;color=GT.NodeData("u"))
 GT.makie1d!(plt)
 GT.makie0d!(plt)
 display(fig)
+
+
 
 
 #xxx
