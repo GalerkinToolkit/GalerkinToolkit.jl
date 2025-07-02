@@ -47,7 +47,6 @@ Makie.linesegments!(segments;linewidth=2,color=:black)
 Makie.arrows3d!(vertices,directions,lengthscale=0.5,color=norm.(directions))
 display(fig)
 
-
 # Visualizing plot objects
 domain = (0,1,0,1,0,1)
 n = 3
@@ -57,6 +56,7 @@ plt = GT.plot(mesh)
 plt = GT.shrink(plt)
 fig = Figure()
 ax = Axis3(fig[1,1],aspect=:data)
+
 GT.makie0d!(plt;dim=3,color=:red)
 GT.makie0d!(plt;dim=2,color=:blue)
 GT.makie0d!(plt;dim=1,color=:black)
@@ -142,7 +142,6 @@ GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
 display(fig)
 
-
 mesh = GT.mesh_from_msh(joinpath(@__DIR__,"..","assets","solid.msh"))
 plt = GT.plot(mesh)
 plt = GT.shrink(plt)
@@ -193,7 +192,6 @@ GT.makie2d!(plt;color=GT.NodeData("u"))
 GT.makie1d!(plt)
 GT.makie0d!(plt)
 display(fig)
-
 
 
 #xxx

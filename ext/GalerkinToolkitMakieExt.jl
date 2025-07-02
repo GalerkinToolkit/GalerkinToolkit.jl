@@ -23,6 +23,37 @@ import GalerkinToolkit: makie3d, makie3d!
 using PartitionedArrays
 using Makie
 
+
+#function Makie.convert_arguments(::Type{<:Mesh},plt::GT.Plot,dim::Integer)
+#    #color = :blue
+#    #colorrange = Makie.Automatic
+#    #vert, conn, color, colorrange = setup_makie2d(plt,dim,color,colorrange)
+#    #(vert,conn)
+#end
+
+function Makie.plot!(p::Makie.Mesh{<:Tuple{<:GT.Plot}})
+    yyy
+#    attrs_in = [:converted_1]
+#    attrs_out = :dim
+#    map!(GT.num_dims,p.attributes,attrs_in,attrs_out)
+#    valid_attributes = Makie.shared_attributes(p, Makie.Mesh)
+#    Makie.mesh!(p,valid_attributes,p[1],p.dim)
+end
+#
+function Makie.plot!(p::Mesh{<:Tuple{<:GT.Plot,<:Integer}})
+    yyy
+    attrs_in = [:converted_1,:converted_2,:color,:colorrange]
+    attrs_out = [:vert,:conn,:newcolor,:newcolorrange]
+    map!(setup_makie2d,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p, Makie.Mesh)
+    color = p.newcolor
+    colorrange = p.newcolorrange
+    Makie.mesh!(p,valid_attributes,p.vert,p.conn;color,colorrange)
+end
+
+
+
+
 function shared_attributes_mixin()
     Makie.@DocumentedAttributes begin
         dim = Makie.Automatic()
