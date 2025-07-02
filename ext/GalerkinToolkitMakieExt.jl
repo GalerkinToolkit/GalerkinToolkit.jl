@@ -19,7 +19,6 @@ import GalerkinToolkit as GT
 import GalerkinToolkit: makie0d, makie0d!
 import GalerkinToolkit: makie1d, makie1d!
 import GalerkinToolkit: makie2d, makie2d!
-import GalerkinToolkit: makie3d, makie3d!
 using PartitionedArrays
 using Makie
 

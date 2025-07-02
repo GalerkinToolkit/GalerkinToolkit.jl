@@ -8,6 +8,9 @@ using PartitionedArrays
 using StaticArrays
 using LinearAlgebra
 
+counter = 0
+dir = mkpath(joinpath(@__DIR__,"..","pictures"))
+
 # Setup we like in 2d
 S = SVector{2,Float64}
 vertices = S[(0,0),(1,0),(0,1),(1,1),(0,1),(1,1),(0,2),(1,2)]
@@ -25,6 +28,7 @@ Makie.mesh!(vertices,conn)
 Makie.scatter!(vertices;markersize=13,color=:black)
 Makie.linesegments!(segments;linewidth=2,color=:black)
 Makie.arrows2d!(vertices,directions,lengthscale = 0.5,color=norm.(directions))
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 # Setup we like in 3d
@@ -45,31 +49,8 @@ Makie.mesh!(vertices,faces)
 Makie.scatter!(vertices;markersize=13,color=:black)
 Makie.linesegments!(segments;linewidth=2,color=:black)
 Makie.arrows3d!(vertices,directions,lengthscale=0.5,color=norm.(directions))
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
-
-
-domain = (0,1,0,1,0,1)
-n = 10
-cells = (n,n,n)
-mesh = GT.cartesian_mesh(domain,cells)
-np = 5
-parts = DebugArray(LinearIndices((np,)))
-pmesh = GT.partition_mesh(mesh,np;parts,renumber=true)
-
-pplt = GT.plot(pmesh)
-plt = GT.centralize(pplt)
-
-
-fig = Figure()
-ax = Axis3(fig[1,1],aspect=:data)
-hidespines!(ax)
-hidedecorations!(ax)
-GT.makie2d!(plt;color=GT.FaceData("__OWNER__"))
-GT.makie1d!(plt;color=:black)
-display(fig)
-xxx
-
-
 
 
 # Visualizing plot objects
@@ -79,9 +60,9 @@ cells = (n,n,n)
 mesh = GT.cartesian_mesh(domain,cells)
 plt = GT.plot(mesh)
 plt = GT.shrink(plt)
+
 fig = Figure()
 ax = Axis3(fig[1,1],aspect=:data)
-
 GT.makie0d!(plt;dim=3,color=:red)
 GT.makie0d!(plt;dim=2,color=:blue)
 GT.makie0d!(plt;dim=1,color=:black)
@@ -91,6 +72,7 @@ GT.makie1d!(plt;dim=2,color=:blue)
 GT.makie1d!(plt;dim=1,color=:black)
 GT.makie2d!(plt;dim=2,color=:blue)
 GT.makie2d!(plt;dim=3,color=:red)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 fig = Figure()
@@ -99,6 +81,7 @@ color = GT.FaceData("2-face-1")
 GT.makie2d!(plt;dim=2,color)
 GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 # Visualizing plot objects
@@ -116,6 +99,7 @@ GT.makie0d!(plt;dim=0,color=:green)
 GT.makie1d!(plt;dim=2,color=:blue)
 GT.makie1d!(plt;dim=1,color=:black)
 GT.makie2d!(plt;dim=2,color=:blue)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 fig = Figure()
@@ -124,6 +108,7 @@ color = GT.FaceData("1-face-1")
 GT.makie2d!(plt;dim=2,color)
 GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 fig = Figure()
@@ -134,6 +119,7 @@ GT.makie2d!(plt)
 GT.makie2d!(plt;warp_by_vector,warp_scale,color=:red)
 GT.makie1d!(plt;warp_by_vector,warp_scale,color=:black)
 GT.makie0d!(plt;warp_by_vector,warp_scale,color=:black)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 fig = Figure()
@@ -144,6 +130,7 @@ GT.makie2d!(plt)
 GT.makie2d!(plt;warp_by_scalar,warp_scale,color=:red)
 GT.makie1d!(plt;warp_by_scalar,warp_scale,color=:black)
 GT.makie0d!(plt;warp_by_scalar,warp_scale,color=:black)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 plt = GT.plot(mesh)
@@ -156,6 +143,7 @@ GT.makie0d!(plt;dim=0,shrink,color=:green)
 GT.makie1d!(plt;dim=2,shrink,color=:blue)
 GT.makie1d!(plt;dim=1,shrink,color=:black)
 GT.makie2d!(plt;dim=2,shrink,color=:blue)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 GT.node_data(plt)["aux"] = rand(GT.num_nodes(plt.mesh))
@@ -165,6 +153,7 @@ color = GT.NodeData("aux")
 GT.makie2d!(plt;dim=2,color)
 GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 mesh = GT.mesh_from_msh(joinpath(@__DIR__,"..","assets","solid.msh"))
@@ -176,6 +165,7 @@ Axis3(fig[1,1],aspect=:data)
 GT.makie2d!(plt;dim=2,color,colormap=:bluesreds)
 GT.makie1d!(plt;dim=2,color,colormap=:bluesreds)
 GT.makie0d!(plt;dim=2,color,colormap=:bluesreds)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 plt = GT.plot(mesh)
@@ -187,6 +177,7 @@ hidedecorations!(ax)
 #ax = LScene(fig[1,1],show_axis=false)
 GT.makie2d!(plt;color=:pink)
 GT.makie1d!(plt;color=:black,linewidth=2)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 domain = (0,1,0,1,0,1)
@@ -204,6 +195,7 @@ hidedecorations!(ax)
 GT.makie2d!(plt;color=GT.NodeData("u"))
 GT.makie1d!(plt)
 GT.makie0d!(plt)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
 
 Γ = GT.boundary(mesh,physical_names=["2-face-1","2-face-3"])
@@ -216,7 +208,31 @@ hidedecorations!(ax)
 GT.makie2d!(plt;color=GT.NodeData("u"))
 GT.makie1d!(plt)
 GT.makie0d!(plt)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 display(fig)
+
+# Parallel
+
+domain = (0,1,0,1,0,1)
+n = 10
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+np = 5
+parts = DebugArray(LinearIndices((np,)))
+pmesh = GT.partition_mesh(mesh,np;parts,renumber=true)
+
+pplt = GT.plot(pmesh)
+plt = GT.centralize(pplt)
+
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidespines!(ax)
+hidedecorations!(ax)
+GT.makie2d!(plt;color=GT.FaceData("__OWNER__"))
+GT.makie1d!(plt;color=:black)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+display(fig)
+
 
 
 
