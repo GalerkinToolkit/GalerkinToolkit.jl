@@ -213,11 +213,14 @@ end
 
 function makie_faces_mesh_orient!(conn,plt)
     d=2
+    if ! haskey(GT.face_data(plt,d),GT.PLOT_NORMALS_KEY)
+        return
+    end
+    face_n = GT.face_data(plt,d)[GT.PLOT_NORMALS_KEY]
     mesh = plt.mesh
     node_x = GT.node_coordinates(mesh)
     face_nodes = GT.face_nodes(mesh,2)
     nfaces = size(conn,1)
-    face_n = GT.face_data(plt,d)[GT.PLOT_NORMALS_KEY]
     for face in 1:nfaces
         nodes = face_nodes[face]
         x1 = node_x[nodes[1]]

@@ -165,19 +165,37 @@ GT.makie2d!(plt;color=:pink)
 GT.makie1d!(plt;color=:black,linewidth=2)
 display(fig)
 
+domain = (0,1,0,1,0,1)
+n = 10
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
 
-#xxx
-#
-## TODO
-#Γ = GT.boundary(mesh,physical_names=["2-face-1","2-face-3"])
-#plt = GT.plot(Γ)
-#fig = Figure()
-#ax = Axis3(fig[1,1],aspect=:data)
-#GT.makie2d!(plt)
-#GT.makie1d!(plt)
-#GT.makie0d!(plt)
-#display(fig)
-#
+Ω = GT.interior(mesh)
+u = GT.analytical_field(sum,Ω)
+plt = GT.plot(Ω)
+GT.plot!(plt,u;label="u")
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidedecorations!(ax)
+GT.makie2d!(plt;color=GT.NodeData("u"))
+GT.makie1d!(plt)
+GT.makie0d!(plt)
+display(fig)
+
+Γ = GT.boundary(mesh,physical_names=["2-face-1","2-face-3"])
+plt = GT.plot(Γ)
+u = GT.analytical_field(sum,Γ)
+GT.plot!(plt,u;label="u")
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidedecorations!(ax)
+GT.makie2d!(plt;color=GT.NodeData("u"))
+GT.makie1d!(plt)
+GT.makie0d!(plt)
+display(fig)
+
+
+
 #xxx
 #
 #

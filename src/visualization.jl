@@ -762,7 +762,6 @@ function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
 end
 
 function plot(domain::AbstractDomain;kwargs...)
-    #TODO if we emit faces, then we need to provie the normals
     mesh = GT.mesh(domain)
     d = GT.num_dims(domain)
     domface_to_face = GT.faces(domain)
@@ -770,7 +769,21 @@ function plot(domain::AbstractDomain;kwargs...)
     node_data = Dict{String,Any}()
     vmesh,glue = vismesh
     cache = (;glue,domain)
-    Plot(vmesh,face_data(vmesh),node_data,cache)
+    fd = face_data(vmesh)
+    if d == 2 && num_ambient_dims(mesh) == 3
+        #If we emit faces, then we need to provie the normals for shading
+        Γ = domain
+        dΓ = GT.measure(Γ,0)
+        dface_point_n = GT.unit_normal_accessor(dΓ)
+        Tn = typeof(GT.prototype(dface_point_n))
+        ndfaces = GT.num_faces(Γ)
+        dface_to_n = zeros(Tn,ndfaces)
+        for dface in 1:ndfaces
+            dface_to_n[dface] = dface_point_n(dface,1)(1)
+        end
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+    end
+    Plot(vmesh,fd,node_data,cache)
 end
 
 function plot(domain::AbstractMeshDomain{<:PMesh};kwargs...)
