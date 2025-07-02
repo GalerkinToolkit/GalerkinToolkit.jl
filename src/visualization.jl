@@ -1049,14 +1049,16 @@ function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
-function makie0d end
-function makie0d! end
-function makie1d end
-function makie1d! end
-function makie2d end
-function makie2d! end
-function makie3d end
-function makie3d! end
+function makie_points end
+function makie_points! end
+function makie_lines end
+function makie_lines! end
+function makie_surface end
+function makie_surface! end
+function makie_arrows2d! end
+function makie_arrows2d end
+function makie_arrows3d! end
+function makie_arrows3d end
 
 # handler for displaying a hint in case the user tries to call functions defined in the extension module
 # https://github.com/JuliaLang/julia/blob/b9d9b69165493f6fc03870d975be05c67f14a30b/base/errorshow.jl#L1039
@@ -1068,7 +1070,7 @@ function makie3d! end
 #        end
 #    end
 #    Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, kwargs
-#        if exc.f in [makieplot, makieplot!, makie0d, makie0d!, makie1d, makie1d!, makie2d, makie2d!, makie2d1d, makie2d1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
+#        if exc.f in [makieplot, makieplot!, plot_points, plot_points!, plot_edges, plot_edges!, plot_surface, plot_surface!, plot_surface1d, plot_surface1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
 #            if isempty(methods(exc.f))
 #                print(io, "\n$(exc.f) has no methods, yet. Makie has to be loaded for the plotting extension to be activated. Run `using Makie`, `using CairoMakie`, `using GLMakie` or any other package that also loads Makie.")
 #            end
