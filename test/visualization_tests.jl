@@ -6,6 +6,7 @@ using WriteVTK
 using PartitionedArrays
 
 using StaticArrays
+using LinearAlgebra
 
 # Setup we like in 2d
 S = SVector{2,Float64}
@@ -15,27 +16,37 @@ edges = [1 2; 2 4; 3 4; 1 3; 4 8; 3 7; 7 8]
 segments = zeros(S,2*size(edges,1))
 segments[1:2:end-1] = vertices[edges[:,1]]
 segments[2:2:end] = vertices[edges[:,2]]
+directions = [ SVector(rand(),rand()) for _ in 1:length(vertices)]
 fig = Figure()
 ax = Axis(fig[1,1];aspect=DataAspect())
+hidespines!(ax)
+hidedecorations!(ax)
 Makie.mesh!(vertices,conn)
 Makie.scatter!(vertices;markersize=13,color=:black)
 Makie.linesegments!(segments;linewidth=2,color=:black)
+Makie.arrows2d!(vertices,directions,lengthscale = 0.5,color=norm.(directions))
 display(fig)
 
 # Setup we like in 3d
 S = SVector{3,Float64}
 vertices = S[(0,0,0),(1,0,0),(0,1,0),(1,1,0),(0,1,0),(1,1,0),(0,2,1),(1,2,1)]
+directions = [ SVector(rand(),rand(),rand()) for _ in 1:length(vertices)]
 faces = [1 2 3; 2 4 3; 5 6 7; 6 8 7]
 edges = [1 2; 2 4; 3 4; 1 3; 4 8; 3 7; 7 8]
 segments = zeros(S,2*size(edges,1))
 segments[1:2:end-1] = vertices[edges[:,1]]
 segments[2:2:end] = vertices[edges[:,2]]
 fig = Figure()
-ax = Axis3(fig[1,1],aspect=:data)
+#ax = Axis3(fig[1,1],aspect=:data)
+#hidespines!(ax)
+#hidedecorations!(ax)
+ax = LScene(fig[1,1],show_axis=false)
 Makie.mesh!(vertices,faces)
 Makie.scatter!(vertices;markersize=13,color=:black)
 Makie.linesegments!(segments;linewidth=2,color=:black)
+Makie.arrows3d!(vertices,directions,lengthscale=0.5,color=norm.(directions))
 display(fig)
+
 
 # Visualizing plot objects
 domain = (0,1,0,1,0,1)
@@ -129,6 +140,29 @@ color = GT.NodeData("aux")
 GT.makie2d!(plt;dim=2,color)
 GT.makie1d!(plt;dim=1,color)
 GT.makie0d!(plt;dim=0,color)
+display(fig)
+
+
+mesh = GT.mesh_from_msh(joinpath(@__DIR__,"..","assets","solid.msh"))
+plt = GT.plot(mesh)
+plt = GT.shrink(plt)
+fig = Figure()
+color = color=GT.FaceData("surface_1")
+Axis3(fig[1,1],aspect=:data)
+GT.makie2d!(plt;dim=2,color,colormap=:bluesreds)
+GT.makie1d!(plt;dim=2,color,colormap=:bluesreds)
+GT.makie0d!(plt;dim=2,color,colormap=:bluesreds)
+display(fig)
+
+plt = GT.plot(mesh)
+plt = GT.skin(plt)
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidespines!(ax)
+hidedecorations!(ax)
+#ax = LScene(fig[1,1],show_axis=false)
+GT.makie2d!(plt;color=:pink)
+GT.makie1d!(plt;color=:black,linewidth=2)
 display(fig)
 
 

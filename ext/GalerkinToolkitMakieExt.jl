@@ -11,6 +11,10 @@ using StaticArrays
 #arrows
 #pplot,pmesh,pdomain
 
+#FaceData -> FaceColor
+#NodeData -> NodeColor
+
+
 import GalerkinToolkit as GT
 import GalerkinToolkit: makie0d, makie0d!
 import GalerkinToolkit: makie1d, makie1d!
@@ -18,6 +22,17 @@ import GalerkinToolkit: makie2d, makie2d!
 import GalerkinToolkit: makie3d, makie3d!
 using PartitionedArrays
 using Makie
+
+function shared_attributes_mixin()
+    Makie.@DocumentedAttributes begin
+        dim = Makie.Automatic()
+        shrink = nothing
+        warp_by_vector = nothing
+        warp_by_scalar = nothing
+        warp_scale = 1
+        refinement = nothing
+    end
+end
 
 Makie.@recipe Makie0d begin
     Makie.documented_attributes(Makie.Scatter)...
@@ -45,6 +60,13 @@ end
 
 function setup_makie0d(plt_in,dim_in,color,colorrange)
     d = 0
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt_in.mesh) : dim_in
+    if D == 3
+        plt_in = GT.skin(plt_in)
+        dim_in = 2
+    else
+        plt_in = plt_in
+    end
     plt = restrict_to_dim_for_makie(plt_in,dim_in,d)
     colorrange = setup_colorrange_impl(plt,color,colorrange)
     plt, color = setup_colors_impl(plt,color,d)
@@ -93,6 +115,13 @@ end
 
 function setup_makie1d(plt_in,dim_in,color,colorrange)
     d = 1
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt_in.mesh) : dim_in
+    if D == 3
+        plt_in = GT.skin(plt_in)
+        dim_in = 2
+    else
+        plt_in = plt_in
+    end
     plt = restrict_to_dim_for_makie(plt_in,dim_in,d)
     colorrange = setup_colorrange_impl(plt,color,colorrange)
     plt, color = setup_colors_impl(plt,color,d)
@@ -209,17 +238,6 @@ end
 function plot_preferred_axis_type(plt)
     d = GT.num_ambient_dims(plt)
     d == 3 ? Makie.Axis3 : Makie.Axis
-end
-
-function shared_attributes_mixin()
-    Makie.@DocumentedAttributes begin
-        dim = Makie.Automatic()
-        shrink = nothing
-        warp_by_vector = nothing
-        warp_by_scalar = nothing
-        warp_scale = 1
-        refinement = nothing
-    end
 end
 
 function restrict_to_dim_for_makie(plt,dim_in,dim_plot)
