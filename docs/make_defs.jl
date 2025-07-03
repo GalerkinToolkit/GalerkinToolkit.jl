@@ -53,7 +53,6 @@ function main(;debug=false)
 
     examples_pages = [
                       "example_hello_world.md",
-                      "example_hello_world_manual.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
                       "example_p_laplacian_manual.md",

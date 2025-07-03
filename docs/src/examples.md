@@ -2,7 +2,6 @@
 
 
 - [Hello, World!](@ref)
-- [Hello, World! (manual assembly)](@ref)
 - [Poisson equation](@ref)
 - [p-Laplacian](@ref)
 - [p-Laplacian (manual assembly)](@ref)
