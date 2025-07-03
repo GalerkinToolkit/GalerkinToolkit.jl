@@ -3,6 +3,9 @@ module Make
 using GalerkinToolkit
 using Documenter
 using Literate
+using DocumenterCitations
+
+bib = CitationBibliography(joinpath(@__DIR__, "src", "references.bib"))
 
 const src_jl = joinpath(@__DIR__,"src","src_jl")
 const src_md = joinpath(@__DIR__,"src","src_md")
@@ -73,10 +76,11 @@ function main(;debug=false)
              modules=[GalerkinToolkit],
              authors="Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors",
              sitename="GalerkinToolkit.jl",
+             plugins=[bib],
              format=Documenter.HTML(;
                                     prettyurls=get(ENV, "CI", "false") == "true",
                                     canonical="https://GalerkinToolkit.github.io/GalerkinToolkit.jl",
-                                    assets=String[],
+                                    assets=["assets/citations.css","favicon.ico"],
                                    ),
              pages=[
                     "index.md",
@@ -85,6 +89,7 @@ function main(;debug=false)
                     "Manual" => manual,
                     "reference.md",
                     "refindex.md",
+                    "references.md",
                    ],
             )
 

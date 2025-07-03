@@ -508,30 +508,32 @@ function setup_makie_domain(domain,refinement,color,vec,scal)
 end
 
 function plot_for_makie(domain::GT.AbstractDomain,refinement)
-    function collect_face_normals(Γ::GT.AbstractDomain)
-        dΓ = GT.measure(Γ,0)
-        dface_point_n = GT.unit_normal_accessor(dΓ)
-        Tn = typeof(GT.prototype(dface_point_n))
-        ndfaces = GT.num_faces(Γ)
-        dface_to_n = zeros(Tn,ndfaces)
-        for dface in 1:ndfaces
-            dface_to_n[dface] = dface_point_n(dface,1)(1)
-        end
-        dface_to_n
-    end
-    if GT.num_dims(domain) == 3
-        domain2 = GT.boundary(domain)
-    else
-        domain2 = domain
-    end
-    plt = GT.plot(domain2;refinement)
-    if GT.num_dims(domain) == 3
-        face_n = collect_face_normals(domain2)
-        vface_face = plt.cache.glue.parent_face
-        vface_n = face_n[vface_face]
-        GT.face_data(plt,2)[GT.PLOT_NORMALS_KEY] = vface_n
-    end
-    plt
+    return GT.plot(domain;refinement) 
+    # TODO not sure about this one
+    #function collect_face_normals(Γ::GT.AbstractDomain)
+    #    dΓ = GT.measure(Γ,0)
+    #    dface_point_n = GT.unit_normal_accessor(dΓ)
+    #    Tn = typeof(GT.prototype(dface_point_n))
+    #    ndfaces = GT.num_faces(Γ)
+    #    dface_to_n = zeros(Tn,ndfaces)
+    #    for dface in 1:ndfaces
+    #        dface_to_n[dface] = dface_point_n(dface,1)(1)
+    #    end
+    #    dface_to_n
+    #end
+    #if GT.num_dims(domain) == 3
+    #    domain2 = GT.boundary(domain)
+    #else
+    #    domain2 = domain
+    #end
+    #plt = GT.plot(domain2;refinement)
+    #if GT.num_dims(domain) == 3
+    #    face_n = collect_face_normals(domain2)
+    #    vface_face = plt.cache.glue.parent_face
+    #    vface_n = face_n[vface_face]
+    #    GT.face_data(plt,2)[GT.PLOT_NORMALS_KEY] = vface_n
+    #end
+    #plt
 end
 
 function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.AbstractDomain,<:GT.AbstractField}})
