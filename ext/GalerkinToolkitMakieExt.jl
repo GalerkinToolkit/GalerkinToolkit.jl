@@ -486,7 +486,7 @@ function setup_makie_domain(domain,refinement,color,vec,scal)
     if isa(color,GT.AbstractQuantity) || isa(color,Function)
         label = string(gensym())
         GT.plot!(plt,color;label)
-        newcolor = GT.node_color(plt,label)
+        newcolor = GT.NodeData(label)#GT.node_color(plt,label)
     else
         newcolor = color
     end
