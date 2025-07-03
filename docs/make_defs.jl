@@ -80,7 +80,7 @@ function main(;debug=false)
              format=Documenter.HTML(;
                                     prettyurls=get(ENV, "CI", "false") == "true",
                                     canonical="https://GalerkinToolkit.github.io/GalerkinToolkit.jl",
-                                    assets=["assets/citations.css","favicon.ico"],
+                                    assets=["assets/citations.css","assets/favicon.ico"],
                                    ),
              pages=[
                     "index.md",
