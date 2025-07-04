@@ -466,12 +466,31 @@ function simplexify(plt::Plot)
 end
 
 function plot(mesh::AbstractMesh)
-    Plot(mesh,face_data(mesh),node_data(mesh))
+    fd = face_data(mesh)
+    if num_dims(mesh) == 3
+        Γ = GT.domain(mesh,Val(2))
+        dΓ = GT.measure(Γ,0)
+        dface_point_n = GT.unit_normal_accessor(dΓ)
+        Tn = typeof(GT.prototype(dface_point_n))
+        ndfaces = GT.num_faces(Γ)
+        dface_to_n = zeros(Tn,ndfaces)
+        for dface in 1:ndfaces
+            dface_to_n[dface] = dface_point_n(dface,1)(1)
+        end
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+    elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
+        dface_to_n = outward_normals(mesh)
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+    end
+    phys_names = label_boundary_faces!(mesh)
+    Plot(mesh,fd,node_data(mesh))
 end
+
+const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
-    dict = Dict{String,Vector{Int32}}()
+    dict = Dict{String,Any}()
     for group in physical_faces(mesh,d)
         name,faces = group
         face_mask = zeros(Int32,ndfaces)
@@ -482,14 +501,14 @@ function face_data(mesh::AbstractMesh,d)
     faceids = face_local_indices(mesh,d)
     part = part_id(faceids)
     dict["__OWNER__"] = local_to_owner(faceids)
-    dict["__IS_LOCAL__"] = local_to_owner(faceids) .== part
+    dict["__IS_LOCAL__"] = Int32.(local_to_owner(faceids) .== part)
     dict["__PART__"] = fill(part,ndfaces)
     dict
 end
 
 function node_data(mesh::AbstractMesh)
     nnodes = num_nodes(mesh)
-    dict = Dict{String,Vector{Int32}}()
+    dict = Dict{String,Any}()
     #for group in physical_nodes(mesh;merge_dims=Val(true))
     #    name,nodes = group
     #    node_mask = zeros(Int32,nnodes)
@@ -500,7 +519,7 @@ function node_data(mesh::AbstractMesh)
     nodeids = node_local_indices(mesh)
     part = part_id(nodeids)
     dict["__OWNER__"] = local_to_owner(nodeids)
-    dict["__IS_LOCAL__"] = local_to_owner(nodeids) .== part
+    dict["__IS_LOCAL__"] = Int32.(local_to_owner(nodeids) .== part)
     dict["__PART__"] = fill(part,nnodes)
     dict
 end
@@ -571,7 +590,10 @@ end
 
 function restrict(plt::Plot,newnodes,newfaces)
     mesh = restrict(plt.mesh,newnodes,newfaces)
-    nodedata = node_data(plt)[newnodes]
+    nodedata = copy(node_data(plt))
+    for (k,v) in nodedata
+        nodedata[k] = v[newnodes]
+    end
     facedata = map(face_data(plt),newfaces) do data,nfs
         dict = copy(data)
         for (k,v) in dict
@@ -582,7 +604,64 @@ function restrict(plt::Plot,newnodes,newfaces)
     Plot(mesh,facedata,nodedata)
 end
 
+function skin(plt::GT.Plot)
+    @assert GT.num_dims(plt.mesh) == 3
+    D=3
+    d=2
+    mesh = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
+    topo = GT.topology(mesh)
+    face_to_cells = GT.face_incidence(topo,d,D)
+    Γ = GT.boundary(mesh)
+    boundary_names = GT.physical_names(Γ)
+    @assert length(boundary_names) == 1
+    boundary_name = first(boundary_names)
+    newdfaces = GT.physical_faces(mesh,d)[boundary_name]
+    nnodes = num_nodes(mesh)
+    node_count = zeros(Int32,nnodes)
+    dface_nodes = face_nodes(mesh,d)
+    for nodes in dface_nodes
+        for node in nodes
+            node_count[node] += 1
+        end
+    end
+    newnodes = findall(count->count!=0,node_count)
+    newfaces = [ Int[] for _ in 0:d ]
+    newfaces[end] = newdfaces
+    mesh2 = GT.restrict_to_dim(mesh,d)
+    mesh3 = GT.restrict(mesh2,newnodes,newfaces)
+    face_to_cell = map(first,face_to_cells)
+    newface_to_cell = face_to_cell[newfaces[end]]
+    celldata = copy(GT.face_data(plt,D;merge_dims=true))
+    for (k,v) in celldata
+        celldata[k] = v[newface_to_cell]
+    end
+    nodedata = copy(GT.node_data(plt))
+    for (k,v) in nodedata
+        nodedata[k] = v[newnodes]
+    end
+    dΓ = GT.measure(Γ,0)
+    dface_point_n = GT.unit_normal_accessor(dΓ)
+    Tn = typeof(GT.prototype(dface_point_n))
+    ndfaces = GT.num_faces(Γ)
+    face_to_n = zeros(Tn,ndfaces)
+    for dface in 1:ndfaces
+        face_to_n[dface] = dface_point_n(dface,1)(1)
+    end
+    celldata[PLOT_NORMALS_KEY] = face_to_n
+    fd = map(0:d) do i
+        if i == d
+            celldata
+        else
+            typeof(celldata)()
+        end
+    end
+    plt3 = GT.Plot(mesh3,fd,nodedata)
+end
+
 function shrink(plt::Plot;scale=0.75)
+    if scale == false
+        return plt
+    end
     mesh = plt.mesh
     D = num_dims(mesh)
     nnewnodes = 0
@@ -638,22 +717,34 @@ function shrink(pplt::PPlot;scale=0.75)
     PPlot(plts)
 end
 
-function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+function warp_by_vector(plt::Plot,vec::Nothing;scale=1)
+    plt
+end
+
+function warp_by_vector(plt::Plot,vec::AbstractArray;scale=1)
     mesh = plt.mesh
     node_to_x = node_coordinates(mesh)
-    node_to_vec = plt.node_data[vec.name]
+    node_to_vec = vec
     node_to_x = node_to_x .+ scale .* node_to_vec
     mesh2 = replace_node_coordinates(mesh,node_to_x)
     plt2 = replace_mesh(plt,mesh2)
     plt2
 end
 
-function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+    node_to_vec = plt.node_data[vec.name]
+    warp_by_vector(plt,node_to_vec;scale)
+end
+
+function warp_by_scalar(plt::Plot,data::Nothing;scale=1)
+    plt
+end
+
+function warp_by_scalar(plt::Plot,node_to_z::AbstractArray;scale=1)
     mesh = plt.mesh
     @assert num_dims(mesh) == 2
     @assert num_ambient_dims(mesh) == 2
     node_to_xy = node_coordinates(mesh)
-    node_to_z = plt.node_data[data.name]
     nnodes = length(node_to_z)
     node_to_xyz = map(node_to_xy,node_to_z) do xy,z
         x,y = xy
@@ -661,7 +752,13 @@ function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
     end
     mesh2 = replace_node_coordinates(mesh,node_to_xyz)
     plt2 = replace_mesh(plt,mesh2)
+    face_data(plt,2)[PLOT_NORMALS_KEY] = fill(SVector(0,0,1),num_faces(mesh,2))
     plt2
+end
+
+function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+    node_to_z = plt.node_data[data.name]
+    warp_by_scalar(plt,node_to_z;scale)
 end
 
 function plot(domain::AbstractDomain;kwargs...)
@@ -670,13 +767,23 @@ function plot(domain::AbstractDomain;kwargs...)
     domface_to_face = GT.faces(domain)
     vismesh = GT.visualization_mesh(mesh,d,domface_to_face;kwargs...)
     node_data = Dict{String,Any}()
-    #quad = PlotQuadrature(mesh,domain,vismesh)
-    #foreach(pairs(fields)) do (sym,field)
-    #    node_data[string(sym)] = plot_field(quad,field)
-    #end
     vmesh,glue = vismesh
     cache = (;glue,domain)
-    Plot(vmesh,face_data(vmesh),node_data,cache)
+    fd = face_data(vmesh)
+    if d == 2 && num_ambient_dims(mesh) == 3
+        #If we emit faces, then we need to provie the normals for shading
+        Γ = domain
+        dΓ = GT.measure(Γ,0)
+        dface_point_n = GT.unit_normal_accessor(dΓ)
+        Tn = typeof(GT.prototype(dface_point_n))
+        ndfaces = GT.num_faces(Γ)
+        dface_to_n = zeros(Tn,ndfaces)
+        for dface in 1:ndfaces
+            dface_to_n[dface] = dface_point_n(dface,1)(1)
+        end
+        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+    end
+    Plot(vmesh,fd,node_data,cache)
 end
 
 function plot(domain::AbstractMeshDomain{<:PMesh};kwargs...)
@@ -852,6 +959,62 @@ function reference_coordinates(plt::PPlot)
     GT.quantity(term,prototype,plt.cache.domain)
 end
 
+function PartitionedArrays.centralize(plt::PPlot)
+    function concatenate_meshes(meshes)
+        p_nxs = map(GT.node_coordinates,meshes)
+        node_coordinates = reduce(vcat,p_nxs)
+        D = num_dims(first(meshes))
+        p_nnodes = map(length,p_nxs)
+        P = length(p_nnodes)
+        face_nodes = map(0:D) do d
+            offset = 0
+            p_fn = map(meshes,1:P) do m,p
+                ns = map(GT.face_nodes(m,d)) do nodes
+                    nodes .+ offset
+                end
+                offset += p_nnodes[p]
+                ns
+            end
+            JaggedArray(reduce(vcat,p_fn))
+        end
+        face_reference_id = map(0:D) do d
+            reduce(vcat,map(m->GT.face_reference_id(m,d),meshes))
+        end
+        reference_spaces = GT.reference_spaces(first(meshes))
+        GT.mesh(;
+            node_coordinates,
+            face_nodes,
+            face_reference_id,
+            reference_spaces,
+           )
+    end
+    function concatenate_dicts(dicts)
+        a = Dict{String,Any}()
+        ks = keys(first(dicts))
+        for k in ks
+            a[k] = reduce(vcat,map(d->d[k],dicts))
+        end
+        a
+    end
+    meshes = collect(map(p->p.mesh,plt.partition))
+    mesh = concatenate_meshes(meshes)
+    nds = collect(map(node_data,plt.partition))
+    nd = concatenate_dicts(nds)
+    D = num_dims(mesh)
+    P = length(meshes)
+    fd = map(0:D) do d
+        fds = collect(map(p->GT.face_data(p,d),plt.partition))
+        concatenate_dicts(fds)
+    end
+    plt = Plot(mesh,fd,nd)
+    newfaces = map(fd) do f
+        mask = f["__OWNER__"] .== f["__PART__"]
+        findall(mask)
+    end
+    newnodes = 1:num_nodes(mesh)
+    restrict(plt,newnodes,newfaces)
+end
+
 # VTK
 
 struct VTKPlot{A,B} <: AbstractType
@@ -886,20 +1049,16 @@ function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
-function makieplot end
-function makieplot! end
-function makie0d end
-function makie0d! end
-function makie1d end
-function makie1d! end
-function makie2d end
-function makie2d! end
-function makie2d1d end
-function makie2d1d! end
-function makie3d end
-function makie3d! end
-function makie3d1d end
-function makie3d1d! end
+function makie_points end
+function makie_points! end
+function makie_lines end
+function makie_lines! end
+function makie_surface end
+function makie_surface! end
+function makie_arrows2d! end
+function makie_arrows2d end
+function makie_arrows3d! end
+function makie_arrows3d end
 
 # handler for displaying a hint in case the user tries to call functions defined in the extension module
 # https://github.com/JuliaLang/julia/blob/b9d9b69165493f6fc03870d975be05c67f14a30b/base/errorshow.jl#L1039
@@ -911,7 +1070,7 @@ function makie3d1d! end
 #        end
 #    end
 #    Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, kwargs
-#        if exc.f in [makieplot, makieplot!, makie0d, makie0d!, makie1d, makie1d!, makie2d, makie2d!, makie2d1d, makie2d1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
+#        if exc.f in [makieplot, makieplot!, plot_points, plot_points!, plot_edges, plot_edges!, plot_surface, plot_surface!, plot_surface1d, plot_surface1d!, makie3d, makie3d!, makie3d1d, makie3d1d!]
 #            if isempty(methods(exc.f))
 #                print(io, "\n$(exc.f) has no methods, yet. Makie has to be loaded for the plotting extension to be activated. Run `using Makie`, `using CairoMakie`, `using GLMakie` or any other package that also loads Makie.")
 #            end

@@ -5,9 +5,9 @@
 You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
 
 It is also required to be familiar with the key concepts in the FEM. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
-  - [Finite Element Methods: A Practical Guide](https://link.springer.com/book/10.1007/978-3-319-49971-0) by J. Whiteley.
-  - Numerical Solution of Partial Differential Equations by the Finite Element Method by C. Johnson.
-  - The Mathematical Theory of Finite Element Methods by S.C. Brenner and L. R. Scott.
+  - C. Johnson [Johnson2009](@cite)
+  - J. Whiteley [Whiteley2017](@cite)
+  - S.C. Brenner and L. R. Scott [Brenner2007](@cite)
 
 
 ## Installation

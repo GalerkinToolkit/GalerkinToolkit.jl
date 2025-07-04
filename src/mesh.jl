@@ -124,6 +124,28 @@ function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACE
     physical_name
 end
 
+function label_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_$(objectid(domain))__")
+    mesh = GT.mesh(domain)
+    D = num_dims(mesh)
+    d = D-1
+    groups = physical_faces(mesh,d)
+    if haskey(groups,physical_name)
+        return physical_name
+    end
+    topo = topology(mesh)
+    cell_to_faces = face_incidence(topo,D,d)
+    nfaces = num_faces(mesh,d)
+    face_count = zeros(Int32,nfaces)
+    for faces in cell_to_faces
+        for face in faces
+            face_count[face] += 1
+        end
+    end
+    faces = findall(count->count==1,face_count)
+    groups[physical_name] = faces
+    physical_name
+end
+
 function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(pmesh)
     d = D - 1
@@ -205,6 +227,23 @@ function boundary(mesh::AbstractMesh;
     is_reference_domain=Val(false),
     face_around = 1,
     )
+    d = num_dims(mesh) - 1
+    mesh_domain(;
+        mesh,
+        mesh_id,
+        physical_names,
+        face_around,
+        num_dims=Val(val_parameter(d)),
+        is_reference_domain)
+end
+
+function boundary(domain::AbstractDomain;
+    mesh_id = objectid(GT.mesh(domain)),
+    physical_names=[label_boundary_faces!(domain)],
+    is_reference_domain=Val(false),
+    face_around = 1,
+    )
+    mesh = GT.mesh(domain)
     d = num_dims(mesh) - 1
     mesh_domain(;
         mesh,

@@ -1,343 +1,345 @@
 module GalerkinToolkitMakieExt
+using LinearAlgebra
+using StaticArrays
+
+#TODOS
+#shadows
+#physical groups
+#linewidth
+#strokecolor also for 2d vertices
+# 3d vertices and 3d edges
+#arrows
+#pplot,pmesh,pdomain
+
+#FaceData -> FaceColor
+#NodeData -> NodeColor
+
 
 import GalerkinToolkit as GT
-import GalerkinToolkit: makieplot, makieplot!
-import GalerkinToolkit: makie0d, makie0d!, makie1d, makie1d!
-import GalerkinToolkit: makie2d, makie2d!, makie2d1d, makie2d1d!
-import GalerkinToolkit: makie3d, makie3d!, makie3d1d, makie3d1d!
+import GalerkinToolkit: makie_points, makie_points!
+import GalerkinToolkit: makie_lines, makie_lines!
+import GalerkinToolkit: makie_surface, makie_surface!
+import GalerkinToolkit: makie_arrows2d, makie_arrows2d!
+import GalerkinToolkit: makie_arrows3d, makie_arrows3d!
 using PartitionedArrays
 using Makie
 
-Makie.@recipe(MakiePlot) do scene
-    t1 = Makie.Theme(
-        dim = Makie.Automatic(),
-        shrink = false,
-        warp_by_vector = nothing,
-        warp_by_scalar = nothing,
-        warp_scale = 1,
-        strokecolor = nothing,
-        strokewidth = nothing,
-        color      = :lightblue,
-        colormap   = :bluesreds,
-        shading    = Makie.NoShading,
-        cycle      = nothing,
-        refinement = nothing,
-       )
-    t2 = Makie.default_theme(scene, Makie.Mesh)
-    merge(t1,t2)
-end
-
-function Makie.preferred_axis_type(plot::MakiePlot)
-    d = GT.num_ambient_dims(plot[1][])
-    d == 3 ? Makie.LScene : Makie.Axis
-end
-
-function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    # TODO these are not reactive
-    if sc[:warp_by_vector][] !== nothing
-        wscale = sc[:warp_scale]
-        vec = sc[:warp_by_vector]
-        plt = Makie.lift((a,b,c)->GT.warp_by_vector(a,b;scale=c),plt,vec,wscale)
-    end
-    if sc[:warp_by_scalar][] !== nothing
-        wscale = sc[:warp_scale]
-        data = sc[:warp_by_scalar]
-        plt = Makie.lift((a,b,c)->GT.warp_by_scalar(a,b;scale=c),plt,data,wscale)
-    end
-    if sc[:shrink][] != false
-        scale = sc[:shrink]
-        plt = Makie.lift((a,b)->GT.shrink(a;scale=b),plt,scale)
-    end
-    dim = sc[:dim][]
-    d = GT.num_dims(plt[].mesh)
-    strokecolor = sc[:strokecolor][]
-    strokewidth = sc[:strokewidth][]
-    if dim == Makie.Automatic()
-        dim = d
-    end
-    cmp = y -> y in dim
-    if cmp(0)
-        valid_attributes = Makie.shared_attributes(sc, Makie0d)
-        makie0d!(sc,valid_attributes,plt)
-    end
-    if cmp(1)
-        valid_attributes = Makie.shared_attributes(sc, Makie1d)
-        makie1d!(sc,valid_attributes,plt)
-    end
-    if cmp(2)
-        valid_attributes = Makie.shared_attributes(sc, Makie2d)
-        makie2d!(sc,valid_attributes,plt)
-        if strokecolor !== nothing
-            valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
-            valid_attributes[:color] = sc[:strokecolor]
-            if strokewidth !== nothing
-                valid_attributes[:linewidth] = sc[:strokewidth]
-            end
-            makie2d1d!(sc,valid_attributes,plt)
-        end
-    end
-    if cmp(3)
-        valid_attributes = Makie.shared_attributes(sc, Makie3d)
-        makie3d!(sc,valid_attributes,plt)
-        if strokecolor !== nothing
-            valid_attributes = Makie.shared_attributes(sc, Makie3d1d)
-            valid_attributes[:color] = sc[:strokecolor]
-            if strokewidth !== nothing
-                valid_attributes[:linewidth] = sc[:strokewidth]
-            end
-            makie3d1d!(sc,valid_attributes,plt)
-        end
+function shared_attributes_mixin()
+    Makie.@DocumentedAttributes begin
+        dim = Makie.Automatic()
+        shrink = nothing
+        warp_by_vector = nothing
+        warp_by_scalar = nothing
+        warp_scale = 1
+        refinement = nothing
     end
 end
 
-function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,MakiePlot)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makieplot!(sc,valid_attributes,plt)
-        end
-    end
+Makie.@recipe Makie_points begin
+    Makie.documented_attributes(Makie.Scatter)...
+    shared_attributes_mixin()...
 end
 
-Makie.plottype(::GT.Plot) = MakiePlot
-Makie.plottype(::GT.PPlot) = MakiePlot
-Makie.plottype(::GT.AbstractMesh) = MakiePlot
-Makie.plottype(::GT.PMesh) = MakiePlot
-
-function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GT.AbstractMesh)
-    plt = GT.plot(mesh)
-    (plt,)
+function Makie.preferred_axis_type(p::Makie_points)
+    plt = p[1][]
+    plot_preferred_axis_type(plt)
 end
 
-function Makie.convert_arguments(::Type{<:MakiePlot},mesh::GT.PMesh)
-    plt = GT.plot(mesh)
-    (plt,)
+function Makie.plot!(p::Makie_points{<:Tuple{<:GT.Plot}})
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
+    attrs_out = [:points,:newcolor,:newcolorrange]
+    map!(setup_makie0d,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p, Makie.Scatter)
+    points = p.points
+    color = p.newcolor
+    colorrange = p.newcolorrange
+    Makie.scatter!(p,valid_attributes,points;color,colorrange)
 end
 
-Makie.plottype(::GT.AbstractDomain) = MakiePlot
-
-function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractDomain}})
-    dom = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, MakiePlot)
-    warp_by_vector = valid_attributes[:warp_by_vector]
-    warp_by_scalar = valid_attributes[:warp_by_scalar]
-    color = valid_attributes[:color]
-    refinement = valid_attributes[:refinement]
-    args = Makie.lift(dom,color,refinement) do dom,color,refinement
-        if isa(color,GT.AbstractQuantity) || isa(color,Function)
-            label = string(gensym())
-            plt = GT.plot(dom;refinement)
-            GT.plot!(plt,color;label)
-            #color = GT.NodeData(label)
-            color = GT.node_color(plt,label)
-        else
-            plt = GT.plot(dom)
-        end
-        (;plt,color)
-    end
-    plt = Makie.lift(i->i.plt,args)
-    color = Makie.lift(i->i.color,args)
-    valid_attributes[:color] = color
-
-    warp_by_vector = Makie.lift(warp_by_vector,plt) do v,plt
-        if v !== nothing
-            label = string(gensym())
-            GT.plot!(plt,v;label)
-            v = GT.NodeData(label)
-        end
-        v
-    end
-    valid_attributes[:warp_by_vector] = warp_by_vector
-
-    warp_by_scalar = Makie.lift(warp_by_scalar,plt) do v,plt
-        if v !== nothing
-            label = string(gensym())
-            GT.plot!(plt,v;label)
-            v = GT.NodeData(label)
-        end
-        v
-    end
-    valid_attributes[:warp_by_scalar] = warp_by_scalar
-
-    makieplot!(sc,valid_attributes,plt)
-end
-
-# TODO not sure about this
-# what if u is not scalar-valued?
-#Makie.plottype(::GT.AbstractQuantity) = MakiePlot
-#
-#function Makie.plot!(sc::MakiePlot{<:Tuple{<:GT.AbstractQuantity}})
-#    u = sc[1]
-#    valid_attributes = Makie.shared_attributes(sc, MakiePlot)
-#    dom = Makie.lift(domain,u)
-#    valid_attributes[:color] = u
-#    makieplot!(sc,valid_attributes,dom)
-#end
-
-function vector_of_observables(a)
-    #TODO remove trick for DebugArray
-    function start(v)
-        first(v)
-    end
-    function rest(v)
-        v[2:end]
-    end
-    if length(a[]) == 1
-        b = Makie.lift(first,a)
-        return [b,]
+function setup_makie0d(plt_in,dim_in,color,colorrange)
+    d = 0
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt_in.mesh) : dim_in
+    if D == 3
+        plt_in = GT.skin(plt_in)
+        dim_in = 2
     else
-        b = Makie.lift(start,a)
-        c = Makie.lift(rest,a)
-        return [b,vector_of_observables(c)...]
+        plt_in = plt_in
     end
-end
-
-function makie_pplot_setup(pplt)
-    obs = Makie.Observable{Any}(nothing)
-    function update!(pplt)
-        map_main(PartitionedArrays.gather(pplt.partition)) do myplts
-            obs[] = myplts
+    plt = restrict_to_dim_for_makie(plt_in,dim_in,d)
+    colorrange = setup_colorrange_impl(plt,color,colorrange)
+    plt, color = setup_colors_impl(plt,color,d)
+    mesh = plt.mesh
+    nedges = GT.num_faces(mesh,d)
+    node_to_x = GT.node_coordinates(mesh)
+    edge_to_nodes = GT.face_nodes(mesh,d)
+    T = eltype(eltype(node_to_x))
+    S = GT.num_ambient_dims(mesh)
+    V = eltype(node_to_x)
+    p = Vector{V}(undef,nedges)
+    k = 0
+    for edge in 1:nedges
+        nodes = edge_to_nodes[edge]
+        for node in nodes
+            k += 1
+            p[k] = node_to_x[node]
         end
     end
-    Makie.on(update!,pplt)
-    update!(pplt[])
-    if obs[] !== nothing
-        plts = vector_of_observables(obs)
+    (p,color,colorrange)
+end
+
+Makie.@recipe Makie_lines begin
+    Makie.documented_attributes(Makie.LineSegments)...
+    shared_attributes_mixin()...
+end
+
+function Makie.preferred_axis_type(p::Makie_lines)
+    plt = p[1][]
+    plot_preferred_axis_type(plt)
+end
+
+function Makie.plot!(p::Makie_lines{<:Tuple{<:GT.Plot}})
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
+    attrs_out = [:points,:newcolor,:newcolorrange]
+    map!(setup_makie1d,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p, Makie.LineSegments)
+    points = p.points
+    color = p.newcolor
+    colorrange = p.newcolorrange
+    Makie.linesegments!(p,valid_attributes,points;color,colorrange)
+end
+
+function setup_makie1d(plt_in,dim_in,color,colorrange)
+    d = 1
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt_in.mesh) : dim_in
+    if D == 3
+        plt_in = GT.skin(plt_in)
+        dim_in = 2
     else
-        plts = nothing
+        plt_in = plt_in
     end
-    plts
-end
-
-Makie.@recipe(Makie3d) do scene
-    dt = Makie.default_theme(scene, Makie.Mesh)
-    dt
-end
-
-Makie.preferred_axis_type(plot::Makie3d) = Makie.LScene
-
-function Makie.plot!(sc::Makie3d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie2d)
-    colorrange = valid_attributes[:colorrange]
-    color = valid_attributes[:color]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    valid_attributes[:colorrange] = colorrange
-    plt2 = Makie.lift(makie_volumes_impl,plt)
-    makie2d!(sc,valid_attributes,plt2)
-end
-
-function Makie.plot!(sc::Makie3d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie3d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie3d!(sc,valid_attributes,plt)
+    plt = restrict_to_dim_for_makie(plt_in,dim_in,d)
+    colorrange = setup_colorrange_impl(plt,color,colorrange)
+    plt, color = setup_colors_impl(plt,color,d)
+    mesh = plt.mesh
+    nedges = GT.num_faces(mesh,d)
+    node_to_x = GT.node_coordinates(mesh)
+    edge_to_nodes = GT.face_nodes(mesh,d)
+    T = eltype(eltype(node_to_x))
+    S = GT.num_ambient_dims(mesh)
+    V = eltype(node_to_x)
+    p = Vector{V}(undef,2*nedges)
+    k = 0
+    for edge in 1:nedges
+        nodes = edge_to_nodes[edge]
+        for node in nodes
+            k += 1
+            p[k] = node_to_x[node]
         end
     end
+    (p,color,colorrange)
 end
 
-function makie_volumes_impl(plt::GT.Plot;simplexify=Val(false))
-    @assert GT.num_dims(plt.mesh) == 3
-    D=3
+Makie.@recipe Makie_surface begin
+    Makie.documented_attributes(Makie.Mesh)...
+    shared_attributes_mixin()...
+end
+
+function Makie.preferred_axis_type(p::Makie_surface)
+    plt = p[1][]
+    plot_preferred_axis_type(plt)
+end
+
+function Makie.plot!(p::Makie_surface{<:Tuple{<:GT.Plot}})
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    attrs_in = [:plt,:dim,:color,:colorrange]
+    attrs_out = [:vert,:conn,:newcolor,:newcolorrange]
+    map!(setup_makie2d,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p, Makie.Mesh)
+    color = p.newcolor
+    colorrange = p.newcolorrange
+    Makie.mesh!(p,valid_attributes,p.vert,p.conn;color,colorrange)
+end
+
+function setup_makie2d(plt,dim_in,color_in,colorrange_in)
+    d = 2
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt.mesh) : dim_in
+    if D == 3
+        plt = GT.skin(plt)
+    else
+        plt = plt
+    end
+    plt = restrict_to_dim_for_makie(plt,d,d)
+    plt = GT.shrink(plt;scale=1)
+    plt = GT.simplexify(plt)
+    colorrange = setup_colorrange_impl(plt,color_in,colorrange_in)
+    plt, color = setup_colors_impl(plt,color_in,d)
+    vert,conn = makie_faces_mesh(plt)
+    if GT.num_ambient_dims(plt.mesh) == 3
+        makie_faces_mesh_orient!(conn,plt)
+    end
+    (vert,conn,color,colorrange)
+end
+
+function makie_faces_mesh(plt)
+    d = 2
+    mesh = plt.mesh
+    D = GT.num_ambient_dims(mesh)
+    nnodes = GT.num_nodes(mesh)
+    vert = zeros(Float64,nnodes,D)
+    node_to_x = GT.node_coordinates(mesh)
+    for (node,x) in enumerate(node_to_x)
+        vert[node,:] = x
+    end
+    nfaces = GT.num_faces(mesh,d)
+    face_to_nodes = GT.face_nodes(mesh,d)
+    conn = zeros(Int32,nfaces,3)
+    for (face,nodes) in enumerate(face_to_nodes)
+        conn[face,:] = nodes
+    end
+    if nfaces == 0
+        vert = ones(Float64,3,D)
+        conn = zeros(Int32,1,3)
+        conn[:] = 1:3
+    end
+    (vert,conn)
+end
+
+function makie_faces_mesh_orient!(conn,plt)
     d=2
-    mesh = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
-    topo = GT.topology(mesh)
-    face_to_cells = GT.face_incidence(topo,d,D)
-    face_isboundary = map(cells->length(cells)==1,face_to_cells)
-    mesh2 = GT.restrict_to_dim(mesh,d)
-    newnodes = 1:GT.num_nodes(mesh2)
-    newfaces = [ Int[] for _ in 0:d ]
-    newfaces[end] = findall(face_isboundary)
-    mesh3 = GT.restrict(mesh2,newnodes,newfaces)
-    face_to_cell = map(first,face_to_cells)
-    newface_to_cell = face_to_cell[newfaces[end]]
-    celldata = copy(GT.face_data(plt,D;merge_dims=true))
-    for (k,v) in celldata
-        celldata[k] = v[newface_to_cell]
+    if ! haskey(GT.face_data(plt,d),GT.PLOT_NORMALS_KEY)
+        return
     end
+    face_n = GT.face_data(plt,d)[GT.PLOT_NORMALS_KEY]
+    mesh = plt.mesh
+    node_x = GT.node_coordinates(mesh)
+    face_nodes = GT.face_nodes(mesh,2)
+    nfaces = size(conn,1)
+    for face in 1:nfaces
+        nodes = face_nodes[face]
+        x1 = node_x[nodes[1]]
+        x2 = node_x[nodes[2]]
+        x3 = node_x[nodes[3]]
+        v1 = x2-x1
+        v2 = x3-x1
+        n1 = cross(v1,v2)
+        n2 = face_n[face]
+        if dot(n1,n2) < 0
+            c3 = conn[face,3]
+            conn[face,3] = conn[face,2]
+            conn[face,2] = c3
+        end
+    end
+end
+
+Makie.@recipe Makie_arrows2d begin
+    Makie.documented_attributes(Makie.Arrows2D)...
+    shared_attributes_mixin()...
+end
+
+function Makie.preferred_axis_type(p::Makie_arrows2d)
+    plt = p[1][]
+    plot_preferred_axis_type(plt)
+end
+
+function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.Plot,<:GT.NodeData}})
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p,Makie.Arrows2D)
+    attrs_in = [:plt,:converted_2,:color]
+    attrs_out = [:coords,:vecs,:newcolor]
+    map!(makie_arrows_impl,p.attributes,attrs_in,attrs_out)
+    color = p.newcolor
+    Makie.arrows2d!(p,valid_attributes,p.coords,p.vecs;color)
+end
+
+Makie.@recipe Makie_arrows3d begin
+    Makie.documented_attributes(Makie.Arrows3D)...
+    shared_attributes_mixin()...
+end
+
+function Makie.preferred_axis_type(p::Makie_arrows3d)
+    plt = p[1][]
+    plot_preferred_axis_type(plt)
+end
+
+function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.Plot,<:GT.NodeData}})
+    attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
+    attrs_out = [:plt]
+    map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
+    valid_attributes = Makie.shared_attributes(p,Makie.Arrows2D)
+    attrs_in = [:plt,:converted_2,:color]
+    attrs_out = [:coords,:vecs,:newcolor]
+    map!(makie_arrows_impl,p.attributes,attrs_in,attrs_out)
+    color = p.newcolor
+    Makie.arrows3d!(p,valid_attributes,p.coords,p.vecs;color)
+end
+
+function makie_arrows_impl(plt,vecs::GT.NodeData,color)
+    D = GT.num_ambient_dims(plt.mesh)
+    x = GT.node_coordinates(plt.mesh)
+    nnodes = length(x)
+    if D == 2
+        node_to_coord = [ Makie.Point2f(xi) for xi in x]
+    elseif D == 3
+        node_to_coord = [ Makie.Point3f(xi) for xi in x]
+    else
+        error("not implemented")
+    end
+    node_to_vec = plt.node_data[vecs.name]
+    if isa(color,GT.NodeData)
+        color2 = plt.node_data[color.name]
+    else
+        color2 = color
+    end
+    (node_to_coord,node_to_vec,color2)
+end
+
+function plot_preferred_axis_type(plt)
+    d = GT.num_ambient_dims(plt)
+    d == 3 ? Makie.Axis3 : Makie.Axis
+end
+
+function restrict_to_dim_for_makie(plt,dim_in,dim_plot)
+    D = dim_in == Makie.Automatic() ? GT.num_dims(plt.mesh) : dim_in
+    d = dim_plot
+    mesh2 = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
+    topo = GT.topology(mesh2)
+    edge_to_faces = GT.face_incidence(topo,d,D)
+    K = Any
+    facedata = Dict{String,K}()
+    for (k,v) in GT.face_data(plt,D;merge_dims=true)
+        facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
+    end
+    mesh3 = GT.restrict_to_dim(mesh2,d)
     fd = map(0:d) do i
         if i == d
-            celldata
+            facedata
         else
-            typeof(celldata)()
+            typeof(facedata)()
         end
     end
     plt3 = GT.Plot(mesh3,fd,GT.node_data(plt))
-    if GT.val_parameter(simplexify)
-        GT.simplexify(plt3)
-    else
-        plt3
-    end
-end
-
-Makie.@recipe(Makie3d1d) do scene
-    dt = Makie.default_theme(scene, Makie2d1d)
-    dt
-end
-
-Makie.preferred_axis_type(plot::Makie3d1d) = Makie.LScene
-
-function Makie.plot!(sc::Makie3d1d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie2d1d)
-    colorrange = valid_attributes[:colorrange]
-    color = valid_attributes[:color]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    valid_attributes[:colorrange] = colorrange
-    plt2 = Makie.lift(p->makie_volumes_impl(p;simplexify=Val(false)),plt)
-    makie2d1d!(sc,valid_attributes,plt2)
-end
-
-function Makie.plot!(sc::Makie3d1d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie3d1d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie3d1d!(sc,valid_attributes,plt)
+    nnodes = GT.num_nodes(mesh3)
+    node_count = zeros(Int32,nnodes)
+    dface_nodes = GT.face_nodes(mesh3,d)
+    for nodes in dface_nodes
+        for node in nodes
+            node_count[node] += 1
         end
     end
-end
-
-Makie.@recipe(Makie2d) do scene
-    dt = Makie.default_theme(scene, Makie.Mesh)
-    dt
-end
-
-function Makie.preferred_axis_type(plot::Makie2d)
-    d = GT.num_ambient_dims(plot[1][])
-    d == 3 ? Makie.LScene : Makie.Axis
-end
-
-function Makie.plot!(sc::Makie2d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie.Mesh)
-    color = valid_attributes[:color]
-    colorrange = valid_attributes[:colorrange]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    args = Makie.lift(makie_faces_impl,plt,color)
-    vert = Makie.lift(a->a.vert,args)
-    conn = Makie.lift(a->a.conn,args)
-    color = Makie.lift(a->a.color,args)
-    valid_attributes[:color] = color
-    valid_attributes[:colorrange] = colorrange
-    Makie.mesh!(sc,valid_attributes,vert,conn)
-end
-
-function Makie.plot!(sc::Makie2d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie2d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie2d!(sc,valid_attributes,plt)
-        end
-    end
+    newnodes = findall(count->count!=0,node_count)
+    newfaces = [ Int[] for _ in 0:d ]
+    newfaces[end] = collect(1:GT.num_faces(mesh3,d))
+    GT.restrict(plt3,newnodes,newfaces)
 end
 
 function setup_colorrange_impl(plt,color,colorrange)
@@ -354,6 +356,9 @@ function setup_colorrange_impl(plt,color,colorrange)
 end
 
 function setup_colors_impl(plt,color,d)
+    if GT.num_faces(plt.mesh,d) == 0
+        return (plt,:pink)
+    end
     if isa(color,GT.FaceData)
         if d == 2
             plt = GT.shrink(plt;scale=1)
@@ -390,265 +395,198 @@ function setup_colors_impl(plt,color,d)
     plt,color
 end
 
-function makie_faces_impl(plt,color)
-    plt = GT.simplexify(plt)
-    d = 2
-    #plt = shrink(plt,scale=0.995)
-    plt,color = setup_colors_impl(plt,color,d)
-    mesh = plt.mesh
-    D = GT.num_ambient_dims(mesh)
-    nnodes = GT.num_nodes(mesh)
-    vert = zeros(Float64,nnodes,D)
-    node_to_x = GT.node_coordinates(mesh)
-    for (node,x) in enumerate(node_to_x)
-        vert[node,:] = x
+function setup_plt_changes(plt,vector,scalar,scale,shrink)
+    if vector !== nothing
+        plt = GT.warp_by_vector(plt,vector;scale)
     end
-    nfaces = GT.num_faces(mesh,d)
-    face_to_nodes = GT.face_nodes(mesh,d)
-    conn = zeros(Int32,nfaces,3)
-    for (face,nodes) in enumerate(face_to_nodes)
-        conn[face,:] = nodes
+    if scalar !== nothing
+        plt = GT.warp_by_scalar(plt,scalar;scale)
     end
-    if nfaces == 0
-        vert = ones(Float64,3,D)
-        conn = zeros(Int32,1,3)
-        conn[:] = 1:3
-        color =:pink
+    if shrink !== nothing
+        plt = GT.shrink(plt;scale=shrink)
     end
-    (;vert,conn,color)
+    (plt,)
 end
 
-Makie.@recipe(Makie2d1d) do scene
-    dt = Makie.default_theme(scene, Makie1d)
-    dt
+# Conversions
+
+function Makie.convert_arguments(::Type{<:Makie_surface},mesh::GT.AbstractMesh)
+    plt = GT.plot(mesh)
+    (plt,)
 end
 
-function Makie.preferred_axis_type(plot::Makie2d1d)
-    d = GT.num_ambient_dims(plot[1][])
-    d == 3 ? Makie.LScene : Makie.Axis
+function Makie.convert_arguments(::Type{<:Makie_lines},mesh::GT.AbstractMesh)
+    plt = GT.plot(mesh)
+    (plt,)
 end
 
-function Makie.plot!(sc::Makie2d1d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie1d)
-    colorrange = valid_attributes[:colorrange]
-    color = valid_attributes[:color]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    valid_attributes[:colorrange] = colorrange
-    plt2 = Makie.lift(makie_face_edges_impl,plt)
-    makie1d!(sc,valid_attributes,plt2)
+function Makie.convert_arguments(::Type{<:Makie_points},mesh::GT.AbstractMesh)
+    plt = GT.plot(mesh)
+    (plt,)
 end
 
-function Makie.plot!(sc::Makie2d1d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie2d1d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie2d1d!(sc,valid_attributes,plt)
-        end
-    end
+function Makie.convert_arguments(::Type{<:Makie_surface},mesh::GT.AbstractPMesh)
+    plt = PartitionedArrays.centralize(GT.plot(mesh))
+    (plt,)
 end
 
-function makie_face_edges_impl(plt)
-    # TODO maybe already complexified
-    D=2
-    d=1
-    mesh2 = GT.complexify(GT.restrict_to_dim(plt.mesh,D))
-    topo = GT.topology(mesh2)
-    edge_to_faces = GT.face_incidence(topo,d,D)
-    K = Any
-    facedata = Dict{String,K}()
-    for (k,v) in GT.face_data(plt,D;merge_dims=true)
-        facedata[k] = map(faces -> sum(v[faces])/length(faces) ,edge_to_faces)
-    end
-    mesh3 = GT.restrict_to_dim(mesh2,d)
-    fd = map(0:d) do i
-        if i == d
-            facedata
-        else
-            typeof(facedata)()
-        end
-    end
-    plt3 = GT.Plot(mesh3,fd,GT.node_data(plt))
-    plt3
+function Makie.convert_arguments(::Type{<:Makie_lines},mesh::GT.AbstractPMesh)
+    plt = PartitionedArrays.centralize(GT.plot(mesh))
+    (plt,)
 end
 
-Makie.@recipe(Makie1d) do scene
-    dt = Makie.default_theme(scene, Makie.LineSegments)
-    dt
+function Makie.convert_arguments(::Type{<:Makie_points},mesh::GT.AbstractPMesh)
+    plt = PartitionedArrays.centralize(GT.plot(mesh))
+    (plt,)
 end
 
-function Makie.preferred_axis_type(plot::Makie1d)
-    d = GT.num_ambient_dims(plot[1][])
-    d == 3 ? Makie.LScene : Makie.Axis
+function Makie.convert_single_argument(::Type{<:Makie.AbstractPlot},pplot::GT.PPlot)
+    plt = PartitionedArrays.centralize(pplot)
+    plt
 end
 
-function Makie.plot!(sc::Makie1d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie.LineSegments)
-    color = valid_attributes[:color]
-    colorrange = valid_attributes[:colorrange]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    args = Makie.lift(makie_edges_impl,plt,color)
-    p = Makie.lift(a->a.p,args)
-    color = Makie.lift(a->a.color,args)
-    valid_attributes[:color] = color
-    valid_attributes[:colorrange] = colorrange
-    Makie.linesegments!(sc,valid_attributes,p)
+function Makie.plot!(p::Makie_surface{<:Tuple{<:GT.AbstractDomain}})
+    attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
+    attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
+    map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
+    color = p.newcolor
+    warp_by_vector = p.new_warp_by_vector
+    warp_by_scalar = p.new_warp_by_scalar
+    valid_attributes = Makie.shared_attributes(p,Makie_surface)
+    makie_surface!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    p
 end
 
-function Makie.plot!(sc::Makie1d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie1d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie1d!(sc,valid_attributes,plt)
-        end
-    end
+function Makie.plot!(p::Makie_lines{<:Tuple{<:GT.AbstractDomain}})
+    attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
+    attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
+    map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
+    color = p.newcolor
+    warp_by_vector = p.new_warp_by_vector
+    warp_by_scalar = p.new_warp_by_scalar
+    valid_attributes = Makie.shared_attributes(p,Makie_lines)
+    makie_lines!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    p
 end
 
-function makie_edges_impl(plt,color)
-    d = 1
-    plt,color = setup_colors_impl(plt,color,d)
-    mesh = plt.mesh
-    nedges = GT.num_faces(mesh,d)
-    node_to_x = GT.node_coordinates(mesh)
-    edge_to_nodes = GT.face_nodes(mesh,d)
-    T = eltype(eltype(node_to_x))
-    S = GT.num_ambient_dims(mesh)
-    V = eltype(node_to_x)
-    p = Vector{V}(undef,2*nedges)
-    k = 0
-    for edge in 1:nedges
-        nodes = edge_to_nodes[edge]
-        for node in nodes
-            k += 1
-            p[k] = node_to_x[node]
-        end
-    end
-    (;p,color)
+function Makie.plot!(p::Makie_points{<:Tuple{<:GT.AbstractDomain}})
+    attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
+    attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
+    map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
+    color = p.newcolor
+    warp_by_vector = p.new_warp_by_vector
+    warp_by_scalar = p.new_warp_by_scalar
+    valid_attributes = Makie.shared_attributes(p,Makie_points)
+    makie_points!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    p
 end
 
-Makie.@recipe(Makie0d) do scene
-    dt = Makie.default_theme(scene, Makie.Scatter)
-    dt
-end
-
-function Makie.preferred_axis_type(plot::Makie0d)
-    d = GT.num_ambient_dims(plot[1][])
-    d == 3 ? Makie.LScene : Makie.Axis
-end
-
-function Makie.plot!(sc::Makie0d{<:Tuple{<:GT.Plot}})
-    plt = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Makie.Scatter)
-    color = valid_attributes[:color]
-    colorrange = valid_attributes[:colorrange]
-    colorrange = Makie.lift(setup_colorrange_impl,plt,color,colorrange)
-    args = Makie.lift(makie_vertices_impl,plt,color)
-    p = Makie.lift(a->a.p,args)
-    color = Makie.lift(a->a.color,args)
-    valid_attributes[:color] = color
-    valid_attributes[:colorrange] = colorrange
-    Makie.scatter!(sc,valid_attributes,p)
-end
-
-function Makie.plot!(sc::Makie0d{<:Tuple{<:GT.PPlot}})
-    valid_attributes = Makie.shared_attributes(sc,Makie0d)
-    pplt = sc[1]
-    plts = makie_pplot_setup(pplt)
-    if plts !== nothing
-        foreach(plts) do plt
-            makie0d!(sc,valid_attributes,plt)
-        end
-    end
-end
-
-function makie_vertices_impl(plt,color)
-    d = 0
-    plt,color = setup_colors_impl(plt,color,d)
-    mesh = plt.mesh
-    nedges = GT.num_faces(mesh,d)
-    node_to_x = GT.node_coordinates(mesh)
-    edge_to_nodes = GT.face_nodes(mesh,d)
-    T = eltype(eltype(node_to_x))
-    S = GT.num_ambient_dims(mesh)
-    V = eltype(node_to_x)
-    p = Vector{V}(undef,nedges)
-    k = 0
-    for edge in 1:nedges
-        nodes = edge_to_nodes[edge]
-        for node in nodes
-            k += 1
-            p[k] = node_to_x[node]
-        end
-    end
-    (;p,color)
-end
-
-# Vector-valued
-
-function Makie.plot!(sc::Arrows{<:Tuple{<:GT.Plot,GT.NodeData}})
-    valid_attributes = Makie.shared_attributes(sc,Arrows)
-    color = valid_attributes[:color]
-    plt = sc[1]
-    vecs = sc[2]
-    args = Makie.lift(makie_arrows_impl,plt,vecs,color)
-    node_to_coord = Makie.lift(a->a.node_to_coord,args)
-    node_to_vec = Makie.lift(a->a.node_to_vec,args)
-    color = Makie.lift(a->a.color,args)
-    valid_attributes[:color] = color
-    Makie.arrows!(sc,valid_attributes,node_to_coord,node_to_vec)
-end
-
-function makie_arrows_impl(plt,vecs::GT.NodeData,color)
-    D = GT.num_ambient_dims(plt.mesh)
-    x = GT.node_coordinates(plt.mesh)
-    nnodes = length(x)
-    if D == 2
-        node_to_coord = [ Makie.Point2f(xi) for xi in x]
-    elseif D == 3
-        node_to_coord = [ Makie.Point3f(xi) for xi in x]
+function setup_makie_domain(domain,refinement,color,vec,scal)
+    plt = plot_for_makie(domain,refinement)
+    if isa(color,GT.AbstractQuantity) || isa(color,Function)
+        label = string(gensym())
+        GT.plot!(plt,color;label)
+        newcolor = GT.NodeData(label)#GT.node_color(plt,label)
     else
-        error("not implemented")
+        newcolor = color
     end
-    node_to_vec = plt.node_data[vecs.name]
-    if isa(color,GT.NodeData)
-        color2 = plt.node_data[color.name]
+    if isa(vec,GT.AbstractQuantity) || isa(vec,Function)
+        label = string(gensym())
+        GT.plot!(plt,vec;label)
+        newvec = GT.NodeData(label)
     else
-        color2 = color
+        newvec = vec
     end
-    (;node_to_coord,node_to_vec,color=color2)
+    if isa(scal,GT.AbstractQuantity) || isa(scal,Function)
+        label = string(gensym())
+        GT.plot!(plt,scal;label)
+        newscal = GT.NodeData(label)
+    else
+        newscal = scal
+    end
+    (plt,newcolor,newvec,newscal)
 end
 
-function Makie.plot!(sc::Arrows{<:Tuple{<:GT.PPlot,<:Any}})
-    error("Not implemented")
+function plot_for_makie(domain::GT.AbstractDomain,refinement)
+    return GT.plot(domain;refinement) 
+    # TODO not sure about this one
+    #function collect_face_normals(Γ::GT.AbstractDomain)
+    #    dΓ = GT.measure(Γ,0)
+    #    dface_point_n = GT.unit_normal_accessor(dΓ)
+    #    Tn = typeof(GT.prototype(dface_point_n))
+    #    ndfaces = GT.num_faces(Γ)
+    #    dface_to_n = zeros(Tn,ndfaces)
+    #    for dface in 1:ndfaces
+    #        dface_to_n[dface] = dface_point_n(dface,1)(1)
+    #    end
+    #    dface_to_n
+    #end
+    #if GT.num_dims(domain) == 3
+    #    domain2 = GT.boundary(domain)
+    #else
+    #    domain2 = domain
+    #end
+    #plt = GT.plot(domain2;refinement)
+    #if GT.num_dims(domain) == 3
+    #    face_n = collect_face_normals(domain2)
+    #    vface_face = plt.cache.glue.parent_face
+    #    vface_n = face_n[vface_face]
+    #    GT.face_data(plt,2)[GT.PLOT_NORMALS_KEY] = vface_n
+    #end
+    #plt
 end
 
-function Makie.plot!(sc::Arrows{<:Tuple{<:GT.AbstractField}})
-    q = sc[1]
-    valid_attributes = Makie.shared_attributes(sc, Arrows)
-    color = valid_attributes[:color]
-    args = Makie.lift(q,color) do q,color
-        dom = GT.domain(q)
-        plt = GT.plot(dom)
-        label_q = string(gensym())
-        GT.plot!(plt,q;label=label_q)
-        if isa(color,GT.AbstractQuantity) || isa(color,Function)
-            label_color = string(gensym())
-            GT.plot!(plt,color;label=label_color)
-            color = GT.node_color(plt,label_color)
-        end
-        vecs = GT.NodeData(label_q)
-        (;plt,vecs,color)
+function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.AbstractDomain,<:GT.AbstractField}})
+    attrs_in = [:converted_1,:converted_2,:color,:refinement,:warp_by_vector,:warp_by_scalar]
+    attrs_out = [:plt,:vecs,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
+    args = map!(setup_domain_arrows,p.attributes,attrs_in,attrs_out)
+    plt = p.plt
+    vecs = p.vecs
+    color = p.newcolor
+    warp_by_vector = p.new_warp_by_vector
+    warp_by_scalar = p.new_warp_by_scalar
+    valid_attributes = Makie.shared_attributes(p, Makie_arrows2d)
+    makie_arrows2d!(p,valid_attributes,plt,vecs;color,warp_by_vector,warp_by_scalar)
+end
+
+function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.AbstractDomain,<:GT.AbstractField}})
+    attrs_in = [:converted_1,:converted_2,:color,:refinement,:warp_by_vector,:warp_by_scalar]
+    attrs_out = [:plt,:vecs,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
+    args = map!(setup_domain_arrows,p.attributes,attrs_in,attrs_out)
+    plt = p.plt
+    vecs = p.vecs
+    color = p.newcolor
+    warp_by_vector = p.new_warp_by_vector
+    warp_by_scalar = p.new_warp_by_scalar
+    valid_attributes = Makie.shared_attributes(p, Makie_arrows3d)
+    makie_arrows3d!(p,valid_attributes,plt,vecs;color,warp_by_vector,warp_by_scalar)
+end
+
+function setup_domain_arrows(dom,q,color,refinement,vec,scal)
+    plt = plot_for_makie(dom,refinement)
+    label_q = string(gensym())
+    GT.plot!(plt,q;label=label_q)
+    if isa(color,GT.AbstractQuantity) || isa(color,Function)
+        label_color = string(gensym())
+        GT.plot!(plt,color;label=label_color)
+        color = GT.node_color(plt,label_color)
     end
-    plt = Makie.lift(i->i.plt,args)
-    vecs = Makie.lift(i->i.vecs,args)
-    color = Makie.lift(i->i.color,args)
-    valid_attributes[:color] = color
-    arrows!(sc,valid_attributes,plt,vecs)
+    if isa(vec,GT.AbstractQuantity) || isa(vec,Function)
+        label = string(gensym())
+        GT.plot!(plt,vec;label)
+        newvec = GT.NodeData(label)
+    else
+        newvec = vec
+    end
+    if isa(scal,GT.AbstractQuantity) || isa(scal,Function)
+        label = string(gensym())
+        GT.plot!(plt,scal;label)
+        newscal = GT.NodeData(label)
+    else
+        newscal = scal
+    end
+    varrow = GT.NodeData(label_q)
+    (plt,varrow,color,newvec,newscal)
 end
 
 end # modules

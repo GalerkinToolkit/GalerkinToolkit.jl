@@ -3,6 +3,9 @@ module Make
 using GalerkinToolkit
 using Documenter
 using Literate
+using DocumenterCitations
+
+bib = CitationBibliography(joinpath(@__DIR__, "src", "references.bib"))
 
 const src_jl = joinpath(@__DIR__,"src","src_jl")
 const src_md = joinpath(@__DIR__,"src","src_md")
@@ -50,20 +53,17 @@ function main(;debug=false)
 
     examples_pages = [
                       "example_hello_world.md",
-                      "example_hello_world_manual.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
-                      "example_p_laplacian_manual.md",
                       "example_stokes.md",
                       "example_transient_heat_eq.md",
-                      "example_transient_heat_eq_manual.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
     examples = ["examples.md",examples_pages...]
 
     manual_pages = [
                     joinpath("manual","getting_started.md"),
-                    joinpath("src_md","manual_meshes.md"),
+                    #joinpath("src_md","manual_meshes.md"),
                     joinpath("manual","for_developers.md")
                    ]
     manual = ["manual.md",manual_pages...]
@@ -73,10 +73,11 @@ function main(;debug=false)
              modules=[GalerkinToolkit],
              authors="Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors",
              sitename="GalerkinToolkit.jl",
+             plugins=[bib],
              format=Documenter.HTML(;
                                     prettyurls=get(ENV, "CI", "false") == "true",
                                     canonical="https://GalerkinToolkit.github.io/GalerkinToolkit.jl",
-                                    assets=String[],
+                                    assets=["assets/citations.css","assets/favicon.ico"],
                                    ),
              pages=[
                     "index.md",
@@ -85,6 +86,7 @@ function main(;debug=false)
                     "Manual" => manual,
                     "reference.md",
                     "refindex.md",
+                    "references.md",
                    ],
             )
 
