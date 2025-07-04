@@ -55,7 +55,6 @@ function main(;debug=false)
                       "example_hello_world.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
-                      "example_p_laplacian_manual.md",
                       "example_stokes.md",
                       "example_transient_heat_eq.md",
                       "example_transient_heat_eq_manual.md",
