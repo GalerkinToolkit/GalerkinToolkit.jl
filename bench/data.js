@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751473776062,
+  "lastUpdate": 1751635620647,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1694,6 +1694,36 @@ window.BENCHMARK_DATA = {
             "value": 704221145,
             "unit": "ns",
             "extra": "gctime=25943808\nmemory=434346240\nallocs=14376059\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "de2af7d5e271afc4adc2d94088caf780d4c3b7e2",
+          "message": "Merge pull request #215 from GalerkinToolkit/makie\n\nUpdate to Makie 0.24",
+          "timestamp": "2025-07-04T15:23:02+02:00",
+          "tree_id": "c482671884a76ea743af2d6bc9dfe9e367853606",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/de2af7d5e271afc4adc2d94088caf780d4c3b7e2"
+        },
+        "date": 1751635620259,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 715138234.5,
+            "unit": "ns",
+            "extra": "gctime=27838474\nmemory=434077632\nallocs=14376052\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
