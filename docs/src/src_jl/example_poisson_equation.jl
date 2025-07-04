@@ -95,4 +95,169 @@ GT.makie_surface!(Ω;color=uh)
 FileIO.save(joinpath(@__DIR__,"fig_poisson_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
+# ## Explicit integration loops
+#
+# This other code version implements the integration loops manually instead of relying on the underlying automatic code generation. It shows how to handle the source term and the Neumann boundary condition.
+
+
+#Manually written assembly function
+#Always use a function, never the global scope
+function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
+
+    #Accessors to the quantities on the
+    #integration points
+    Ω = GT.domain(dΩ)
+    face_point_x = GT.coordinate_accessor(dΩ)
+    face_point_J = GT.jacobian_accessor(dΩ)
+    face_point_dV = GT.weight_accessor(dΩ)
+    face_npoints = GT.num_points_accessor(dΩ)
+    face_dofs = GT.dofs_accessor(V,Ω)
+    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
+    ∇ = ForwardDiff.gradient
+    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+
+    #Temporaries
+    n = GT.max_num_reference_dofs(V)
+    T = Float64
+    Auu = zeros(T,n,n)
+    bu = zeros(T,n)
+
+    #Numerical integration loop
+    for face in 1:GT.num_faces(Ω)
+
+        #Get quantities at current face
+        npoints = face_npoints(face)
+        point_x = face_point_x(face)
+        point_J = face_point_J(face)
+        point_dV = face_point_dV(face)
+        point_dof_s = face_point_dof_s(face)
+        point_dof_∇s = face_point_dof_∇s(face)
+        dofs = face_dofs(face)
+
+        #Reset face matrix
+        fill!(Auu,zero(T))
+        fill!(bu,zero(T))
+
+        #Loop over integration points
+        for point in 1:npoints
+
+            #Get quantities at current integration point
+            x = point_x(point)
+            J = point_J(point)
+            dV = point_dV(point,J)
+            dof_s = point_dof_s(point)
+            dof_∇s = point_dof_∇s(point,J)
+
+            #Fill in face matrix and vector
+            for (i,dofi) in enumerate(dofs)
+                v = dof_s(i)
+                ∇v = dof_∇s(i)
+                bu[i] += f.definition(x)*v*dV
+                for (j,dofj) in enumerate(dofs)
+                    ∇u = dof_∇s(j)
+                    Auu[i,j] += ∇v⋅∇u*dV
+                end
+            end
+        end
+
+        #Add face contribution to the
+        #global allocations
+        GT.contribute!(A_alloc,Auu,dofs,dofs)
+        GT.contribute!(Ad_alloc,Auu,dofs,dofs)
+        GT.contribute!(b_alloc,bu,dofs)
+    end
+end
+
+#Manually written assembly function
+#Always use a function, never the global scope
+function assemble_in_Γn!(b_alloc,V,h,dΓn)
+
+    #Accessors to the quantities on the
+    #integration points
+    Γn = GT.domain(dΓn)
+    face_point_x = GT.coordinate_accessor(dΓn)
+    face_point_dV = GT.weight_accessor(dΓn)
+    face_npoints = GT.num_points_accessor(dΓn)
+    face_dofs = GT.dofs_accessor(V,Γn)
+    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΓn)
+
+    #Temporaries
+    n = GT.max_num_reference_dofs(V)
+    T = Float64
+    Auu = zeros(T,n,n)
+    bu = zeros(T,n)
+
+    #Numerical integration loop
+    for face in 1:GT.num_faces(Γn)
+
+        #Get quantities at current face
+        npoints = face_npoints(face)
+        point_x = face_point_x(face)
+        point_dV = face_point_dV(face)
+        point_dof_s = face_point_dof_s(face)
+        dofs = face_dofs(face)
+
+        #Reset face vector
+        fill!(bu,zero(T))
+
+        #Loop over integration points
+        for point in 1:npoints
+
+            #Get quantities at current integration point
+            x = point_x(point)
+            dV = point_dV(point)
+            dof_s = point_dof_s(point)
+
+            #Fill in face matrix and vector
+            for (i,dofi) in enumerate(dofs)
+                v = dof_s(i)
+                bu[i] += h.definition(x)*v*dV
+            end
+        end
+
+        #Add face contribution to the
+        #global allocations
+        GT.contribute!(b_alloc,bu,dofs)
+    end
+end
+
+#Allocate matrix for free columns
+A_alloc = GT.allocate_matrix(T,V,V,Ω)
+
+#Allocate matrix for dirichlet columns
+free_or_dirichlet=(GT.FREE,GT.DIRICHLET)
+Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet)
+
+#Allocate rhs vector
+b_alloc = GT.allocate_vector(T,V,Ω,Γn)
+
+#Fill allocations with the function we wrote above
+assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
+assemble_in_Γn!(b_alloc,V,h,dΓn)
+
+#Compress matrix and vector into the final format
+A = GT.compress(A_alloc)
+Ad = GT.compress(Ad_alloc)
+b = GT.compress(b_alloc)
+
+#Build the linear system
+xd = GT.dirichlet_values(uhd)
+b .= b .- Ad*xd
+p = LinearSolve.LinearProblem(A,b)
+
+#Solve the problem
+sol = LinearSolve.solve(p)
+uh = GT.solution_field(uhd,sol)
+
+#Visualize the solution.
+fig = Makie.Figure()
+elevation = 0.24π
+azimuth = -0.55π
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surface!(Ω;color=uh)
+FileIO.save(joinpath(@__DIR__,"fig_poisson_2.png"),Makie.current_figure()) # hide
+nothing # hide
 
