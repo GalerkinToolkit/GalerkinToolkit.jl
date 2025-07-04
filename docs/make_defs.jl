@@ -57,14 +57,13 @@ function main(;debug=false)
                       "example_p_laplacian.md",
                       "example_stokes.md",
                       "example_transient_heat_eq.md",
-                      "example_transient_heat_eq_manual.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
     examples = ["examples.md",examples_pages...]
 
     manual_pages = [
                     joinpath("manual","getting_started.md"),
-                    joinpath("src_md","manual_meshes.md"),
+                    #joinpath("src_md","manual_meshes.md"),
                     joinpath("manual","for_developers.md")
                    ]
     manual = ["manual.md",manual_pages...]
