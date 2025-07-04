@@ -33,11 +33,13 @@ a compiler of variational forms that automatically generates the finite element 
 low-level API allowing users to implement assembly loops by hand. Unlike any other package, it provides the building blocks to implement custom
  source-to-source compilers to generate code for numerical schemes working on computational grids.
 
-### Teaser
+### Code examples
 
-| ![](src_jl/fig_hello_world_1.png)  |  ![](src_jl/fig_poisson_1.png) | ![](src_jl/fig_p_laplacian_1.png)  |
+| ![](src_jl/fig_hello_world_1.png) |  ![](src_jl/fig_poisson_1.png) | ![](src_jl/fig_p_laplacian_1.png) |
 |---|---|---|
+| [Hello, World!](@ref) |  [Poisson equation](@ref)| [p-Laplacian](@ref) |
 | ![](src_jl/fig_stokes_1.png)  |  ![](src_jl/fig_transient_heat_equation_1.gif) | |
+| [Stokes lid-driven cavity](@ref) |  [Transient heat equation](@ref) | |
 
 
 ## How to start
