@@ -111,7 +111,6 @@ colorrange = (-1,1)
 ax,sc = GT.makie_surface(fig[1,1],Ω;color=uh,axis,colorrange)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-Makie.Colorbar(fig[1,2],sc)
 
 #Record Makie scene while solving
 fn = "fig_transient_heat_equation_1.gif"
