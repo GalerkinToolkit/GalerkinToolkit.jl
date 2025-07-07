@@ -62,7 +62,7 @@ function main(;debug=false)
     examples = ["examples.md",examples_pages...]
 
     manual_pages = [
-                    joinpath("manual","getting_started.md"),
+                    joinpath("manual","introduction.md"),
                     #joinpath("src_md","manual_meshes.md"),
                     joinpath("manual","for_developers.md")
                    ]
@@ -81,9 +81,9 @@ function main(;debug=false)
                                    ),
              pages=[
                     "index.md",
+                    "Manual" => manual,
                     "Examples" => examples,
                     "Tutorials" => tutorials,
-                    "Manual" => manual,
                     "reference.md",
                     "refindex.md",
                     "references.md",

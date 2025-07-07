@@ -1,5 +1,5 @@
 # Manual
 
-- [Getting started](@ref)
+- [Introduction](@ref)
 - [For developers](@ref)
 

@@ -9,9 +9,9 @@ Welcome to the documentation page of GalerkinToolkit!
 ## Contents
 
 - **[Home](@ref)** -- This page.
+- **[Manual](@ref)** -- The user and developer guide. It gives the detailed explanations on how to use and extend the library.
 - **[Examples](@ref)** -- They provide a quick overview of the main functionality of the library.
 - **[Tutorials](@ref)** -- Learning material to get familiar with the building blocks of the library and the basics of the FEM. They are useful even if you are FEM expert as they walk you through the library step by step.
-- **[Manual](@ref)** -- The user and developer guide. It gives the detailed explanations on how to use and extend the library.
 - **[API](@ref)** -- All the docstrings are here.
 
 NB. This documentation is organized based on the [Diátaxis model](https://diataxis.fr/).
@@ -44,10 +44,7 @@ low-level API allowing users to implement assembly loops by hand. Unlike any oth
 
 ## How to start
 
-Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section. In the [Manual](@ref) section you will find explanations about the software design and guides for users and developers.
-
-You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
-
+ In the [Manual](@ref) section, you will find explanations about the software design and guides for users and developers.  Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section.
 
 ## Help and discussion
 
