@@ -1,5 +1,6 @@
 # Manual
 
-- [Getting started](@ref)
+- [Introduction](@ref)
+- [Geometric foundations](@ref)
 - [For developers](@ref)
 
