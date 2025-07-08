@@ -137,6 +137,10 @@ function unit_n_cube(d;options=GT.options())
     UnitNCube(num_dims,options)
 end
 
+"""
+    struct UnitNCube{...} <: AbstractFaceDomain
+
+"""
 struct UnitNCube{D,A} <: AbstractFaceDomain
     num_dims::Val{D}
     options::A
@@ -344,6 +348,9 @@ function unit_simplex(d;options=GT.options())
     UnitSimplex(num_dims,options)
 end
 
+"""
+    struct UnitSimplex{...} <: AbstractFaceDomain
+"""
 struct UnitSimplex{D,A} <: AbstractFaceDomain
     num_dims::Val{D}
     options::A
@@ -435,6 +442,9 @@ function simplexify(geo::UnitSimplex)
     mesh(geo)
 end
 
+"""
+    abstract type AbstractMeshDomain{A} <: AbstractDomain{A} end
+"""
 abstract type AbstractMeshDomain{A} <: AbstractDomain{A} end
 
 function face_reference_id(a::AbstractMeshDomain)
