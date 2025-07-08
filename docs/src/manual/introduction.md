@@ -1,6 +1,6 @@
 # Introduction
 
-## Overview
+## Mission, vision, and features
 
 **GalerkinToolkit** is a high-performance finite element toolbox built in the [Julia programming language](https://julialang.org/). Its mission is to provide general-purpose building blocks for finite element (FE) methods that can be flexibly combined to solve a wide variety of partial differential equations (PDEs), using diverse numerical schemes, and across a range of computing platforms -- from laptops to supercomputers.
 
@@ -23,16 +23,16 @@ Even though not currently available, these other features are being implemented,
 
 - Automatic differentiation for non-linear PDEs and gradient-based optimization.
 - Matrix-free bilinear forms.
-- H-div and H-curl interpolation spaces.
+- H(div) and H(curl) interpolation spaces.
 - Distributed assembly.
 - Single- and multi-GPU support.
 
 
-## Motivation
+## What is new in GalerkinToolkit
 
-GalerkinToolkit is certainly not the first FEM software project, but it introduces several distinctive design features:
+GalerkinToolkit is certainly not the first FEM software project, but it introduces several distinctive design novelties:
 
-- **Unified high- and low-level APIs** --  It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package and in a single programming language, Julia. This addresses the two-language problem of previous FE projects that consider a Python front-end for easiness of use and a C/C++ backend for performance. With GalerkinToolkit, you can use a concise high-level syntax or directly implement integration loops using low-level building blocks, depending on your needs. See, in the [Examples](@ref) section, both approaches in action.
+- **Unified high- and low-level APIs** --  It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package and in a single programming language, Julia. This addresses the two-language problem of previous FE projects that consider a Python front-end for easiness of use and a C/C++ backend for performance. With GalerkinToolkit, you can use a concise high-level syntax or directly implement integration loops using low-level building blocks, depending on your needs.
 
 - **Deep integration with the Julia ecosystem**  --
   Rather than reinventing the wheel, GalerkinToolkit reuses existing Julia packages in numerous situations. For example:
@@ -42,10 +42,10 @@ GalerkinToolkit is certainly not the first FEM software project, but it introduc
   - External solvers for algebraic systems from [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl).
   - Visualization with [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl)
 
-- **A new form compiler: GTFC**  ---
+- **A new form compiler: GTFC**  --
   The GalerkinToolkit Form Compiler (GTFC) uses Julia’s metaprogramming capabilities to generate efficient code from weak form definitions written in pure Julia. Unlike other compilers like FFC or TSFC, GTFC:
   - Does not rely on an external DSL like UFL, considering a sub-set of the Julia programming language as alternative.
-  - Allows user-defined types and operations directly in the weak form.
+  - Allows user-defined types in the weak form.
   - Supports advanced use cases, such as coupling surface and volume arguments in multi-field weak forms both for continuous and discontinuous interpolations.
 
 - **Gridap roots, reimagined**  --
