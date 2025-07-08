@@ -1,13 +1,13 @@
 # Introduction
 
-## Mission, vision, and features
+## Features
 
 **GalerkinToolkit** is a high-performance finite element toolbox built in the [Julia programming language](https://julialang.org/). Its mission is to provide general-purpose building blocks for finite element (FE) methods that can be flexibly combined to solve a wide variety of partial differential equations (PDEs), using diverse numerical schemes, and across a range of computing platforms -- from laptops to supercomputers.
 
-The toolkit envisions a unified framework that addresses the needs of numerical analysts, domain scientists, and high-performance computing experts alike. To this end, it offers a rich API with multiple levels of abstraction:
+The toolkit envisions a unified framework that addresses the needs of numerical analysts, domain scientists, and high-performance computing experts. To this end, it offers a rich API with multiple levels of abstraction:
 
 - **High-level API**: Enables users to solve PDEs using mathematical abstractions to define PDEs in weak form, while hiding low-level implementation details.
-- **Low-level API**: Grants direct access to underlying numerical components, allowing custom implementations of numerical schemes or advanced code optimizations not available through the high-level interface.
+- **Low-level API**: Grants direct access to underlying numerical quantities, allowing custom implementations of numerical schemes or advanced code optimizations not available through the high-level interface.
 
 GalerkinToolkit provides tools for:
 
@@ -28,7 +28,7 @@ Even though not currently available, these other features are being implemented,
 - Single- and multi-GPU support.
 
 
-## What is new in GalerkinToolkit
+## Novelties
 
 GalerkinToolkit is certainly not the first FEM software project, but it introduces several distinctive design novelties:
 
@@ -44,12 +44,19 @@ GalerkinToolkit is certainly not the first FEM software project, but it introduc
 
 - **A new form compiler: GTFC**  --
   The GalerkinToolkit Form Compiler (GTFC) uses Julia’s metaprogramming capabilities to generate efficient code from weak form definitions written in pure Julia. Unlike other compilers like FFC or TSFC, GTFC:
-  - Does not rely on an external DSL like UFL, considering a sub-set of the Julia programming language as alternative.
+  - Does not rely on an external DSL like UFL. It considers a sub-set of the Julia programming language as alternative.
   - Allows user-defined types in the weak form.
   - Supports advanced use cases, such as coupling surface and volume arguments in multi-field weak forms both for continuous and discontinuous interpolations.
 
-- **Gridap roots, reimagined**  --
-  GalerkinToolkit began as a full reimplementation of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl). While Gridap is based on lazily mapped arrays, GalerkinToolkit centers on form compilation and getter functions to deal with quantities at integration points. It provides both a loop-free high-level API and manual control of integration loops.
+- **Gridap, reimagined**  --
+  GalerkinToolkit began as a full reimplementation of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl). While Gridap is based on lazily mapped arrays, GalerkinToolkit centers on form compilation and functions designed to easily deal with quantities at integration points. These provide both a loop-free high-level API and manual control of integration loops.
+
+
+## This manual
+
+In next sections of the manual, we provide explanations on the different parts of the library. At the moment available manual sections are:
+
+- Documentation [For developers](@ref).
 
 
 
