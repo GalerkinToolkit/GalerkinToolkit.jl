@@ -966,24 +966,57 @@ function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
     accessor(face_n_2,GT.prototype(face_n))
 end
 
+
+# function face_diameter(domain::AbstractDomain)
+#     d = num_dims(domain)
+#     dinv = 1/d
+#     measure = GT.measure(domain,1)
+#     face_point_w = weight_accessor(measure)
+#     face_npoints = num_points_accessor(measure)
+#     z = zero(prototype(face_point_w))
+#     nfaces = num_faces(domain)
+#     diams = fill(z,nfaces)
+#     for face in 1:nfaces
+#         point_w = face_point_w(face)
+#         npoints = face_npoints(face)
+#         s = z
+#         for point in 1:npoints
+#             w = point_w(point)
+#             s += w
+#         end
+#         diams[face] =  s^dinv
+#     end
+#     diams
+# end
+
 function face_diameter(domain::AbstractDomain)
     d = num_dims(domain)
-    dinv = 1/d
     measure = GT.measure(domain,1)
     face_point_w = weight_accessor(measure)
-    face_npoints = num_points_accessor(measure)
     z = zero(prototype(face_point_w))
+
+    
+    mesh = GT.mesh(measure)
+    face_to_nodes = nodes_accessor(mesh, d, domain)
+    node_to_x = node_coordinates(mesh)
     nfaces = num_faces(domain)
     diams = fill(z,nfaces)
+
     for face in 1:nfaces
-        point_w = face_point_w(face)
-        npoints = face_npoints(face)
-        s = z
-        for point in 1:npoints
-            w = point_w(point)
-            s += w
+        lnode_to_node = face_to_nodes(face, nothing)
+        nlnodes = length(lnode_to_node)
+        node_coords = map(1:nlnodes) do i
+            node_to_x[lnode_to_node[i]]
         end
-        diams[face] =  s^dinv
+
+        s = z
+        for i in 1:nlnodes
+            for j in i+1:nlnodes
+                diff = (node_coords[i] - node_coords[j])
+                s = max(s, diff ⋅ diff)
+            end
+        end
+        diams[face] = sqrt(s)
     end
     diams
 end
