@@ -2,60 +2,62 @@
 
 ## Overview
 
-GalerkinToolkit is a high-performance finite element toolbox implemented in the [Julia programming language](https://julialang.org/). Its mission is to provide general-purpose building blocks of finite element (FE) methods that can be combined in multiple ways to solve a wide range of partial differential equations (PDEs), using different numerical schemes, and on different computing systems, from laptops to supercomputers. Its vision is to provide a unified framework that can address the needs of numerical analysts, domain scientists, and high-performance computing experts. To this end, GalerkinToolkit provides different levels of abstractions with a clear separation of concerns. A high-level API allows one to define complex numerical schemes using mathematical abstractions, conveniently hiding most of the implementation details. A low-level API is also available providing direct access to the underlying numerical quantities and making possible to implement schemes not available via the high-level API. In the current version, GalerkinToolkit provides tools for:
+**GalerkinToolkit** is a high-performance finite element toolbox built in the [Julia programming language](https://julialang.org/). Its mission is to provide general-purpose building blocks for finite element (FE) methods that can be flexibly combined to solve a wide variety of partial differential equations (PDEs), using diverse numerical schemes, and across a range of computing platforms -- from laptops to supercomputers.
 
-- Reading and partitioning computational meshes generated with [`Gmsh`](https://gmsh.info/).
-- Defining discrete interpolation spaces on computational meshes including continuous and discontinuous interpolations.
-- Integrating functionals, linear-, and bilinear-forms on triangulated manifolds for a variety of problems, including scalar- and vector-valued equations, and single- and multi-field systems.
-- Discretizing PDEs into systems of linear-, nonlinear-, and differential-algebraic equations.
-- Representing such algebraic problems in a way that can be readily solved using external tools such as [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl).
-- Visualizing results with [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl).
+The toolkit envisions a unified framework that addresses the needs of numerical analysts, domain scientists, and high-performance computing experts alike. To this end, it offers a rich API with multiple levels of abstraction:
 
+- **High-level API**: Enables users to solve PDEs using mathematical abstractions to define PDEs in weak form, while hiding low-level implementation details.
+- **Low-level API**: Grants direct access to underlying numerical components, allowing custom implementations of numerical schemes or advanced code optimizations not available through the high-level interface.
 
+GalerkinToolkit provides tools for:
 
+- Reading and partitioning computational meshes generated with external mesh generators.
+- Defining discrete interpolation spaces on triangulated manifolds, supporting both continuous and discontinuous interpolations.
+- Integrating functions, linear forms, and bilinear forms for scalar- and vector-valued equations, including single- and multi-field systems.
+- Supporting both simplex and hypercube cell geometries, with high-order interpolation capabilities.
+- Discretizing a wide range of PDEs into systems of linear, nonlinear, or differential-algebraic equations.
+- Representing algebraic problems in formats compatible with external solvers.
+- Visualization and post-process of results.
 
+Even though not currently available, these other features are being implemented, or are planned to be implemented in the near future:
 
-
-
-
-
-
-## Pre-requisites
-
-You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
-
-It is also required to be familiar with the key concepts in the FEM. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
-  - C. Johnson [Johnson2009](@cite)
-  - J. Whiteley [Whiteley2017](@cite)
-  - S.C. Brenner and L. R. Scott [Brenner2007](@cite)
+- Automatic differentiation for non-linear PDEs and gradient-based optimization.
+- Matrix-free bilinear forms.
+- H-div and H-curl interpolation spaces.
+- Distributed assembly.
+- Single- and multi-GPU support.
 
 
-## Installation
+## Motivation
 
-You first need to have Julia installed in your system. See the official Julia installation instructions [here](https://julialang.org/install/).
+GalerkinToolkit is certainly not the first FEM software project, but it introduces several distinctive design features:
+
+- **Unified high- and low-level APIs** --  It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package and in a single programming language, Julia. This addresses the two-language problem of previous FE projects that consider a Python front-end for easiness of use and a C/C++ backend for performance. With GalerkinToolkit, you can use a concise high-level syntax or directly implement integration loops using low-level building blocks, depending on your needs. See, in the [Examples](@ref) section, both approaches in action.
+
+- **Deep integration with the Julia ecosystem**  --
+  Rather than reinventing the wheel, GalerkinToolkit reuses existing Julia packages in numerous situations. For example:
+  - Computational meshes generated with [`Gmsh`](https://gmsh.info/).
+  - Differential operators from [`ForwardDiff.jl`](https://github.com/JuliaDiff/ForwardDiff.jl)
+  - Vector/tensor types via [`StaticArrays.jl`](https://github.com/JuliaArrays/StaticArrays.jl) and [`Tensors.jl`](https://github.com/Ferrite-FEM/Tensors.jl)
+  - External solvers for algebraic systems from [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl).
+  - Visualization with [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl)
+
+- **A new form compiler: GTFC**  ---
+  The GalerkinToolkit Form Compiler (GTFC) uses Julia’s metaprogramming capabilities to generate efficient code from weak form definitions written in pure Julia. Unlike other compilers like FFC or TSFC, GTFC:
+  - Does not rely on an external DSL like UFL, considering a sub-set of the Julia programming language as alternative.
+  - Allows user-defined types and operations directly in the weak form.
+  - Supports advanced use cases, such as coupling surface and volume arguments in multi-field weak forms both for continuous and discontinuous interpolations.
+
+- **Gridap roots, reimagined**  --
+  GalerkinToolkit began as a full reimplementation of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl). While Gridap is based on lazily mapped arrays, GalerkinToolkit centers on form compilation and getter functions to deal with quantities at integration points. It provides both a loop-free high-level API and manual control of integration loops.
 
 
-GalerkinToolkit is a registered package in the [official Julia package registry](https://github.com/JuliaRegistries/General). As such, you can install GalerkinToolkit easily using the [Julia package manager](https://docs.julialang.org/en/v1/stdlib/Pkg/).
 
-Open Julia and type `]` to enter package mode.
 
-```
-julia> ]
-```
 
-Then, type
-```
-pkg> add GalerkinToolkit
-```
 
-This installs GalerkinToolkit and all its dependencies.
 
-Press `ctrl+C` to go back to standard mode. Now, you can type
 
-```
-julia> import GalerkinToolkit as GT
-```
-to start using GalerkinToolkit.
 
 
 

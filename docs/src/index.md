@@ -46,6 +46,46 @@ low-level API allowing users to implement assembly loops by hand. Unlike any oth
 
  In the [Manual](@ref) section, you will find explanations about the software design and guides for users and developers.  Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section.
 
+## Pre-requisites
+
+You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
+
+It is also required to be familiar with the key concepts in the FEM. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
+  - C. Johnson [Johnson2009](@cite)
+  - J. Whiteley [Whiteley2017](@cite)
+  - S.C. Brenner and L. R. Scott [Brenner2007](@cite)
+
+
+## Installation
+
+You first need to have Julia installed in your system. See the official Julia installation instructions [here](https://julialang.org/install/).
+
+
+GalerkinToolkit is a registered package in the [official Julia package registry](https://github.com/JuliaRegistries/General). As such, you can install GalerkinToolkit easily using the [Julia package manager](https://docs.julialang.org/en/v1/stdlib/Pkg/).
+
+Open Julia and type `]` to enter package mode.
+
+```
+julia> ]
+```
+
+Then, type
+```
+pkg> add GalerkinToolkit
+```
+
+This installs GalerkinToolkit and all its dependencies.
+
+Press `ctrl+C` to go back to standard mode. Now, you can type
+
+```
+julia> import GalerkinToolkit as GT
+```
+to start using GalerkinToolkit.
+
+
+
+
 ## Help and discussion
 
 - You can open a new discussion to ask questions [here](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/discussions).
