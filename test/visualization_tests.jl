@@ -51,6 +51,15 @@ end
 counter = 0
 dir = mkpath(joinpath(@__DIR__,"..","pictures"))
 
+## Setup we like in 2d
+#S = SVector{2,Float64}
+#vertices = S[(0,0),(1,0),(0,1)]
+#vertces = [0.0 0.0; 1.0 0.0; 0.0 1.0]
+##conn = [1 2 3]
+#conn = Int32[1 2 3]
+#Makie.mesh(vertices,conn)
+#counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+
 # Setup we like in 2d
 S = SVector{2,Float64}
 vertices = S[(0,0),(1,0),(0,1),(1,1),(0,1),(1,1),(0,2),(1,2)]
@@ -88,6 +97,19 @@ Makie.mesh!(vertices,faces)
 Makie.scatter!(vertices;markersize=13,color=:black)
 Makie.linesegments!(segments;linewidth=2,color=:black)
 Makie.arrows3d!(vertices,directions,lengthscale=0.5,color=norm.(directions))
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+
+# Single-face domain
+cube = GT.unit_n_cube(3)
+axis = (;aspect=:data)
+GT.makie_surface(cube;axis)
+GT.makie_lines!(cube;color=:black)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+
+triangle = GT.unit_simplex(Val(2))
+axis = (;aspect=Makie.DataAspect())
+GT.makie_surface(triangle;axis)
+GT.makie_lines!(triangle;color=:black)
 counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 
 # Parallel

@@ -63,7 +63,7 @@ function main(;debug=false)
 
     manual_pages = [
                     joinpath("manual","introduction.md"),
-                    joinpath("src_md","manual_geometry.md"),
+                    joinpath("src_md","manual_meshes.md"),
                     joinpath("manual","for_developers.md")
                    ]
     manual = ["manual.md",manual_pages...]
