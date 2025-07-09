@@ -29,13 +29,17 @@ using StaticArrays
 import FileIO # hide
 
 #
-# ### Mesh specification.
+# ## Mesh specification
 #
 # Arbitrary mesh objects are defined from low-level quantities with function [`create_mesh`](@ref).
 #
 # ```@docs; canonical=false
 # create_mesh
 # ```
+#
+# A *physical* face in the mesh is defined as the transformation $\varphi(\hat F)$ of its *reference* face $\hat F$ via a map mapping $\varphi: \hat F \rightarrow \mathbb{R}^d$, where d is the number of ambient dimensions. The mapping is defined from the corresponding reference space and the node coordinates for this face as follows: $\varphi(\hat x) = \sum_i \hat s_i(\hat x) x_{(f,i)}$. Function $\hat s_i: \hat F \rightarrow \mathbb{R}$ is the scalar basis function number $i$ in the reference space. It can be recovered with function [`shape_functions`](@ref) as `shape_functions(ref_space)[i]` with `ref_space=reference_spaces[d+1][r]` with `r=face_reference_id[d+1][f]` for the face number `f` in dimension `d`. The vector $x_{(f,i)}$ contains the coordinates of the local node $i$ in face  number $f$. It can be accessed in the code as `node_coordinates[n]` with `n=face_nodes[d+1][f][i]`.
+#
+# ### Example
 #
 # In the following example, we generate and visualize a mesh of three first order triangles. Only 2-faces are present in this example. The arrays for vertices and faces are empty.
 #
@@ -78,7 +82,9 @@ FileIO.save(joinpath(@__DIR__,"fig_meshes_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
 # ![](fig_meshes_1.png)
-
+#
+# ### Example
+#
 # In this other slightly more complex example, we define a mesh including
 # faces of different dimensions: linear triangles, edges and vertices. To be able to see
 # all faces in the visualization, we need to "shrink" them. Otherwise, the triangles would hide the edges and vertices.

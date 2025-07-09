@@ -513,6 +513,7 @@ Intermediate
 - `face_nodes`: A highly-nested vector containing the node ids for each face in the mesh. `node_coordinates[n]` with `n=face_nodes[d+1][i][k]` is the global node coordinate for local node number `k` in face `i` of dimension `d`. The object `face_nodes[d+1]` is a long vector of small vectors of integers. It is often represented using a `JaggedArray` object that uses continuous linear memory for performance.
 - `reference_spaces`: A tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` of dimension `d`.
 - `face_reference_id` [optional]: A nested vector containing which reference space is assigned to each face. `reference_sapces[d+1][r]` with `r=face_reference_id[d+1][i]` is the reference space associated with face number `i` of dimension `d`. By default, all faces are assigned to the first reference space in its dimension.
+- `physical_faces` [optional]: A vector of dictionaries containing groups labeled groups of faces. `physical_faces[d+1][label]` is a vector of integers containing the ids  of the faces labeled as `label` in dimension `d`. These labels might overlap. By default, no faces groups are created.
 """
 function create_mesh end
 
