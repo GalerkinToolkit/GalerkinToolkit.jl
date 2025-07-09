@@ -498,10 +498,27 @@ struct Mesh{A} <: AbstractMesh
     contents::A
 end
 
+"""
+    create_mesh(;kwargs...)
+
+# Keyword arguments
+
+- `node_coordinates`: The vector containing the coordinates of all mesh nodes. `node_coordinates[i]` is the coordinate vector for node number `i`.
+- `face_nodes`: A collection containing the node ids for each face in the mesh. `face_nodes[d+1][i][k]` is the node number `k` in face `i` of dimension `d`. The object `face_nodes[d+1]` is a long vector of small vectors of integers. It is often represented using a `JaggedArray` object that uses continuous linear memory for performance.
+"""
+function create_mesh(;kwargs...)
+    mesh(;kwargs...)
+end
+
+function default_face_reference_id(face_nodes,reference_spaces)
+    D = length(face_nodes)-1
+    [ fill(Int8(1),length(face_nodes[i+1]))   for i in 0:D ] 
+end
+
 function mesh(;
         node_coordinates,
         face_nodes,
-        face_reference_id,
+        face_reference_id = default_face_reference_id(face_nodes,reference_spaces),
         reference_spaces,
         periodic_nodes = default_periodic_nodes(reference_spaces),
         physical_faces = default_physical_faces(reference_spaces),

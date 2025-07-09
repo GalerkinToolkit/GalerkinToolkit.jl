@@ -193,10 +193,10 @@ function makie_faces_mesh(plt)
     mesh = plt.mesh
     D = GT.num_ambient_dims(mesh)
     nnodes = GT.num_nodes(mesh)
-    vert = zeros(Float64,nnodes,D)
+    vert = zeros(SVector{D,Float64},nnodes)
     node_to_x = GT.node_coordinates(mesh)
     for (node,x) in enumerate(node_to_x)
-        vert[node,:] = x
+        vert[node] = x
     end
     nfaces = GT.num_faces(mesh,d)
     face_to_nodes = GT.face_nodes(mesh,d)
@@ -205,7 +205,7 @@ function makie_faces_mesh(plt)
         conn[face,:] = nodes
     end
     if nfaces == 0
-        vert = ones(Float64,3,D)
+        vert = zeros(SVector{D,Float64},3)
         conn = zeros(Int32,1,3)
         conn[:] = 1:3
     end
