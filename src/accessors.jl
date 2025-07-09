@@ -992,31 +992,57 @@ end
 function face_diameter(domain::AbstractDomain)
     d = num_dims(domain)
     measure = GT.measure(domain,1)
+    mesh = GT.mesh(measure)
+    D = num_dims(mesh)
+
     face_point_w = weight_accessor(measure)
     z = zero(prototype(face_point_w))
 
     
-    mesh = GT.mesh(measure)
-    face_to_nodes = nodes_accessor(mesh, d, domain)
+    face_to_nodes = nodes_accessor(mesh, D, domain)
     node_to_x = node_coordinates(mesh)
     nfaces = num_faces(domain)
     diams = fill(z,nfaces)
 
-    for face in 1:nfaces
-        lnode_to_node = face_to_nodes(face, nothing)
+    function max_dist(lnode_to_node)
+        s = z
         nlnodes = length(lnode_to_node)
         node_coords = map(1:nlnodes) do i
             node_to_x[lnode_to_node[i]]
         end
 
-        s = z
         for i in 1:nlnodes
             for j in i+1:nlnodes
                 diff = (node_coords[i] - node_coords[j])
                 s = max(s, diff ⋅ diff)
             end
         end
-        diams[face] = sqrt(s)
+        s
+    end
+    
+    for face in 1:nfaces
+        face_around = if d == D 
+            nothing 
+        else
+            GT.face_around(domain)
+        end
+
+        s = z 
+        if d == D || (d+1 == D && face_around !== nothing)
+            lnode_to_node = face_to_nodes(face, nothing)
+            s = max_dist(lnode_to_node)
+            diams[face] = sqrt(s)
+        else 
+            num_faces_around = 2
+            for i in 1:num_faces_around
+                lnode_to_node = face_to_nodes(face, i)
+                s += sqrt(max_dist(lnode_to_node))
+            end
+            s /= num_faces_around
+            diams[face] = s
+        end
+
+        
     end
     diams
 end
