@@ -29,9 +29,9 @@ using StaticArrays
 import FileIO # hide
 
 #
-# ### Building a mesh from scratch.
+# ### Mesh specification.
 #
-# Function [`create_mesh`](@ref) builds a mesh object from its constituent data: node coordinates, face nodes, reference spaces, etc.
+# Arbitrary mesh objects are defined from low-level quantities with function [`create_mesh`](@ref).
 #
 # ```@docs; canonical=false
 # create_mesh

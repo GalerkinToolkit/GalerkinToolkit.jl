@@ -1,6 +1,6 @@
 # Manual
 
 - [Introduction](@ref)
-- [Geometry](@ref)
+- [Meshes](@ref)
 - [For developers](@ref)
 

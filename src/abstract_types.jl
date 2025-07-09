@@ -7,30 +7,24 @@ end
 @doc raw"""
     abstract type AbstractMesh <: AbstractType end
 
-Abstract type representing a triangulation of a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$,
-plus metadata useful in finite element computations, such as physical groups for imposing boundary conditions.
-
-# Notation
-
-Each of of the elements of the triangulation is referred to as a `face`. A mesh can contain faces of different dimensions.
-A mesh might or might not represent a cell complex (all possible low dimensional faces are present in the mesh), but
-it is often assumed that it represents a cell complex.
+Abstract type representing a computational mesh.
 
 # Level
 
 Beginner
 
-# Basic constructors
+# Constructors
 
 - [`mesh`](@ref)
 - [`chain`](@ref)
+- [`create_mesh`](@ref)
 - [`mesh_from_msh`](@ref)
 - [`mesh_from_space`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
 
-# Basic queries
+# Queries
 
 - [`num_dims`](@ref)
 - [`num_ambient_dims`](@ref)

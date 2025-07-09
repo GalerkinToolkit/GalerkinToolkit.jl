@@ -56,7 +56,7 @@ GalerkinToolkit is certainly not the first FEM software project, but it introduc
 
 In next sections of the manual, we provide explanations on the different parts of the library. At the moment available manual sections are:
 
-- [Geometry](@ref).
+- [Meshes](@ref).
 - Documentation [For developers](@ref).
 
 
