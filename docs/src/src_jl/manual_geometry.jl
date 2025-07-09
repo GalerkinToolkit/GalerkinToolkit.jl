@@ -18,8 +18,7 @@ import FileIO # hide
 #
 #  ### Definitions
 #
-# A mesh object in GalerkinToolkit contains all geometrical information needed in a FEM computation. All types implementing the *mesh interface* are subtypes of [`AbstractMesh`](@ref).
-#
+# A mesh object in GalerkinToolkit contains all geometrical information needed in a FEM computation.#
 # Formally:
 #
 # - A *mesh* $M$ is a set of faces plus a collection of *face labels* used to identify particular faces in the mesh, e.g., to impose boundary conditions.
@@ -48,11 +47,20 @@ import FileIO # hide
 #
 # - Multiple reference spaces and reference faces are allowed for faces of a given dimension. This is useful to support meshes with mixed face topologies and/or mixed interpolation order.
 #
+#
+#  ### Interface
+#
+# All types implementing the meshes are subtypes of [`AbstractMesh`](@ref). All of them implement the *mesh interface*:
+#
+# ```@docs; canonical=false
+# AbstractMesh
+# ```
+#
 # ### Building a mesh from scratch.
 #
 # Function [`create_mesh`](@ref) builds a mesh object from its constituent data: node coordinates, face nodes, reference spaces, etc.
 #
-# ```@docs
+# ```@docs; canonical=false
 # create_mesh
 # ```
 #

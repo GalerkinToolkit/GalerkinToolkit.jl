@@ -506,6 +506,9 @@ end
 - `node_coordinates`: The vector containing the coordinates of all mesh nodes. `node_coordinates[i]` is the coordinate vector for node number `i`.
 - `face_nodes`: A collection containing the node ids for each face in the mesh. `face_nodes[d+1][i][k]` is the node number `k` in face `i` of dimension `d`. The object `face_nodes[d+1]` is a long vector of small vectors of integers. It is often represented using a `JaggedArray` object that uses continuous linear memory for performance.
 """
+function create_mesh end
+
+
 function create_mesh(;kwargs...)
     mesh(;kwargs...)
 end
