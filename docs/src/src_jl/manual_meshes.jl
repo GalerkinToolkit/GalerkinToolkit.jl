@@ -222,7 +222,7 @@ nothing # hide
 # labeled as "boundary" in orange color, and the rest in blue:
 
 
-color = GT.FaceData("boundary")
+color = GT.FaceColor("boundary")
 blue = Makie.wong_colors()[1]
 orange = Makie.wong_colors()[2]
 colormap = [blue,orange]
@@ -236,7 +236,7 @@ nothing # hide
 
 # Idem, but now visualizing the group "foo".
 
-color = GT.FaceData("foo")
+color = GT.FaceColor("foo")
 GT.makie_surface(mesh2;axis,shrink,shading,color,colormap)
 GT.makie_lines!(mesh2;dim=1,shrink,color,colormap)
 GT.makie_points!(mesh2;dim=0,color,colormap)

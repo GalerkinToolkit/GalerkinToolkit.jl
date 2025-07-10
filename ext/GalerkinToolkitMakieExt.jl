@@ -11,8 +11,8 @@ using StaticArrays
 #arrows
 #pplot,pmesh,pdomain
 
-#FaceData -> FaceColor
-#NodeData -> NodeColor
+#FaceColor -> FaceColor
+#NodeColor -> NodeColor
 
 
 import GalerkinToolkit as GT
@@ -249,7 +249,7 @@ function Makie.preferred_axis_type(p::Makie_arrows2d)
     plot_preferred_axis_type(plt)
 end
 
-function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.Plot,<:GT.NodeData}})
+function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.Plot,<:GT.NodeColor}})
     attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
@@ -271,7 +271,7 @@ function Makie.preferred_axis_type(p::Makie_arrows3d)
     plot_preferred_axis_type(plt)
 end
 
-function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.Plot,<:GT.NodeData}})
+function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.Plot,<:GT.NodeColor}})
     attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
@@ -283,7 +283,7 @@ function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.Plot,<:GT.NodeData}})
     Makie.arrows3d!(p,valid_attributes,p.coords,p.vecs;color)
 end
 
-function makie_arrows_impl(plt,vecs::GT.NodeData,color)
+function makie_arrows_impl(plt,vecs::GT.NodeColor,color)
     D = GT.num_ambient_dims(plt.mesh)
     x = GT.node_coordinates(plt.mesh)
     nnodes = length(x)
@@ -295,7 +295,7 @@ function makie_arrows_impl(plt,vecs::GT.NodeData,color)
         error("not implemented")
     end
     node_to_vec = plt.node_data[vecs.name]
-    if isa(color,GT.NodeData)
+    if isa(color,GT.NodeColor)
         color2 = plt.node_data[color.name]
     else
         color2 = color
@@ -346,10 +346,10 @@ function setup_colorrange_impl(plt,color,colorrange)
     if colorrange != Makie.Automatic()
         return colorrange
     end
-    if isa(color,GT.FaceData)
+    if isa(color,GT.FaceColor)
         colorrange = GT.face_colorrange(plt,color.name)
     end
-    if isa(color,GT.NodeData)
+    if isa(color,GT.NodeColor)
         colorrange = GT.node_colorrange(plt,color.name)
     end
     colorrange
@@ -359,16 +359,16 @@ function setup_colors_impl(plt,color,d)
     if GT.num_faces(plt.mesh,d) == 0
         return (plt,:pink)
     end
-    if isa(color,GT.FaceData)
+    if isa(color,GT.FaceColor)
         if d == 2
             plt = GT.shrink(plt;scale=1)
         end
         color2 = GT.face_color(plt,color.name,d)
     end
-    if isa(color,GT.NodeData)
+    if isa(color,GT.NodeColor)
         color2 = GT.node_color(plt,color.name)
     end
-    if isa(color,GT.NodeData) || isa(color,GT.FaceData)
+    if isa(color,GT.NodeColor) || isa(color,GT.FaceColor)
         face_to_nodes = GT.face_nodes(plt.mesh,d)
         nfaces = length(face_to_nodes)
         if d == 0
@@ -486,21 +486,21 @@ function setup_makie_domain(domain,refinement,color,vec,scal)
     if isa(color,GT.AbstractQuantity) || isa(color,Function)
         label = string(gensym())
         GT.plot!(plt,color;label)
-        newcolor = GT.NodeData(label)#GT.node_color(plt,label)
+        newcolor = GT.NodeColor(label)#GT.node_color(plt,label)
     else
         newcolor = color
     end
     if isa(vec,GT.AbstractQuantity) || isa(vec,Function)
         label = string(gensym())
         GT.plot!(plt,vec;label)
-        newvec = GT.NodeData(label)
+        newvec = GT.NodeColor(label)
     else
         newvec = vec
     end
     if isa(scal,GT.AbstractQuantity) || isa(scal,Function)
         label = string(gensym())
         GT.plot!(plt,scal;label)
-        newscal = GT.NodeData(label)
+        newscal = GT.NodeColor(label)
     else
         newscal = scal
     end
@@ -574,18 +574,18 @@ function setup_domain_arrows(dom,q,color,refinement,vec,scal)
     if isa(vec,GT.AbstractQuantity) || isa(vec,Function)
         label = string(gensym())
         GT.plot!(plt,vec;label)
-        newvec = GT.NodeData(label)
+        newvec = GT.NodeColor(label)
     else
         newvec = vec
     end
     if isa(scal,GT.AbstractQuantity) || isa(scal,Function)
         label = string(gensym())
         GT.plot!(plt,scal;label)
-        newscal = GT.NodeData(label)
+        newscal = GT.NodeColor(label)
     else
         newscal = scal
     end
-    varrow = GT.NodeData(label_q)
+    varrow = GT.NodeColor(label_q)
     (plt,varrow,color,newvec,newscal)
 end
 

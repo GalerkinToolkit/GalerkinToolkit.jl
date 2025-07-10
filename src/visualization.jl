@@ -387,11 +387,11 @@ function face_color(plt::Plot,name,d)
     color
 end
 
-struct FaceData
+struct FaceColor
     name::String
 end
 
-struct NodeData
+struct NodeColor
     name::String
 end
 
@@ -741,7 +741,7 @@ function warp_by_vector(plt::Plot,vec::AbstractArray;scale=1)
     plt2
 end
 
-function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+function warp_by_vector(plt::Plot,vec::NodeColor;scale=1)
     node_to_vec = plt.node_data[vec.name]
     warp_by_vector(plt,node_to_vec;scale)
 end
@@ -766,7 +766,7 @@ function warp_by_scalar(plt::Plot,node_to_z::AbstractArray;scale=1)
     plt2
 end
 
-function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+function warp_by_scalar(plt::Plot,data::NodeColor;scale=1)
     node_to_z = plt.node_data[data.name]
     warp_by_scalar(plt,node_to_z;scale)
 end
