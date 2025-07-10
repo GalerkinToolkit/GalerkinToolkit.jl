@@ -878,7 +878,7 @@ function unit_normal_accessor_reference_skeleton(measure::AbstractQuadrature)
     face_to_dface = faces(domain)
     Drid_to_ldface_to_n = map(GT.reference_spaces(mesh,Val(D))) do refface
         boundary = refface |> GT.domain |> GT.mesh
-        boundary |> GT.outward_normals # TODO also rename?
+        boundary |> GT.normals # TODO also rename?
     end
     prototype = first(first(Drid_to_ldface_to_n))
     function face_n(face,face_around)

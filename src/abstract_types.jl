@@ -36,7 +36,7 @@ Beginner
 - [`group_names`](@ref)
 - [`is_cell_complex`](@ref)
 - [`geometries`](@ref)
-- [`outward_normals`](@ref)
+- [`normals`](@ref)
 
 """
 abstract type AbstractMesh <: AbstractType end
@@ -577,7 +577,7 @@ function is_cell_complex end
 
 """
 """
-function outward_normals end
+function normals end
 
 """
 """

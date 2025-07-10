@@ -99,8 +99,8 @@ function periodic_nodes(pmesh::PMesh)
     map(GT.periodic_nodes,pmesh.mesh_partition)
 end
 
-function outward_normals(pmesh::PMesh)
-    data = map(GT.outward_normals,pmesh.mesh_partition)
+function normals(pmesh::PMesh)
+    data = map(GT.normals,pmesh.mesh_partition)
     if eltype(data) <: Nothing
         nothing
     else

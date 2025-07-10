@@ -480,7 +480,7 @@ function unit_normal(mesh::AbstractMesh,d)
     ctype_to_refface = GT.reference_spaces(mesh,D)
     Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
         boundary = refface |> GT.domain |> GT.mesh
-        boundary |> GT.outward_normals # TODO also rename?
+        boundary |> GT.normals # TODO also rename?
     end
     topo = topology(mesh)
     dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)
@@ -510,7 +510,7 @@ function unit_normal(mesh::AbstractMesh,d)
     #ctype_to_refface = GT.reference_spaces(mesh,D)
     #Drid_to_lface_to_n_data= map(ctype_to_refface) do refface
     #    boundary = refface |> GT.geometry |> GT.boundary
-    #    boundary |> GT.outward_normals # TODO also rename?
+    #    boundary |> GT.normals # TODO also rename?
     #end
     #topo = topology(mesh)
     #dface_to_Dfaces_data, dface_to_ldfaces_data = GT.face_incidence_ext(topo,d,D)

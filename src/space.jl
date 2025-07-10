@@ -1470,14 +1470,14 @@ function complexify(refface::LagrangeFaceSpace)
         dface_to_nodes
     end
     face_nodes = collect(face_nodes_tuple)
-    outward_normals = GT.outward_normals(mesh)
+    normals = GT.normals(mesh)
     GT.mesh(;
         node_coordinates,
         face_nodes,
         face_reference_id,
         reference_spaces,
         is_cell_complex = Val(true),
-        outward_normals
+        normals
        )
 end
 
@@ -1969,7 +1969,7 @@ function rt_setup_dual_basis_boundary(fe)
         tabulator(fe)(value,xs)
     end
     rid_to_permutations = map(fe->node_permutations(fe),rid_to_fe)
-    face_to_n = GT.outward_normals(cell_boundary)
+    face_to_n = GT.normals(cell_boundary)
     face_to_nodes = face_nodes(cell_boundary,D-1)
     node_to_x = node_coordinates(cell_boundary)
     nfaces = length(face_to_n)

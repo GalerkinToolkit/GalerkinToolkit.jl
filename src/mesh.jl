@@ -284,7 +284,7 @@ function remove_interior(mesh::AbstractMesh)
          face_reference_id = face_reference_id(mesh)[1:end-1],
          reference_spaces = reference_spaces(mesh)[1:end-1],
          group_faces = group_faces(mesh)[1:end-1],
-         outward_normals = outward_normals(mesh),
+         normals = normals(mesh),
          is_cell_complex = Val(is_cell_complex(mesh)),
          periodic_nodes = periodic_nodes(mesh)
         )
@@ -486,8 +486,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     pnode_to_node,pnode_to_master = periodic_nodes(mesh)
     plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
     plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
-    if outward_normals(mesh) !== nothing
-        lnormals = outward_normals(mesh)[lface_to_face_mesh[end]]
+    if normals(mesh) !== nothing
+        lnormals = normals(mesh)[lface_to_face_mesh[end]]
     else
         lnormals = nothing
     end
@@ -499,7 +499,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         reference_spaces = reference_spaces(mesh),
         group_faces = lgroups_mesh,
         periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
-        outward_normals = lnormals,
+        normals = lnormals,
         kwargs...
         )
 
@@ -529,7 +529,7 @@ Intermediate
 - `face_reference_id` [optional]: A nested vector containing which reference space is assigned to each face. `reference_sapces[d+1][r]` with `r=face_reference_id[d+1][i]` is the reference space associated with face number `i` of dimension `d`. By default, all faces are assigned to the first reference space in its dimension.
 - `group_faces` [optional]: A vector of dictionaries containing groups labeled groups of faces. `group_faces[d+1][label]` is a vector of integers containing the ids  of the faces labeled as `label` in dimension `d`. These labels might overlap. By default, no faces groups are created.
 - `is_cell_complex=Val(false)` [optional]: `Val(true)` if the input data represents a cell complex, `Val(false)` otherwise.
-- `outward_normals=nothing` [optinal]: Vector containing the normal vectors for the faces of maximum dimension of the mesh. This is relevant for meshes of dimension `d` embedded in `d+1` dimensions as there is no way to tell which should be the orientation of the normals from the other quantities defining the mesh.  `outward_normals[f]` gives the normal vector of face number `f` of dimension `d=length(face_nodes)-1`.
+- `normals=nothing` [optinal]: Vector containing the normal vectors for the faces of maximum dimension of the mesh. This is relevant for meshes of dimension `d` embedded in `d+1` dimensions as there is no way to tell which should be the orientation of the normals from the other quantities defining the mesh.  `normals[f]` gives the normal vector of face number `f` of dimension `d=length(face_nodes)-1`.
 """
 function create_mesh end
 
@@ -550,7 +550,7 @@ function mesh(;
         reference_spaces,
         periodic_nodes = default_periodic_nodes(reference_spaces),
         group_faces = default_group_faces(reference_spaces),
-        outward_normals = nothing,
+        normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
         node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
@@ -564,7 +564,7 @@ function mesh(;
                 reference_spaces,
                 periodic_nodes,
                 group_faces,
-                outward_normals,
+                normals,
                 geometry_names,
                 is_cell_complex,
                 node_local_indices,
@@ -583,7 +583,7 @@ function replace_workspace(mesh::Mesh,workspace)
                 periodic_nodes=periodic_nodes(mesh),
                 geometry_names=geometry_names(mesh),
                 group_faces=group_faces(mesh),
-                outward_normals=outward_normals(mesh),
+                normals=normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 node_local_indices=node_local_indices(mesh),
                 face_local_indices=face_local_indices(mesh),
@@ -601,7 +601,7 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
                 periodic_nodes=periodic_nodes(mesh),
                 group_faces=group_faces(mesh),
                 geometry_names=geometry_names(mesh),
-                outward_normals=outward_normals(mesh),
+                normals=normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 node_local_indices=node_local_indices(mesh),
                 face_local_indices=face_local_indices(mesh),
@@ -636,8 +636,8 @@ function default_periodic_nodes(reference_spaces)
     Ti[] => Ti[]
 end
 
-function outward_normals(m::Mesh)
-    m.contents.outward_normals
+function normals(m::Mesh)
+    m.contents.normals
 end
 
 function group_names(mesh,d)
@@ -671,7 +671,7 @@ function chain(;
         reference_spaces,
         periodic_nodes = default_periodic_nodes((reference_spaces,)),
         group_faces = default_group_faces((reference_spaces,))[end],
-        outward_normals = nothing,
+        normals = nothing,
     )
     contents = (;
                 node_coordinates,
@@ -680,7 +680,7 @@ function chain(;
                 reference_spaces,
                 periodic_nodes,
                 group_faces,
-                outward_normals,
+                normals,
                )
     Chain(contents)
 end
@@ -726,7 +726,7 @@ end
 
 periodic_nodes(m::Chain) = m.contents.periodic_nodes
 
-outward_normals(m::Chain) = m.contents.outward_normals
+normals(m::Chain) = m.contents.normals
 
 function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
     d = val_parameter(D)
@@ -737,7 +737,7 @@ function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
           reference_spaces=reference_spaces(mesh,d),
           periodic_nodes=periodic_nodes(mesh),
           group_faces=group_faces(mesh,d),
-          outward_normals=outward_normals(mesh),
+          normals=normals(mesh),
          )
 end
 
@@ -764,7 +764,7 @@ function mesh(chain::Chain)
     #groups = [ typeof(cell_groups)() for d in 0:D]
     #groups[end] = cell_groups
     #pnodes = periodic_nodes(chain)
-    #onormals = outward_normals(chain)
+    #onormals = normals(chain)
     #GT.mesh(;
     #  node_coordinates = node_coords,
     #  face_nodes = face_to_nodes,
@@ -772,7 +772,7 @@ function mesh(chain::Chain)
     #  reference_spaces = refid_to_refface,
     #  periodic_nodes = pnodes,
     #  group_faces = groups,
-    #  outward_normals = onormals)
+    #  normals = onormals)
     GT.mesh(;
             node_coordinates = node_coordinates(chain),
             face_nodes = face_nodes(chain),
@@ -780,7 +780,7 @@ function mesh(chain::Chain)
             reference_spaces = reference_spaces(chain),
             periodic_nodes = periodic_nodes(chain),
             group_faces = group_faces(chain),
-            outward_normals = outward_normals(chain))
+            normals = normals(chain))
 end
 
 function mesh_space(mesh::AbstractMesh,D)

@@ -569,7 +569,7 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             reference_spaces = Tuple(newreffaces),
             group_faces = new_group_faces,
             periodic_nodes = periodic_nodes(mesh),
-            outward_normals = outward_normals(mesh),
+            normals = normals(mesh),
             geometry_names = geometry_names(mesh),
             is_cell_complex = Val(true),
            )

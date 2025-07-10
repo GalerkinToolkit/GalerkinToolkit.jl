@@ -489,7 +489,7 @@ function plot(mesh::AbstractMesh)
         end
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
-        dface_to_n = outward_normals(mesh)
+        dface_to_n = normals(mesh)
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
     #phys_names = group_boundary_faces!(mesh)
@@ -711,7 +711,7 @@ function shrink(plt::Plot;scale=0.75)
             face_reference_id = face_reference_id(mesh),
             reference_spaces = reference_spaces(mesh),
             group_faces = group_faces(mesh), # TODO propagate also periodic nodes??
-            outward_normals = outward_normals(mesh)
+            normals = normals(mesh)
            )
     newnode_data = Dict{String,Any}()
     for (k,node_to_val) in node_data(plt)
