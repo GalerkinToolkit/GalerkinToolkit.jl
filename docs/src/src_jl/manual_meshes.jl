@@ -183,10 +183,30 @@ edge_to_surfaces = GT.face_incidence(topo,1,2)
 #
 # ## Face groups
 #
-# Face groups allow us to select specific faces in a mesh for different modeling purposes: impose boundary conditions, define different equations in different parts of the mesh etc. A face group is a vector of integers containing the ids of the faces in this group plus a string containing a name for this group. This groups are stored using a dictionary that maps strings to vectors (group names to group definitions) in a per dimension basis (one dictionary per dimension). The vector contains faces of the same dimension, but it is possible define groups containing faces of different dimensions by splitting them in a vector per dimension. Face groups are arbitrary can they can overlap.
+# Face groups allow us to select specific faces in a mesh for different modeling purposes: impose boundary conditions, define different equations in different parts of the mesh etc. A face group is a vector of integers containing the ids of the faces in this group plus a string containing a name for this group. This groups are stored using a dictionary that maps strings to vectors (group names to group definitions) in a per dimension basis (one dictionary per dimension). The vector contains faces of the same dimension, but it is possible define groups containing faces of different dimensions by splitting them in a vector per dimension.
+# Face groups can overlap and can be added after the mesh object is created.
 #
-# Face groups are accessed and added using function [`group_faces`](@ref):
+# Face groups are accessed and added using function [`group_faces`](@ref).
+#
+# ```@docs; canonical=false
+# group_faces
+# ```
+#
+# ### Common face groups
+#
+# GalerkinToolkit provides a number of functions that generate commonly used face groups.
+# - [`label_boundary_faces!`](@ref)
+# - [`label_interior_faces!`](@ref)
+# - [`label_faces_in_dim!`](@ref)
+#
+# These function do what the name suggests (see the docstrings for further details). The first one is often use to impose boundary
+# conditions and the second one in discontinuous Galerkin methods to define interior penalty terms. They are often called under the hood when calling functions like [`boundary`](@ref) and [`skeleton`](@ref).
 #
 #
+#
+#
+# ### Example
+#
+# Let us add some face groups to the last mesh we created.
 
 

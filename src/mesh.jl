@@ -44,6 +44,10 @@ end
 #    reduce(vcat,map(d->face_dim(a,d),0:D))
 #end
 
+"""
+"""
+function label_faces_in_dim! end
+
 function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     groups = group_faces(m,d)
     if haskey(groups,physical_name)
@@ -62,6 +66,10 @@ function label_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
     end
     physical_name
 end
+
+"""
+"""
+function label_interior_faces! end
 
 function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
@@ -109,6 +117,10 @@ function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FA
     end
     physical_name
 end
+
+"""
+"""
+function label_boundary_faces! end
 
 function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
