@@ -491,7 +491,7 @@ const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
     dict = Dict{String,Any}()
-    for group in physical_faces(mesh,d)
+    for group in group_faces(mesh,d)
         name,faces = group
         face_mask = zeros(Int32,ndfaces)
         face_mask[faces] .= 1
@@ -570,7 +570,7 @@ function restrict_to_dim(mesh::AbstractMesh,d)
     face_reference_id = face_reference_id(mesh,d),
     reference_spaces = reference_spaces(mesh,d),
     periodic_nodes = periodic_nodes(mesh),
-    physical_faces = physical_faces(mesh,d))
+    group_faces = group_faces(mesh,d))
     GT.mesh(chain)
 end
 
@@ -612,10 +612,10 @@ function skin(plt::GT.Plot)
     topo = GT.topology(mesh)
     face_to_cells = GT.face_incidence(topo,d,D)
     Γ = GT.boundary(mesh)
-    boundary_names = GT.physical_names(Γ)
+    boundary_names = GT.group_names(Γ)
     @assert length(boundary_names) == 1
     boundary_name = first(boundary_names)
-    newdfaces = GT.physical_faces(mesh,d)[boundary_name]
+    newdfaces = GT.group_faces(mesh,d)[boundary_name]
     nnodes = num_nodes(mesh)
     node_count = zeros(Int32,nnodes)
     dface_nodes = face_nodes(mesh,d)
@@ -700,7 +700,7 @@ function shrink(plt::Plot;scale=0.75)
             face_nodes = face_newnodes,
             face_reference_id = face_reference_id(mesh),
             reference_spaces = reference_spaces(mesh),
-            physical_faces = physical_faces(mesh), # TODO propagate also periodic nodes??
+            group_faces = group_faces(mesh), # TODO propagate also periodic nodes??
             outward_normals = outward_normals(mesh)
            )
     newnode_data = Dict{String,Any}()
@@ -1036,8 +1036,8 @@ function vtk_cells end
 function vtk_cells! end
 function vtk_args end
 function vtk_args! end
-function vtk_physical_faces end
-function vtk_physical_faces! end
+function vtk_group_faces end
+function vtk_group_faces! end
 #function vtk_physical_nodes end
 #function vtk_physical_nodes! end
 function vtk_mesh_cell end

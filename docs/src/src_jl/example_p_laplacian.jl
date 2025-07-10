@@ -54,8 +54,8 @@ mesh = GT.mesh_from_msh(msh_file)
 dirichlet_0_names = ["sides"]
 dirichlet_1_names = ["circle", "triangle", "square"]
 Ω = GT.interior(mesh)
-Γ0 = GT.boundary(mesh;physical_names=dirichlet_0_names)
-Γ1 = GT.boundary(mesh;physical_names=dirichlet_1_names)
+Γ0 = GT.boundary(mesh;group_names=dirichlet_0_names)
+Γ1 = GT.boundary(mesh;group_names=dirichlet_1_names)
 Γd = GT.piecewise_domain(Γ0,Γ1)
 
 #Define forcing data

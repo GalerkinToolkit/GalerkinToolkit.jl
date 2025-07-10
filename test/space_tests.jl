@@ -332,7 +332,7 @@ order = 1
 
 D = GT.num_dims(mesh)
 Ω = GT.interior(mesh)
-Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+Λ = GT.skeleton(mesh;group_names=["interior_faces"])
 dΛ = GT.measure(Λ,2*order)
 #n = GT.unit_normal(mesh,D-1)
 
@@ -381,7 +381,7 @@ D = GT.num_dims(mesh)
 ϕ = GT.physical_map(mesh,D)
 
 D = GT.num_dims(mesh)
-Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
+Γdiri = GT.boundary(mesh;group_names=["boundary_faces"])
 
 V = GT.lagrange_space(Ω,1;dirichlet_boundary=Γdiri)
 
@@ -463,9 +463,9 @@ V = GT.lagrange_space(Γdiri,order)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-Γ1 = GT.boundary(mesh;physical_names=["1-face-1"])
-Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
-Γ3 = GT.boundary(mesh;physical_names=["0-face-1"])
+Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
+Γ2 = GT.boundary(mesh;group_names=["1-face-3"])
+Γ3 = GT.boundary(mesh;group_names=["0-face-1"])
 
 u1 = GT.analytical_field(x->1.0,Ω)
 u2 = GT.analytical_field(x->2.0,Ω)
@@ -506,7 +506,7 @@ vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=40)) do plt
     GT.plot!(plt,uh2;label="uh2")
 end
 
-Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
+Γ = GT.boundary(mesh;group_names=["boundary_faces"])
 
 V = GT.lagrange_space(Γ,order;conformity=:L2)
 
@@ -533,8 +533,8 @@ GT.reference_spaces(V) # TODO why 2 reference fes?
 #    GT.plot!(plt,x->uh(x)[2];label="uh2")
 #end
 
-Γ1 = GT.boundary(mesh;physical_names=["1-face-1"])
-Γ2 = GT.boundary(mesh;physical_names=["1-face-3"])
+Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
+Γ2 = GT.boundary(mesh;group_names=["1-face-3"])
 #
 #order = 3
 #m1 = GT.analytical_field(x->SVector(false,true),Γ1)

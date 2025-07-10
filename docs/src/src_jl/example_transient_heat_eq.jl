@@ -51,9 +51,9 @@ mesh = GT.with_gmsh() do gmsh
 end
 
 #Domains
-Ω = GT.interior(mesh;physical_names=["domain"])
-Γ1 = GT.boundary(mesh;physical_names=["outer"])
-Γ2 = GT.boundary(mesh;physical_names=["inner"])
+Ω = GT.interior(mesh;group_names=["domain"])
+Γ1 = GT.boundary(mesh;group_names=["outer"])
+Γ2 = GT.boundary(mesh;group_names=["inner"])
 Γ = GT.piecewise_domain(Γ1,Γ2)
 
 #Interpolation

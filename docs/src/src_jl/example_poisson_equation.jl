@@ -48,8 +48,8 @@ mesh = GT.mesh_from_msh(msh_file)
 dirichlet_names = ["sides"]
 neumann_names = ["circle", "triangle", "square"]
 Ω = GT.interior(mesh)
-Γd = GT.boundary(mesh;physical_names=dirichlet_names)
-Γn = GT.boundary(mesh;physical_names=neumann_names)
+Γd = GT.boundary(mesh;group_names=dirichlet_names)
+Γn = GT.boundary(mesh;group_names=neumann_names)
 
 #Define forcing data
 f = GT.analytical_field(x->1.0,Ω)

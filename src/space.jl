@@ -415,10 +415,10 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
      d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
-    #physical_names = dirichlet_boundary |> GT.physical_names
+    #group_names = dirichlet_boundary |> GT.group_names
     Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
     mesh = dirichlet_boundary |> GT.mesh
-    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+    #classify_mesh_faces!(Nface_to_tag,mesh,N,group_names)
     Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
     ncells = length(cell_to_Dface)
     let d = N
@@ -471,10 +471,10 @@ end
 #    dirichlet_boundary = domain(q)
 #    dof_to_tag = zeros(Int32,ndofs)
 #    N = GT.num_dims(dirichlet_boundary)
-#    #physical_names = dirichlet_boundary |> GT.physical_names
+#    #group_names = dirichlet_boundary |> GT.group_names
 #    Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
 #    mesh = dirichlet_boundary |> GT.mesh
-#    #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#    #classify_mesh_faces!(Nface_to_tag,mesh,N,group_names)
 #    Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
 #    ncells = length(cell_to_Dface)
 #    dim = 1
@@ -565,10 +565,10 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
             if d != N
                 continue
             end
-            #physical_names = dirichlet_boundary |> GT.physical_names
+            #group_names = dirichlet_boundary |> GT.group_names
             Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
             mesh = dirichlet_boundary |> GT.mesh
-            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+            #classify_mesh_faces!(Nface_to_tag,mesh,N,group_names)
             Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
             ncells = length(cell_to_Dface)
             Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
@@ -627,10 +627,10 @@ end
 #            if d != N
 #                continue
 #            end
-#            #physical_names = dirichlet_boundary |> GT.physical_names
+#            #group_names = dirichlet_boundary |> GT.group_names
 #            Nface_to_tag = zeros(Int32,d_to_ndfaces[N+1])
 #            mesh = dirichlet_boundary |> GT.mesh
-#            #classify_mesh_faces!(Nface_to_tag,mesh,N,physical_names)
+#            #classify_mesh_faces!(Nface_to_tag,mesh,N,group_names)
 #            Nface_to_tag[GT.faces(dirichlet_boundary)] .= 1
 #            ncells = length(cell_to_Dface)
 #            dim = 1
@@ -1526,8 +1526,8 @@ function simplexify(ref_face::LagrangeFaceSpace)
     )
     mesh = GT.mesh(chain)
     mesh_complex = complexify(mesh)
-    pg = physical_faces(mesh_complex)
-    pg .= physical_faces(mesh_geom)
+    pg = group_faces(mesh_complex)
+    pg .= group_faces(mesh_geom)
     mesh_complex
 end
 

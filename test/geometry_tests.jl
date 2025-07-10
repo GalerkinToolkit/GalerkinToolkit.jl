@@ -46,7 +46,7 @@ function visualize_mesh(mesh, outpath, glue = nothing, d = nothing)
         vtk_grid(
             outpath,
             GT.vtk_args(mesh)...) do vtk
-            GT.vtk_physical_faces!(vtk, mesh)
+            GT.vtk_group_faces!(vtk, mesh)
             GT.vtk_physical_nodes!(vtk, mesh)
             valid_periodic_mesh && (
                 vtk["periodic_master_id"] = fine_node_to_master_fine_node)
@@ -59,7 +59,7 @@ function visualize_mesh(mesh, outpath, glue = nothing, d = nothing)
         vtk_grid(
             outpath,
             GT.vtk_args(mesh, d)...) do vtk
-            GT.vtk_physical_faces!(vtk, mesh, d)
+            GT.vtk_group_faces!(vtk, mesh, d)
             GT.vtk_physical_nodes!(vtk, mesh, d)
             valid_periodic_mesh && (
                 vtk["periodic_master_id"] = fine_node_to_master_fine_node)
@@ -98,7 +98,7 @@ function visualize_pmesh_setup(nparts, outpath)
         pvtk_grid(
             outpath, GT.vtk_args(mesh)...;
             part=rank, nparts=nparts, append=false, ascii=true) do vtk
-            GT.vtk_physical_faces!(vtk, mesh)
+            GT.vtk_group_faces!(vtk, mesh)
             GT.vtk_physical_nodes!(vtk, mesh)
             vtk["piece"] = fill(rank, sum(GT.num_faces(mesh)))
             vtk["owner"] = local_to_owner(GT.node_indices(ids))
@@ -221,12 +221,12 @@ outdir = mkpath(joinpath(@__DIR__,"..","output"))
 msh =  joinpath(@__DIR__,"..","assets","quad.msh")
 mesh = GT.mesh_from_msh(msh)
 vtk_grid(joinpath(outdir,"quad"),GT.vtk_args(mesh)...) do vtk
-    GT.vtk_physical_faces!(vtk,mesh)
+    GT.vtk_group_faces!(vtk,mesh)
     GT.vtk_physical_nodes!(vtk,mesh)
 end
 for d in 0:GT.num_dims(mesh)
     vtk_grid(joinpath(outdir,"quad_$d"),GT.vtk_args(mesh,d)...) do vtk
-        GT.vtk_physical_faces!(vtk,mesh,d)
+        GT.vtk_group_faces!(vtk,mesh,d)
         GT.vtk_physical_nodes!(vtk,mesh,d)
     end
 end
@@ -234,12 +234,12 @@ end
 msh =  joinpath(@__DIR__,"..","assets","demo.msh")
 mesh = GT.mesh_from_msh(msh;complexify=false)
 vtk_grid(joinpath(outdir,"demo"),GT.vtk_args(mesh)...) do vtk
-    GT.vtk_physical_faces!(vtk,mesh)
+    GT.vtk_group_faces!(vtk,mesh)
     GT.vtk_physical_nodes!(vtk,mesh)
 end
 for d in 0:GT.num_dims(mesh)
     vtk_grid(joinpath(outdir,"demo_$d"),GT.vtk_args(mesh,d)...) do vtk
-        GT.vtk_physical_faces!(vtk,mesh,d)
+        GT.vtk_group_faces!(vtk,mesh,d)
         GT.vtk_physical_nodes!(vtk,mesh,d)
     end
 end
@@ -289,21 +289,21 @@ mesh = GT.cartesian_mesh(domain,cells,boundary=false,simplexify=true)
 
 mesh = GT.cartesian_mesh(domain,cells)
 vtk_grid(joinpath(outdir,"cartesian"),GT.vtk_args(mesh)...) do vtk
-    GT.vtk_physical_faces!(vtk,mesh)
+    GT.vtk_group_faces!(vtk,mesh)
     GT.vtk_physical_nodes!(vtk,mesh)
 end
 for d in 0:GT.num_dims(mesh)
     vtk_grid(joinpath(outdir,"cartesian_$d"),GT.vtk_args(mesh,d)...) do vtk
-        GT.vtk_physical_faces!(vtk,mesh,d)
+        GT.vtk_group_faces!(vtk,mesh,d)
         GT.vtk_physical_nodes!(vtk,mesh,d)
     end
 end
 
 mesh = GT.mesh_from_msh(msh)
-face_groups = GT.physical_faces(mesh)
-group_names = GT.physical_names(mesh,2)
-group_names = GT.physical_names(mesh)
-group_names = GT.physical_names(mesh;merge_dims=true)
+group_faces = GT.group_faces(mesh)
+group_names = GT.group_names(mesh,2)
+group_names = GT.group_names(mesh)
+group_names = GT.group_names(mesh;merge_dims=true)
 node_groups = GT.physical_nodes(mesh;merge_dims=true)
 node_groups = GT.physical_nodes(mesh;merge_dims=true,disjoint=true)
 
@@ -334,7 +334,7 @@ function setup(mesh,ids,rank)
         face_to_owner[GT.face_range(mesh,d)] = local_to_owner(GT.face_indices(ids,d))
     end
     pvtk_grid(joinpath(outdir,"pmesh"),GT.vtk_args(mesh)...;part=rank,nparts=np) do vtk
-        GT.vtk_physical_faces!(vtk,mesh)
+        GT.vtk_group_faces!(vtk,mesh)
         GT.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(GT.num_faces(mesh)))
         vtk["owner"] = local_to_owner(GT.node_indices(ids))
@@ -361,7 +361,7 @@ function setup(mesh,ids,rank)
         face_to_owner[GT.face_range(mesh,d)] = local_to_owner(GT.face_indices(ids,d))
     end
     pvtk_grid(joinpath(outdir,"pmesh"),GT.vtk_args(mesh)...;part=rank,nparts=np) do vtk
-        GT.vtk_physical_faces!(vtk,mesh)
+        GT.vtk_group_faces!(vtk,mesh)
         GT.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(GT.num_faces(mesh)))
         vtk["owner"] = local_to_owner(GT.node_indices(ids))
@@ -409,7 +409,7 @@ function setup(mesh,ids,rank)
         face_to_owner[GT.face_range(mesh,d)] = local_to_owner(GT.face_indices(ids,d))
     end
     pvtk_grid(joinpath(outdir, "pmesh-cartesian"), GT.vtk_args(mesh)...; part=rank, nparts=np) do vtk
-        GT.vtk_physical_faces!(vtk,mesh)
+        GT.vtk_group_faces!(vtk,mesh)
         GT.vtk_physical_nodes!(vtk,mesh)
         vtk["piece"] = fill(rank,sum(GT.num_faces(mesh)))
         vtk["owner"] = local_to_owner(GT.node_indices(ids))

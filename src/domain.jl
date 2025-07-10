@@ -316,7 +316,7 @@ function simplexify(geo::UnitNCube)
         sface_is_boundary[sfaces] .= true
     end
     groups[end-1]["boundary"] = findall(sface_is_boundary)
-    physical_faces(mesh_complex) .= groups
+    group_faces(mesh_complex) .= groups
     mesh_complex
 end
 
@@ -460,7 +460,7 @@ end
 function Base.:(==)(a::AbstractMeshDomain,b::AbstractMeshDomain)
     flag = true
     flag = flag && (GT.mesh_id(a) == GT.mesh_id(b))
-    flag = flag && (GT.physical_names(a) == GT.physical_names(b))
+    flag = flag && (GT.group_names(a) == GT.group_names(b))
     flag = flag && (GT.num_dims(a) == GT.num_dims(b))
     flag = flag && (GT.is_reference_domain(a) == GT.is_reference_domain(b))
     flag
@@ -484,7 +484,7 @@ function mesh_domain(;
     mesh,
     mesh_id = objectid(mesh),
     num_dims = Val(GT.num_dims(mesh)),
-    physical_names=GT.physical_names(mesh,num_dims),
+    group_names=GT.group_names(mesh,num_dims),
     is_reference_domain = Val(false),
     face_around=nothing,
     workspace=nothing,
@@ -498,7 +498,7 @@ function mesh_domain(;
     end
     contents = (;
                 mesh_id,
-                physical_names,
+                group_names,
                 num_dims = Val(val_parameter(num_dims)),
                 face_around,
                 workspace,
@@ -514,11 +514,11 @@ function reference_domain(domain::PhysicalDomain)
     mesh = GT.mesh(domain)
     num_dims = GT.num_dims(domain)
     mesh_id = GT.mesh_id(domain)
-    physical_names = GT.physical_names(domain)
+    group_names = GT.group_names(domain)
     is_reference_domain = Val(true)
     face_around = GT.face_around(domain)
     workspace = GT.workspace(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
+    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
 end
 
 function reference_domain(domain::ReferenceDomain)
@@ -529,11 +529,11 @@ function physical_domain(domain::ReferenceDomain)
     mesh = GT.mesh(domain)
     num_dims = GT.num_dims(domain)
     mesh_id = GT.mesh_id(domain)
-    physical_names = GT.physical_names(domain)
+    group_names = GT.group_names(domain)
     face_around = GT.face_around(domain)
     is_reference_domain = Val(false)
     workspace = GT.workspace(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
+    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
 end
 
 function physical_domain(domain::PhysicalDomain)
@@ -542,7 +542,7 @@ end
 
 mesh(a::MeshDomain) = a.mesh
 mesh_id(a::MeshDomain) = a.contents.mesh_id
-physical_names(a::MeshDomain) = a.contents.physical_names
+group_names(a::MeshDomain) = a.contents.group_names
 face_around(a::MeshDomain) = a.contents.face_around
 num_dims(a::MeshDomain) = GT.val_parameter(a.contents.num_dims)
 workspace(a::MeshDomain) = a.contents.workspace
@@ -567,7 +567,7 @@ function PartitionedArrays.partition(pdomain::MeshDomain)
         mesh_domain(;
                     mesh,
                     num_dims = Val(GT.num_dims(pdomain)),
-                    physical_names=GT.physical_names(pdomain),
+                    group_names=GT.group_names(pdomain),
                     is_reference_domain = Val(is_reference_domain(pdomain)),
                     face_around=face_around(pdomain),
                     setup = Val(false))
@@ -588,10 +588,10 @@ function replace_workspace(domain::MeshDomain,workspace)
     mesh = GT.mesh(domain)
     num_dims = GT.num_dims(domain)
     mesh_id = GT.mesh_id(domain)
-    physical_names = GT.physical_names(domain)
+    group_names = GT.group_names(domain)
     is_reference_domain = GT.is_reference_domain(domain)
     face_around = GT.face_around(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,physical_names,is_reference_domain,face_around,workspace)
+    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
 end
 
 function faces(domain::MeshDomain)
@@ -602,11 +602,11 @@ function faces(domain::MeshDomain)
     mesh = domain |> GT.mesh
     D = GT.num_dims(domain)
     Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
-    tag_to_name = GT.physical_names(domain)
+    tag_to_name = GT.group_names(domain)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
-    face_groups = physical_faces(mesh,D)
+    group_faces = group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
-        for (name2,faces) in face_groups
+        for (name2,faces) in group_faces
             if name != name2
                 continue
             end

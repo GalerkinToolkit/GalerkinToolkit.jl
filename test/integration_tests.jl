@@ -79,7 +79,7 @@ int = ∫(u,dΩ)
 D = GT.num_dims(mesh)
 Γref = GT.boundary(mesh;
                  is_reference_domain=true,
-                 physical_names=["1-face-2","1-face-4"])
+                 group_names=["1-face-2","1-face-4"])
 
 Γ = GT.physical_domain(Γref)
 h = GT.face_diameter_field(Γ)
@@ -132,7 +132,7 @@ h = GT.face_diameter_field(Γ)
 
 Λref = GT.skeleton(mesh;
                  is_reference_domain=true,
-                 physical_names=["interior_faces"])
+                 group_names=["interior_faces"])
 
 Λ = GT.physical_domain(Λref)
 dΛref = GT.measure(Λref,degree)
@@ -172,8 +172,8 @@ mesh = GT.cartesian_mesh(domain,cells)
 GT.label_interior_faces!(mesh;physical_name="interior_faces")
 GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
-Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+Γ = GT.boundary(mesh;group_names=["boundary_faces"])
+Λ = GT.skeleton(mesh;group_names=["interior_faces"])
 
 order = 2
 degree = 2*order
@@ -255,7 +255,7 @@ dV = point_dV(point,J)
 #D = GT.num_dims(mesh)
 #Γref = GT.boundary(mesh;
 #                 is_reference_domain=true,
-#                 physical_names=["1-face-2","1-face-4"])
+#                 group_names=["1-face-2","1-face-4"])
 #
 #Γ = GT.physical_domain(Γref)
 #

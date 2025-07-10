@@ -27,13 +27,13 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 D = GT.num_dims(mesh)
 Γref = GT.boundary(mesh;
                  is_reference_domain=true,
-                 physical_names=["boundary_faces"])
+                 group_names=["boundary_faces"])
 
 Γ = GT.physical_domain(Γref)
 
 Λref = GT.skeleton(mesh;
                  is_reference_domain=true,
-                 physical_names=["interior_faces"])
+                 group_names=["interior_faces"])
 
 Λ = GT.physical_domain(Λref)
 

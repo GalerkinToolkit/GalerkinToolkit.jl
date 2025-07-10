@@ -32,8 +32,8 @@ Beginner
 - [`face_nodes`](@ref)
 - [`face_reference_id`](@ref)
 - [`reference_spaces`](@ref)
-- [`physical_faces`](@ref)
-- [`physical_names`](@ref)
+- [`group_faces`](@ref)
+- [`group_names`](@ref)
 - [`is_cell_complex`](@ref)
 - [`geometries`](@ref)
 - [`outward_normals`](@ref)
@@ -536,11 +536,11 @@ function periodic_nodes end
 
 """
 """
-function physical_faces end
+function group_faces end
 
 """
 """
-function physical_names end
+function group_names end
 
 """
 """

@@ -44,9 +44,9 @@ function main_automatic(params)
 
     mesh = params[:mesh]
     D = GT.num_dims(mesh)
-    Ω = GT.interior(mesh,physical_names=params[:domain_tags])
-    Γd = GT.boundary(mesh;physical_names=params[:dirichlet_tags])
-    Γn = GT.boundary(mesh;physical_names=params[:neumann_tags])
+    Ω = GT.interior(mesh,group_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;group_names=params[:dirichlet_tags])
+    Γn = GT.boundary(mesh;group_names=params[:neumann_tags])
     integration_degree = params[:integration_degree]
     dΩ = GT.measure(Ω,integration_degree)
     dΓn = GT.measure(Γn,integration_degree)
@@ -64,7 +64,7 @@ function main_automatic(params)
     if params[:discretization_method] !== :continuous_galerkin
         conformity = :L2
         GT.label_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
-        Λ = GT.skeleton(mesh;physical_names=["__INTERIOR_FACES__"])
+        Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
@@ -524,8 +524,8 @@ end
 function setup_domains(state)
     (;params,) = state
     mesh = params[:mesh]
-    Ω = GT.interior(mesh,physical_names=params[:domain_tags])
-    Γd = GT.boundary(mesh;physical_names=params[:dirichlet_tags])
+    Ω = GT.interior(mesh,group_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;group_names=params[:dirichlet_tags])
     domains = (;Ω,Γd)
     (;domains,state...)
 end

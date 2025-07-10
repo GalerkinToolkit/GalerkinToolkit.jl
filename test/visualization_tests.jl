@@ -303,7 +303,7 @@ GT.makie_lines!(plt)
 GT.makie_points!(plt)
 counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 
-Γ = GT.boundary(mesh,physical_names=["2-face-1","2-face-3"])
+Γ = GT.boundary(mesh,group_names=["2-face-1","2-face-3"])
 plt = GT.plot(Γ)
 u = GT.analytical_field(sum,Γ)
 GT.plot!(plt,u;label="u")
