@@ -325,8 +325,8 @@ end
 domain = (0,1,0,1)
 cells = (2,2)
 mesh = GT.cartesian_mesh(domain,cells;simplexify=false)
-GT.group_boundary_faces!(mesh;physical_name="boundary_faces")
-GT.group_interior_faces!(mesh;physical_name="interior_faces")
+GT.group_boundary_faces!(mesh;group_name="boundary_faces")
+GT.group_interior_faces!(mesh;group_name="interior_faces")
 
 order = 1
 
@@ -367,7 +367,7 @@ display(GT.face_dofs(V))
 domain = (0,1,0,1)
 cells = (3,3)
 mesh = GT.cartesian_mesh(domain,cells)
-GT.group_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 
 topo = GT.topology(mesh)
 

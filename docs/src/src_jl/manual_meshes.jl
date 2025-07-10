@@ -77,7 +77,8 @@ mesh = GT.create_mesh(;
 
 #Visualize
 axis = (;aspect=Makie.DataAspect())
-GT.makie_surface(mesh;axis)
+shading = Makie.NoShading
+GT.makie_surface(mesh;axis,shading)
 GT.makie_lines!(mesh;color=:black)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_1.png"),Makie.current_figure()) # hide
 nothing # hide
@@ -121,7 +122,7 @@ mesh = GT.create_mesh(;
 #Visualize
 axis = (;aspect=Makie.DataAspect())
 shrink = 0.8
-GT.makie_surface(mesh;axis,shrink)
+GT.makie_surface(mesh;axis,shading,shrink)
 GT.makie_lines!(mesh;dim=1,shrink)
 GT.makie_points!(mesh;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_2.png"),Makie.current_figure()) # hide
@@ -146,7 +147,7 @@ mesh2 = GT.complexify(mesh)
 @assert GT.is_cell_complex(mesh2)
 
 #Visualize
-GT.makie_surface(mesh2;axis,shrink)
+GT.makie_surface(mesh2;axis,shading,shrink)
 GT.makie_lines!(mesh2;dim=1,shrink)
 GT.makie_points!(mesh2;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_3.png"),Makie.current_figure()) # hide
@@ -207,6 +208,39 @@ edge_to_surfaces = GT.face_incidence(topo,1,2)
 #
 # ### Example
 #
-# Let us add some face groups to the last mesh we created.
+# Let us add some face groups to the last mesh we created. We add a group for the boundary edges, for the interior edges,
+# and a group for the two first surfaces.
+#
+#
+
+GT.group_boundary_faces!(mesh2;group_name="boundary")
+GT.group_interior_faces!(mesh2;group_name="interior")
+GT.group_faces(mesh2,2)["foo"] = [1,2]
+nothing # hide
+
+# We can also visualize the faces with colors telling if a face belongs to a group or not. We can visualize the mesh faces
+# labeled as "boundary" in orange color, and the rest in blue:
 
 
+color = GT.FaceData("boundary")
+blue = Makie.wong_colors()[1]
+orange = Makie.wong_colors()[2]
+colormap = [blue,orange]
+GT.makie_surface(mesh2;axis,shrink,shading,color,colormap)
+GT.makie_lines!(mesh2;dim=1,shrink,color,colormap)
+GT.makie_points!(mesh2;dim=0,color,colormap)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_4.png"),Makie.current_figure()) # hide
+nothing # hide
+
+# ![](fig_meshes_4.png)
+
+# Idem, but now visualizing the group "foo".
+
+color = GT.FaceData("foo")
+GT.makie_surface(mesh2;axis,shrink,shading,color,colormap)
+GT.makie_lines!(mesh2;dim=1,shrink,color,colormap)
+GT.makie_points!(mesh2;dim=0,color,colormap)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_5.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_5.png)

@@ -63,7 +63,7 @@ function main_automatic(params)
 
     if params[:discretization_method] !== :continuous_galerkin
         conformity = :L2
-        GT.group_interior_faces!(mesh;physical_name="__INTERIOR_FACES__")
+        GT.group_interior_faces!(mesh;group_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)

@@ -48,44 +48,44 @@ end
 """
 function group_faces_in_dim! end
 
-function group_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
+function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
     groups = group_faces(m,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    if haskey(groups,group_name)
+        return group_name
     end
     Ti = int_type(options(m))
     faces = collect(Ti,1:num_faces(m,d))
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function group_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
+function group_faces_in_dim!(m::AbstractPMesh,d;group_name="__$d-FACES__")
     p_mesh = partition(m)
     foreach(p_mesh) do mesh
-        group_faces_in_dim!(mesh,d;physical_name)
+        group_faces_in_dim!(mesh,d;group_name)
     end
-    physical_name
+    group_name
 end
 
 """
 """
 function group_interior_faces! end
 
-function group_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
+function group_interior_faces!(mesh::AbstractMesh;group_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
     d = D-1
     groups = group_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==2,face_to_cells)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function group_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
+function group_interior_faces!(pmesh::AbstractPMesh;group_name="__INTERIOR_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -113,36 +113,36 @@ function group_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FA
     v = PVector(vals,ids)
     assemble!(v) |> wait
     map(partition(pmesh),vals) do mesh, face_to_v
-       group_faces(mesh,d)[physical_name] = findall(i->i==2,face_to_v)
+       group_faces(mesh,d)[group_name] = findall(i->i==2,face_to_v)
     end
-    physical_name
+    group_name
 end
 
 """
 """
 function group_boundary_faces! end
 
-function group_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
+function group_boundary_faces!(mesh::AbstractMesh;group_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
     d = D-1
     groups = group_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==1,face_to_cells)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function group_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_$(objectid(domain))__")
+function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(objectid(domain))__")
     mesh = GT.mesh(domain)
     D = num_dims(mesh)
     d = D-1
     groups = group_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     cell_to_faces = face_incidence(topo,D,d)
@@ -154,11 +154,11 @@ function group_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_
         end
     end
     faces = findall(count->count==1,face_count)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function group_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
+function group_boundary_faces!(pmesh::AbstractPMesh;group_name="__BOUNDARY_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -186,9 +186,9 @@ function group_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FA
     v = PVector(vals,ids)
     assemble!(v) |> wait
     map(partition(pmesh),vals) do mesh, face_to_v
-       group_faces(mesh,d)[physical_name] = findall(i->i==1,face_to_v)
+       group_faces(mesh,d)[group_name] = findall(i->i==1,face_to_v)
     end
-    physical_name
+    group_name
 end
 
 """

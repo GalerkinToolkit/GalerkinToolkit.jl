@@ -367,7 +367,12 @@ node_data(plt::Plot) = plt.node_data
 
 function face_color(plt::Plot,name,d)
     mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[name]
+    dict = face_data(plt;merge_dims=true)
+    if haskey(dict,name)
+        allcolors = dict[name]
+    else
+        allcolors = zeros(sum(GT.num_faces(mesh)))
+    end
     offset = face_offset(mesh,d)
     ndfaces = num_faces(mesh,d)
     dfaces = 1:ndfaces
@@ -392,10 +397,15 @@ end
 
 function face_colorrange(plt::Plot,name)
     mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[name]
-    minc = minimum(allcolors)
-    maxc = maximum(allcolors)
-    colorrange = (minc,maxc)
+    dict = face_data(plt;merge_dims=true)
+    if haskey(dict,name)
+        allcolors = dict[name]
+        minc = minimum(allcolors)
+        maxc = maximum(allcolors)
+        colorrange = (Float64(minc),Float64(maxc))
+    else
+        colorrange = (0.0,1.0)
+    end
 end
 
 function node_color(plt::Plot,name)

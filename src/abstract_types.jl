@@ -538,12 +538,13 @@ function periodic_nodes end
     group_faces(mesh)
     group_faces(mesh,d)
 
-Return the dictionary containing the face groups of faces of dimension `d`.
-If `d` is omitted, it returns the dictionaries for all dimensions in vector with a dictionary for each dimension.
-Calling `group_faces(mesh,d)` is equivalent to `group_faces(mesh)[d+1]`.
+Return the dictionary containing the faces in each group in dimension `d`.
+If `d` is omitted, it returns the dictionaries for all dimensions in a vector. I.e.,
+calling `group_faces(mesh,d)` is equivalent to `group_faces(mesh)[d+1]`.
 
 The faces of dimension `d` in group `group` are `group_faces(mesh,d)[group]`, where `group` is a string with the group name.
 One can create new groups by adding new keys to these dictionaries as long as the key is not already present.
+Calling `group_faces(mesh,d)[new_group_name] = faces_in_newgroup` will add a new group to dimension `d` with name equal to the string `new_group_name` with faces in vector `faces_in_newgroup`.
 
 See also [`group_names`](@ref).
 
@@ -555,6 +556,18 @@ Beginner
 function group_faces end
 
 """
+    group_names(mesh)
+    group_names(mesh,d)
+
+Return the names of the groups in dimension `d`. Calling `group_names(mesh,d)` is equivalent to `group_names(mesh)[d+1]`.
+
+See also [`group_faces`](@ref).
+
+# Level
+
+Beginner
+
+
 """
 function group_names end
 

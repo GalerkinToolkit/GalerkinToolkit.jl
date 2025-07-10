@@ -604,7 +604,7 @@ function faces(domain::MeshDomain)
     Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
     tag_to_name = GT.group_names(domain)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
-    group_faces = group_faces(mesh,D)
+    group_faces = GT.group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
         for (name2,faces) in group_faces
             if name != name2
