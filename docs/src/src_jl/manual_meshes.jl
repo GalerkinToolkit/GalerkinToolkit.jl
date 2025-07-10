@@ -195,9 +195,9 @@ edge_to_surfaces = GT.face_incidence(topo,1,2)
 # ### Common face groups
 #
 # GalerkinToolkit provides a number of functions that generate commonly used face groups.
-# - [`label_boundary_faces!`](@ref)
-# - [`label_interior_faces!`](@ref)
-# - [`label_faces_in_dim!`](@ref)
+# - [`group_boundary_faces!`](@ref)
+# - [`group_interior_faces!`](@ref)
+# - [`group_faces_in_dim!`](@ref)
 #
 # These function do what the name suggests (see the docstrings for further details). The first one is often use to impose boundary
 # conditions and the second one in discontinuous Galerkin methods to define interior penalty terms. They are often called under the hood when calling functions like [`boundary`](@ref) and [`skeleton`](@ref).

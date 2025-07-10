@@ -46,9 +46,9 @@ end
 
 """
 """
-function label_faces_in_dim! end
+function group_faces_in_dim! end
 
-function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
+function group_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     groups = group_faces(m,d)
     if haskey(groups,physical_name)
         return physical_name
@@ -59,19 +59,19 @@ function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
     physical_name
 end
 
-function label_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
+function group_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
     p_mesh = partition(m)
     foreach(p_mesh) do mesh
-        label_faces_in_dim!(mesh,d;physical_name)
+        group_faces_in_dim!(mesh,d;physical_name)
     end
     physical_name
 end
 
 """
 """
-function label_interior_faces! end
+function group_interior_faces! end
 
-function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
+function group_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
     d = D-1
     groups = group_faces(mesh,d)
@@ -85,7 +85,7 @@ function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACE
     physical_name
 end
 
-function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
+function group_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -120,9 +120,9 @@ end
 
 """
 """
-function label_boundary_faces! end
+function group_boundary_faces! end
 
-function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
+function group_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
     d = D-1
     groups = group_faces(mesh,d)
@@ -136,7 +136,7 @@ function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACE
     physical_name
 end
 
-function label_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_$(objectid(domain))__")
+function group_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_$(objectid(domain))__")
     mesh = GT.mesh(domain)
     D = num_dims(mesh)
     d = D-1
@@ -158,7 +158,7 @@ function label_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_
     physical_name
 end
 
-function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
+function group_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -197,7 +197,7 @@ function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
     face_around=nothing,
     is_reference_domain=Val(false),
-    group_names=[label_faces_in_dim!(mesh,val_parameter(d))],
+    group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
     mesh_domain(;
         mesh,
@@ -209,7 +209,7 @@ end
 
 function interior(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    group_names=[label_faces_in_dim!(mesh,num_dims(mesh))],
+    group_names=[group_faces_in_dim!(mesh,num_dims(mesh))],
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh)
@@ -223,7 +223,7 @@ end
 
 function skeleton(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    group_names=[label_interior_faces!(mesh)],
+    group_names=[group_interior_faces!(mesh)],
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh) - 1
@@ -237,7 +237,7 @@ end
 
 function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    group_names=[label_boundary_faces!(mesh)],
+    group_names=[group_boundary_faces!(mesh)],
     is_reference_domain=Val(false),
     face_around = 1,
     )
@@ -253,7 +253,7 @@ end
 
 function boundary(domain::AbstractDomain;
     mesh_id = objectid(GT.mesh(domain)),
-    group_names=[label_boundary_faces!(domain)],
+    group_names=[group_boundary_faces!(domain)],
     is_reference_domain=Val(false),
     face_around = 1,
     )

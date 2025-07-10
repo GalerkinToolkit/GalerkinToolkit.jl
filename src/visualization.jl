@@ -482,7 +482,7 @@ function plot(mesh::AbstractMesh)
         dface_to_n = outward_normals(mesh)
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
-    #phys_names = label_boundary_faces!(mesh)
+    #phys_names = group_boundary_faces!(mesh)
     Plot(mesh,fd,node_data(mesh))
 end
 
