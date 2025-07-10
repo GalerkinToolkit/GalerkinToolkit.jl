@@ -586,8 +586,8 @@ function term(uh::DiscreteField,opts)
         face_around = nothing
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         DiscreteFieldTerm(dependencies)
-    elseif D==d+1 && face_around !== nothing
-        dependencies = map(leaf_term,(f,uh,domain,face,face_around))
+    elseif D==d+1 && the_face_around !== nothing
+        dependencies = map(leaf_term,(f,uh,domain,face,the_face_around))
         DiscreteFieldTerm(dependencies)
     else
         face_around = :the_face_around
