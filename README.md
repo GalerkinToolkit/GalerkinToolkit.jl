@@ -1,5 +1,5 @@
 
-<img src="https://raw.githubusercontent.com/GalerkinToolkit/GalerkinToolkit.jl/refs/heads/docs/docs/src/assets/logo-with-long-name.png" width="300" title="GalerkinToolkit" alt="GalerkinToolkit"/>
+<img src="https://raw.githubusercontent.com/GalerkinToolkit/GalerkinToolkit.jl/refs/heads/main/docs/src/assets/logo-with-long-name.png" width="300" title="GalerkinToolkit" alt="GalerkinToolkit"/>
 
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GalerkinToolkit.github.io/GalerkinToolkit.jl/dev/)
