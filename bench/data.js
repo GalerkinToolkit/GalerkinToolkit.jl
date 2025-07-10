@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752151078313,
+  "lastUpdate": 1752163677736,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -1844,6 +1844,36 @@ window.BENCHMARK_DATA = {
             "value": 715163267.5,
             "unit": "ns",
             "extra": "gctime=27967632\nmemory=434077632\nallocs=14376052\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "567d66743437672331f82bb272e4b532e3f61dcb",
+          "message": "Merge pull request #220 from GalerkinToolkit/fix_quadrature_and_discretefield\n\nsmall fixes",
+          "timestamp": "2025-07-10T18:03:50+02:00",
+          "tree_id": "b0c098143ca7660ad1afa20834c7fd27c9b58295",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/567d66743437672331f82bb272e4b532e3f61dcb"
+        },
+        "date": 1752163676819,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 705523039.5,
+            "unit": "ns",
+            "extra": "gctime=26462951\nmemory=434077632\nallocs=14376052\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
