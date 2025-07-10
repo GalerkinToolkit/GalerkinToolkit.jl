@@ -15,11 +15,8 @@ Beginner
 
 # Constructors
 
-- [`mesh`](@ref)
-- [`chain`](@ref)
 - [`create_mesh`](@ref)
 - [`mesh_from_msh`](@ref)
-- [`mesh_from_space`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
@@ -35,8 +32,9 @@ Beginner
 - [`face_nodes`](@ref)
 - [`face_reference_id`](@ref)
 - [`reference_spaces`](@ref)
-- [`periodic_nodes`](@ref)
 - [`physical_faces`](@ref)
+- [`physical_names`](@ref)
+- [`is_cell_complex`](@ref)
 - [`geometries`](@ref)
 - [`outward_normals`](@ref)
 
@@ -478,6 +476,8 @@ function mesh_from_space end
 
 Convert `x` into a mesh representing a cell complex.
 
+See also [`is_cell_complex`](@ref).
+
 # Level
 
 Intermediate
@@ -537,6 +537,14 @@ function periodic_nodes end
 """
 """
 function physical_faces end
+
+"""
+"""
+function physical_names end
+
+"""
+"""
+function is_cell_complex end
 
 """
 """

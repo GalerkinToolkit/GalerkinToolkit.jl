@@ -503,6 +503,8 @@ end
 
 Build an arbitrary mesh object.
 
+See also [`cartesian_mesh`](@ref) and [`mesh_from_msh`](@ref).
+
 # Level
 
 Intermediate
@@ -511,9 +513,11 @@ Intermediate
 
 - `node_coordinates`: The vector containing the coordinates of all mesh nodes. `node_coordinates[i]` is the coordinate vector for global node number `i`.
 - `face_nodes`: A highly-nested vector containing the node ids for each face in the mesh. `node_coordinates[n]` with `n=face_nodes[d+1][i][k]` is the global node coordinate for local node number `k` in face `i` of dimension `d`. The object `face_nodes[d+1]` is a long vector of small vectors of integers. It is often represented using a `JaggedArray` object that uses continuous linear memory for performance.
-- `reference_spaces`: A tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` of dimension `d`.
+- `reference_spaces`: A nested tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` of dimension `d`.
 - `face_reference_id` [optional]: A nested vector containing which reference space is assigned to each face. `reference_sapces[d+1][r]` with `r=face_reference_id[d+1][i]` is the reference space associated with face number `i` of dimension `d`. By default, all faces are assigned to the first reference space in its dimension.
 - `physical_faces` [optional]: A vector of dictionaries containing groups labeled groups of faces. `physical_faces[d+1][label]` is a vector of integers containing the ids  of the faces labeled as `label` in dimension `d`. These labels might overlap. By default, no faces groups are created.
+- `is_cell_complex=Val(false)` [optional]: `Val(true)` if the input data represents a cell complex, `Val(false)` otherwise.
+- `outward_normals=nothing` [optinal]: Vector containing the normal vectors for the faces of maximum dimension of the mesh. This is relevant for meshes of dimension `d` embedded in `d+1` dimensions as there is no way to tell which should be the orientation of the normals from the other quantities defining the mesh.  `outward_normals[f]` gives the normal vector of face number `f` of dimension `d=length(face_nodes)-1`.
 """
 function create_mesh end
 
@@ -624,8 +628,6 @@ function outward_normals(m::Mesh)
     m.contents.outward_normals
 end
 
-"""
-"""
 function physical_names(mesh,d)
     groups = physical_faces(mesh,d)
     Set(keys(groups))
