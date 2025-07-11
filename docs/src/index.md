@@ -21,12 +21,11 @@ NB. This documentation is organized based on the [Diátaxis model](https://diata
 ### What
 
 
-GalerkinToolkit is a high-performance finite element toolbox built in the [Julia programming language](https://julialang.org/). It provides modular building blocks that allow users to easily implement custom finite element codes for solving partial differential equations (PDEs), using a variety of numerical schemes, and across diverse computing environments.  GalerkinToolkit integrates seamlessly with the broader Julia ecosystem. It supports the use of external solvers such as [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl) to handle the algebraic systems resulting from PDE discretizations. For visualization, the toolkit provides plotting recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and utilities for exporting results in [`VTK` format](https://vtk.org/) using [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl).
-
+GalerkinToolkit is a high-performance finite element (FE) toolbox fully implemented in the [Julia programming language](https://julialang.org/). It provides modular building blocks to easily implement custom finite element codes to solve partial differential equations (PDEs), using a variety of numerical schemes, and across diverse computing environments.  GalerkinToolkit integrates seamlessly with the broader Julia ecosystem. It supports external solvers such as [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl) to handle the algebraic systems resulting from PDE discretizations. For visualization, the toolkit provides plotting recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and utilities for exporting results in [`VTK` format](https://vtk.org/) using [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl).
 
 ### Why
 
-GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique design features. This includes unified high- and low-level APIs, a deep integration with the Julia package ecosystem, a new form compiler --the GalerkinToolkit form compiler (GTFC)--, and  a redesign and reimplementation of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl).
+GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique features. This includes an unified API with high- and low-level abstractions, a deep integration with the Julia package ecosystem, a new form compiler, and  a redesign of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl).
 
 Find more information about GalerkinToolkit's features and novelties in the [Introduction](@ref) of the manual.
 
@@ -41,45 +40,16 @@ Find more information about GalerkinToolkit's features and novelties in the [Int
 
 ## How to start
 
- In the [Manual](@ref) section, you will find explanations about the software design and guides for users and developers.  Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section.
+ In the [Manual](@ref), you will find explanations about the software design and guides for users and developers.  Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section.
 
 ### Pre-requisites
 
 You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
 
-It is also required to be familiar with the key concepts in the FEM. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
+It is also required to be familiar with the basics of FE methods. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
   - C. Johnson [Johnson2009](@cite)
   - J. Whiteley [Whiteley2017](@cite)
   - S.C. Brenner and L. R. Scott [Brenner2007](@cite)
-
-
-### Installation
-
-You first need to have Julia installed in your system. See the official Julia installation instructions [here](https://julialang.org/install/).
-
-
-GalerkinToolkit is a registered package in the [official Julia package registry](https://github.com/JuliaRegistries/General). As such, you can install GalerkinToolkit easily using the [Julia package manager](https://docs.julialang.org/en/v1/stdlib/Pkg/).
-
-Open Julia and type `]` to enter package mode.
-
-```
-julia> ]
-```
-
-Then, type
-```
-pkg> add GalerkinToolkit
-```
-
-This installs GalerkinToolkit and all its dependencies.
-
-Press `ctrl+C` to go back to standard mode. Now, you can type
-
-```
-julia> import GalerkinToolkit as GT
-```
-to start using GalerkinToolkit.
-
 
 
 
@@ -107,4 +77,6 @@ Discuss with the package authors before working on any non-trivial contribution.
 
 Since July 2024, this package is being developed with support from the [Netherlands eScience Center](https://www.esciencecenter.nl/) under grant ID [NLESC.SS.2023.008](https://research-software-directory.org/projects/hp2sim).
 
+## Affiliations
 
+- This project is maintained at the [Computer Science department](https://vu.nl/en/about-vu/faculties/faculty-of-science/departments/computer-science) of [Vrije Universiteit Amsterdam](https://vu.nl/nl).
