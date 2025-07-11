@@ -16,9 +16,9 @@ using StaticArrays
 
 
 import GalerkinToolkit as GT
-import GalerkinToolkit: makie_points, makie_points!
-import GalerkinToolkit: makie_lines, makie_lines!
-import GalerkinToolkit: makie_surface, makie_surface!
+import GalerkinToolkit: makie_vertices, makie_vertices!
+import GalerkinToolkit: makie_edges, makie_edges!
+import GalerkinToolkit: makie_surfaces, makie_surfaces!
 import GalerkinToolkit: makie_arrows2d, makie_arrows2d!
 import GalerkinToolkit: makie_arrows3d, makie_arrows3d!
 using PartitionedArrays
@@ -35,17 +35,17 @@ function shared_attributes_mixin()
     end
 end
 
-Makie.@recipe Makie_points begin
+Makie.@recipe Makie_vertices begin
     Makie.documented_attributes(Makie.Scatter)...
     shared_attributes_mixin()...
 end
 
-function Makie.preferred_axis_type(p::Makie_points)
+function Makie.preferred_axis_type(p::Makie_vertices)
     plt = p[1][]
     plot_preferred_axis_type(plt)
 end
 
-function Makie.plot!(p::Makie_points{<:Tuple{<:GT.Plot}})
+function Makie.plot!(p::Makie_vertices{<:Tuple{<:GT.Plot}})
     attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
@@ -90,17 +90,17 @@ function setup_makie0d(plt_in,dim_in,color,colorrange)
     (p,color,colorrange)
 end
 
-Makie.@recipe Makie_lines begin
+Makie.@recipe Makie_edges begin
     Makie.documented_attributes(Makie.LineSegments)...
     shared_attributes_mixin()...
 end
 
-function Makie.preferred_axis_type(p::Makie_lines)
+function Makie.preferred_axis_type(p::Makie_edges)
     plt = p[1][]
     plot_preferred_axis_type(plt)
 end
 
-function Makie.plot!(p::Makie_lines{<:Tuple{<:GT.Plot}})
+function Makie.plot!(p::Makie_edges{<:Tuple{<:GT.Plot}})
     attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
@@ -145,17 +145,17 @@ function setup_makie1d(plt_in,dim_in,color,colorrange)
     (p,color,colorrange)
 end
 
-Makie.@recipe Makie_surface begin
+Makie.@recipe Makie_surfaces begin
     Makie.documented_attributes(Makie.Mesh)...
     shared_attributes_mixin()...
 end
 
-function Makie.preferred_axis_type(p::Makie_surface)
+function Makie.preferred_axis_type(p::Makie_surfaces)
     plt = p[1][]
     plot_preferred_axis_type(plt)
 end
 
-function Makie.plot!(p::Makie_surface{<:Tuple{<:GT.Plot}})
+function Makie.plot!(p::Makie_surfaces{<:Tuple{<:GT.Plot}})
     attrs_in = [:converted_1,:warp_by_vector,:warp_by_scalar,:warp_scale,:shrink]
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
@@ -410,32 +410,32 @@ end
 
 # Conversions
 
-function Makie.convert_arguments(::Type{<:Makie_surface},mesh::GT.AbstractMesh)
+function Makie.convert_arguments(::Type{<:Makie_surfaces},mesh::GT.AbstractMesh)
     plt = GT.plot(mesh)
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_lines},mesh::GT.AbstractMesh)
+function Makie.convert_arguments(::Type{<:Makie_edges},mesh::GT.AbstractMesh)
     plt = GT.plot(mesh)
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_points},mesh::GT.AbstractMesh)
+function Makie.convert_arguments(::Type{<:Makie_vertices},mesh::GT.AbstractMesh)
     plt = GT.plot(mesh)
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_surface},mesh::GT.AbstractPMesh)
+function Makie.convert_arguments(::Type{<:Makie_surfaces},mesh::GT.AbstractPMesh)
     plt = PartitionedArrays.centralize(GT.plot(mesh))
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_lines},mesh::GT.AbstractPMesh)
+function Makie.convert_arguments(::Type{<:Makie_edges},mesh::GT.AbstractPMesh)
     plt = PartitionedArrays.centralize(GT.plot(mesh))
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_points},mesh::GT.AbstractPMesh)
+function Makie.convert_arguments(::Type{<:Makie_vertices},mesh::GT.AbstractPMesh)
     plt = PartitionedArrays.centralize(GT.plot(mesh))
     (plt,)
 end
@@ -445,39 +445,39 @@ function Makie.convert_single_argument(::Type{<:Makie.AbstractPlot},pplot::GT.PP
     plt
 end
 
-function Makie.plot!(p::Makie_surface{<:Tuple{<:GT.AbstractDomain}})
+function Makie.plot!(p::Makie_surfaces{<:Tuple{<:GT.AbstractDomain}})
     attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
     attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
     map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
     color = p.newcolor
     warp_by_vector = p.new_warp_by_vector
     warp_by_scalar = p.new_warp_by_scalar
-    valid_attributes = Makie.shared_attributes(p,Makie_surface)
-    makie_surface!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    valid_attributes = Makie.shared_attributes(p,Makie_surfaces)
+    makie_surfaces!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
     p
 end
 
-function Makie.plot!(p::Makie_lines{<:Tuple{<:GT.AbstractDomain}})
+function Makie.plot!(p::Makie_edges{<:Tuple{<:GT.AbstractDomain}})
     attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
     attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
     map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
     color = p.newcolor
     warp_by_vector = p.new_warp_by_vector
     warp_by_scalar = p.new_warp_by_scalar
-    valid_attributes = Makie.shared_attributes(p,Makie_lines)
-    makie_lines!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    valid_attributes = Makie.shared_attributes(p,Makie_edges)
+    makie_edges!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
     p
 end
 
-function Makie.plot!(p::Makie_points{<:Tuple{<:GT.AbstractDomain}})
+function Makie.plot!(p::Makie_vertices{<:Tuple{<:GT.AbstractDomain}})
     attrs_in = [:converted_1,:refinement,:color,:warp_by_vector,:warp_by_scalar]
     attrs_out = [:plt,:newcolor,:new_warp_by_vector,:new_warp_by_scalar]
     map!(setup_makie_domain,p.attributes,attrs_in,attrs_out)
     color = p.newcolor
     warp_by_vector = p.new_warp_by_vector
     warp_by_scalar = p.new_warp_by_scalar
-    valid_attributes = Makie.shared_attributes(p,Makie_points)
-    makie_points!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
+    valid_attributes = Makie.shared_attributes(p,Makie_vertices)
+    makie_vertices!(p,valid_attributes,p.plt;color,warp_by_vector,warp_by_scalar)
     p
 end
 

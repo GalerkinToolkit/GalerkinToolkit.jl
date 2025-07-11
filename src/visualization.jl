@@ -1059,12 +1059,12 @@ function vtk_close_impl! end
 
 # Makie prototype functions to be defined inside Makie's extension module; see ext/GalerkinToolkitMakieExt.jl
 
-function makie_points end
-function makie_points! end
-function makie_lines end
-function makie_lines! end
-function makie_surface end
-function makie_surface! end
+function makie_vertices end
+function makie_vertices! end
+function makie_edges end
+function makie_edges! end
+function makie_surfaces end
+function makie_surfaces! end
 function makie_arrows2d! end
 function makie_arrows2d end
 function makie_arrows3d! end

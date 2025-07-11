@@ -17,6 +17,7 @@ Beginner
 
 - [`create_mesh`](@ref)
 - [`mesh_from_msh`](@ref)
+- [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
@@ -35,7 +36,6 @@ Beginner
 - [`group_faces`](@ref)
 - [`group_names`](@ref)
 - [`is_cell_complex`](@ref)
-- [`geometries`](@ref)
 - [`normals`](@ref)
 
 """
@@ -112,17 +112,15 @@ abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
 
 Abstract type representing the incidence relations in a cell complex.
 
-See also [`AbstractFaceTopology`](@ref).
-
 # Level
 
 Intermediate
 
-# Basic constructors
+# Constructors
 
 - [`topology`](@ref)
 
-# Basic queries
+# Queries
 
 - [`face_incidence`](@ref)
 - [`face_reference_id`](@ref)
@@ -542,7 +540,7 @@ Return the dictionary containing the faces in each group in dimension `d`.
 If `d` is omitted, it returns the dictionaries for all dimensions in a vector. I.e.,
 calling `group_faces(mesh,d)` is equivalent to `group_faces(mesh)[d+1]`.
 
-The faces of dimension `d` in group `group` are `group_faces(mesh,d)[group]`, where `group` is a string with the group name.
+The faces of dimension `d` in group `group` are `group_faces(mesh,d)[group_name]`, where `group_name` is a string with the group name.
 One can create new groups by adding new keys to these dictionaries as long as the key is not already present.
 Calling `group_faces(mesh,d)[new_group_name] = faces_in_newgroup` will add a new group to dimension `d` with name equal to the string `new_group_name` with faces in vector `faces_in_newgroup`.
 
