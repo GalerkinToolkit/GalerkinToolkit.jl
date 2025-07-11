@@ -102,7 +102,7 @@ aspect = :data
 ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surface!(Ω;color=uh)
+GT.makie_surfaces!(Ω;color=uh)
 FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
@@ -156,7 +156,7 @@ aspect = :data
 ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surface!(Ω;color=uh)
+GT.makie_surfaces!(Ω;color=uh)
 FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2.png"),Makie.current_figure()) # hide
 nothing # hide
 

@@ -81,7 +81,7 @@ ax = Makie.Axis(fig[1,1];aspect)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
 shading = Makie.NoShading
-GT.makie_surface!(Ω;color=ph,shading)
+GT.makie_surfaces!(Ω;color=ph,shading)
 GT.makie_arrows2d!(Ω,uh;color=x->norm(uh(x)),lengthscale=0.1)
 FileIO.save(joinpath(@__DIR__,"fig_stokes_1.png"),Makie.current_figure()) # hide
 
