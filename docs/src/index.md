@@ -25,7 +25,7 @@ GalerkinToolkit is a high-performance finite element (FE) toolbox fully implemen
 
 ### Why
 
-GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique features. This includes an unified API with high- and low-level abstractions, a deep integration with the Julia package ecosystem, a new form compiler, and  a redesign of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl).
+GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique features. This includes a unified API with high- and low-level abstractions, a deep integration with the Julia package ecosystem, a new form compiler, and  a redesign of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl).
 
 Find more information about GalerkinToolkit's features and novelties in the [Introduction](@ref) of the manual.
 

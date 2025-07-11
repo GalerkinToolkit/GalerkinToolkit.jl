@@ -2,6 +2,7 @@
 function default_gmsh_options()
     [
      "General.Terminal"=>1,
+     "General.Verbosity"=>2,
      "Mesh.SaveAll"=>1,
      "Mesh.MedImportGroupsOfNodes"=>1
     ]

@@ -678,14 +678,14 @@ function face_incidence end
 function face_permutation_ids end
 
 """
-    reference_topologies(x)
-    reference_topologies(x,d)
-    reference_topologies(x,Val(d))
+    reference_topologies(topo)
+    reference_topologies(topo,d)
+    reference_topologies(topo,Val(d))
 
-Return the list (a vector or a tuple) of reference topologies in `x` of dimension `d`.
-If the second argument is omitted,
-return a tuple with the reference topologies in each dimension,
-starting from dimension 0 up to `num_dims(x)`.
+Return the list (a vector or a tuple) of reference topologies in `topo` of dimension `d`.
+If the second argument is omitted, then the function returns a collection such that `reference_topologies(topo)[d+1]` is equivalent to `reference_topologies(topo,Val(d))`.
+
+The face reference topology of face `f` of dimension `d`, is accessed as `reference_topologies(topo,d)[r]` with `r=face_reference_id(topo,d)[f]`.
 
 See also [`face_reference_id`](@ref).
 
