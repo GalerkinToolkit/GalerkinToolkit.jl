@@ -78,7 +78,7 @@ fig = Makie.Figure()
 ax = Makie.Axis3(fig[1,1],aspect=:data)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surface!(Ω;color=uh)
+GT.makie_surfaces!(Ω;color=uh)
 FileIO.save(joinpath(@__DIR__,"fig_hello_world_1.png"),Makie.current_figure()) # hide
 nothing # hide
 

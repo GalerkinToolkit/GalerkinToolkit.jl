@@ -5,31 +5,49 @@
 #
 # # Meshes
 #
+# A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
+# A mesh is a set of polygons (or polytopes in general) which we refer to as *faces* or $d$*-faces*, where $d$ is the face parametric dimension.
+# We call *vertices*, *edges*, *surfaces*, and *volumes* to faces of 0, 1, 2, and 3 dimensions respectively.  
+# Meshes also
+# include additional metadata, including *face groups* used to identify particular faces in the mesh, e.g., to impose boundary conditions.
+#
+# It is worth noting that GalerkinToolkit is not a mesh generation library. The mesh implementation is designed to provide the rich geometrical information needed in FE methods, rather than mesh generation. Meshes are often generated with external tools and then transformed into GalerkinToolkit objects with helper functions such as [`mesh_from_gmsh`](@ref).
 #
 #
-# We use the following dependencies in code snippets in this page.
+# ### Code dependencies
+#
+# We use the following dependencies in the code snippets in this page.
 
 import GalerkinToolkit as GT
 import GLMakie
 import Makie
-using StaticArrays
+import StaticArrays
 import FileIO # hide
+
+# In GalerkinToolkit we load dependencies from the Julia standard library with `using` statements, and from other packages with `import` statements.
+# The latter forces to qualify functions with the package name, which explicitly reveals their origin. We do not qualify functions from the standard library since they are well known by Julia programmers.
 
 #
 # ## Mesh specification
 #
-# A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
-# A mesh is a set of polygons (or polytopes in general) which we refer to as *faces*. Meshes also
-# include additional metadata, including *face groups* used to identify particular faces in the mesh, e.g., to impose boundary conditions.
-# All types implementing the meshes are subtypes of [`AbstractMesh`](@ref).
 #
+#
+# All types implementing meshes are subtypes of [`AbstractMesh`](@ref).
 # Important features of a mesh include:
 #
 # - A mesh can potentially contain faces with different number of dimensions. I.e., the same mesh object can include vertices, edges, surfaces, and volumes. The number of dimensions of a mesh is the maximum number of dimension of its faces.
 # - The number of dimensions of a mesh can be smaller or equal to the number of *ambient* dimension. The latter is the number of components in a node coordinate vector.
-# - A mesh might or might not represent a cell complex (all possible low dimensional faces are present in the mesh). However, many algorithms require to work with a cell complex.
-# - A *physical* face $F=\varphi(\hat F)$ in the mesh is defined by transforming a *reference* face $\hat F$ with a mapping $\varphi: \hat F \rightarrow \mathbb{R}^D$, where D is the number of ambient dimensions.  The mapping is defined as $\varphi(\hat x) = \sum_i \hat s_i(\hat x) x_{(F,i)}$. Function $\hat s_i: \hat F \rightarrow \mathbb{R}$ is the scalar basis function number $i$ in the reference (interpolation) space of $F$. The vector $x_{(F,i)}$ contains the coordinates of the local node $i$ in face $F$.
+# - A mesh might or might not represent a cell complex. However, many algorithms require to work with a cell complex.
+# - *Physical* faces are defined using reference interpolation spaces and node coordinates. A physical face $F=\varphi(\hat F)$ is defined by transforming a *reference* face $\hat F$ with a mapping $\varphi: \hat F \rightarrow \mathbb{R}^D$, where D is the number of ambient dimensions.  The mapping is defined as $\varphi(\hat x) = \sum_i \hat s_i(\hat x) x_{(F,i)}$. Function $\hat s_i: \hat F \rightarrow \mathbb{R}$ is the scalar basis function number $i$ in the reference (interpolation) space of $F$. The vector $x_{(F,i)}$ contains the coordinates of the local node $i$ in face $F$.
 #
+# Functions to create and to work with meshes are listed in docstring of [`AbstractMesh`](@ref).
+#
+# ```@docs; canonical=false
+# AbstractMesh
+# ```
+#
+# ## Creating a mesh
+# 
 #
 # Arbitrary mesh objects are defined from low-level quantities with function [`create_mesh`](@ref).
 #
@@ -37,16 +55,14 @@ import FileIO # hide
 # create_mesh
 # ```
 #
-# The reference interpolation spaces are defined with functions like [`lagrange_space`](@ref). The shape 
-# function $\hat s_i$ defining the mapping $\varphi$ can be recovered programmatically from the keyword arguments above using function [`shape_functions`](@ref) as `GT.shape_functions(ref_space)[i]` with `ref_space=reference_spaces[d+1][r]` and `r=face_reference_id[d+1][f]` for the face number `f` in dimension `d`. The vector $x_{(F,i)}$ with the coordinates of the local node $i$ in face $F$ is accessed in the code as `node_coordinates[n]` with `n=face_nodes[d+1][f][i]` being `f` the face number of $F$.
-#
 # ### Example
 #
 # In the following example, we generate and visualize a mesh of three first order triangles. Only faces of dimension 2 are present in this example. The arrays for vertices and edges are empty.
 #
 
 #Node coordinates
-node_coordinates = SVector{2,Float64}[(0,0),(1,0),(0,1),(1,1),(2,0)]
+T = StaticArrays.SVector{2,Float64}
+node_coordinates = T[(0,0),(1,0),(0,1),(1,1),(2,0)]
 
 #Face nodes
 face_nodes_0 = Vector{Int}[]
@@ -78,8 +94,8 @@ mesh = GT.create_mesh(;
 #Visualize
 axis = (;aspect=Makie.DataAspect())
 shading = Makie.NoShading
-GT.makie_surface(mesh;axis,shading)
-GT.makie_lines!(mesh;color=:black)
+GT.makie_surfaces(mesh;axis,shading)
+GT.makie_edges!(mesh;color=:black)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
@@ -122,9 +138,9 @@ mesh = GT.create_mesh(;
 #Visualize
 axis = (;aspect=Makie.DataAspect())
 shrink = 0.8
-GT.makie_surface(mesh;axis,shading,shrink)
-GT.makie_lines!(mesh;dim=1,shrink)
-GT.makie_points!(mesh;dim=0)
+GT.makie_surfaces(mesh;axis,shading,shrink)
+GT.makie_edges!(mesh;dim=1,shrink)
+GT.makie_vertices!(mesh;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_2.png"),Makie.current_figure()) # hide
 nothing # hide
 
@@ -147,9 +163,9 @@ mesh2 = GT.complexify(mesh)
 @assert GT.is_cell_complex(mesh2)
 
 #Visualize
-GT.makie_surface(mesh2;axis,shading,shrink)
-GT.makie_lines!(mesh2;dim=1,shrink)
-GT.makie_points!(mesh2;dim=0)
+GT.makie_surfaces(mesh2;axis,shading,shrink)
+GT.makie_edges!(mesh2;dim=1,shrink)
+GT.makie_vertices!(mesh2;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_3.png"),Makie.current_figure()) # hide
 nothing # hide
 
@@ -161,8 +177,16 @@ nothing # hide
 # ## Mesh topology
 #
 #
-# When a mesh is a cell complex, there is a well defined partial order of their faces, or face incidence.
-# All face incidence relations are stored in an object called mesh *topology*. A mesh topology is obtained with
+# When a mesh is a cell complex, there are well-defined face incidence relationships.
+# All face incidence relations are stored in an object called mesh *topology*. A mesh topology is represented by the type [`AbstractTopology`](@ref).
+#
+# ```@docs; canonical=false
+# AbstractTopology
+# ```
+#
+# ### Incidence relations
+#
+# A mesh topology is obtained with
 # function [`topology`](@ref) called on a given mesh object: `topo = GT.topology(mesh)`. The mesh needs to be a cell complex for this to work.  Then, one uses function [`face_incidence`](@ref) on the topology object to get the incidence relations. 
 # `GT.face_incidence(topo,D,d)` is a long vector of small vectors of integers, often implemented with a `JaggedArray`.
 # - For `d<D`, `GT.face_incidence(topo,D,d)[F]` is a vector of integers containing the ids of the faces of dimension `d` on the boundary of face number `F` of dimension `D`.
@@ -226,9 +250,9 @@ color = GT.FaceColor("boundary")
 blue = Makie.wong_colors()[1]
 orange = Makie.wong_colors()[2]
 colormap = [blue,orange]
-GT.makie_surface(mesh2;axis,shrink,shading,color,colormap)
-GT.makie_lines!(mesh2;dim=1,shrink,color,colormap)
-GT.makie_points!(mesh2;dim=0,color,colormap)
+GT.makie_surfaces(mesh2;axis,shrink,shading,color,colormap)
+GT.makie_edges!(mesh2;dim=1,shrink,color,colormap)
+GT.makie_vertices!(mesh2;dim=0,color,colormap)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_4.png"),Makie.current_figure()) # hide
 nothing # hide
 
@@ -237,9 +261,9 @@ nothing # hide
 # Idem, but now visualizing the group "foo".
 
 color = GT.FaceColor("foo")
-GT.makie_surface(mesh2;axis,shrink,shading,color,colormap)
-GT.makie_lines!(mesh2;dim=1,shrink,color,colormap)
-GT.makie_points!(mesh2;dim=0,color,colormap)
+GT.makie_surfaces(mesh2;axis,shrink,shading,color,colormap)
+GT.makie_edges!(mesh2;dim=1,shrink,color,colormap)
+GT.makie_vertices!(mesh2;dim=0,color,colormap)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_5.png"),Makie.current_figure()) # hide
 nothing # hide
 #

@@ -46,7 +46,7 @@ Find more information about GalerkinToolkit's features and novelties in the [Int
 
 You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
 
-It is also required to be familiar with the basics of FE methods. The basics are explained in the [`Tutorials`](@ref) section. For more in depth introduction, you can use the following books:
+It is also required to be familiar with the basics of FE methods. The basics are explained in the [Tutorials](@ref) section. For more in depth introduction, you can use the following books:
   - C. Johnson [Johnson2009](@cite)
   - J. Whiteley [Whiteley2017](@cite)
   - S.C. Brenner and L. R. Scott [Brenner2007](@cite)

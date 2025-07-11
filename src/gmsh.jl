@@ -31,6 +31,9 @@ function mesh_from_msh(file;complexify=true,renumber=true,kwargs...)
     end
 end
 
+"""
+    mesh_from_gmsh(gmsh::Module;complexify=true)
+"""
 function mesh_from_gmsh(gmsh::Module;complexify=true)
     entities = gmsh.model.getEntities()
     nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
