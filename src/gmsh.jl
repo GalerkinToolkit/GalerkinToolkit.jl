@@ -210,7 +210,7 @@ function mesh_from_gmsh(gmsh::Module;complexify=true)
             face_nodes = my_face_nodes,
             face_reference_id = my_face_reference_id,
             reference_spaces = my_reference_spaces,
-            physical_faces = my_groups,
+            group_faces = my_groups,
             periodic_nodes,)
 
     if complexify

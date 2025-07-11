@@ -33,8 +33,8 @@ mesh = GT.cartesian_mesh(domain,cells)
 
 #Domains
 Ω = GT.interior(mesh)
-Γ1 = GT.boundary(mesh;physical_names=["1-face-2"])
-Γ2 = GT.boundary(mesh;physical_names=["1-face-1","1-face-3","1-face-4"])
+Γ1 = GT.boundary(mesh;group_names=["1-face-2"])
+Γ2 = GT.boundary(mesh;group_names=["1-face-1","1-face-3","1-face-4"])
 g1 = GT.analytical_field(x->StaticArrays.SVector(1,0),Ω)
 g2 = GT.analytical_field(x->StaticArrays.SVector(0,0),Ω)
 g = GT.piecewise_field(g1,g2)

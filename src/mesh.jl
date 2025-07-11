@@ -9,11 +9,11 @@ num_faces(mesh::AbstractMesh) = map(length,face_reference_id(mesh))
 face_nodes(m::AbstractMesh,d) = face_nodes(m)[d+1]
 face_reference_id(m::AbstractMesh,d) = face_reference_id(m)[d+1]
 reference_spaces(m::AbstractMesh,d) = reference_spaces(m)[d+1]
-physical_faces(m::AbstractMesh,d) = physical_faces(m)[d+1]
+group_faces(m::AbstractMesh,d) = group_faces(m)[d+1]
 geometry_names(m::AbstractMesh,d) = geometry_names(m)[d+1]
 
 function geometries(m::AbstractMesh,d)
-    map(name->domain(m,d;physical_names=[name]),geometry_names(m,d))
+    map(name->domain(m,d;group_names=[name]),geometry_names(m,d))
 end
 
 function face_offset(a)
@@ -44,40 +44,48 @@ end
 #    reduce(vcat,map(d->face_dim(a,d),0:D))
 #end
 
-function label_faces_in_dim!(m::AbstractMesh,d;physical_name="__$d-FACES__")
-    groups = physical_faces(m,d)
-    if haskey(groups,physical_name)
-        return physical_name
+"""
+"""
+function group_faces_in_dim! end
+
+function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
+    groups = group_faces(m,d)
+    if haskey(groups,group_name)
+        return group_name
     end
     Ti = int_type(options(m))
     faces = collect(Ti,1:num_faces(m,d))
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function label_faces_in_dim!(m::AbstractPMesh,d;physical_name="__$d-FACES__")
+function group_faces_in_dim!(m::AbstractPMesh,d;group_name="__$d-FACES__")
     p_mesh = partition(m)
     foreach(p_mesh) do mesh
-        label_faces_in_dim!(mesh,d;physical_name)
+        group_faces_in_dim!(mesh,d;group_name)
     end
-    physical_name
+    group_name
 end
 
-function label_interior_faces!(mesh::AbstractMesh;physical_name="__INTERIOR_FACES__")
+"""
+"""
+function group_interior_faces! end
+
+function group_interior_faces!(mesh::AbstractMesh;group_name="__INTERIOR_FACES__")
     D = num_dims(mesh)
     d = D-1
-    groups = physical_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    groups = group_faces(mesh,d)
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==2,face_to_cells)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FACES__")
+function group_interior_faces!(pmesh::AbstractPMesh;group_name="__INTERIOR_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -105,32 +113,36 @@ function label_interior_faces!(pmesh::AbstractPMesh;physical_name="__INTERIOR_FA
     v = PVector(vals,ids)
     assemble!(v) |> wait
     map(partition(pmesh),vals) do mesh, face_to_v
-       physical_faces(mesh,d)[physical_name] = findall(i->i==2,face_to_v)
+       group_faces(mesh,d)[group_name] = findall(i->i==2,face_to_v)
     end
-    physical_name
+    group_name
 end
 
-function label_boundary_faces!(mesh::AbstractMesh;physical_name="__BOUNDARY_FACES__")
+"""
+"""
+function group_boundary_faces! end
+
+function group_boundary_faces!(mesh::AbstractMesh;group_name="__BOUNDARY_FACES__")
     D = num_dims(mesh)
     d = D-1
-    groups = physical_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    groups = group_faces(mesh,d)
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     face_to_cells = face_incidence(topo,d,D)
     faces = findall(cells->length(cells)==1,face_to_cells)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function label_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_$(objectid(domain))__")
+function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(objectid(domain))__")
     mesh = GT.mesh(domain)
     D = num_dims(mesh)
     d = D-1
-    groups = physical_faces(mesh,d)
-    if haskey(groups,physical_name)
-        return physical_name
+    groups = group_faces(mesh,d)
+    if haskey(groups,group_name)
+        return group_name
     end
     topo = topology(mesh)
     cell_to_faces = face_incidence(topo,D,d)
@@ -142,11 +154,11 @@ function label_boundary_faces!(domain::AbstractDomain;physical_name="__BOUNDARY_
         end
     end
     faces = findall(count->count==1,face_count)
-    groups[physical_name] = faces
-    physical_name
+    groups[group_name] = faces
+    group_name
 end
 
-function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FACES__")
+function group_boundary_faces!(pmesh::AbstractPMesh;group_name="__BOUNDARY_FACES__")
     D = num_dims(pmesh)
     d = D - 1
     vals = map(partition(pmesh)) do mesh
@@ -174,9 +186,9 @@ function label_boundary_faces!(pmesh::AbstractPMesh;physical_name="__BOUNDARY_FA
     v = PVector(vals,ids)
     assemble!(v) |> wait
     map(partition(pmesh),vals) do mesh, face_to_v
-       physical_faces(mesh,d)[physical_name] = findall(i->i==1,face_to_v)
+       group_faces(mesh,d)[group_name] = findall(i->i==1,face_to_v)
     end
-    physical_name
+    group_name
 end
 
 """
@@ -185,47 +197,47 @@ function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
     face_around=nothing,
     is_reference_domain=Val(false),
-    physical_names=[label_faces_in_dim!(mesh,val_parameter(d))],
+    group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
     mesh_domain(;
         mesh,
         mesh_id,
         num_dims=Val(val_parameter(d)),
-        physical_names,
+        group_names,
         is_reference_domain)
 end
 
 function interior(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    physical_names=[label_faces_in_dim!(mesh,num_dims(mesh))],
+    group_names=[group_faces_in_dim!(mesh,num_dims(mesh))],
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh)
     mesh_domain(;
         mesh,
         mesh_id,
-        physical_names,
+        group_names,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
 end
 
 function skeleton(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    physical_names=[label_interior_faces!(mesh)],
+    group_names=[group_interior_faces!(mesh)],
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh) - 1
     mesh_domain(;
         mesh,
         mesh_id,
-        physical_names,
+        group_names,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
 end
 
 function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    physical_names=[label_boundary_faces!(mesh)],
+    group_names=[group_boundary_faces!(mesh)],
     is_reference_domain=Val(false),
     face_around = 1,
     )
@@ -233,7 +245,7 @@ function boundary(mesh::AbstractMesh;
     mesh_domain(;
         mesh,
         mesh_id,
-        physical_names,
+        group_names,
         face_around,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
@@ -241,7 +253,7 @@ end
 
 function boundary(domain::AbstractDomain;
     mesh_id = objectid(GT.mesh(domain)),
-    physical_names=[label_boundary_faces!(domain)],
+    group_names=[group_boundary_faces!(domain)],
     is_reference_domain=Val(false),
     face_around = 1,
     )
@@ -250,7 +262,7 @@ function boundary(domain::AbstractDomain;
     mesh_domain(;
         mesh,
         mesh_id,
-        physical_names,
+        group_names,
         face_around,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
@@ -271,8 +283,8 @@ function remove_interior(mesh::AbstractMesh)
          face_nodes = face_nodes(mesh)[1:end-1],
          face_reference_id = face_reference_id(mesh)[1:end-1],
          reference_spaces = reference_spaces(mesh)[1:end-1],
-         physical_faces = physical_faces(mesh)[1:end-1],
-         outward_normals = outward_normals(mesh),
+         group_faces = group_faces(mesh)[1:end-1],
+         normals = normals(mesh),
          is_cell_complex = Val(is_cell_complex(mesh)),
          periodic_nodes = periodic_nodes(mesh)
         )
@@ -359,8 +371,8 @@ function simplexify(mesh::AbstractMesh;glue=Val(false))
     end
     push!(d_to_tface_to_face,tcell_to_cell)
     for d in 0:D
-        groups = physical_faces(mesh,d)
-        tgroups = physical_faces(tmesh,d)
+        groups = group_faces(mesh,d)
+        tgroups = group_faces(tmesh,d)
         nfaces = num_faces(mesh,d)
         ntfaces = num_faces(tmesh,d)
         face_to_mask = fill(false,nfaces)
@@ -462,7 +474,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     end
     lface_to_refid_mesh = map((a,b)->b[a],lface_to_face_mesh,face_reference_id(mesh))
     D = num_dims(mesh)
-    lgroups_mesh = map(lface_to_face_mesh,num_faces(mesh),physical_faces(mesh)) do lface_to_face, nfaces, groups
+    lgroups_mesh = map(lface_to_face_mesh,num_faces(mesh),group_faces(mesh)) do lface_to_face, nfaces, groups
         lgroups = Dict{String,Vector{Int32}}()
         face_to_lface = zeros(Int32,nfaces)
         face_to_lface[lface_to_face] = 1:length(lface_to_face)
@@ -474,8 +486,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     pnode_to_node,pnode_to_master = periodic_nodes(mesh)
     plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
     plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
-    if outward_normals(mesh) !== nothing
-        lnormals = outward_normals(mesh)[lface_to_face_mesh[end]]
+    if normals(mesh) !== nothing
+        lnormals = normals(mesh)[lface_to_face_mesh[end]]
     else
         lnormals = nothing
     end
@@ -485,9 +497,9 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         face_nodes = lface_to_lnodes_mesh,
         face_reference_id = lface_to_refid_mesh,
         reference_spaces = reference_spaces(mesh),
-        physical_faces = lgroups_mesh,
+        group_faces = lgroups_mesh,
         periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
-        outward_normals = lnormals,
+        normals = lnormals,
         kwargs...
         )
 
@@ -503,6 +515,8 @@ end
 
 Build an arbitrary mesh object.
 
+See also [`cartesian_mesh`](@ref) and [`mesh_from_msh`](@ref).
+
 # Level
 
 Intermediate
@@ -511,9 +525,11 @@ Intermediate
 
 - `node_coordinates`: The vector containing the coordinates of all mesh nodes. `node_coordinates[i]` is the coordinate vector for global node number `i`.
 - `face_nodes`: A highly-nested vector containing the node ids for each face in the mesh. `node_coordinates[n]` with `n=face_nodes[d+1][i][k]` is the global node coordinate for local node number `k` in face `i` of dimension `d`. The object `face_nodes[d+1]` is a long vector of small vectors of integers. It is often represented using a `JaggedArray` object that uses continuous linear memory for performance.
-- `reference_spaces`: A tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` of dimension `d`.
+- `reference_spaces`: A nested tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` of dimension `d`.
 - `face_reference_id` [optional]: A nested vector containing which reference space is assigned to each face. `reference_sapces[d+1][r]` with `r=face_reference_id[d+1][i]` is the reference space associated with face number `i` of dimension `d`. By default, all faces are assigned to the first reference space in its dimension.
-- `physical_faces` [optional]: A vector of dictionaries containing groups labeled groups of faces. `physical_faces[d+1][label]` is a vector of integers containing the ids  of the faces labeled as `label` in dimension `d`. These labels might overlap. By default, no faces groups are created.
+- `group_faces` [optional]: A vector of dictionaries containing groups labeled groups of faces. `group_faces[d+1][label]` is a vector of integers containing the ids  of the faces labeled as `label` in dimension `d`. These labels might overlap. By default, no faces groups are created.
+- `is_cell_complex=Val(false)` [optional]: `Val(true)` if the input data represents a cell complex, `Val(false)` otherwise.
+- `normals=nothing` [optinal]: Vector containing the normal vectors for the faces of maximum dimension of the mesh. This is relevant for meshes of dimension `d` embedded in `d+1` dimensions as there is no way to tell which should be the orientation of the normals from the other quantities defining the mesh.  `normals[f]` gives the normal vector of face number `f` of dimension `d=length(face_nodes)-1`.
 """
 function create_mesh end
 
@@ -533,8 +549,8 @@ function mesh(;
         face_reference_id = default_face_reference_id(face_nodes,reference_spaces),
         reference_spaces,
         periodic_nodes = default_periodic_nodes(reference_spaces),
-        physical_faces = default_physical_faces(reference_spaces),
-        outward_normals = nothing,
+        group_faces = default_group_faces(reference_spaces),
+        normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
         node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
@@ -547,8 +563,8 @@ function mesh(;
                 face_reference_id,
                 reference_spaces,
                 periodic_nodes,
-                physical_faces,
-                outward_normals,
+                group_faces,
+                normals,
                 geometry_names,
                 is_cell_complex,
                 node_local_indices,
@@ -566,8 +582,8 @@ function replace_workspace(mesh::Mesh,workspace)
                 reference_spaces=reference_spaces(mesh),
                 periodic_nodes=periodic_nodes(mesh),
                 geometry_names=geometry_names(mesh),
-                physical_faces=physical_faces(mesh),
-                outward_normals=outward_normals(mesh),
+                group_faces=group_faces(mesh),
+                normals=normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 node_local_indices=node_local_indices(mesh),
                 face_local_indices=face_local_indices(mesh),
@@ -583,9 +599,9 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
                 face_reference_id=face_reference_id(mesh),
                 reference_spaces=reference_spaces(mesh),
                 periodic_nodes=periodic_nodes(mesh),
-                physical_faces=physical_faces(mesh),
+                group_faces=group_faces(mesh),
                 geometry_names=geometry_names(mesh),
-                outward_normals=outward_normals(mesh),
+                normals=normals(mesh),
                 is_cell_complex=Val(is_cell_complex(mesh)),
                 node_local_indices=node_local_indices(mesh),
                 face_local_indices=face_local_indices(mesh),
@@ -601,8 +617,8 @@ face_reference_id(m::Mesh) = m.contents.face_reference_id
 face_reference_id(m::Mesh,d) = m.contents.face_reference_id[d+1]
 reference_spaces(m::Mesh) = m.contents.reference_spaces
 reference_spaces(m::Mesh,d) = m.contents.reference_spaces[val_parameter(d)+1]
-physical_faces(m::Mesh) = m.contents.physical_faces
-physical_faces(m::Mesh,d) = m.contents.physical_faces[d+1]
+group_faces(m::Mesh) = m.contents.group_faces
+group_faces(m::Mesh,d) = m.contents.group_faces[d+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
 workspace(m::Mesh) = m.contents.workspace
@@ -611,7 +627,7 @@ node_local_indices(m::Mesh) = m.contents.node_local_indices
 face_local_indices(m::Mesh) = m.contents.face_local_indices
 face_local_indices(m::Mesh,d) = m.contents.face_local_indices[d+1]
 
-function default_physical_faces(reference_spaces)
+function default_group_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
 end
 
@@ -620,20 +636,18 @@ function default_periodic_nodes(reference_spaces)
     Ti[] => Ti[]
 end
 
-function outward_normals(m::Mesh)
-    m.contents.outward_normals
+function normals(m::Mesh)
+    m.contents.normals
 end
 
-"""
-"""
-function physical_names(mesh,d)
-    groups = physical_faces(mesh,d)
+function group_names(mesh,d)
+    groups = group_faces(mesh,d)
     Set(keys(groups))
 end
 
-function physical_names(mesh;merge_dims=Val(false))
+function group_names(mesh;merge_dims=Val(false))
     D = num_dims(mesh)
-    d_to_names = [ physical_names(mesh,d) for d in 0:D]
+    d_to_names = [ group_names(mesh,d) for d in 0:D]
     if val_parameter(merge_dims) == false
         return d_to_names
     end
@@ -656,8 +670,8 @@ function chain(;
         face_reference_id,
         reference_spaces,
         periodic_nodes = default_periodic_nodes((reference_spaces,)),
-        physical_faces = default_physical_faces((reference_spaces,))[end],
-        outward_normals = nothing,
+        group_faces = default_group_faces((reference_spaces,))[end],
+        normals = nothing,
     )
     contents = (;
                 node_coordinates,
@@ -665,8 +679,8 @@ function chain(;
                 face_reference_id,
                 reference_spaces,
                 periodic_nodes,
-                physical_faces,
-                outward_normals,
+                group_faces,
+                normals,
                )
     Chain(contents)
 end
@@ -702,9 +716,9 @@ function reference_spaces(m::Chain)
     refid_to_refface = push(ref_faces[1:end-1],reference_cells)
 end
 
-function physical_faces(m::Chain)
+function group_faces(m::Chain)
     D = num_dims(m)
-    cell_groups = m.contents.physical_faces
+    cell_groups = m.contents.group_faces
     groups = [ typeof(cell_groups)() for d in 0:D]
     groups[end] = cell_groups
     groups
@@ -712,7 +726,7 @@ end
 
 periodic_nodes(m::Chain) = m.contents.periodic_nodes
 
-outward_normals(m::Chain) = m.contents.outward_normals
+normals(m::Chain) = m.contents.normals
 
 function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
     d = val_parameter(D)
@@ -722,8 +736,8 @@ function chain(mesh::AbstractMesh,D=Val(num_dims(mesh)))
           face_reference_id=face_reference_id(mesh,d),
           reference_spaces=reference_spaces(mesh,d),
           periodic_nodes=periodic_nodes(mesh),
-          physical_faces=physical_faces(mesh,d),
-          outward_normals=outward_normals(mesh),
+          group_faces=group_faces(mesh,d),
+          normals=normals(mesh),
          )
 end
 
@@ -746,27 +760,27 @@ function mesh(chain::Chain)
     #ref_cell = first(reference_cells)
     #ref_faces = reference_spaces(complexify(ref_cell))
     #refid_to_refface = push(ref_faces[1:end-1],reference_cells)
-    #cell_groups = physical_faces(chain)
+    #cell_groups = group_faces(chain)
     #groups = [ typeof(cell_groups)() for d in 0:D]
     #groups[end] = cell_groups
     #pnodes = periodic_nodes(chain)
-    #onormals = outward_normals(chain)
+    #onormals = normals(chain)
     #GT.mesh(;
     #  node_coordinates = node_coords,
     #  face_nodes = face_to_nodes,
     #  face_reference_id = face_to_refid,
     #  reference_spaces = refid_to_refface,
     #  periodic_nodes = pnodes,
-    #  physical_faces = groups,
-    #  outward_normals = onormals)
+    #  group_faces = groups,
+    #  normals = onormals)
     GT.mesh(;
             node_coordinates = node_coordinates(chain),
             face_nodes = face_nodes(chain),
             face_reference_id = face_reference_id(chain),
             reference_spaces = reference_spaces(chain),
             periodic_nodes = periodic_nodes(chain),
-            physical_faces = physical_faces(chain),
-            outward_normals = outward_normals(chain))
+            group_faces = group_faces(chain),
+            normals = normals(chain))
 end
 
 function mesh_space(mesh::AbstractMesh,D)

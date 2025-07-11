@@ -173,14 +173,14 @@ function cartesian_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_nodes = push(face_to_nodes,face_nodes(interior_mesh,D))
     mesh_face_reference_id = push(face_to_refid,face_reference_id(interior_mesh,D))
     mesh_reference_spaces = push(refid_to_refface,reference_spaces(interior_mesh,D))
-    mesh_groups = push(groups,physical_faces(interior_mesh,D))
+    mesh_groups = push(groups,group_faces(interior_mesh,D))
     GT.mesh(
      node_coordinates = node_coords,
      face_nodes = mesh_face_nodes,
      face_reference_id = mesh_face_reference_id,
      reference_spaces = mesh_reference_spaces,
      geometry_names = [ [ "$d-face-$face" for face in 1:num_faces(GT.mesh(GT.domain(ref_cell)),d) ] for d in 0:D],
-     physical_faces=mesh_groups,
+     group_faces=mesh_groups,
     )
 end
 
@@ -231,7 +231,7 @@ function cartesian_chain(domain,cells_per_dir)
         face_nodes = cell_nodes,
         face_reference_id = cell_reference_id,
         reference_spaces = reference_cells,
-        physical_faces=groups,
+        group_faces=groups,
        )
     chain
 end
@@ -296,7 +296,7 @@ function structured_simplex_chain(domain,cells_per_dir)
         face_nodes = cell_nodes,
         face_reference_id = cell_reference_id,
         reference_spaces = reference_cells;
-        physical_faces=groups,
+        group_faces=groups,
        )
     chain
 end
@@ -407,7 +407,7 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     cell_geometry = unit_n_cube(Val(D))
     ref_simplex_mesh = simplexify(cell_geometry)
     d_to_ldface_to_sldface_to_lnodes = [
-      [ face_nodes(ref_simplex_mesh,d)[physical_faces(ref_simplex_mesh,d)["$d-face-$ldface"]]
+      [ face_nodes(ref_simplex_mesh,d)[group_faces(ref_simplex_mesh,d)["$d-face-$ldface"]]
       for ldface in 1:num_faces(complexify(ref_cell),d) ] for d in 0:(D-1)]
     d_to_ldface_to_lnodes = [face_nodes(complexify(ref_cell),d) for d in 0:(D-1)]
     groups, face_to_nodes = barrier(
@@ -423,13 +423,13 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
     mesh_face_nodes = push(face_to_nodes,face_nodes(simplex_chain,D))
     mesh_face_reference_id = push(face_to_refid,face_reference_id(simplex_chain,D))
     mesh_reference_faces = reference_spaces(ref_simplex_mesh)
-    mesh_groups = push(groups,physical_faces(simplex_chain,D))
+    mesh_groups = push(groups,group_faces(simplex_chain,D))
     GT.mesh(
      node_coordinates = node_coords,
      face_nodes = mesh_face_nodes,
      face_reference_id = mesh_face_reference_id,
      reference_spaces = mesh_reference_faces,
      geometry_names = [ [ "$d-face-$face" for face in 1:num_faces(GT.mesh(cell_geometry),d) ] for d in 0:D],
-     physical_faces=mesh_groups,
+     group_faces=mesh_groups,
     )
 end

@@ -367,7 +367,12 @@ node_data(plt::Plot) = plt.node_data
 
 function face_color(plt::Plot,name,d)
     mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[name]
+    dict = face_data(plt;merge_dims=true)
+    if haskey(dict,name)
+        allcolors = dict[name]
+    else
+        allcolors = zeros(sum(GT.num_faces(mesh)))
+    end
     offset = face_offset(mesh,d)
     ndfaces = num_faces(mesh,d)
     dfaces = 1:ndfaces
@@ -382,20 +387,25 @@ function face_color(plt::Plot,name,d)
     color
 end
 
-struct FaceData
+struct FaceColor
     name::String
 end
 
-struct NodeData
+struct NodeColor
     name::String
 end
 
 function face_colorrange(plt::Plot,name)
     mesh = plt.mesh
-    allcolors = face_data(plt;merge_dims=true)[name]
-    minc = minimum(allcolors)
-    maxc = maximum(allcolors)
-    colorrange = (minc,maxc)
+    dict = face_data(plt;merge_dims=true)
+    if haskey(dict,name)
+        allcolors = dict[name]
+        minc = minimum(allcolors)
+        maxc = maximum(allcolors)
+        colorrange = (Float64(minc),Float64(maxc))
+    else
+        colorrange = (0.0,1.0)
+    end
 end
 
 function node_color(plt::Plot,name)
@@ -479,10 +489,10 @@ function plot(mesh::AbstractMesh)
         end
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
-        dface_to_n = outward_normals(mesh)
+        dface_to_n = normals(mesh)
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
-    #phys_names = label_boundary_faces!(mesh)
+    #phys_names = group_boundary_faces!(mesh)
     Plot(mesh,fd,node_data(mesh))
 end
 
@@ -491,7 +501,7 @@ const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
     dict = Dict{String,Any}()
-    for group in physical_faces(mesh,d)
+    for group in group_faces(mesh,d)
         name,faces = group
         face_mask = zeros(Int32,ndfaces)
         face_mask[faces] .= 1
@@ -570,7 +580,7 @@ function restrict_to_dim(mesh::AbstractMesh,d)
     face_reference_id = face_reference_id(mesh,d),
     reference_spaces = reference_spaces(mesh,d),
     periodic_nodes = periodic_nodes(mesh),
-    physical_faces = physical_faces(mesh,d))
+    group_faces = group_faces(mesh,d))
     GT.mesh(chain)
 end
 
@@ -612,10 +622,10 @@ function skin(plt::GT.Plot)
     topo = GT.topology(mesh)
     face_to_cells = GT.face_incidence(topo,d,D)
     Γ = GT.boundary(mesh)
-    boundary_names = GT.physical_names(Γ)
+    boundary_names = GT.group_names(Γ)
     @assert length(boundary_names) == 1
     boundary_name = first(boundary_names)
-    newdfaces = GT.physical_faces(mesh,d)[boundary_name]
+    newdfaces = GT.group_faces(mesh,d)[boundary_name]
     nnodes = num_nodes(mesh)
     node_count = zeros(Int32,nnodes)
     dface_nodes = face_nodes(mesh,d)
@@ -700,8 +710,8 @@ function shrink(plt::Plot;scale=0.75)
             face_nodes = face_newnodes,
             face_reference_id = face_reference_id(mesh),
             reference_spaces = reference_spaces(mesh),
-            physical_faces = physical_faces(mesh), # TODO propagate also periodic nodes??
-            outward_normals = outward_normals(mesh)
+            group_faces = group_faces(mesh), # TODO propagate also periodic nodes??
+            normals = normals(mesh)
            )
     newnode_data = Dict{String,Any}()
     for (k,node_to_val) in node_data(plt)
@@ -731,7 +741,7 @@ function warp_by_vector(plt::Plot,vec::AbstractArray;scale=1)
     plt2
 end
 
-function warp_by_vector(plt::Plot,vec::NodeData;scale=1)
+function warp_by_vector(plt::Plot,vec::NodeColor;scale=1)
     node_to_vec = plt.node_data[vec.name]
     warp_by_vector(plt,node_to_vec;scale)
 end
@@ -756,7 +766,7 @@ function warp_by_scalar(plt::Plot,node_to_z::AbstractArray;scale=1)
     plt2
 end
 
-function warp_by_scalar(plt::Plot,data::NodeData;scale=1)
+function warp_by_scalar(plt::Plot,data::NodeColor;scale=1)
     node_to_z = plt.node_data[data.name]
     warp_by_scalar(plt,node_to_z;scale)
 end
@@ -1036,8 +1046,8 @@ function vtk_cells end
 function vtk_cells! end
 function vtk_args end
 function vtk_args! end
-function vtk_physical_faces end
-function vtk_physical_faces! end
+function vtk_group_faces end
+function vtk_group_faces! end
 #function vtk_physical_nodes end
 #function vtk_physical_nodes! end
 function vtk_mesh_cell end

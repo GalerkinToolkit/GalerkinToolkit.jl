@@ -553,14 +553,13 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
         old_to_new[d+1] = old_dface_to_new_dface
     end
     node_to_coords = node_coordinates(mesh)
-    old_physical_faces = physical_faces(mesh)
-    new_physical_faces = [ Dict{String,Vector{Int32}}() for d in 0:D] # TODO hardcoded
+    old_group_faces = GT.group_faces(mesh)
+    new_group_faces = [ Dict{String,Vector{Int32}}() for d in 0:D] # TODO hardcoded
     for d in 0:D
-        old_groups = old_physical_faces[d+1]
+        old_groups = old_group_faces[d+1]
         for (group_name,old_group_faces) in old_groups
-            new_group_faces = similar(old_group_faces)
-            new_group_faces .= old_to_new[d+1][old_group_faces]
-            new_physical_faces[d+1][group_name] = new_group_faces
+            old_to_new_d = old_to_new[d+1]
+            new_group_faces[d+1][group_name] = old_to_new_d[old_group_faces]
         end
     end
     new_mesh = GT.mesh(;
@@ -568,9 +567,9 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             face_nodes = newface_nodes,
             face_reference_id = newface_refid,
             reference_spaces = Tuple(newreffaces),
-            physical_faces = new_physical_faces,
+            group_faces = new_group_faces,
             periodic_nodes = periodic_nodes(mesh),
-            outward_normals = outward_normals(mesh),
+            normals = normals(mesh),
             geometry_names = geometry_names(mesh),
             is_cell_complex = Val(true),
            )
