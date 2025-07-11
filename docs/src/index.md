@@ -79,4 +79,4 @@ Since July 2024, this package is being developed with support from the [Netherla
 
 ## Affiliations
 
-- This project is maintained at the [Computer Science department](https://vu.nl/en/about-vu/faculties/faculty-of-science/departments/computer-science) of [Vrije Universiteit Amsterdam](https://vu.nl/nl).
+This project is maintained at the [Computer Science department](https://vu.nl/en/about-vu/faculties/faculty-of-science/departments/computer-science) of [Vrije Universiteit Amsterdam](https://vu.nl/nl).
