@@ -200,11 +200,49 @@ nothing # hide
 topo = GT.topology(mesh2)
 surface_to_edges = GT.face_incidence(topo,2,1)
 
-# This cutout is read as follows. Surface 1 has edges 1, 4, and 5 on its boundary; surface 2 has edges 5, 6, 7 on its boundary; etc.
+# This output is read as follows. Surface 1 has edges 1, 4, and 5 on its boundary; surface 2 has edges 5, 6, 7 on its boundary; etc.
 
 edge_to_surfaces = GT.face_incidence(topo,1,2)
 
 # According to this output, edge 1 touches surface 1, edge 2 touches surface 3, etc. We can also see that there are two interior edges touching two surfaces. Edge 5 touches surfaces 1 and 2, and edge 6 touches surfaces 2 and 3.
+#
+# ### Reference topologies
+#
+# The reference faces in a mesh are also cell complexes. For instance, a reference volume has surfaces, edges, and vertices on its boundary. The incidence relation between the faces in a reference face are obtained using  a *reference topology*. Reference topologies are accessed with function [`reference_topologies`](@ref) given a topology object.
+#
+# ```@docs;canonical=false
+# reference_topologies
+# ```
+# The rationale behind accessing reference topologies is analogous to accessing reference spaces in a mesh. Note, however, that the face reference ids in  a mesh `mesh`, `GT.face_reference_id(mesh,d)` might be different from the ones in the corresponding mesh topology `topo`, `GT.face_reference_id(topo,d)`, since different interpolation spaces can be defined on the same reference face (e.g., in p-adaptive methods).
+#
+# A reference topology object behaves like any other topology object and can be queried with the methods from the [`AbstractTopology`](@ref) interface.
+#
+# ### Example
+#
+# We get the reference topology of the first 2-face of the previously generated topology, which corresponds to a reference triangle. Then, we show the incidence relation between edges and vertices, i.e., for each edge which are the vertices on its boundary.
+#
+
+#Get the reference topology
+f = 1
+r = GT.face_reference_id(topo,2)[f]
+ref_topo = GT.reference_topologies(topo,2)[r]
+
+#See the edge to vertex relations
+edge_to_vertices = GT.face_incidence(ref_topo,1,0)
+
+# The first edge goes from vertex 1 to 2, the second edge from vertex 1 to 3, and the third edge from vertex 2 to 3.
+
+
+#
+# ### Permutations
+#
+# If a mesh is a cell complex, each face in the boundary of a face is also explicitly contained in the mesh. However, the incidence relations of these two faces are the same but might be stored in different order.
+#
+# Let us consider a topology  object `topo` and two integers `d<D`. We get the incident relations `D_d = GT.face_incidence(topo,D,d)`, `d_0 = GT.face_incidence(topo,d,0)` and `D_0 = GT.face_incidence(topo,D,0)`. Consider face number `v` in dimension `D`. The `d`-faces on its boundary are given in vector `D_d[v]`. Consider the integer in `l` position in this list, namely `s=D_d[v][l]`. `s` is the id of a face of dimension `d`. The 0-faces on the boundary of `v` are  in `D_0[v]` and on the boundary of `s` are in `d_0[s]`.  Now, consider the reference topology of face `v`, namely `ref_topo_v`. We get this incidence relation from the reference topology: `ref_d_0 = GT.face_incidence(ref_topo_v,d,0)`. This gives us an alternative way of obtaining the 0-faces of `s`, namely `D_0[ref_d_0[l]]`. That is, we can take the id `s` and compute directly `d_0[s]`, or we can go to the neighbor face `v` and compute `D_0[ref_d_0[l]]` using the local id `l` corresponding to `s` in `v`. The vectors `d_0[s]` and  `D_0[ref_d_0[l]]` contain the same vertex ids, but not in the same order!
+#
+# To fix this issue we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
+#
+# This information is needed in many situations, including the generation of high-order interpolation spaces and integration of jump and average terms on interior faces in discontinuous Galerkin methods.
 #
 # ## Face groups
 #

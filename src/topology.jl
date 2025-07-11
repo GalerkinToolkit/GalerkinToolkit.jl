@@ -38,14 +38,14 @@ function face_incidence(a::FaceTopology)
         return fill([[1]],1,1)
     end
     fi_boundary = face_incidence(boundary(a))
-    T = typeof(fi[1,1])
+    T = typeof(fi_boundary[1,1])
     fi = Matrix{T}(undef,m+1,m+1)
     for j in 0:(m-1)
         for i in 0:(m-1)
             fi[i+1,j+1] = fi_boundary[i+1,j+1]
         end
-        fi[j,end] = fill([1],num_faces(a,j))
-        fi[end,j] = collect(1:num_faces(a,j))
+        fi[j+1,end] = fill([1],num_faces(a,j))
+        fi[end,j+1] = map(k->[k],1:num_faces(a,j))
     end
     fi
 end
@@ -115,11 +115,11 @@ end
 face_incidence(a::MeshTopology) = a.contents.face_incidence
 face_incidence(a::MeshTopology,d,D) = a.contents.face_incidence[d+1,D+1]
 face_reference_id(a::MeshTopology) = a.contents.face_reference_id
-face_reference_id(a::MeshTopology,d) = a.contents.face_reference_id[d+1]
+face_reference_id(a::MeshTopology,d) = a.contents.face_reference_id[val_parameter(d)+1]
 face_permutation_ids(a::MeshTopology) = a.contents.face_permutation_ids
 face_permutation_ids(a::MeshTopology,d,D) = a.contents.face_permutation_ids[d+1,D+1]
 reference_topologies(a::MeshTopology) = a.contents.reference_topologies
-reference_topologies(a::MeshTopology,d) = a.contents.reference_topologies[d+1]
+reference_topologies(a::MeshTopology,d) = a.contents.reference_topologies[val_parameter(d)+1]
 
 function face_incidence_ext(topo,d,D)
     dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
