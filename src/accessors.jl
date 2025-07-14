@@ -166,7 +166,9 @@ function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
         nodes = lface_to_nodes[lface]
         perm_to_ids = lrefid_to_perm_to_ids[lrefid]
         map(perm_to_ids) do ids
-            dof_to_coeff = node_to_coords[nodes[ids]]
+            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
+            dof_to_coeff = similar(node_to_coords[nodes])
+            dof_to_coeff[ids] = node_to_coords[nodes]
             ndofs = length(dof_to_coeff)
             x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs)
         end
