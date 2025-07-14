@@ -1,11 +1,12 @@
 # # Hello, World!
 #
-# ![](fig_poisson_3.png)
+# ![](fig_hello_world_1.png)
+#
 #
 # ## Problem statement
 #
 # In this example, we show how to solve the "Hello, world" PDE example:
-# the Poisson equation on the unit hyper-cube $\Omega  =[0,1]^d$, $d\in\{2,3\}$, with Dirichlet boundary conditions.
+# the Laplace equation on the unit hyper-cube $\Omega  =[0,1]^d$, $d=3$, with Dirichlet boundary conditions.
 #
 # ```math
 # \left\lbrace
@@ -18,188 +19,198 @@
 # with $f=0$ and $g(x)=\text{sum}(x)$. In this case, we know that the solution is $u=g$ which allows us to check that we solve the
 # problem correctly, by integration an error norm.
 
-#  To solve this PDE, we use a conventional Galerkin finite element (FE) method with conforming Lagrangian FE spaces (see, e.g., [1] for specific details on this formulation).
+#  ## Numerical scheme
+#
+#  We use a conventional Galerkin finite element (FE) method with conforming Lagrangian FE spaces (see, e.g., [Johnson2009](@cite)).  The weak form equation we solve consists in finding $u_h\in V_g$ such that $a(u_h,v) = \ell(v)$ for all $v\in V_0$. To this end we build a space $V$ spanned by continuous and piece-wise Lagrangian basis functions. The auxiliary spaces $V_g$ and $V_0$ are the subsets of $V$ that fulfill the Dirichlet boundary condition $g$ and $0$ on $\partial\Omega$ respectively. The bilinear and linear forms are
+# ```math
+#   a(u,v) \doteq \int_{\Omega} \nabla v \cdot \nabla u \ {\rm d}\Omega, \quad b(v) \doteq \int_{\Omega} v\ f  \ {\rm  d}\Omega.
+# ```
+#
+# This equation results in a system of linear algebraic equations that is solved using an external linear solver from [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl).
 
 # ## Implementation
-#
-# Load dependencies form Julia stdlib.
 
+import FileIO # hide
 using LinearAlgebra
-
-# Import other dependencies
-
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
 import GLMakie as Makie
 import LinearSolve
-import FileIO # hide
 
-# Generate the computational mesh.
-
-domain = (0,1,0,1)
-cells = (10,10)
+#Geometry
+domain = (0,1,0,1,0,1)
+cells = (10,10,10)
 mesh = GT.cartesian_mesh(domain,cells)
-nothing # hide
-
-# Visualize the mesh.
-
-axis = (aspect = Makie.DataAspect(),)
-Makie.plot(mesh;color=:pink,strokecolor=:blue,axis)
-FileIO.save(joinpath(@__DIR__,"fig_poisson_1.png"),Makie.current_figure()) # hide
-
-# ![](fig_poisson_1.png)
-
-# Define the Dirichlet boundary.
-
-dirichlet_tag = "dirichlet"
-GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
-nothing # hide
-
-# Defile computational domains.
-
 Ω = GT.interior(mesh)
-Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
-nothing # hide
+Γd = GT.boundary(mesh)
 
-# Define differential operators
-
-const ∇ = ForwardDiff.gradient
-Δ(f,x) = tr(ForwardDiff.jacobian(y->∇(f,y),x))
-
-# Define manufactured fields.
-
+#Functions
+∇ = ForwardDiff.gradient
 g = GT.analytical_field(sum,Ω)
-f = GT.analytical_field(x->-Δ(g.definition,x),Ω)
-nothing # hide
+f = GT.analytical_field(x->0,Ω)
 
-# Define the interpolation space.
-
+#Interpolation
 k = 1
 V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
-nothing # hide
-
-# Interpolate Dirichlet values.
-
 T = Float64
 uhd = GT.zero_dirichlet_field(T,V)
 GT.interpolate_dirichlet!(g,uhd)
-nothing # hide
 
-# Visualize the Dirichlet field.
-
-Makie.plot(Ω;color=uhd,strokecolor=:blue,axis)
-FileIO.save(joinpath(@__DIR__,"fig_poisson_2.png"),Makie.current_figure()) # hide
-
-# ![](fig_poisson_2.png)
-
-# Define numerical integration.
-
+#Weak form
 degree = 2*k
 dΩ = GT.measure(Ω,degree)
-nothing # hide
-
-# Define weak form.
-
 a = (u,v) -> GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
 l = v -> GT.∫( x->v(x)*f(x), dΩ)
-nothing # hide
 
-# Assemble the problem using the automatic assembly loop generator.
-# We generate a `SciMLBase.LinearProblem` object that can be solved with `LinearSolve`.
-
+#Linear problem
 p = GT.SciMLBase_LinearProblem(uhd,a,l)
 sol = LinearSolve.solve(p)
-nothing # hide
-
-# Transform the solution object into the FE solution object.
-
 uh = GT.solution_field(uhd,sol)
-nothing # hide
 
-# Visualize the solution.
-
-Makie.plot(Ω;color=uh,strokecolor=:black,axis)
-FileIO.save(joinpath(@__DIR__,"fig_poisson_2-1.png"),Makie.current_figure()) # hide
-
-# ![](fig_poisson_2-1.png)
-
-# We can also create a linear problem object to be solved with `PartitionedSolvers`.
-# This is specially useful for the distributed case, but it also works for sequential runs.
-
-p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
-nothing # hide
-
-# Solve the problem
-
-s = PS.LinearAlgebra_lu(p)
-s = PS.solve(s)
-nothing # hide
-
-# Build the FE solution.
-
-uh = GT.solution_field(uhd,s)
-nothing # hide
-
-# Visualize the solution.
-
-Makie.plot(Ω;color=uh,strokecolor=:black,axis)
-FileIO.save(joinpath(@__DIR__,"fig_poisson_3.png"),Makie.current_figure()) # hide
-
-# ![](fig_poisson_3.png)
-
-# Compute the L2 norm of the discretization error.
-
+#Error check
 eh = x -> uh(x) - g(x)
 el2 = GT.∫( x->abs2(eh(x)), dΩ) |> sum |> sqrt
+@assert el2 < 1.0e-9
 
-# ## Final program
+#Visualization
+fig = Makie.Figure()
+ax = Makie.Axis3(fig[1,1],aspect=:data)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surfaces!(Ω;color=uh)
+FileIO.save(joinpath(@__DIR__,"fig_hello_world_1.png"),Makie.current_figure()) # hide
+nothing # hide
 
-module Program 
+# ## Explicit integration loops
+#
+# This other code version implements the integration loops manually instead of relying on the underlying automatic code generation.
 
-using LinearAlgebra
-import GalerkinToolkit as GT
-import PartitionedSolvers as PS
-import ForwardDiff
-import GLMakie as Makie
 
-function main(;domain,cells)
-    mesh = GT.cartesian_mesh(domain,cells)
-    dirichlet_tag = "dirichlet"
-    GT.label_boundary_faces!(mesh;physical_name=dirichlet_tag)
-    Ω = GT.interior(mesh)
-    Γd = GT.boundary(mesh;physical_names=[dirichlet_tag])
+#Manually written matrix assembly function
+#Always use a function, never the global scope
+function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+
+    #Accessors to the quantities on the
+    #integration points
+    Ω = GT.domain(dΩ)
+    face_point_J = GT.jacobian_accessor(dΩ)
+    face_point_dV = GT.weight_accessor(dΩ)
+    face_npoints = GT.num_points_accessor(dΩ)
+    face_dofs = GT.dofs_accessor(V,Ω)
     ∇ = ForwardDiff.gradient
-    Δ(f,x) = tr(ForwardDiff.jacobian(y->∇(f,y),x))
-    g = GT.analytical_field(sum,Ω)
-    f = GT.analytical_field(x->-Δ(g.definition,x),Ω)
-    k = 1
-    V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
+    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+
+    #Temporaries
+    n = GT.max_num_reference_dofs(V)
     T = Float64
-    uhd = GT.zero_dirichlet_field(T,V)
-    GT.interpolate_dirichlet!(g,uhd)
-    degree = 2*k
-    dΩ = GT.measure(Ω,degree)
-    a = (u,v) -> GT.∫( x->∇(u,x)⋅∇(v,x), dΩ)
-    l = v -> GT.∫( x->v(x)*f(x), dΩ)
-    p = GT.PartitionedSolvers_linear_problem(uhd,a,l)
-    s = PS.LinearAlgebra_lu(p)
-    s = PS.solve(s)
-    uh = GT.solution_field(uhd,s)
-    eh = x -> uh(x) - g(x)
-    el2 = GT.∫( x->abs2(eh(x)), dΩ) |> sum |> sqrt
+    Auu = zeros(T,n,n)
+
+    #Numerical integration loop
+    for face in 1:GT.num_faces(Ω)
+
+        #Get quantities at current face
+        npoints = face_npoints(face)
+        point_J = face_point_J(face)
+        point_dV = face_point_dV(face)
+        point_dof_∇s = face_point_dof_∇s(face)
+        dofs = face_dofs(face)
+
+        #Reset face matrix
+        fill!(Auu,zero(T))
+
+        #Loop over integration points
+        for point in 1:npoints
+
+            #Get quantities at current integration point
+            J = point_J(point)
+            dV = point_dV(point,J)
+            dof_∇s = point_dof_∇s(point,J)
+
+            #Fill in face matrix
+            for (i,dofi) in enumerate(dofs)
+                ∇v = dof_∇s(i)
+                for (j,dofj) in enumerate(dofs)
+                    ∇u = dof_∇s(j)
+                    Auu[i,j] += ∇v⋅∇u*dV
+                end
+            end
+        end
+
+        #Add face contribution to the
+        #global allocations
+        GT.contribute!(A_alloc,Auu,dofs,dofs)
+        GT.contribute!(Ad_alloc,Auu,dofs,dofs)
+    end
 end
 
-end # module
+#Manually written integration of the error
+#Always use a function, never the global scope
+function integrate_l2_error(g,uh,dΩ)
 
-# Run it for a 2d case.
+    #Accessors to the quantities on the
+    #integration points
+    face_point_x = GT.coordinate_accessor(dΩ)
+    face_point_J = GT.jacobian_accessor(dΩ)
+    face_point_dV = GT.weight_accessor(dΩ)
+    face_npoints = GT.num_points_accessor(dΩ)
+    face_point_uhx = GT.discrete_field_accessor(GT.value,uh,dΩ)
 
-Program.main(domain=(0,1,0,1),cells=(10,10))
+    #Numerical integration loop
+    s = 0.0
+    Ω = GT.domain(dΩ)
+    for face in 1:GT.num_faces(Ω)
 
-# Run it for a 3d case.
+        #Get quantities at current face
+        npoints = face_npoints(face)
+        point_x = face_point_x(face)
+        point_J = face_point_J(face)
+        point_dV = face_point_dV(face)
+        point_uhx = face_point_uhx(face)
 
-Program.main(domain=(0,1,0,1,0,1),cells=(10,10,10))
+        for point in 1:npoints
 
-# ## References
-#
-# [1] C. Johnson. *Numerical Solution of Partial Differential Equations by the Finite Element Method*. Dover Publications, 2009.
+            #Get quantities at current integration point
+            x = point_x(point)
+            J = point_J(point)
+            dV = point_dV(point,J)
+            uhx = point_uhx(point,J)
+
+            #Add contribution
+            s += abs2(uhx-g.definition(x))*dV
+        end
+    end
+
+    #Compute the l2 norm
+    el2 = sqrt(s)
+end
+
+#Allocate matrix for free columns
+A_alloc = GT.allocate_matrix(T,V,V,Ω)
+
+#Allocate matrix for dirichlet columns
+free_or_dirichlet=(GT.FREE,GT.DIRICHLET)
+Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet)
+
+#Fill allocations with the function we wrote above
+assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+
+#Compress matrix into the final format
+A = GT.compress(A_alloc)
+Ad = GT.compress(Ad_alloc)
+
+#Build the linear system
+xd = GT.dirichlet_values(uhd)
+b = -Ad*xd
+p = LinearSolve.LinearProblem(A,b)
+
+#Solve the problem
+sol = LinearSolve.solve(p)
+uh = GT.solution_field(uhd,sol)
+
+#Integrate the error l2 norm
+#with the function we wrote above
+el2 = integrate_l2_error(g,uh,dΩ)
+@assert el2 < 1.0e-9
+nothing # hide
+

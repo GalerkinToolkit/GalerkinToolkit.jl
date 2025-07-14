@@ -39,17 +39,17 @@ function num_ambient_dims(mesh::PMesh)
     PartitionedArrays.getany(map(num_ambient_dims,mesh.mesh_partition))
 end
 
-function physical_names(pmesh::PMesh,d)
+function group_names(pmesh::PMesh,d)
      map(pmesh.mesh_partition) do mesh
-        GT.physical_names(mesh,d)
+        GT.group_names(mesh,d)
     end |> PartitionedArrays.getany
 end
 
-function physical_faces(pmesh::PMesh,d)
-    names = physical_names(pmesh,d)
+function group_faces(pmesh::PMesh,d)
+    names = group_names(pmesh,d)
     map(collect(names)) do name
         name => map(pmesh.mesh_partition) do mesh
-            GT.physical_faces(mesh,d)[name]
+            GT.group_faces(mesh,d)[name]
         end
     end |> Dict
 end
@@ -99,8 +99,8 @@ function periodic_nodes(pmesh::PMesh)
     map(GT.periodic_nodes,pmesh.mesh_partition)
 end
 
-function outward_normals(pmesh::PMesh)
-    data = map(GT.outward_normals,pmesh.mesh_partition)
+function normals(pmesh::PMesh)
+    data = map(GT.normals,pmesh.mesh_partition)
     if eltype(data) <: Nothing
         nothing
     else
@@ -728,8 +728,8 @@ end
 #    # Refine physical groups
 #    final_node_to_mask = fill(false,n_final_nodes)
 #    for d in 0:D
-#        final_physical_dfaces = physical_faces(final_mesh,d)
-#        coarse_phsycial_dfaces = physical_faces(coarse_mesh,d)
+#        final_physical_dfaces = group_faces(final_mesh,d)
+#        coarse_phsycial_dfaces = group_faces(coarse_mesh,d)
 #        final_dfaces_to_final_nodes = face_nodes(final_mesh,d)
 #        for (name,coarse_dfaces_in_group) in coarse_phsycial_dfaces
 #            fill!(final_node_to_mask,false)

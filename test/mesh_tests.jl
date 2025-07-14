@@ -28,14 +28,14 @@ space2 = GT.lagrange_space(cube2,1)
 node_coordinates = SA.SVector{2,Tv}[(0,0),(1,0),(0,1),(1,1)]
 face_nodes = Vector{Vector{Ti}}[[[1],[2],[3],[4]],[[1,2],[3,4],[1,3],[2,4]],[[1,2,3,4]]]
 face_reference_id = Vector{Tr}[[1,1,1,1],[1,1,1,1],[1]]
-outward_normals = SA.SVector{2,Tv}[(0,-1),(0,1),(-1,0),(1,0)]
+normals = SA.SVector{2,Tv}[(0,-1),(0,1),(-1,0),(1,0)]
 reference_spaces = ((space0,),(space1,),(space2,))
 mesh = GT.mesh(;
      node_coordinates,
      face_nodes,
      face_reference_id,
      reference_spaces,
-     outward_normals
+     normals
     )
 
 d = 1
@@ -64,7 +64,7 @@ chain = GT.chain(;
      face_nodes,
      face_reference_id,
      reference_spaces,
-     outward_normals
+     normals
     )
 
 mesh = GT.mesh(chain)

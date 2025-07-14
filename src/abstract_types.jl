@@ -7,30 +7,22 @@ end
 @doc raw"""
     abstract type AbstractMesh <: AbstractType end
 
-Abstract type representing a triangulation of a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$,
-plus metadata useful in finite element computations, such as physical groups for imposing boundary conditions.
-
-# Notation
-
-Each of of the elements of the triangulation is referred to as a `face`. A mesh can contain faces of different dimensions.
-A mesh might or might not represent a cell complex (all possible low dimensional faces are present in the mesh), but
-it is often assumed that it represents a cell complex.
+Abstract type representing a computational mesh.
 
 # Level
 
 Beginner
 
-# Basic constructors
+# Constructors
 
-- [`mesh`](@ref)
-- [`chain`](@ref)
+- [`create_mesh`](@ref)
 - [`mesh_from_msh`](@ref)
-- [`mesh_from_space`](@ref)
+- [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
 
-# Basic queries
+# Queries
 
 - [`num_dims`](@ref)
 - [`num_ambient_dims`](@ref)
@@ -41,10 +33,10 @@ Beginner
 - [`face_nodes`](@ref)
 - [`face_reference_id`](@ref)
 - [`reference_spaces`](@ref)
-- [`periodic_nodes`](@ref)
-- [`physical_faces`](@ref)
-- [`geometries`](@ref)
-- [`outward_normals`](@ref)
+- [`group_faces`](@ref)
+- [`group_names`](@ref)
+- [`is_cell_complex`](@ref)
+- [`normals`](@ref)
 
 """
 abstract type AbstractMesh <: AbstractType end
@@ -120,17 +112,15 @@ abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
 
 Abstract type representing the incidence relations in a cell complex.
 
-See also [`AbstractFaceTopology`](@ref).
-
 # Level
 
 Intermediate
 
-# Basic constructors
+# Constructors
 
 - [`topology`](@ref)
 
-# Basic queries
+# Queries
 
 - [`face_incidence`](@ref)
 - [`face_reference_id`](@ref)
@@ -484,6 +474,8 @@ function mesh_from_space end
 
 Convert `x` into a mesh representing a cell complex.
 
+See also [`is_cell_complex`](@ref).
+
 # Level
 
 Intermediate
@@ -541,12 +533,49 @@ function reference_spaces end
 function periodic_nodes end
 
 """
+    group_faces(mesh)
+    group_faces(mesh,d)
+
+Return the dictionary containing the faces in each group in dimension `d`.
+If `d` is omitted, it returns the dictionaries for all dimensions in a vector. I.e.,
+calling `group_faces(mesh,d)` is equivalent to `group_faces(mesh)[d+1]`.
+
+The faces of dimension `d` in group `group` are `group_faces(mesh,d)[group_name]`, where `group_name` is a string with the group name.
+One can create new groups by adding new keys to these dictionaries as long as the key is not already present.
+Calling `group_faces(mesh,d)[new_group_name] = faces_in_newgroup` will add a new group to dimension `d` with name equal to the string `new_group_name` with faces in vector `faces_in_newgroup`.
+
+See also [`group_names`](@ref).
+
+# Level
+
+Beginner
+
 """
-function physical_faces end
+function group_faces end
+
+"""
+    group_names(mesh)
+    group_names(mesh,d)
+
+Return the names of the groups in dimension `d`. Calling `group_names(mesh,d)` is equivalent to `group_names(mesh)[d+1]`.
+
+See also [`group_faces`](@ref).
+
+# Level
+
+Beginner
+
+
+"""
+function group_names end
 
 """
 """
-function outward_normals end
+function is_cell_complex end
+
+"""
+"""
+function normals end
 
 """
 """
@@ -649,14 +678,14 @@ function face_incidence end
 function face_permutation_ids end
 
 """
-    reference_topologies(x)
-    reference_topologies(x,d)
-    reference_topologies(x,Val(d))
+    reference_topologies(topo)
+    reference_topologies(topo,d)
+    reference_topologies(topo,Val(d))
 
-Return the list (a vector or a tuple) of reference topologies in `x` of dimension `d`.
-If the second argument is omitted,
-return a tuple with the reference topologies in each dimension,
-starting from dimension 0 up to `num_dims(x)`.
+Return the list (a vector or a tuple) of reference topologies in `topo` of dimension `d`.
+If the second argument is omitted, then the function returns a collection such that `reference_topologies(topo)[d+1]` is equivalent to `reference_topologies(topo,Val(d))`.
+
+The face reference topology of face `f` of dimension `d`, is accessed as `reference_topologies(topo,d)[r]` with `r=face_reference_id(topo,d)[f]`.
 
 See also [`face_reference_id`](@ref).
 

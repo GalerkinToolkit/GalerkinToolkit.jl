@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-07-04
+
+### Added
+
+- Method `GT.solution_field(::ODEIntegrator)`.
+- Support for Makie v0.24.
+
+### Changed
+
+- The Makie-related visualization functions were significantly refactored.
+
+## [0.3.1] - 2025-05-14
+
+### Added
+
+- Functions `SciMLBase_LinearProblem` and `SciMLBase_ODEProblem` to build problems of the `SciML` ecosystem from weak forms.
+
+### Fixed
+
+- Reactivating optimization in `shape_function_accessor`.
+
 ## [0.3.0] - 2025-03-10
 
 This version includes numerous changes, which are not tracked in the changelog for brevity.

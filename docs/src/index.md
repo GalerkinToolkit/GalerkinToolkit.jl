@@ -6,46 +6,51 @@ CurrentModule = GalerkinToolkit
 
 Welcome to the documentation page of GalerkinToolkit!
 
-!!! note
-    Galerking is already useful in many situations, but keep it mind that it is under active development. This documentation page
-    is under construction.
-
 ## Contents
 
 - **[Home](@ref)** -- This page.
-- **[Lectures](@ref)** -- Learning material to get familiar with the basics of the FEM. They are useful even if you are FEM expert as they walk you through the library step by step.
-- **[Examples](@ref)** -- They provide a quick overview of the main functionality of the library.
 - **[Manual](@ref)** -- The user and developer guide. It gives the detailed explanations on how to use and extend the library.
-- **[API](@ref)** -- All the docstrings are there.
+- **[Examples](@ref)** -- They provide a quick overview of the main functionality of the library.
+- **[Tutorials](@ref)** -- Learning material to get familiar with the building blocks of the library and the basics of the FEM. They are useful even if you are FEM expert as they walk you through the library step by step.
+- **[API](@ref)** -- All the docstrings are here.
 
-## What
+NB. This documentation is organized based on the [Diátaxis model](https://diataxis.fr/).
 
-GalerkinToolkit provides a collection of tools to build computer codes to solve partial differential equations (PDEs)
-using finite element methods (FEMs) on different computing platforms, from laptops to modern GPU-based supercomputers.
-GalerkingToolkit is fully implemented in the [Julia programming language](https://julialang.org/) and provides (or it will soon provide) tools for:
+## Overview
 
-- Reading and partitioning computational meshes generated from external mesh generators ([`Gmsh`](https://gmsh.info/) at this moment).
-- Defining discrete interpolation spaces on computational meshes including continuous and discontinuous interpolations.
-- Integrating 0, 1, and 2-forms on triangulated manifolds for a variety of problems, including scalar- and vector-valued equations, and single- and multi-field systems.
-- Discretizing PDEs into systems of linear-, nonlinear-, and differential-algebraic equations, including matrix-free operators.
-- Representing such algebraic problems in a way that can be readily solved using external tools such as [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl).
-- Automatic differentiation for non-linear and parametric problems.
-- Visualizing results with [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl).
+### What
 
-From these items, the ones currently missing are:
 
-- Automatic differentiation (expected by 2026).
-- Matrix-free 2-forms (expected by 2026).
-- Distributed computing (only partially available at the moment, expected by 2026).
-- Single- and multi-GPU support (ongoing PhD project, expected by 2027).
+GalerkinToolkit is a high-performance finite element (FE) toolbox fully implemented in the [Julia programming language](https://julialang.org/). It provides modular building blocks to easily implement custom finite element codes to solve partial differential equations (PDEs), using a variety of numerical schemes, and across diverse computing environments.  GalerkinToolkit integrates seamlessly with the broader Julia ecosystem. It supports external solvers such as [`PartitionedSolvers.jl`](https://github.com/PartitionedArrays/PartitionedArrays.jl), [`PetscCall.jl`](https://github.com/PartitionedArrays/PetscCall.jl), [`LinearSolve.jl`](https://github.com/SciML/LinearSolve.jl), [`NonLinearSolve.jl`](https://github.com/SciML/NonlinearSolve.jl), and [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl) to handle the algebraic systems resulting from PDE discretizations. For visualization, the toolkit provides plotting recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and utilities for exporting results in [`VTK` format](https://vtk.org/) using [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl).
 
-## Why
+### Why
 
-GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique design features:
+GalerkinToolkit is definitively not the first FEM software project out there, but it has some unique features. This includes a unified API with high- and low-level abstractions, a deep integration with the Julia package ecosystem, a new form compiler, and  a redesign of the core ideas behind [Gridap](https://github.com/gridap/Gridap.jl).
 
-- It combines the vision of frameworks like [FEniCS](https://fenicsproject.org/) and libraries like [Deal-ii](https://www.dealii.org/) in a single package. It provides a high-level API backed with automatic code generation, and also easy access to the low-level building blocks of FE codes. See in the [Examples](@ref) section examples using the high-level API and automatic-code generation and also examples implementing the integration loops "by hand" using the low-level building blocks.
-- It is designed to blend with the Julia package ecosystem, and reuses as much as possible from it. For instance, GalerkinToolkit does not define differential operators, it simply uses the operators already defined in [`ForwardDiff.jl`](https://github.com/JuliaDiff/ForwardDiff.jl). You can use [`StaticArrays.jl`](https://github.com/JuliaArrays/StaticArrays.jl) and [`Tensors.jl`](https://github.com/Ferrite-FEM/Tensors.jl), when working with vector- and tensor- valued PDEs. It also makes straight-forward to use external solvers to solve the algebraic systems you get after discretizing a PDE. For visualization, it defines recipes for [`Makie.jl`](https://github.com/MakieOrg/Makie.jl) and defines helper functions to save results with [`WriteVTK.jl`](https://github.com/JuliaVTK/WriteVTK.jl) in [`vtk` format](https://vtk.org/).
-- It is based on a new form compiler, the GalerkinToolkit form compiler (GTFC), that fixes the rigidity of domain-specific languages like UFL. It introduces an alternative multi-level intermediate representation (MLIR) and leveraging the meta-programming features of the Julia programming language. 
+Find more information about GalerkinToolkit's features and novelties in the [Introduction](@ref) of the manual.
+
+### Code examples
+
+| ![](src_jl/fig_hello_world_1.png) |  ![](src_jl/fig_poisson_1.png) | ![](src_jl/fig_p_laplacian_1.png) |
+|---|---|---|
+| [Hello, World!](@ref) |  [Poisson equation](@ref)| [p-Laplacian](@ref) |
+| ![](src_jl/fig_stokes_1.png)  |  ![](src_jl/fig_transient_heat_equation_1.gif) | |
+| [Stokes lid-driven cavity](@ref) |  [Transient heat equation](@ref) | |
+
+
+## How to start
+
+ In the [Manual](@ref), you will find explanations about the software design and guides for users and developers.  Look into the [Examples](@ref) section for an overview of how to solve different types of PDEs with GalerkinToolkit. Learn how to use the library (and the basics of FEM) with the tutorials in the [Tutorials](@ref) section.
+
+### Pre-requisites
+
+You need to be fluent in Julia before using GalerkinToolkit. You can learn Julia using the learning materials in [julialang.org](https://julialang.org/) or the lecture notes in [https://www.francescverdugo.com/XM_40017/dev/](https://www.francescverdugo.com/XM_40017/dev/).
+
+It is also required to be familiar with the basics of FE methods. The basics are explained in the [Tutorials](@ref) section. For more in depth introduction, you can use the following books:
+  - C. Johnson [Johnson2009](@cite)
+  - J. Whiteley [Whiteley2017](@cite)
+  - S.C. Brenner and L. R. Scott [Brenner2007](@cite)
+
 
 
 ## Help and discussion
@@ -72,4 +77,6 @@ Discuss with the package authors before working on any non-trivial contribution.
 
 Since July 2024, this package is being developed with support from the [Netherlands eScience Center](https://www.esciencecenter.nl/) under grant ID [NLESC.SS.2023.008](https://research-software-directory.org/projects/hp2sim).
 
+## Affiliations
 
+This project is maintained at the [Computer Science department](https://vu.nl/en/about-vu/faculties/faculty-of-science/departments/computer-science) of [Vrije Universiteit Amsterdam](https://vu.nl/nl).

@@ -30,10 +30,13 @@ weights(a::FaceQuadrature) = a.contents.weights
 """
 function quadrature(geo::AbstractFaceDomain,degree)
     if is_n_cube(geo) && is_axis_aligned(geo)
-        D = num_dims(geo)
         tensor_product_quadrature(geo,degree)
     elseif is_unit_simplex(geo)
-        if degree in strang_quadrature_degrees(geo)
+        D = num_dims(geo)
+        # For the moment strang only in 3d since
+        # there are some 2d strang quadratures that are not accurate
+        # as implemented here (TODO: to investigate why)
+        if D == 3 && degree in strang_quadrature_degrees(geo)
             strang_quadrature(geo,degree)
         else
             duffy_quadrature(geo,degree)

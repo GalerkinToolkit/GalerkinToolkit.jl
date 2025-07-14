@@ -127,12 +127,13 @@ mesh_size = 0.3
 R = 1 #Radius
 mesh = GT.with_gmsh() do gmsh
     dim = 2
+    gmsh.option.set_number("General.Verbosity", 2)
     circle_tag = gmsh.model.occ.add_circle(0,0,0,R)
     circle_curve_tag = gmsh.model.occ.add_curve_loop([circle_tag])
     circle_surf_tag = gmsh.model.occ.add_plane_surface([circle_curve_tag])
     gmsh.model.occ.synchronize()
     gmsh.model.model.add_physical_group(dim,[circle_surf_tag],-1,"Omega")
-    gmsh.option.setNumber("Mesh.MeshSizeMax",mesh_size)
+    gmsh.option.set_number("Mesh.MeshSizeMax",mesh_size)
     gmsh.model.mesh.generate(dim)
     GT.mesh_from_gmsh(gmsh)
 end
@@ -141,8 +142,11 @@ nothing # hide
 # The mesh we just created can be visualized both with Paraview and Makie.
 # We use Makie in this lecture.
 
-axis = (aspect = Makie.DataAspect(),)
-Makie.plot(mesh;color=:pink,strokecolor=:blue,axis)
+aspect = Makie.DataAspect()
+shading = Makie.NoShading
+kwargs = (;axis=(;aspect),shading)
+GT.makie_surfaces(mesh;color=:pink,kwargs...)
+GT.makie_edges!(mesh;color=:black)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_mesh.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_mesh.png)
 
@@ -163,13 +167,13 @@ nothing # hide
 
 # We can also visualize them using Makie.
 
-Makie.plot(Ω;color=:pink,axis)
-Makie.plot!(∂Ω;color=:blue,linewidth=3)
+GT.makie_surfaces(Ω;color=:pink,kwargs...)
+GT.makie_edges!(∂Ω;color=:blue,linewidth=3)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_domains.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_domains.png)
 
 # Note that `Ω` is indeed an approximation of the unit disk (visualized as a pink surface),
-# and `∂Ω` is its boundary (visualized with blue lines).
+# and `∂Ω` is its boundary (visualized with thick blue lines).
 #
 # ## FE space
 #
@@ -219,8 +223,8 @@ nothing # hide
 # the function value as the color code.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=u_fem,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_rand_field.png)
@@ -268,8 +272,8 @@ nothing # hide
 # function. Let us visualize it.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=f,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=f,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_f.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_f.png)
@@ -282,8 +286,8 @@ nothing # hide
 # and we visualize the result
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=f_fem,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=f_fem,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_f_fem.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_f_fem.png)
@@ -373,8 +377,8 @@ u_d = GT.interpolate_dirichlet(g,V)
 # a function that (by definition) is possibly non-zero near the Dirichlet boundary.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_d,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=u_d,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_diri.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_diri.png)
@@ -397,8 +401,8 @@ nothing # hide
 # matching the Dirichlet boundary condition on $\partial\Omega$.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=u_fem,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_2.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_fem_2.png)
@@ -434,8 +438,9 @@ nothing # hide
 # Then, we visualize the first component of the gradient as follows:
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=x->∇(u_fem,x)[1],refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+grad1 = x->∇(u_fem,x)[1]
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=grad1,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_grad.png)
@@ -614,8 +619,8 @@ nothing # hide
 # Finally, we visualize the computed FEM solution.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=u_fem,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=u_fem,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_fem_3.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_fem_3.png)
@@ -630,8 +635,8 @@ nothing # hide
 # and visualize it
 #
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=u,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=u,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_sol.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_sol.png)
@@ -650,8 +655,8 @@ nothing # hide
 # Visualize it.
 
 fig = Makie.Figure()
-_,scene = Makie.plot(fig[1,1],Ω;axis,color=e_fem,refinement=5)
-Makie.plot!(fig[1,1],Ω,color=nothing,strokecolor=:black)
+_,scene = GT.makie_surfaces(fig[1,1],Ω;color=e_fem,refinement=5,kwargs...)
+GT.makie_edges!(fig[1,1],Ω,color=:black)
 Makie.Colorbar(fig[1,2],scene)
 FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_error.png"),Makie.current_figure()) # hide
 # ![](fig_tutorial_intro_error.png)

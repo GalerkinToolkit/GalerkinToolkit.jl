@@ -1,6 +1,6 @@
 # # p-Laplacian
 #
-# ![](fig_p_laplacian.gif)
+# ![](fig_p_laplacian_1.png)
 
 # ## Problem statement
 
@@ -18,147 +18,146 @@
 # ```
 # with $\sigma(u) = |\nabla u|^{p-2} \ \nabla u$ and $p>2$.
 # The vector field $n$ is the outwards unit normal vector to $\partial\Omega$. The computational domains are defined in the mesh file `model.msh`. The domain $\Omega$ is represented by the 3D faces in this mesh. The domain $\Gamma_0$ is represented by the physical group named `"sides"` and $\Gamma_1$ is the union of the physical groups named `"circle"`, `"triangle"`, and `"square"`.  
-#  To solve this PDE, we use a conventional Galerkin finite element method with conforming Lagrangian FE spaces.
+#
+# ## Numerical scheme
 
+# We discretize the problem with a space $V$ with piece-wise continuous Lagrangian basis functions. For this formulation, the nonlinear weak form reads: find $u\in V_g$ such that $[r(u)](v) = 0$ for all $v\in V_0$. The auxiliary spaces $V_g$ and $V_0$ are the subsets of $V$ that fulfill the Dirichlet boundary condition $g$ and $0$ on $\partial\Omega$ respectively.
+#
+# The weak residual $r(u)$ evaluated at a function  $u\in V_g$ is the linear form defined as
+#
+# ```math
+# [r(u)](v) \doteq \int_\Omega \nabla v \cdot \left( |\nabla u|^{p-2}\ \nabla u \right) \ {\rm d}\Omega - \int_\Omega v\ f \ {\rm d}\Omega.
+# ```
+#
+# In order to solve this nonlinear weak equation, we consider a Newton-Raphson method, which is associated with a linearization of the problem in an arbitrary direction $\delta u\in V_0$, namely $[r(u+\delta u)](v)\approx [r(u)](v) + [j(u)](\delta u,v)$. In previous formula,  $j(u)$ is the Jacobian evaluated at $u\in V_g$, which is the bilinear form
+#
+# ```math
+# [j(u)](\delta u,v) = \int_\Omega \nabla v \cdot \left( |\nabla u|^{p-2}\ \nabla \delta u \right) \ {\rm d}\Omega + (p-2) \int_\Omega \nabla v \cdot \left(  |\nabla u|^{p-4} (\nabla u \cdot \nabla \delta u) \nabla u  \right) \ {\rm d}\Omega.
+# ```
+#
 # ## Implementation
 
-
-# Load dependencies form Julia stdlib.
-
+import FileIO # hide
 using LinearAlgebra
-
-# Import other dependencies.
-
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import NonlinearSolve
 import ForwardDiff
 import GLMakie as Makie
-import FileIO # hide
 
-# Read and visualize the mesh.
-
+#Read and visualize the mesh
 assets_dir = normpath(joinpath(@__DIR__,"..","..","..","assets"))
 msh_file = joinpath(assets_dir,"model.msh")
 mesh = GT.mesh_from_msh(msh_file)
-nothing # hide
 
-Makie.plot(mesh,color=:pink,strokecolor=:blue)
-FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_1.png"),Makie.current_figure()) # hide
-
-# ![](fig_p_laplacian_1.png)
-
-# Define domains.
-
+#Define domains
 dirichlet_0_names = ["sides"]
 dirichlet_1_names = ["circle", "triangle", "square"]
 Ω = GT.interior(mesh)
-Γ0 = GT.boundary(mesh;physical_names=dirichlet_0_names)
-Γ1 = GT.boundary(mesh;physical_names=dirichlet_1_names)
+Γ0 = GT.boundary(mesh;group_names=dirichlet_0_names)
+Γ1 = GT.boundary(mesh;group_names=dirichlet_1_names)
 Γd = GT.piecewise_domain(Γ0,Γ1)
-nothing # hide
 
-# Define forcing data.
-
+#Define forcing data
 g0 = GT.analytical_field(x->-1.0,Ω)
 g1 = GT.analytical_field(x->1.0,Ω)
 g = GT.piecewise_field(g0,g1)
-nothing # hide
 
-# Define the interpolation space.
-
+#Define the interpolation space
 k = 1
 V = GT.lagrange_space(Ω,k;dirichlet_boundary=Γd)
-nothing # hide
 
-# Interpolate Dirichlet values.
-
+#Interpolate Dirichlet values
 T = Float64
 uh = GT.rand_field(T,V)
 GT.interpolate_dirichlet!(g,uh)
-nothing # hide
 
-# Visualize the Dirichlet field.
-
-Makie.plot(Ω,color=uh,strokecolor=:blue)
-FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2.png"),Makie.current_figure()) # hide
-
-# ![](fig_p_laplacian_2.png)
-
-# Define numerical integration.
-
+#Define numerical integration
 degree = 2*k
 dΩ = GT.measure(Ω,degree)
-nothing # hide
 
-# Define weak form.
-
-const ∇ = ForwardDiff.gradient
-const q = 3
+#Define weak form.
+∇ = ForwardDiff.gradient
+q = 3
 flux(∇u) = norm(∇u)^(q-2) * ∇u
 dflux(∇du,∇u) = (q-2)*norm(∇u)^(q-4)*(∇u⋅∇du)*∇u+norm(∇u)^(q-2)*∇du
-res = u -> v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)), dΩ)
-jac = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
-nothing # hide
+r = u -> v -> GT.∫( x-> ∇(v,x)⋅GT.call(flux,∇(u,x)), dΩ)
+j = u -> (du,v) -> GT.∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 
-# Define non-linear problem using the automatic assembly loop generator.
-# We can define a problem object from `SciMLBase` that can be solved with `NonlinearSolve`.
+#Define non-linear problem
+p = GT.SciMLBase_NonlinearProblem(uh,r,j)
 
-p = GT.SciMLBase_NonlinearProblem(uh,res,jac)
-nothing # hide
-
-# Solve it with `NonlinearSolve.jl`.
-
+#Solve it
 sol = NonlinearSolve.solve(p;show_trace=Val(true))
 @assert sol.retcode == NonlinearSolve.ReturnCode.Success
-nothing # hide
 
-# Get the FE solution object
-
+#Get the FE solution object
 uh = GT.solution_field(uh,sol)
+
+#Visualize the solution
+fig = Makie.Figure()
+elevation = 0.24π
+azimuth = -0.55π
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surfaces!(Ω;color=uh)
+FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
-# Visualize the solution
+# ## Building the algebraic non-linear problem explicitly
 
-Makie.plot(Ω;color=uh,strokecolor=:black)
-FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2-1.png"),Makie.current_figure()) # hide
+# In this other version, we explicitly build the algebraic residual and Jacobian (functions that take plain Julia vectors) and build a algebraic non-linear problem from them.
 
-# ![](fig_p_laplacian_2-1.png)
+import SciMLBase
 
-# We can also create a nonlinear problem object to be solved with `PartitionedSolvers`.
-# This is specially useful for the distributed case, but it also works for sequential runs.
+#Initial guess
+x = rand(T,GT.num_free_dofs(V))
+GT.solution_field!(uh,x)
 
-uh = GT.rand_field(Float64,V)
-GT.interpolate_dirichlet!(g,uh)
-p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
-nothing # hide
+#Initial residual and Jacobian
+reuse = Val(true)
+parameters = (uh,)
+b,residual_cache = GT.assemble_vector(r(uh),T,V;parameters,reuse)
+A,jacobian_cache = GT.assemble_matrix(j(uh),T,V,V;parameters,reuse)
 
-# Define a nonlinear solver with and solve the problem `PartitionedSolvers`
-
-s = PS.newton_raphson(p,verbose=true)
-s = PS.solve(s)
-uh = GT.solution_field(uh,s)
-
-# Visualize the solution
-
-Makie.plot(Ω;color=uh,strokecolor=:black)
-FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_3.png"),Makie.current_figure()) # hide
-
-# ![](fig_p_laplacian_3.png)
-
-# Now, solve while showing the intermediate results in the iteration process.
-
-uh = GT.rand_field(Float64,V)
-GT.interpolate_dirichlet!(g,uh)
-p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
-s = PS.newton_raphson(p)
-color = Makie.Observable(uh)
-fig = Makie.plot(Ω;color,strokecolor=:black)
-fn = joinpath(@__DIR__,"fig_p_laplacian.gif")
-Makie.record(fig,fn,PS.history(s);framerate=2) do s
-    color[] = GT.solution_field(uh,s)
+#Algebraic residual and Jacobian functions
+function f(dx,x,p)
+    GT.solution_field!(uh,x)
+    GT.update_vector!(dx,residual_cache;parameters)
+    dx
 end
+
+function jac(J,x,p)
+    GT.solution_field!(uh,x)
+    GT.update_matrix!(J,jacobian_cache;parameters)
+    J
+end
+
+#Build the nonlinear problem
+jac_prototype = A
+nlfun = SciMLBase.NonlinearFunction(f;jac,jac_prototype)
+p = SciMLBase.NonlinearProblem(nlfun,x)
+
+#Solve it
+sol = NonlinearSolve.solve(p;show_trace=Val(true))
+@assert sol.retcode == NonlinearSolve.ReturnCode.Success
+
+#Get the FE solution object
+x = sol.u
+GT.solution_field!(uh,x)
+
+#Visualize the solution
+fig = Makie.Figure()
+elevation = 0.24π
+azimuth = -0.55π
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surfaces!(Ω;color=uh)
+FileIO.save(joinpath(@__DIR__,"fig_p_laplacian_2.png"),Makie.current_figure()) # hide
 nothing # hide
 
-# ![](fig_p_laplacian.gif)
-#
+

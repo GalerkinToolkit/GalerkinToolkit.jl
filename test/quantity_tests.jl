@@ -18,8 +18,8 @@ mesh = GT.cartesian_mesh(domain,cells)
 
 D = GT.num_dims(mesh)
 fs = GT.reference_spaces(mesh,D-1)
-GT.label_interior_faces!(mesh;physical_name="interior_faces")
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.group_interior_faces!(mesh;group_name="interior_faces")
+GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 
 Ω = GT.interior(mesh)
 Ωref = GT.interior(mesh;is_reference_domain=true)
@@ -27,13 +27,13 @@ GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
 D = GT.num_dims(mesh)
 Γref = GT.boundary(mesh;
                  is_reference_domain=true,
-                 physical_names=["boundary_faces"])
+                 group_names=["boundary_faces"])
 
 Γ = GT.physical_domain(Γref)
 
 Λref = GT.skeleton(mesh;
                  is_reference_domain=true,
-                 physical_names=["interior_faces"])
+                 group_names=["interior_faces"])
 
 Λ = GT.physical_domain(Λref)
 

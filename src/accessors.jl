@@ -183,7 +183,9 @@ function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
         nodes = lface_to_nodes[lface]
         perm_to_ids = lrefid_to_perm_to_ids[lrefid]
         map(perm_to_ids) do ids
-            dof_to_coeff = node_to_coords[nodes[ids]]
+            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
+            dof_to_coeff = similar(node_to_coords[nodes])
+            dof_to_coeff[ids] = node_to_coords[nodes]
             ndofs = length(dof_to_coeff)
             result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
         end
@@ -593,8 +595,10 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
             P = typeof(prototype)
             max_n_faces_around = 2
+
             # face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around) # incorrect, all elements have the same objectid
             face_around_dof_s::Vector{Vector{P}} = [zeros(P,max_num_reference_dofs(space)) for _ in 1:max_n_faces_around]
+
             function face_point_dof_s(face,face_around=nothing)
                 point_dof_v = face_point_dof_v(face,face_around)
                 dof_modif = dface_to_modif(face,face_around)
@@ -938,7 +942,7 @@ function unit_normal_accessor_reference_skeleton(measure::AbstractQuadrature)
     face_to_dface = faces(domain)
     Drid_to_ldface_to_n = map(GT.reference_spaces(mesh,Val(D))) do refface
         boundary = refface |> GT.domain |> GT.mesh
-        boundary |> GT.outward_normals # TODO also rename?
+        boundary |> GT.normals # TODO also rename?
     end
     prototype = first(first(Drid_to_ldface_to_n))
     function face_n(face,face_around)

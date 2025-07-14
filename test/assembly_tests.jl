@@ -91,11 +91,11 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 domain = (0,1,0,1)
 cells = (4,4)
 mesh = GT.cartesian_mesh(domain,cells)
-GT.label_interior_faces!(mesh;physical_name="interior_faces")
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.group_interior_faces!(mesh;group_name="interior_faces")
+GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
-Λ = GT.skeleton(mesh;physical_names=["interior_faces"])
+Γ = GT.boundary(mesh;group_names=["boundary_faces"])
+Λ = GT.skeleton(mesh;group_names=["interior_faces"])
 
 order = 2
 degree = 2*order
@@ -297,8 +297,8 @@ eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 domain = (0,1,0,1)
 cells = (4,4)
 mesh = GT.cartesian_mesh(domain,cells)
-GT.label_interior_faces!(mesh;physical_name="interior_faces")
-GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+GT.group_interior_faces!(mesh;group_name="interior_faces")
+GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 D = GT.num_dims(mesh)
 
 Ω = GT.interior(mesh)
@@ -306,11 +306,11 @@ D = GT.num_dims(mesh)
 ϕ = GT.physical_map(mesh,D)
 
 D = GT.num_dims(mesh)
-Γdiri = GT.boundary(mesh;physical_names=["1-face-1","1-face-3"])
+Γdiri = GT.boundary(mesh;group_names=["1-face-1","1-face-3"])
 
 Γref = GT.boundary(mesh;
                  is_reference_domain=true,
-                 physical_names=["1-face-2","1-face-4"])
+                 group_names=["1-face-2","1-face-4"])
 
 Γ = GT.physical_domain(Γref)
 Λ = GT.skeleton(mesh)
@@ -405,7 +405,7 @@ b = GT.assemble_vector(l,Float64,V²)
 #
 #Λref = GT.skeleton(mesh;
 #                 is_reference_domain=true,
-#                 physical_names=["interior_faces"])
+#                 group_names=["interior_faces"])
 #
 #Λ = GT.physical_domain(Λref)
 #dΛref = GT.measure(Λref,degree)
@@ -552,14 +552,14 @@ b = GT.assemble_vector(l,Float64,V²)
 #domain = (0,1,0,1)
 #cells = (4,4)
 #mesh = GT.cartesian_mesh(domain,cells)
-#GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+#GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 #
 #Ω = GT.interior(mesh)
 #Ωref = GT.reference_domain(Ω)
 #D = GT.num_dims(mesh)
 #ϕ = GT.physical_map(mesh,D)
 #
-#Γdiri = GT.boundary(mesh;physical_names=["boundary_faces"])
+#Γdiri = GT.boundary(mesh;group_names=["boundary_faces"])
 #
 ##V = GT.iso_parametric_space(Ωref;dirichlet_boundary=Γdiri)
 #
@@ -649,9 +649,9 @@ PS.matrix(p) |> display
 #domain = (0,1,0,1)
 #cells = (20,20)
 #mesh = GT.cartesian_mesh(domain,cells)
-#GT.label_boundary_faces!(mesh;physical_name="boundary_faces")
+#GT.group_boundary_faces!(mesh;group_name="boundary_faces")
 #Ω = GT.interior(mesh)
-#Γ = GT.boundary(mesh;physical_names=["boundary_faces"])
+#Γ = GT.boundary(mesh;group_names=["boundary_faces"])
 #g = x -> t -> exp(-2*t)*sinpi(t*x[1])*(x[2]^2-1)
 #g0(t) = GT.analytical_field(x->g(x)(t),Ω)
 #g1(t) = GT.analytical_field(x->ForwardDiff.derivative(g(x),t),Ω)

@@ -1,5 +1,3 @@
-# Lectures
-
-## Contents
+# Tutorials
 
 - [Introduction to the FEM](@ref)

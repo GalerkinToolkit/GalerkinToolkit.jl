@@ -3,7 +3,7 @@ module GalerkinToolkitWriteVTKExt
 using GalerkinToolkit
 import GalerkinToolkit: plot, plot!, translate_vtk_data, translate_vtk_data!, vtk_close_impl, vtk_close_impl!
 import GalerkinToolkit: vtk_points, vtk_points!, vtk_cells, vtk_cells!, vtk_args, vtk_args!
-import GalerkinToolkit: vtk_physical_faces, vtk_physical_faces! #, vtk_physical_nodes, vtk_physical_nodes!
+import GalerkinToolkit: vtk_group_faces, vtk_group_faces! #, vtk_physical_nodes, vtk_physical_nodes!
 import GalerkinToolkit: vtk_mesh_cell, vtk_mesh_cell!
 using PartitionedArrays
 using StaticArrays
@@ -237,7 +237,7 @@ end
 
 """
 """
-function vtk_physical_faces!(vtk,mesh,d;physical_faces=GalerkinToolkit.physical_faces(mesh,d))
+function vtk_group_faces!(vtk,mesh,d;physical_faces=GalerkinToolkit.physical_faces(mesh,d))
     ndfaces = GalerkinToolkit.num_faces(mesh,d)
     for group in physical_faces
         name,faces = group
@@ -248,7 +248,7 @@ function vtk_physical_faces!(vtk,mesh,d;physical_faces=GalerkinToolkit.physical_
     vtk
 end
 
-function vtk_physical_faces!(vtk,mesh;physical_faces=GalerkinToolkit.physical_faces(mesh))
+function vtk_group_faces!(vtk,mesh;physical_faces=GalerkinToolkit.physical_faces(mesh))
     nfaces = sum(GalerkinToolkit.num_faces(mesh))
     offsets = GalerkinToolkit.face_offset(mesh)
     D = GalerkinToolkit.num_dims(mesh)
