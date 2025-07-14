@@ -23,6 +23,7 @@ using Test
     @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
     #@testset "NewIR" begin include("new_ir_tests.jl") end
+    @testset "Issue 224" begin include("issue_224.jl") end
 end
 
 end # module

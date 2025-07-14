@@ -780,19 +780,22 @@ function plot(domain::AbstractDomain;kwargs...)
     vmesh,glue = vismesh
     cache = (;glue,domain)
     fd = face_data(vmesh)
+    dface_to_parent = glue.parent_face
     if d == 2 && num_ambient_dims(mesh) == 3
         #If we emit faces, then we need to provie the normals for shading
         Γ = domain
         dΓ = GT.measure(Γ,0)
-        dface_point_n = GT.unit_normal_accessor(dΓ)
-        Tn = typeof(GT.prototype(dface_point_n))
-        ndfaces = GT.num_faces(Γ)
+        parent_point_n = GT.unit_normal_accessor(dΓ)
+        Tn = typeof(GT.prototype(parent_point_n))
+        ndfaces = length(dface_to_parent)
         dface_to_n = zeros(Tn,ndfaces)
         for dface in 1:ndfaces
-            dface_to_n[dface] = dface_point_n(dface,1)(1)
+            parent = dface_to_parent[dface]
+            dface_to_n[dface] = parent_point_n(parent,1)(1)
         end
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
+    fd[d+1]["__PARENT__"] = dface_to_parent
     Plot(vmesh,fd,node_data,cache)
 end
 
