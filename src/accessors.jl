@@ -963,29 +963,29 @@ function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
 end
 
 
-# function face_diameter(domain::AbstractDomain)
-#     d = num_dims(domain)
-#     dinv = 1/d
-#     measure = GT.measure(domain,1)
-#     face_point_w = weight_accessor(measure)
-#     face_npoints = num_points_accessor(measure)
-#     z = zero(prototype(face_point_w))
-#     nfaces = num_faces(domain)
-#     diams = fill(z,nfaces)
-#     for face in 1:nfaces
-#         point_w = face_point_w(face)
-#         npoints = face_npoints(face)
-#         s = z
-#         for point in 1:npoints
-#             w = point_w(point)
-#             s += w
-#         end
-#         diams[face] =  s^dinv
-#     end
-#     diams
-# end
-
 function face_diameter(domain::AbstractDomain)
+    d = num_dims(domain)
+    dinv = 1/d
+    measure = GT.measure(domain,1)
+    face_point_w = weight_accessor(measure)
+    face_npoints = num_points_accessor(measure)
+    z = zero(prototype(face_point_w))
+    nfaces = num_faces(domain)
+    diams = fill(z,nfaces)
+    for face in 1:nfaces
+        point_w = face_point_w(face)
+        npoints = face_npoints(face)
+        s = z
+        for point in 1:npoints
+            w = point_w(point)
+            s += w
+        end
+        diams[face] =  s^dinv
+    end
+    diams
+end
+
+function face_diameter_strict(domain::AbstractDomain)
     d = num_dims(domain)
     measure = GT.measure(domain,1)
     mesh = GT.mesh(measure)

@@ -437,6 +437,11 @@ function face_diameter_field(Ω::AbstractDomain)
     face_constant_field(dims,Ω)
 end
 
+function face_diameter_strict_field(Ω::AbstractDomain)
+    dims = GT.face_diameter_strict(Ω)
+    face_constant_field(dims,Ω)
+end
+
 function interpolate!(f,u::SemiDiscreteField;free_or_diri=FREE_AND_DIRICHLET)
     interpolate!(f,u.discrete_field;free_or_dirichlet)
 end
