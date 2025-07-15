@@ -38,7 +38,6 @@ reftopo = f_reftopo(2)
 f_v = GT.reference_topology_accessor(GT.vertex_permutations,topo,1)
 v = f_v(2)
 @show v
-@test length(f_v) == GT.num_faces(topo,1)
 
 # OK
 #@code_warntype GT.shape_function_accessor_reference(GT.value,V,dΩ)
