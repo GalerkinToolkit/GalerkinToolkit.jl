@@ -1,5 +1,6 @@
 module AccessorsTests
 
+using Test
 import GalerkinToolkit as GT
 using ForwardDiff
 #using InteractiveUtils
@@ -19,6 +20,24 @@ V = GT.lagrange_space(Ω,k)
 dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
+
+f_l_x = GT.node_coordinate_accessor(mesh,2)
+@show f_l_x(2)(1)
+
+f_refspace = GT.reference_space_accessor(mesh,2)
+refspace = f_refspace(2)
+@show refspace
+f_nrefnodes = GT.reference_space_accessor(GT.num_nodes,mesh,2)
+nrefnodes = f_nrefnodes(2)
+@show nrefnodes
+
+topo = GT.topology(mesh)
+f_reftopo = GT.reference_topology_accessor(topo,2)
+reftopo = f_reftopo(2)
+@show reftopo
+f_v = GT.reference_topology_accessor(GT.vertex_permutations,topo,1)
+v = f_v(2)
+@show v
 
 # OK
 #@code_warntype GT.shape_function_accessor_reference(GT.value,V,dΩ)
