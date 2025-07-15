@@ -138,8 +138,41 @@ GT.makie_edges!(mesh;dim=1,shrink)
 GT.makie_vertices!(mesh;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_2.png"),Makie.current_figure()) # hide
 nothing # hide
-
+#
 # ![](fig_meshes_2.png)
+#
+# ## Creating a chain
+#
+# Using function [`create_mesh`](@ref) might be tedious if all faces are of the same dimension. In this case, we can use the simpler constructor [`create_chain`](@ref). It works like 
+# [`create_mesh`](@ref), but we pass data only for one face dimension. The resulting object
+# is still a mesh object whose type is a subtype of [`AbstractMesh`](@ref).
+#
+# ```@docs; canonical=false
+# create_chain
+# ```
+# ### Example
+#
+# We create the mesh of the first example, but using [`create_chain`](@ref).
+#
+#Face nodes
+face_nodes = [[1,2,3],[2,3,4],[2,4,5]]
+
+#Reference spaces
+reference_spaces = (triangle3,)
+
+#Create mesh
+chain = GT.create_chain(;
+    node_coordinates,
+    face_nodes,
+    reference_spaces)
+
+#Visualize
+GT.makie_surfaces(chain;axis,shading)
+GT.makie_edges!(chain;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_1a.png"),Makie.current_figure()) # hide
+nothing # hide
+
+# ![](fig_meshes_1a.png)
 #
 # ## Accessing mesh data
 #
@@ -221,7 +254,7 @@ y = StaticArrays.SVector(0.5,)
 
 # ### Accessors
 #
-# Geting information from a mesh be tedious for the many array indirection present. To fix this, we can create *accessor* objects that hide all these indirections.
+# Geting information from a mesh might be tedious for the many array indirection present. To fix this, we can create *accessor* objects that hide all these indirections.
 # These are created with functions
 # [`reference_space_accessor`](@ref) and [`node_coordinate_accessor`](@ref).
 #
@@ -232,7 +265,7 @@ y = StaticArrays.SVector(0.5,)
 #
 # ### Example
 #
-# We rewrite the previous example using an accessor objects.
+# We rewrite the previous example using accessor objects.
 
 
 #Accessors
@@ -362,7 +395,7 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 #
 # ### Accessors
 #
-# We can conveniently access quantities in the reference topologies using accessor objects created with function [`reference_topology_accessor`](@ref)
+# We can conveniently access quantities in the reference topologies using accessor objects created with function [`reference_topology_accessor`](@ref).
 #
 # ```@docs; canonical=false
 # reference_topology_accessor
@@ -524,4 +557,101 @@ FileIO.save(joinpath(@__DIR__,"fig_meshes_7.png"),Makie.current_figure()) # hide
 nothing # hide
 
 # ![](fig_meshes_7.png)
+#
+#
+# ## Cartesian meshes
+#
+# GalerkinToolkit comes with a built-in Cartesian mesh generator implemented in function [`cartesian_mesh`](@ref).
+#
+# ```@docs
+# cartesian_mesh
+# ```
+#
+# ### Example
+#
+# Generate a 3D Cartesian mesh  of the box $(0,1)\times(-1,1)\times(3,4)$ with
+# 10, 20 , and 10 cells in each axis.
 
+#Create mesh
+domain = (0,1,-1,1,3,4)
+cells = (10,20,10)
+mesh = GT.cartesian_mesh(domain,cells)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis=(;aspect=:data))
+GT.makie_edges!(mesh;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_8.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_8.png)
+#
+# ### Example
+#
+# Create a mesh with the same geometry as before, but using simplex cells instead. We also manually add a face group named `"foo"` containing all volumes to the left of the plain $y=0$. To build this group, we check if the cell mid point is on the left of the plain. This example also shows how to use accessors to compute
+# the midpoint of each volume in the mesh.
+
+#Create mesh
+domain = (0,1,-1,1,3,4)
+cells = (10,20,10)
+mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
+
+#Find faces in new group
+d = 3
+g = GT.num_nodes
+face_nlnodes = GT.reference_space_accessor(g,mesh,d)
+face_lnode_x = GT.node_coordinate_accessor(mesh,d)
+nfaces = GT.num_faces(mesh,d)
+new_group_faces = findall(1:nfaces) do face
+    nlnodes = face_nlnodes(face)
+    lnode_x = face_lnode_x(face)
+    xm = sum(lnode_x,1:nlnodes) / nlnodes
+    xm[2] < 0
+end
+
+#Add new group to mesh
+GT.group_faces(mesh,d)["foo"] = new_group_faces
+
+#Visualize
+color = GT.FaceColor("foo")
+GT.makie_surfaces(mesh;color,colormap,axis=(;aspect=:data))
+GT.makie_edges!(mesh;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_9.png"),Makie.current_figure()) # hide
+nothing # hide
+
+# ![](fig_meshes_9.png)
+#
+# ### Example
+#
+# Create a coarse cartesian mesh of the unit square with 4 and 4 cells in each axis. Visualize faces in all dimensions, shrinking them to avoid overlaps.
+#
+
+#Generate mesh
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis,shading,shrink)
+GT.makie_edges!(mesh;dim=1,shrink)
+GT.makie_vertices!(mesh;dim=0)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_10.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_10.png)
+#
+# Now, the same as before, but only generate low-dimensional faces on the boundary.
+
+
+#Generate mesh
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells;complexify=false)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis,shading,shrink)
+GT.makie_edges!(mesh;dim=1,shrink)
+GT.makie_vertices!(mesh;dim=0)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_11.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_11.png)

@@ -538,7 +538,7 @@ function create_mesh(;kwargs...)
     mesh(;kwargs...)
 end
 
-function default_face_reference_id(face_nodes,reference_spaces)
+function default_face_reference_id(face_nodes)
     D = length(face_nodes)-1
     [ fill(Int8(1),length(face_nodes[i+1]))   for i in 0:D ] 
 end
@@ -546,7 +546,7 @@ end
 function mesh(;
         node_coordinates,
         face_nodes,
-        face_reference_id = default_face_reference_id(face_nodes,reference_spaces),
+        face_reference_id = default_face_reference_id(face_nodes),
         reference_spaces,
         periodic_nodes = default_periodic_nodes(reference_spaces),
         group_faces = default_group_faces(reference_spaces),
@@ -663,11 +663,34 @@ struct Chain{A} <: AbstractMesh
 end
 
 """
+    create_chain(;kwargs...)
+
+Build an arbitrary mesh object, containing all faces of the same dimension. This function
+is similar to [`create_mesh`](@ref) but it only receives face arrays of one dimension.
+
+See also [`create_mesh`](@ref).
+
+# Level
+
+Intermediate
+
+# Keyword arguments
+
+- `node_coordinates`: Like for [`create_mesh`](@ref).
+- `face_nodes`: A nested vector containing the node ids for each face in the mesh. `node_coordinates[n]` with `n=face_nodes[i][k]` is the global node coordinate vector for *local* node number `k` in face `i`. 
+- `reference_spaces`: A tuple containing the reference spaces for faces. `reference_spaces[i]` is the reference space number `i`.
+- `face_reference_id` [optional]: A vector containing which reference space is assigned to each face. `reference_sapces[r]` with `r=face_reference_id[i]` is the reference space associated with face number `i`. By default, all faces are assigned to the first reference space in its dimension.
+- `group_faces` [optional]: A Dictionary containing labeled groups of faces. `group_faces[group_name]` is a vector of integers containing the ids  of the faces in the group named `group_name`. These groups might overlap. By default, no faces groups are created.
+- `normals=nothing` [optinal]: Like for [`create_mesh`](@ref).
 """
+function create_chain(;kwargs...)
+    mesh(chain(;kwargs...))
+end
+
 function chain(;
         node_coordinates,
         face_nodes,
-        face_reference_id,
+        face_reference_id = default_face_reference_id([face_nodes])[1],
         reference_spaces,
         periodic_nodes = default_periodic_nodes((reference_spaces,)),
         group_faces = default_group_faces((reference_spaces,))[end],
