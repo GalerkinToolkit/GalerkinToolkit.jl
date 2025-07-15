@@ -21,6 +21,9 @@ dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
 
+f_l_x = GT.node_coordinate_accessor(mesh,2)
+@show f_l_x(2)(1)
+
 f_refspace = GT.reference_space_accessor(mesh,2)
 refspace = f_refspace(2)
 @show refspace

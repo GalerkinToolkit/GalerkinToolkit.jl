@@ -26,6 +26,18 @@ end
 #end
 
 """
+    reference_space_accessor(g,mesh,d)
+
+Return an accessor object `face_g` giving access to a quantity
+in the reference space of dimension `d` in the mesh object `mesh`.
+Calling `face_g(face)` on a face id `face` is equivalent to calling
+`g(ref_space)` with `ref_space = GT.reference_spaces(mesh,d)[r]` and
+`r=GT.face_reference_id(mesh,d)[d]`.
+
+# Level
+
+Intermediate
+
 """
 function reference_space_accessor end
 
@@ -47,6 +59,18 @@ function reference_space_accessor(f,mesh,d)
 end
 
 """
+    reference_topology_accessor(g,topo,d)
+
+Return an accessor object `face_g` giving access to a quantity
+in the reference topology of dimension `d` in the object `topo`.
+Calling `face_g(face)` on a face id `face` is equivalent to calling
+`g(ref_topo)` with `ref_topo = GT.reference_topologies(topo,d)[r]` and
+`r=GT.face_reference_id(topo,d)[d]`.
+
+# Level
+
+Intermediate
+
 """
 function reference_topology_accessor end
 
@@ -397,6 +421,34 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
     end
     nfaces = length(face_to_nodes)
     accessor(face_point_phi,prototype,nfaces)
+end
+
+"""
+    node_coordinate_accessor(mesh,d)
+
+Return an accessor object `face_lnode_x` that gives access to the coordinate vector
+`x` of the local node `lnode` of face `f` in dimension `d` in the object `mesh` as 
+`x = face_lnode_x(face)(lnode)`.
+
+See also [`reference_space_accessor`](@ref).
+
+# Level
+
+Intermediate
+"""
+function node_coordinate_accessor(mesh::AbstractMesh,d)
+    node_x = GT.node_coordinates(mesh)
+    face_nodes = GT.face_nodes(mesh,d)
+    function face_lnode_x(face,face_around)
+        nodes = face_nodes[face]
+        function lnode_x(lnode)
+            node = nodes[lnode]
+            x = node_x[node]
+        end
+    end
+    prototype = zero(eltype(node_x))
+    nfaces = length(face_nodes)
+    accessor(face_lnode_x,prototype,nfaces)
 end
 
 function coordinate_accessor(measure::AbstractQuadrature)
