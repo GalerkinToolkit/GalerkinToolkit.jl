@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752605706148,
+  "lastUpdate": 1752744795986,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2024,6 +2024,36 @@ window.BENCHMARK_DATA = {
             "value": 714313424,
             "unit": "ns",
             "extra": "gctime=26766614\nmemory=434618144\nallocs=14376073\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ccf0b4b1c7027dd5b97889d0ad8c167b6e54f4b9",
+          "message": "Merge pull request #228 from GalerkinToolkit/katikov-patch-1",
+          "timestamp": "2025-07-17T11:29:29+02:00",
+          "tree_id": "61f683033a35f721d105de699fbe7b73d11a8747",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/ccf0b4b1c7027dd5b97889d0ad8c167b6e54f4b9"
+        },
+        "date": 1752744795598,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 710994141.5,
+            "unit": "ns",
+            "extra": "gctime=27850370.5\nmemory=434618144\nallocs=14376073\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
