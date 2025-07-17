@@ -387,15 +387,15 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 #
 # If a mesh is a cell complex, each face in the boundary of a face is also explicitly contained in the mesh. However, the incidence relations of these two faces are the same but might be stored in different order.
 #
-# Let us consider a topology  object `topo` and two integers `d<D`. We get the incident relations `D_d = GT.face_incidence(topo,D,d)`, `d_0 = GT.face_incidence(topo,d,0)` and `D_0 = GT.face_incidence(topo,D,0)`. Consider face number `v` in dimension `D`. The `d`-faces on its boundary are given in vector `D_d[v]`. Consider the integer in `l` position in this list, namely `s=D_d[v][l]`. `s` is the id of a face of dimension `d`. The 0-faces on the boundary of `v` are  in `D_0[v]` and on the boundary of `s` are in `d_0[s]`.  Now, consider the reference topology of face `v`, namely `ref_topo_v`. We get this incidence relation from the reference topology: `ref_d_0 = GT.face_incidence(ref_topo_v,d,0)`. This gives us an alternative way of obtaining the 0-faces of `s`, namely `D_0[ref_d_0[l]]`. That is, we can take the id `s` and compute directly `d_0[s]`, or we can go to the neighbor face `v` and compute `D_0[ref_d_0[l]]` using the local id `l` corresponding to `s` in `v`. The vectors `d_0[s]` and  `D_0[ref_d_0[l]]` contain the same vertex ids, but not in the same order!
+# Let us consider a topology  object `topo` and two integers `d<D`. We get the incident relations `D_d = GT.face_incidence(topo,D,d)`, `d_0 = GT.face_incidence(topo,d,0)` and `D_0 = GT.face_incidence(topo,D,0)`. Consider face number `v` in dimension `D`. The `d`-faces on its boundary are given in vector `D_d[v]`. Consider the integer in `l` position in this list, namely `s=D_d[v][l]`. `s` is the id of a face of dimension `d`. The 0-faces on the boundary of `v` are  in `D_0[v]` and on the boundary of `s` are in `d_0[s]`.  Now, consider the reference topology of face `v`, namely `ref_topo_v`. We get this incidence relation from the reference topology: `ref_d_0 = GT.face_incidence(ref_topo_v,d,0)`. This gives us an alternative way of obtaining the 0-faces of `s`, namely `D_0[v][ref_d_0[l]]`. That is, we can take the id `s` and compute directly `d_0[s]`, or we can go to the neighbor face `v` and compute `D_0[v][ref_d_0[l]]` using the local id `l` corresponding to `s` in `v`. The vectors `d_0[s]` and  `D_0[v][ref_d_0[l]]` contain the same vertex ids, but not in the same order!
 #
-# To fix this issue we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
+# To fix this issue, we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[v][ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
 #
 # This information is needed in many situations, including the generation of high-order interpolation spaces and integration of jump and average terms on interior faces in discontinuous Galerkin methods.
 #
 # ### Accessors
 #
-# We can conveniently access quantities in the reference topologies using accessor objects created with function [`reference_topology_accessor`](@ref).
+# We can conveniently access quantities in the reference topologies using accessor objects created with the function [`reference_topology_accessor`](@ref).
 #
 # ```@docs; canonical=false
 # reference_topology_accessor
@@ -406,7 +406,7 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 # Face groups allow us to select specific faces in a mesh for different modeling purposes: impose boundary conditions, define different equations in different parts of the mesh etc. A face group is a vector of integers containing the ids of the faces in this group plus a string containing a name for this group. This groups are stored using a dictionary that maps strings to vectors (group names to group definitions) in a per dimension basis (one dictionary per dimension). The vector contains faces of the same dimension, but it is possible define groups containing faces of different dimensions by splitting them in a vector per dimension.
 # Face groups can overlap and can be added after the mesh object is created.
 #
-# Face groups are accessed and added using function [`group_faces`](@ref).
+# Face groups are accessed and added using the function [`group_faces`](@ref).
 #
 # ```@docs; canonical=false
 # group_faces
@@ -419,7 +419,7 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 # - [`group_interior_faces!`](@ref)
 # - [`group_faces_in_dim!`](@ref)
 #
-# These function do what the name suggests (see the docstrings for further details). The first one is often use to impose boundary
+# These functions do what the name suggests (see the docstrings for further details). The first one is often used to impose boundary
 # conditions and the second one in discontinuous Galerkin methods to define interior penalty terms. They are often called under the hood when calling functions like [`boundary`](@ref) and [`skeleton`](@ref).
 #
 #
