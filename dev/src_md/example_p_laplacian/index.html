@@ -87,18 +87,18 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	1.16354446e+01      	Inf
-1       	2.96624220e+00      	1.70189442e+01
-2       	7.38041738e-01      	7.99743177e+00
-3       	2.06762702e-01      	3.14177322e+00
-4       	6.72683243e-02      	9.96554885e-01
-5       	1.00481290e-02      	2.71629256e-01
-6       	9.59050121e-04      	6.17446388e-02
-7       	1.15483116e-04      	1.01994148e-02
-8       	5.29589986e-06      	1.59711397e-03
-9       	1.44133079e-08      	1.02144785e-04
-10      	9.92263997e-14      	2.68923180e-07
-Final   	9.92263997e-14
+0       	1.97768122e+01      	0.00000000e+00
+1       	5.00223044e+00      	1.67188916e+01
+2       	1.29751184e+00      	8.04485362e+00
+3       	3.24919060e-01      	3.31934614e+00
+4       	7.53567061e-02      	1.01375310e+00
+5       	2.04238678e-02      	2.38728982e-01
+6       	2.08043078e-03      	5.01697041e-02
+7       	3.39474682e-04      	1.00303181e-02
+8       	7.83196562e-06      	2.77379934e-03
+9       	5.63409734e-09      	1.15272364e-04
+10      	1.50909897e-14      	1.39448590e-07
+Final   	1.50909897e-14
 ----------------------</code></pre><h2 id="Building-the-algebraic-non-linear-problem-explicitly"><a class="docs-heading-anchor" href="#Building-the-algebraic-non-linear-problem-explicitly">Building the algebraic non-linear problem explicitly</a><a id="Building-the-algebraic-non-linear-problem-explicitly-1"></a><a class="docs-heading-anchor-permalink" href="#Building-the-algebraic-non-linear-problem-explicitly" title="Permalink"></a></h2><p>In this other version, we explicitly build the algebraic residual and Jacobian (functions that take plain Julia vectors) and build a algebraic non-linear problem from them.</p><pre><code class="language-julia hljs">import SciMLBase
 
 #Initial guess
@@ -162,16 +162,17 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	2.08511799e+01      	NaN
-1       	5.26307262e+00      	1.67724290e+01
-2       	1.34525601e+00      	7.88078738e+00
-3       	2.74364321e-01      	3.13596993e+00
-4       	4.17189238e-02      	9.52439328e-01
-5       	9.42800907e-03      	2.72136225e-01
-6       	8.23143913e-04      	6.24153978e-02
-7       	1.42281614e-05      	9.08146803e-03
-8       	9.61431562e-08      	4.82440950e-04
-9       	7.67231428e-12      	2.54509652e-06
-10      	4.09394740e-16      	1.77921122e-10
-Final   	4.09394740e-16
-----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_stokes/">Stokes lid-driven cavity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Tuesday 15 July 2025 19:19">Tuesday 15 July 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+0       	2.26891925e+01      	NaN
+1       	5.67235381e+00      	1.71112158e+01
+2       	1.41816367e+00      	8.04214226e+00
+3       	3.54702290e-01      	3.29791560e+00
+4       	8.95907587e-02      	9.41262441e-01
+5       	2.46561720e-02      	2.44997397e-01
+6       	4.24728187e-03      	6.45895924e-02
+7       	4.41240133e-04      	1.56279773e-02
+8       	2.28567540e-05      	3.76521775e-03
+9       	6.13442831e-08      	2.08353083e-04
+10      	6.02879224e-13      	6.08389775e-07
+11      	3.64291930e-16      	9.82417365e-12
+Final   	3.64291930e-16
+----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_stokes/">Stokes lid-driven cavity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 17 July 2025 09:58">Thursday 17 July 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
