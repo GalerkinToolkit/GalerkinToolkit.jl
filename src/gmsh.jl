@@ -280,6 +280,7 @@ function reference_face_from_gmsh_eltype(eltype)
         lib_to_gmsh = :default# [1,2,3,4]
     elseif eltype == 5
         order = 1
+        geom = unit_n_cube(Val(3))
         lib_to_gmsh = [1,2,4,3,5,6,8,7]
     elseif eltype == 15
         order = 1
