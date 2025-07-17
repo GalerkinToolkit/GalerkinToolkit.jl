@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752744795986,
+  "lastUpdate": 1752762299740,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2054,6 +2054,36 @@ window.BENCHMARK_DATA = {
             "value": 710994141.5,
             "unit": "ns",
             "extra": "gctime=27850370.5\nmemory=434618144\nallocs=14376073\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8e1ee8acdd0c848debdb5cfb475ee2febf4cff88",
+          "message": "Merge pull request #229 from GalerkinToolkit/gmsh-fix\n\nfix gmsh.jl eltype isa cube and add tests",
+          "timestamp": "2025-07-17T16:20:57+02:00",
+          "tree_id": "e2b2d5445f7e72a3b1e59d37d9e45f601d389279",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/8e1ee8acdd0c848debdb5cfb475ee2febf4cff88"
+        },
+        "date": 1752762298787,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 722965972,
+            "unit": "ns",
+            "extra": "gctime=30190441\nmemory=434618160\nallocs=14376074\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
