@@ -498,21 +498,48 @@ end
 
 const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 
+#function face_data(mesh::AbstractMesh,d)
+#    ndfaces = num_faces(mesh,d)
+#    dict = Dict{String,Any}()
+#    for group in group_faces(mesh,d)
+#        name,faces = group
+#        face_mask = zeros(Int32,ndfaces)
+#        face_mask[faces] .= 1
+#        dict[name] = face_mask
+#    end
+#    #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
+#    faceids = face_local_indices(mesh,d)
+#    part = part_id(faceids)
+#    dict["__OWNER__"] = local_to_owner(faceids)
+#    dict["__IS_LOCAL__"] = Int32.(local_to_owner(faceids) .== part)
+#    dict["__PART__"] = fill(part,ndfaces)
+#    dict
+#end
+
 function face_data(mesh::AbstractMesh,d)
-    ndfaces = num_faces(mesh,d)
     dict = Dict{String,Any}()
     for group in group_faces(mesh,d)
         name,faces = group
-        face_mask = zeros(Int32,ndfaces)
-        face_mask[faces] .= 1
+        face_mask = similar(face_reference_id(mesh,d))
+        face_mask .= 0
+        #if isa(face_mask,PVector)
+        for_each_part(face_mask,faces,axes(face_mask,1)) do lface_mask, lf_face, lface_face
+            face_lface = global_to_local(lface_face)
+            for face in lf_face
+                lface = face_lface[face]
+                lface_mask[lface] = 1
+            end
+        end
+        #else
+        #    face_mask[faces] .= 1
+        #end
         dict[name] = face_mask
     end
-    #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
-    faceids = face_local_indices(mesh,d)
-    part = part_id(faceids)
-    dict["__OWNER__"] = local_to_owner(faceids)
-    dict["__IS_LOCAL__"] = Int32.(local_to_owner(faceids) .== part)
-    dict["__PART__"] = fill(part,ndfaces)
+    face_owner = similar(face_reference_id(mesh,d),Int32)
+    for_each_part(face_owner,axes(face_owner,1)) do lface_o, ids
+        lface_o .= local_to_owner(ids)
+    end
+    dict["__OWNER__"] = face_owner
     dict
 end
 
@@ -965,6 +992,21 @@ function reference_coordinates(plt::Plot)
     #end
 end
 
+function PartitionedArrays.centralize(plt::Plot)
+    fd = map(plt.face_data) do dict
+        fd_d = Dict{String,Any}()
+        for (group,data) in dict
+            fd_d[group] = collect(data)
+        end
+    end
+    nd = Dict{String,Any}()
+    for (group,data) in plt.node_data
+        nd[group] = collect(data)
+    end
+    mesh = centralize(plt.mesh)
+    Plot(mesh,fd,nd)
+end
+
 function reference_coordinates(plt::PPlot)
     q = map(GT.reference_coordinates,partition(plt))
     term = map(GT.term,q)
@@ -1021,7 +1063,7 @@ function PartitionedArrays.centralize(plt::PPlot)
     end
     plt = Plot(mesh,fd,nd)
     newfaces = map(fd) do f
-        mask = f["__OWNER__"] .== f["__PART__"]
+        mask = f["__OWNER__"] .== f["__OWNER__"] # TODO Hack, but this code will be removed anyway.
         findall(mask)
     end
     newnodes = 1:num_nodes(mesh)

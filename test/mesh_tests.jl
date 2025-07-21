@@ -71,4 +71,17 @@ mesh = GT.mesh(chain)
 
 chain2 = GT.chain(mesh)
 
+domain = (0,2,0,2)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+parts = LinearIndices((4,))
+pmesh = GT.partitioned(mesh,parts)
+@test isa(pmesh,GT.AbstractMesh)
+
+display(pmesh)
+display(GT.node_coordinates(pmesh))
+display(GT.face_nodes(pmesh,2))
+display(GT.face_reference_id(pmesh,2))
+display(GT.group_faces(pmesh,1)["1-face-1"])
+
 end # module

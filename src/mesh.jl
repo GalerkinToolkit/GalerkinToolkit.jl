@@ -841,8 +841,143 @@ function face_dofs(space::MeshSpace)
     face_dofs(space.mesh,D)
 end
 
+function partitioned(mesh::AbstractMesh,parts;color=nothing)
+    if color !== nothing
+        node_part = color
+    else
+        node_part = default_node_color(mesh,parts)
+    end
+    node_partition = partition_from_color(parts,node_part)
+    node_coordinates_seq = GT.node_coordinates(mesh)
+    node_coordinates = partitioned(node_coordinates_seq,parts;partition=node_partition)
+    face_part = map(GT.face_nodes(mesh)) do dface_nodes_seq
+        map(dface_nodes_seq) do nodes
+            maximum(node->node_part[node],nodes)
+        end
+    end
+    face_nodes = map(GT.face_nodes(mesh),face_part) do dface_nodes_seq, dface_part
+        partitioned(dface_nodes_seq,parts;color=dface_part)
+    end
+    face_reference_id = map(GT.face_reference_id(mesh),face_nodes) do dface_rid_seq,dface_nodes
+        dface_partition = partition(axes(dface_nodes,1))
+        partitioned(dface_rid_seq,parts;partition=dface_partition)
+    end
+    group_faces = map(GT.group_faces(mesh),face_part) do group_dfaces, dface_part
+        map(collect(keys(group_dfaces))) do group
+            f_dface_seq = group_dfaces[group]
+            f_part = dface_part[f_dface_seq]
+            group => partitioned(f_dface_seq,parts;color=f_part)
+        end |> Dict
+    end
+    reference_spaces = GT.reference_spaces(mesh)
+    is_cell_complex = GT.is_cell_complex(mesh)
+    create_mesh(;node_coordinates,face_nodes,face_reference_id,reference_spaces,group_faces,is_cell_complex)
+end
 
+# TODO move to PAs
+function partitioned(x::AbstractArray,parts;color=nothing,partition=nothing)
+    if partition !== nothing
+        row_partition = partition
+    else
+        if color !== nothing
+            row_partition = partition_from_color(parts,color)
+        else
+            np = length(parts)
+            n = length(x)
+            row_partition = uniform_partition(parts,np,n)
+        end
+    end
+    pvector(row_partition) do ids
+        convert(typeof(x),x[ids])
+    end
+end
 
+# TODO move to PAs
+function for_each_part(f,args...)
+    foreach(f,map(partition,args)...)
+end
+
+# TODO move to PAs
+function PartitionedArrays.partition(x::AbstractVector)
+    [x,]
+end
+
+# TODO move to PAs
+function PartitionedArrays.partition(r::Base.OneTo)
+    n = length(r)
+    np = 1
+    ranks = LinearIndices((np,))
+    uniform_partition(ranks,np,n)
+end
+
+function partitioned_impl(x,parts,row_partition)
+end
+
+function default_node_color(mesh,parts)
+    graph = node_graph(mesh)
+    np = length(parts)
+    Metis.partition(graph,np)
+end
+
+function node_graph(mesh)
+    d_to_cell_to_nodes = GT.face_nodes(mesh)
+    nnodes = GT.num_nodes(mesh)
+    node_graph_impl(nnodes,d_to_cell_to_nodes)
+end
+
+function node_graph(mesh,d)
+    d_to_cell_to_nodes = [GT.face_nodes(mesh,d)]
+    nnodes = GT.num_nodes(mesh)
+    node_graph_impl(nnodes,d_to_cell_to_nodes)
+end
+
+function node_graph_impl(nnodes,d_to_cell_to_nodes)
+    ndata = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            ndata += nlnodes*nlnodes
+        end
+    end
+    I = zeros(Int32,ndata)
+    J = zeros(Int32,ndata)
+    p = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            for j in 1:nlnodes
+                for i in 1:nlnodes
+                    p += 1
+                    I[p] = nodes[i]
+                    J[p] = nodes[j]
+                end
+            end
+        end
+    end
+    V = ones(Int8,ndata)
+    g = sparse(I,J,V,nnodes,nnodes)
+    fill!(g.nzval,Int8(1))
+    g
+end
+
+function PartitionedArrays.centralize(mesh::AbstractMesh)
+    node_coordinates = collect(GT.node_coordinates(mesh))
+    face_nodes = map(collect,GT.face_nodes(mesh))
+    face_reference_id = map(collect,GT.face_reference_id(mesh))
+    reference_spaces = GT.reference_spaces(mesh)
+    group_faces = map(GT.group_faces(mesh)) do group_dfaces
+        map(collect(keys(group_dfaces))) do group
+            f_dface = group_dfaces[group]
+            group => collect(f_dface)
+        end |> Dict
+    end
+    is_cell_complex = GT.is_cell_complex(mesh)
+    create_mesh(;node_coordinates,face_nodes,face_reference_id,reference_spaces,group_faces,is_cell_complex)
+end
 
 
 

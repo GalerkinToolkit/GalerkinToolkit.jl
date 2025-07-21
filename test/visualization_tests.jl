@@ -8,6 +8,20 @@ using PartitionedArrays
 using StaticArrays
 using LinearAlgebra
 
+
+# mesh to plt
+
+domain = (0,2,0,2)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+parts = DebugArray(LinearIndices((4,)))
+pmesh = GT.partitioned(mesh,parts)
+
+plt = GT.plot(mesh)
+pplt = GT.plot(pmesh)
+plt = GT.centralize(pplt)
+
+
 # VTK
 
 domain = (0,1,0,1,0,1)
