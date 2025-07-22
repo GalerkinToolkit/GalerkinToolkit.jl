@@ -83,6 +83,35 @@ function WriteVTK.vtk_grid(filename,pplt::GalerkinToolkit.PPlot;kwargs...)
     GalerkinToolkit.VTKPlot(plts,vtks)
 end
 
+function WriteVTK.pvtk_grid(filename::AbstractString,pplt::GalerkinToolkit.Plot;kwargs...)
+    plts = GalerkinToolkit.subdomains(pplt)
+    parts = linear_indices(plts)
+    nparts = length(parts)
+    vtks  = map(plts,parts) do plt,part
+        mesh = plt.mesh
+        vtk = pvtk_grid(filename,GalerkinToolkit.vtk_args(mesh)...;part,nparts,kwargs...)
+        for (k,v) in GalerkinToolkit.node_data(plt)
+            vtk[k,WriteVTK.VTKPointData()] = translate_vtk_data(v)
+        end
+        for (k,v) in GalerkinToolkit.face_data(plt;merge_dims=true)
+            vtk[k,WriteVTK.VTKCellData()] = translate_vtk_data(v)
+        end
+        vtk
+    end
+    GalerkinToolkit.PVTKPlot(vtks)
+end
+
+function WriteVTK.pvtk_grid(f::Function,filename,plt::GalerkinToolkit.Plot;kwargs...)
+    vtk = pvtk_grid(filename,plt)
+    files = nothing
+    try
+        f(vtk)
+    finally
+        files = close(vtk)
+    end
+    files
+end
+
 function WriteVTK.close(plt::GalerkinToolkit.VTKPlot)
     vtk_close_impl(plt.plot,plt.vtk)
 end
@@ -93,6 +122,10 @@ end
 
 function vtk_close_impl(plt::GalerkinToolkit.PPlot,vtks)
     map(WriteVTK.close,vtks)
+end
+
+function WriteVTK.close(plt::GalerkinToolkit.PVTKPlot)
+    map(WriteVTK.close,plt.vtks)
 end
 
 function WriteVTK.vtk_grid(filename,mesh::Union{GalerkinToolkit.AbstractMesh,GalerkinToolkit.PMesh};plot_params=(;),vtk_grid_params...)
@@ -115,6 +148,16 @@ function WriteVTK.vtk_grid(f::Function,filename,dom::GalerkinToolkit.AbstractDom
     WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
 
+function WriteVTK.pvtk_grid(filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
+    plt = plot(mesh;plot_params...)
+    WriteVTK.pvtk_grid(filename,plt;vtk_grid_params...)
+end
+
+function WriteVTK.pvtk_grid(f::Function,filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
+    plt = plot(mesh;plot_params...)
+    WriteVTK.pvtk_grid(f,filename,plt;vtk_grid_params...)
+end
+
 function WriteVTK.close(pvd::GalerkinToolkit.PVD)
     WriteVTK.close(pvd.pvd)
 end
@@ -125,6 +168,12 @@ end
 
 function Base.setindex!(a::GalerkinToolkit.PVD,plt::GalerkinToolkit.VTKPlot,time)
     a.pvd[time] = plt.vtk
+end
+
+function Base.setindex!(a::GalerkinToolkit.PVD,plt::GalerkinToolkit.PVTKPlot,time)
+    map_main(plt.vtks) do vtk
+        a.pvd[time] = vtk
+    end
 end
 
 function Base.setindex!(a::GalerkinToolkit.PPVD,plt::GalerkinToolkit.VTKPlot,time)

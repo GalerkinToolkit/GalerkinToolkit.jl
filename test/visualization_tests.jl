@@ -19,6 +19,7 @@ pmesh = GT.partitioned(mesh,parts)
 
 plt = GT.plot(mesh)
 pplt = GT.plot(pmesh)
+plts = GT.subdomains(pplt)
 plt = GT.centralize(pplt)
 
 
@@ -59,6 +60,21 @@ paraview_collection("domain",Ω) do pvd
         pvd[1] = plt
     end
 end
+
+### VTK parallel
+
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+parts = DebugArray(LinearIndices((4,)))
+mesh = GT.partitioned(mesh,parts)
+
+plt = GT.plot(mesh)
+pvtk_grid("mesh",plt) |> close
+xxx
+
+
+xxxx
 
 # Makie
 
@@ -126,7 +142,35 @@ GT.makie_surfaces(triangle;axis)
 GT.makie_edges!(triangle;color=:black)
 counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
 
-# Parallel
+# Parallel 
+
+domain = (0,1,0,1,0,1)
+n = 10
+cells = (n,n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+np = 5
+parts = DebugArray(LinearIndices((np,)))
+mesh = GT.partitioned(mesh,parts)
+
+plt = GT.plot(mesh)
+
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidespines!(ax)
+hidedecorations!(ax)
+GT.makie_surfaces!(plt;color=GT.FaceColor("__OWNER__"))
+GT.makie_edges!(plt;color=:black)
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+
+fig = Figure()
+ax = Axis3(fig[1,1],aspect=:data)
+hidespines!(ax)
+hidedecorations!(ax)
+GT.makie_surfaces!(mesh;color=GT.FaceColor("__OWNER__"))
+counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+
+
+# Parallel (old)
 
 domain = (0,1,0,1,0,1)
 n = 10

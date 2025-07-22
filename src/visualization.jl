@@ -295,6 +295,93 @@ function replace_mesh(plt::Plot,mesh)
     Plot(mesh,plt.face_data,plt.node_data,plt.cache)
 end
 
+function subdomains(plt::Plot)
+    mesh = plt.mesh
+
+    # Create node coordinates with ghost layer
+    nodes = GT.nodes(mesh)
+    p_onode_node = partition(nodes)
+    d_dface_nodes = GT.face_nodes(mesh)
+    d_p_ldface_nodes = map(partition,d_dface_nodes)
+    p_d_ldface_nodes = array_of_tuples(Tuple(d_p_ldface_nodes))
+    p_hnode_node = map(p_onode_node,p_d_ldface_nodes) do onode_node,d_ldface_nodes
+        hnode_node = Set{Int}()
+        node_onode = global_to_owner(onode_node)
+        for ldface_nodes in d_ldface_nodes
+            for nodes in ldface_nodes
+                for node in nodes
+                    onode = node_onode[node]
+                    if onode == 0
+                        add!(hnode_node,node)
+                    end
+                end
+            end
+        end
+        collect(hnode_node)
+    end
+    p_hnode_owner = find_owner(p_onode_node,p_hnode_node)
+    p_lnode_node = map(replace_ghost,p_onode_node,p_hnode_node,p_hnode_owner)
+    node_x = consistent(GT.node_coordinates(mesh),p_lnode_node) |> fetch
+    p_lnode_x = partition(node_x)
+
+    # Reference ids
+    d_p_ldface_rid = map(partition,face_reference_id(mesh))
+    p_d_ldface_rid = array_of_tuples(Tuple(d_p_ldface_rid))
+
+    # Face with local nodes
+    d_p_ldface_lnodes = map(d_dface_nodes) do dface_nodes
+        p_ldface_nodes = partition(dface_nodes)
+        map(p_lnode_node,p_ldface_nodes) do lnode_node, ldface_nodes
+            node_lnode = global_to_local(lnode_node)
+            ja = JaggedArray(ldface_nodes)
+            data = map(ja.data) do node
+                node_lnode[node]
+            end
+            JaggedArray(data,ja.ptrs)
+        end
+    end
+    p_d_ldface_lnodes = array_of_tuples(Tuple(d_p_ldface_lnodes))
+
+    # Reference spaces
+    reference_spaces = GT.reference_spaces(mesh)
+
+    p_lmesh = map(p_lnode_x,p_d_ldface_rid,p_d_ldface_lnodes) do lnode_x,d_ldface_rid,d_ldface_lnodes
+        create_mesh(;
+            node_coordinates = lnode_x,
+            face_nodes = collect(d_ldface_lnodes),
+            face_reference_id = collect(d_ldface_rid),
+            reference_spaces,
+                   )
+    end
+
+    # Create node data
+    i_p_pair = map(collect(pairs(plt.node_data))) do pair
+        k,node_v = pair
+        map(partition(fetch(consistent(node_v,p_lnode_node)))) do lnode_v
+            k => lnode_v
+        end
+    end
+    p_i_pair = array_of_tuples(Tuple(i_p_pair))
+    p_k_lnode_v = map(Dict,p_i_pair)
+
+    # create face data
+    d_p_k_ldface_v = map(plt.face_data) do k_dface_v
+        i_p_pair2 = map(collect(pairs(k_dface_v))) do pair
+            k,dface_v = pair
+            map(partition(dface_v)) do ldface_v
+                k => ldface_v
+            end
+        end
+        p_i_pair2 = array_of_tuples(Tuple(i_p_pair2))
+        p_k_ldface_v = map(Dict,p_i_pair)
+    end
+    p_d_k_ldface_v = array_of_tuples(Tuple(d_p_k_ldface_v))
+
+    # Create local plots
+    map(Plot,p_lmesh,p_k_lnode_v,p_d_k_ldface_v)
+end
+
+
 struct PPlot{A,B} <: AbstractType
     partition::A
     cache::B
@@ -482,10 +569,18 @@ function plot(mesh::AbstractMesh)
         dΓ = GT.measure(Γ,0)
         dface_point_n = GT.unit_normal_accessor(dΓ)
         Tn = typeof(GT.prototype(dface_point_n))
-        ndfaces = GT.num_faces(Γ)
-        dface_to_n = zeros(Tn,ndfaces)
-        for dface in 1:ndfaces
-            dface_to_n[dface] = dface_point_n(dface,1)(1)
+        dfaces = GT.face_ids(Γ)
+        dface_to_n = zeros(Tn,dfaces)
+        if is_partitioned(mesh)
+            at_each_part(dface_to_n,dface_point_n) do ldface_n,ldface_point_n
+                for ldface in 1:length(ldface_n)
+                    ldface_to_n[dface] = ldface_point_n(ldface,1)(1)
+                end
+            end
+        else
+            for dface in dfaces
+                dface_to_n[dface] = dface_point_n(dface,1)(1)
+            end
         end
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
@@ -523,7 +618,7 @@ function face_data(mesh::AbstractMesh,d)
         face_mask = similar(face_reference_id(mesh,d))
         face_mask .= 0
         #if isa(face_mask,PVector)
-        for_each_part(face_mask,faces,axes(face_mask,1)) do lface_mask, lf_face, lface_face
+        at_each_part(face_mask,faces,axes(face_mask,1)) do lface_mask, lf_face, lface_face
             face_lface = global_to_local(lface_face)
             for face in lf_face
                 lface = face_lface[face]
@@ -536,7 +631,7 @@ function face_data(mesh::AbstractMesh,d)
         dict[name] = face_mask
     end
     face_owner = similar(face_reference_id(mesh,d),Int32)
-    for_each_part(face_owner,axes(face_owner,1)) do lface_o, ids
+    at_each_part(face_owner,axes(face_owner,1)) do lface_o, ids
         lface_o .= local_to_owner(ids)
     end
     dict["__OWNER__"] = face_owner
@@ -553,11 +648,16 @@ function node_data(mesh::AbstractMesh)
     #    dict[name] = node_mask
     #end
     #dict["__LOCAL_NODE__"] = collect(1:nnodes)
-    nodeids = node_local_indices(mesh)
-    part = part_id(nodeids)
-    dict["__OWNER__"] = local_to_owner(nodeids)
-    dict["__IS_LOCAL__"] = Int32.(local_to_owner(nodeids) .== part)
-    dict["__PART__"] = fill(part,nnodes)
+    #nodeids = node_local_indices(mesh)
+    #part = part_id(nodeids)
+    #dict["__OWNER__"] = local_to_owner(nodeids)
+    #dict["__IS_LOCAL__"] = Int32.(local_to_owner(nodeids) .== part)
+    #dict["__PART__"] = fill(part,nnodes)
+    node_owner = similar(node_coordinates(mesh),Int32)
+    at_each_part(node_owner,axes(node_owner,1)) do lface_o, ids
+        lface_o .= local_to_owner(ids)
+    end
+    dict["__OWNER__"] = node_owner
     dict
 end
 
@@ -1075,6 +1175,10 @@ end
 struct VTKPlot{A,B} <: AbstractType
     plot::A
     vtk::B
+end
+
+struct PVTKPlot{A} <: AbstractType
+    vtks::A
 end
 
 struct PVD{A} <: AbstractType

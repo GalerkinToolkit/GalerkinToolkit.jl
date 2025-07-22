@@ -53,9 +53,17 @@ function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
     if haskey(groups,group_name)
         return group_name
     end
-    Ti = int_type(options(m))
-    faces = collect(Ti,1:num_faces(m,d))
-    groups[group_name] = faces
+    faces = axes(GT.face_reference_id(m,d),1)
+    if faces isa PRange
+        faces_in_group = pvector(faces) do pface_face
+            Ti = int_type(options(m))
+            collect(Ti,pface_face)
+        end
+    else
+        Ti = int_type(options(m))
+        faces_in_group = collect(Ti,1:num_faces(m,d))
+    end
+    groups[group_name] = faces_in_group
     group_name
 end
 
@@ -892,8 +900,23 @@ function partitioned(x::AbstractArray,parts;color=nothing,partition=nothing)
     end
 end
 
+@inline function is_partitioned(mesh::AbstractMesh)
+    isa(node_coordinates(mesh),PVector)
+end
+
+#TODO eventually rename to faces
+# faces to mesh_faces
+# and inverse_faces to domain_faces
+function face_ids(mesh::AbstractMesh,D)
+    axes(face_reference_id(mesh,D),1)
+end
+
+function nodes(mesh::AbstractMesh)
+    axes(node_coordinates(mesh),1)
+end
+
 # TODO move to PAs
-function for_each_part(f,args...)
+function at_each_part(f,args...)
     foreach(f,map(partition,args)...)
 end
 
@@ -910,7 +933,42 @@ function PartitionedArrays.partition(r::Base.OneTo)
     uniform_partition(ranks,np,n)
 end
 
-function partitioned_impl(x,parts,row_partition)
+# TODO move to PAs
+function pcat(p_o_v)
+    p_ol = map(length,p_o_v)
+    gl = sum(p_ol)
+    p_ids = variable_partition(p_ol,gl)
+    PVector(p_o_v,p_ids)
+end
+
+# TODO move to PAs
+function Base.findall(f::Function,v::PVector)
+    ids = partition(axes(v,1))
+    map(partition(v),ids) do lv,lids
+        a = findall(f,lv)
+        b = local_to_global(lids)
+        map(i->b[i],a)
+    end |> pcat
+end
+
+#TODO move to PAs
+function Base.zeros(::Type{T},m::PRange) where T
+    pzeros(T,partition(m))
+end
+
+#TODO move to PAs
+function Base.zeros(m::PRange)
+    pzeros(partition(m))
+end
+
+#TODO move to PAs
+function Base.ones(::Type{T},m::PRange) where T
+    pones(T,partition(m))
+end
+
+#TODO move to PAs
+function Base.ones(m::PRange)
+    pones(partition(m))
 end
 
 function default_node_color(mesh,parts)
@@ -978,7 +1036,5 @@ function PartitionedArrays.centralize(mesh::AbstractMesh)
     is_cell_complex = GT.is_cell_complex(mesh)
     create_mesh(;node_coordinates,face_nodes,face_reference_id,reference_spaces,group_faces,is_cell_complex)
 end
-
-
 
 

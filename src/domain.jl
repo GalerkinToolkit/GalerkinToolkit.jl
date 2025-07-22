@@ -594,27 +594,46 @@ function replace_workspace(domain::MeshDomain,workspace)
     GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
 end
 
+@inline function is_partitioned(domain::MeshDomain)
+    is_partitioned(mesh(domain))
+end
+
 function faces(domain::MeshDomain)
     if workspace(domain) !== nothing
         return workspace(domain).faces
     end
+    mesh = GT.mesh(domain)
     Ti = int_type(options(domain))
-    mesh = domain |> GT.mesh
     D = GT.num_dims(domain)
-    Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
+    Dfaces = GT.face_ids(mesh,D)
+    Dface_to_tag = zeros(Ti,Dfaces)
     tag_to_name = GT.group_names(domain)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
     group_faces = GT.group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
-        for (name2,faces) in group_faces
+        for (name2,faces2) in group_faces
             if name != name2
                 continue
             end
-            Dface_to_tag[faces] .= tag
+            if is_partitioned(domain)
+                at_each_part(Dface_to_tag,Dfaces,faces2) do pface_tag, ids, faces2
+                    face_pface = global_to_local(ids)
+                    for face in faces2
+                        pface = face_pface[face]
+                        pface_tag[pface] = tag
+                    end
+                end
+            else
+                Dface_to_tag[faces2] .= tag
+            end
         end
     end
     physical_Dfaces = findall(i->i!=0,Dface_to_tag)
     Ti.(physical_Dfaces)
+end
+
+function face_ids(domain::AbstractDomain)
+    axes(faces(domain),1)
 end
 
 function inverse_faces(domain::MeshDomain)
@@ -623,10 +642,22 @@ function inverse_faces(domain::MeshDomain)
     end
     Ti = int_type(options(domain))
     d = num_dims(domain)
-    ndfaces = num_faces(mesh(domain),d)
-    dface_to_face = zeros(Ti,ndfaces)
-    face_to_dface = faces(domain)
-    dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    dfaces = GT.face_ids(mesh(domain),d)
+    dface_to_face = zeros(Ti,dfaces)
+    face_dface = GT.faces(domain)
+    if is_partitioned(domain)
+        at_each_part(dface_to_face,face_dface,dfaces,axes(face_dface,1)) do ldface_face,lface_dface,ldfaces,lfaces
+            lface_face = local_to_global(lfaces)
+            dface_ldface = global_to_local(ldfaces)
+            for (lface,dface) in enumerate(lface_dface)
+                face = lface_face[lface]
+                ldface = dface_ldface[dface]
+                ldface_face[ldface] = face
+            end
+        end
+    else
+        dface_to_face[face_dface] = 1:length(face_dface)
+    end
     dface_to_face
 end
 
