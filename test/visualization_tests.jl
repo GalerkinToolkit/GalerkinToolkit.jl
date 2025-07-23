@@ -19,7 +19,7 @@ pmesh = GT.partitioned(mesh,parts)
 
 plt = GT.plot(mesh)
 pplt = GT.plot(pmesh)
-plts = GT.subdomains(pplt)
+#plts = GT.subdomains(pplt)
 plt = GT.centralize(pplt)
 
 
@@ -47,14 +47,14 @@ vtk_grid("domain",Ω) do plt
     GT.plot!(plt,u;label="u")
 end
 
-paraview_collection("domain",plt) do pvd
+paraview_collection("domain") do pvd
     vtk_grid("domain1",plt) do plt
         GT.plot!(plt,u;label="u")
         pvd[1] = plt
     end
 end
 
-paraview_collection("domain",Ω) do pvd
+paraview_collection("domain") do pvd
     vtk_grid("domain1",Ω) do plt
         GT.plot!(plt,u;label="u")
         pvd[1] = plt
@@ -64,17 +64,20 @@ end
 ### VTK parallel
 
 domain = (0,1,0,1)
-cells = (4,4)
+cells = (10,10)
 mesh = GT.cartesian_mesh(domain,cells)
 parts = DebugArray(LinearIndices((4,)))
 mesh = GT.partitioned(mesh,parts)
 
 plt = GT.plot(mesh)
-pvtk_grid("mesh",plt) |> close
-xxx
+pvtk_grid("pmesh",plt) |> close
+pvtk_grid("pmesh",mesh) |> close
 
-
-xxxx
+paraview_collection("pmesh") do pvd
+    pvtk_grid("pmesh",mesh) do plt
+        pvd[1] = plt
+    end
+end
 
 # Makie
 
@@ -144,11 +147,11 @@ counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure()
 
 # Parallel 
 
-domain = (0,1,0,1,0,1)
+domain = (0,1,0,1)
 n = 10
-cells = (n,n,n)
+cells = (n,n)
 mesh = GT.cartesian_mesh(domain,cells)
-np = 5
+np = 4
 parts = DebugArray(LinearIndices((np,)))
 mesh = GT.partitioned(mesh,parts)
 

@@ -944,9 +944,9 @@ end
 # TODO move to PAs
 function Base.findall(f::Function,v::PVector)
     ids = partition(axes(v,1))
-    map(partition(v),ids) do lv,lids
+    map(own_values(v),ids) do lv,lids
         a = findall(f,lv)
-        b = local_to_global(lids)
+        b = own_to_global(lids)
         map(i->b[i],a)
     end |> pcat
 end

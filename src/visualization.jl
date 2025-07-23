@@ -306,13 +306,13 @@ function subdomains(plt::Plot)
     p_d_ldface_nodes = array_of_tuples(Tuple(d_p_ldface_nodes))
     p_hnode_node = map(p_onode_node,p_d_ldface_nodes) do onode_node,d_ldface_nodes
         hnode_node = Set{Int}()
-        node_onode = global_to_owner(onode_node)
+        node_onode = global_to_own(onode_node)
         for ldface_nodes in d_ldface_nodes
             for nodes in ldface_nodes
                 for node in nodes
                     onode = node_onode[node]
                     if onode == 0
-                        add!(hnode_node,node)
+                        push!(hnode_node,node)
                     end
                 end
             end
@@ -373,12 +373,12 @@ function subdomains(plt::Plot)
             end
         end
         p_i_pair2 = array_of_tuples(Tuple(i_p_pair2))
-        p_k_ldface_v = map(Dict,p_i_pair)
+        p_k_ldface_v = map(Dict,p_i_pair2)
     end
     p_d_k_ldface_v = array_of_tuples(Tuple(d_p_k_ldface_v))
 
     # Create local plots
-    map(Plot,p_lmesh,p_k_lnode_v,p_d_k_ldface_v)
+    map(Plot,p_lmesh,p_d_k_ldface_v,p_k_lnode_v)
 end
 
 
@@ -392,8 +392,13 @@ struct PPlot{A,B} <: AbstractType
     end
 end
 
+
 function num_ambient_dims(plt::Plot)
     num_ambient_dims(plt.mesh)
+end
+
+function is_partitioned(plt::Plot)
+    is_partitioned(plt.mesh)
 end
 
 function num_ambient_dims(plt::PPlot)
@@ -1098,6 +1103,7 @@ function PartitionedArrays.centralize(plt::Plot)
         for (group,data) in dict
             fd_d[group] = collect(data)
         end
+        fd_d
     end
     nd = Dict{String,Any}()
     for (group,data) in plt.node_data

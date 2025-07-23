@@ -405,6 +405,9 @@ function setup_plt_changes(plt,vector,scalar,scale,shrink)
     if shrink !== nothing
         plt = GT.shrink(plt;scale=shrink)
     end
+    if GT.is_partitioned(plt)
+        plt = GT.centralize(plt)
+    end
     (plt,)
 end
 

@@ -148,7 +148,7 @@ function WriteVTK.vtk_grid(f::Function,filename,dom::GalerkinToolkit.AbstractDom
     WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.pvtk_grid(filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
+function WriteVTK.pvtk_grid(filename::AbstractString,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.pvtk_grid(filename,plt;vtk_grid_params...)
 end
@@ -164,6 +164,17 @@ end
 
 function WriteVTK.close(ppvd::GalerkinToolkit.PPVD)
     map_main(WriteVTK.close,ppvd.partition)
+end
+
+
+function Base.setindex!(a::WriteVTK.CollectionFile,plt::GalerkinToolkit.VTKPlot,time)
+    a[time] = plt.vtk
+end
+
+function Base.setindex!(a::WriteVTK.CollectionFile,plt::GalerkinToolkit.PVTKPlot,time)
+    map_main(plt.vtks) do vtk
+        a[time] = vtk
+    end
 end
 
 function Base.setindex!(a::GalerkinToolkit.PVD,plt::GalerkinToolkit.VTKPlot,time)
