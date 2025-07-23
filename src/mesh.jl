@@ -866,8 +866,10 @@ function partitioned(mesh::AbstractMesh,parts;color=nothing)
     face_nodes = map(GT.face_nodes(mesh),face_part) do dface_nodes_seq, dface_part
         partitioned(dface_nodes_seq,parts;color=dface_part)
     end
-    face_reference_id = map(GT.face_reference_id(mesh),face_nodes) do dface_rid_seq,dface_nodes
-        dface_partition = partition(axes(dface_nodes,1))
+    d_dface_partition = map(face_nodes) do dface_nodes
+        partition(axes(dface_nodes,1))
+    end
+    face_reference_id = map(GT.face_reference_id(mesh),d_dface_partition) do dface_rid_seq,dface_partition
         partitioned(dface_rid_seq,parts;partition=dface_partition)
     end
     group_faces = map(GT.group_faces(mesh),face_part) do group_dfaces, dface_part
@@ -879,7 +881,21 @@ function partitioned(mesh::AbstractMesh,parts;color=nothing)
     end
     reference_spaces = GT.reference_spaces(mesh)
     is_cell_complex = GT.is_cell_complex(mesh)
-    create_mesh(;node_coordinates,face_nodes,face_reference_id,reference_spaces,group_faces,is_cell_complex)
+    if GT.workspace(mesh) !== nothing
+        topology = GT.partitioned(GT.topology(mesh),parts;partition=d_dface_partition)
+        workspace = (;topology)
+    else
+        workspace = nothing
+    end
+    create_mesh(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        group_faces,
+        is_cell_complex,
+        workspace
+       )
 end
 
 # TODO move to PAs

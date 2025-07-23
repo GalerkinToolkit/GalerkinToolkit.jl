@@ -909,4 +909,34 @@ function find_node_to_vertex(mesh)
     node_to_vertex, vertex
 end
 
+function partitioned(topo::MeshTopology,parts;partition)
+    d_dface_partition = partition
+    D = num_dims(topo)
+    ijs = CartesianIndices((D+1,D+1))
+    face_incidence = map(ijs) do ij
+        i,j = Tuple(ij)
+        iface_jfaces = GT.face_incidence(topo)[i,j]
+        iface_partition = d_dface_partition[i]
+        partitioned(iface_jfaces,parts,partition=iface_partition)
+    end
+    face_permutation_ids = map(ijs) do ij
+        i,j = Tuple(ij)
+        if i>=j
+            iface_perms = GT.face_permutation_ids(topo)[i,j]
+            iface_partition = d_dface_partition[i]
+            partitioned(iface_perms,parts,partition=iface_partition)
+        else
+            nothing
+        end
+    end
+    face_reference_id = map(GT.face_reference_id(topo),d_dface_partition) do dface_rid, dface_partition
+        partitioned(dface_rid,parts,partition=dface_partition)
+    end
+    reference_topologies = GT.reference_topologies(topo)
+    mesh_topology(;
+                  face_incidence,
+                  face_reference_id,
+                  face_permutation_ids,
+                  reference_topologies,)
+end
 
