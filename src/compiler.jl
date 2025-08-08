@@ -1065,10 +1065,10 @@ function write_assemble_scalar(contribution::DomainContribution)
 end
 
 
-function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=())
+function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing)
     # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
     # needs to be though carefully. We provably will need several calls to optimize and more IR levels
-    term_0 = write_assemble_vector(contribution,space)
+    term_0 = write_assemble_vector(contribution,space; optimize_options)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
@@ -1079,7 +1079,7 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     f
 end
 
-function write_assemble_vector(contribution::DomainContribution,space::AbstractSpace)
+function write_assemble_vector(contribution::DomainContribution,space::AbstractSpace;optimize_options=nothing)
     quadrature = GT.quadrature(contribution)
     domain = GT.domain(quadrature)
     arity = Val(1)
@@ -1094,14 +1094,14 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
         max_num_faces_around(GT.domain(field_space),domain)
     end
 
-    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around)
+    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around, optimize_options)
 end
 
 
-function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=())
+function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing)
     # TODO how to sort the calls to optimize, parametrize, capture, expression, statements, etc
     # needs to be though carefully. We provably will need several calls to optimize and more IR levels
-    term_0 = write_assemble_matrix(contribution,space_trial, space_test)
+    term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
@@ -1112,7 +1112,7 @@ function generate_assemble_matrix(contribution::DomainContribution,space_trial::
     f
 end
 
-function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace)
+function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;optimize_options=nothing)
     quadrature = GT.quadrature(contribution)
     domain = GT.domain(quadrature)
     arity = Val(2)
@@ -1132,7 +1132,7 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
         max_num_faces_around(GT.domain(field_space),domain)
     end
 
-    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test)
+    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options)
 end
 
 function generate_sample(f,quadrature::AbstractQuadrature;parameters=())
@@ -1298,6 +1298,7 @@ struct VectorAssemblyTerm <: AbstractTerm
     alloc_arg::Symbol
     index::Index{1}
     field_n_faces_around::Tuple
+    optimize_options
 end
 
 struct MatrixAssemblyTerm <: AbstractTerm
@@ -1310,6 +1311,7 @@ struct MatrixAssemblyTerm <: AbstractTerm
     index::Index{2} # gets reduced
     field_n_faces_around_trial::Tuple
     field_n_faces_around_test::Tuple
+    optimize_options
 end
 
 function bindings(term::ScalarAssemblyTerm)
@@ -1363,15 +1365,15 @@ end
 
 function replace_dependencies(term::VectorAssemblyTerm,dependencies)
     (term2,space,quadrature,alloc) = dependencies
-    (;alloc_arg,index,field_n_faces_around) = term
-    VectorAssemblyTerm(term2,space,quadrature,alloc,alloc_arg,index,field_n_faces_around)
+    (;alloc_arg,index,field_n_faces_around,optimize_options) = term
+    VectorAssemblyTerm(term2,space,quadrature,alloc,alloc_arg,index,field_n_faces_around,optimize_options)
 end
 
 
 function replace_dependencies(term::MatrixAssemblyTerm,dependencies)
     (term2,space_trial,space_test,quadrature,alloc) = dependencies
-    (;alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test) = term
-    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test)
+    (;alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options) = term
+    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options)
 end
 
 
@@ -1389,6 +1391,7 @@ end
 function expression(term::VectorAssemblyTerm)
     (term2,space,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field,face_around,dof) = bindings(term)
+    options = term.optimize_options
     # dof_v = :($dof -> $term2)
     # block_dof_v = :( ($field,$face_around) -> $dof_v)
     # point_block_dof_v = :($point -> $block_dof_v)
@@ -1413,7 +1416,7 @@ function expression(term::VectorAssemblyTerm)
 
     loop_var_range = Dict(dof => :(max($(ndofs...),)) )
 
-    body_optimized = ast_optimize_2(body, loop_var_range)
+    body_optimized = ast_optimize_with_options(body, loop_var_range, options)
     expr = :($alloc_arg->$body_optimized)
 
     expr
@@ -1423,7 +1426,7 @@ end
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
-
+    options = term.optimize_options
     # V0: hand-written
     # dof_v = :(($dof_trial) -> ($dof_test) -> $term2)
     # block_dof_v = :( ($field_trial,$field_test,$face_around_trial,$face_around_test) -> $dof_v)
@@ -1461,7 +1464,7 @@ function expression(term::MatrixAssemblyTerm)
     loop_var_range = Dict(dof_trial => :(max($(ndofs_trial...),)), 
                             dof_test => :(max($(ndofs_test...),)))
 
-    body_optimized = ast_optimize_2(body, loop_var_range)
+    body_optimized = ast_optimize_with_options(body, loop_var_range, options)
     # display(body_optimized)
     expr = quote 
         $alloc_arg -> begin
@@ -3546,8 +3549,9 @@ function statements_expr_with_loops(node)
 end
 
 
-function ast_optimize(expr, loop_var_range)
-
+function ast_optimize(expr, loop_var_range, options = nothing)
+    # unroll -> flatten -> array_unroll -> tabulate -> topological_sort -> array_aliasing 
+    # do not remove: unroll -> array_unroll,  remove_dead_code, flatten
     expr2 = ast_loop_unroll(expr) |> ast_constant_folding
 
     expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
@@ -3565,18 +3569,28 @@ function ast_optimize(expr, loop_var_range)
 
     expr7 = ast_remove_dead_code(expr6)
 
-    expr8 = ast_topological_sort(expr7)
-    expr8, var_count = ast_flatten(expr8, var_count)
-    expr8 = ast_topological_sort(expr8)
+    if options === nothing || options.topological_sort == true
+        expr8 = ast_topological_sort(expr7)
+        expr8, var_count = ast_flatten(expr8, var_count)
+        expr8 = ast_topological_sort(expr8)
+    else
+        expr8 = expr7
+    end
+    
+    if options === nothing || options.array_aliasing == true
+        expr9 = ast_array_aliasing(expr8) 
+    else
+        expr9 = expr8
+    end
 
-    expr9 = ast_array_aliasing(expr8) |> ast_remove_dead_code
+    expr9 = ast_remove_dead_code(expr9)
 
     expr9
 end
 
 
 
-function ast_optimize_2(expr, loop_var_range)
+function ast_optimize_2(expr, loop_var_range, options = nothing)
     var_count = 0
     
     expr2, var_count = ast_flatten(expr, var_count)
@@ -3590,17 +3604,52 @@ function ast_optimize_2(expr, loop_var_range)
     # remove dead code twice. this is important because we have ifelse statements flattened
     expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
 
-    expr7 = ast_topological_sort(expr6)
 
-    expr8 = ast_array_aliasing(expr7) |> ast_remove_dead_code
+    expr7 = if options === nothing || options.topological_sort == true
+        ast_topological_sort(expr6)
+    else
+        expr6
+    end
+
+    expr8 = if options === nothing || options.array_aliasing == true
+        ast_array_aliasing(expr7)
+    else
+        expr7
+    end
+
+    expr8 = ast_remove_dead_code(expr8)
 
     expr9, var_count = ast_flatten(expr8, var_count) 
     # expr9, var_count = ast_tabulate(expr9, var_count, loop_var_range) 
 
-    expr10 = expr9 |> ast_constant_folding |> ast_topological_sort |> ast_remove_dead_code
+    expr10 = expr9 |> ast_constant_folding 
+    expr10 = if options === nothing || options.topological_sort == true
+        ast_topological_sort(expr10)
+    else
+        expr10
+    end
+
+    expr10 = ast_remove_dead_code(expr10)
 
     expr10
 end
+
+
+function ast_optimize_3(expr, loop_var_range, options = nothing) # optimize steps with hoist only, but not tabulate
+    # TODO: implement
+    expr
+end
+
+function ast_optimize_with_options(expr, loop_var_range, options)
+    if options === nothing || options.order == 1
+        ast_optimize(expr, loop_var_range, options)
+    elseif options.order == 2 
+        ast_optimize_2(expr, loop_var_range, options)
+    else # no optimize
+        expr
+    end
+end
+
 
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)

@@ -239,6 +239,7 @@ function assemble_vector(f,::Type{T},space;
     reuse = isempty(parameters) ? Val(false) : Val(true),
     vector_strategy = monolithic_vector_assembly_strategy(),
     free_or_dirichlet = FREE,
+    optimize_options = nothing,
     ) where T
 
     arg = 1
@@ -248,7 +249,7 @@ function assemble_vector(f,::Type{T},space;
     domains = map(GT.domain,contributions)
     alloc = allocate_vector(T,space,domains...;vector_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_vector(contribution,space;parameters)
+        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
         Base.invokelatest(loop!,alloc)
         params_loop
@@ -310,6 +311,7 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     reuse = isempty(parameters) ? Val(false) : Val(true),
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     free_or_dirichlet = (FREE,FREE),
+    optimize_options = nothing,
     ) where T
     arg_test = 1
     arg_trial = 2
@@ -320,7 +322,7 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     domains = map(GT.domain,contributions)
     alloc = allocate_matrix(T,test_space,trial_space,domains...;matrix_strategy,free_or_dirichlet)
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters)
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters, optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
         Base.invokelatest(loop!,alloc)
         params_loop
@@ -350,12 +352,13 @@ function assemble_matrix_with_free_and_dirichlet_columns(f,::Type{T},trial_space
     reuse = isempty(parameters) ? Val(false) : Val(true),
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     free_or_dirichlet = FREE, # Rows
+    optimize_options = nothing,
     ) where T
     # We are doing two calls, this can be optimized
     A,Acache = assemble_matrix(f,T,trial_space,test_space;
-        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,FREE))
+        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,FREE),optimize_options)
     Ad,Adcache = assemble_matrix(f,T,trial_space,test_space;
-        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,DIRICHLET))
+        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,DIRICHLET),optimize_options)
     cache = (Acache,Adcache)
     if val_parameter(reuse)
         A,Ad,cache
@@ -378,9 +381,10 @@ function assemble_matrix_and_vector(a,l,::Type{T},U,V;
     reuse = isempty(parameters) ? Val(false) : Val(true),
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     vector_strategy = monolithic_vector_assembly_strategy(),
+    optimize_options = nothing,
     ) where T
-    A,matrix_cache = assemble_matrix(a,T,U,V;parameters,reuse=Val(true),matrix_strategy)
-    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy)
+    A,matrix_cache = assemble_matrix(a,T,U,V;parameters,reuse=Val(true),matrix_strategy,optimize_options)
+    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy,optimize_options)
     cache = (;matrix_cache,vector_cache)
     if val_parameter(reuse)
         A,b,cache
@@ -402,10 +406,11 @@ function assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,::Type{T
     matrix_strategy = monolithic_matrix_assembly_strategy(),
     vector_strategy = monolithic_vector_assembly_strategy(),
     free_or_dirichlet = FREE, #Rows
+    optimize_options = nothing,
     ) where T
     A,Ad,matrix_cache = assemble_matrix_with_free_and_dirichlet_columns(
         a,T,U,V;parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet)
-    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy,free_or_dirichlet)
+    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy,free_or_dirichlet,optimize_options)
     cache = (;matrix_cache,vector_cache)
     if val_parameter(reuse)
         A,Ad,b,cache
