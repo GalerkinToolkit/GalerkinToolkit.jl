@@ -24,6 +24,7 @@ using Test
     @testset "Assembly" begin include("assembly_tests.jl") end
     #@testset "NewIR" begin include("new_ir_tests.jl") end
     @testset "Issue 224" begin include("issue_224.jl") end
+    @testset "Issue 230" begin include("issue_230.jl") end
 end
 
 end # module
