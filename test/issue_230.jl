@@ -4,10 +4,7 @@ import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 using LinearAlgebra
 import ForwardDiff
-import Makie
-import GLMakie
 import StaticArrays
-
 
 mesh = GT.with_gmsh() do gmsh
     lc = 1.0
@@ -29,6 +26,8 @@ mesh = GT.with_gmsh() do gmsh
     GT.mesh_from_gmsh(gmsh;complexify=true)
 end
 
+#import Makie
+#import GLMakie
 #shrink = 0.6
 #fig = GT.makie_surfaces(mesh;dim=3,shrink,axis=(;aspect=:data))
 #GT.makie_surfaces!(mesh;dim=2,shrink)
@@ -48,7 +47,6 @@ n = GT.unit_normal(mesh,D-1)
 u = GT.analytical_field(sum,Ω)
 T = Float64
 ∇ = ForwardDiff.gradient
-
 V = GT.lagrange_space(Ω,k)
 a = (u,v) -> begin
     GT.∫( x -> v(x)*u(x)-v(x)*n(x)⋅∇(u,x)-n(x)⋅∇(v,x)*u(x), dΓ) +
