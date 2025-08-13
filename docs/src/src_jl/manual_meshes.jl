@@ -40,11 +40,6 @@ import FileIO # hide
 # - A mesh might or might not represent a cell complex. However, many algorithms require to work with a cell complex.
 # - *Physical* faces are defined using reference interpolation spaces and node coordinates. A physical face $F=\varphi(\hat F)$ is defined by transforming a *reference* face $\hat F$ with a mapping $\varphi: \hat F \rightarrow \mathbb{R}^D$, where D is the number of ambient dimensions.  The mapping is defined as $\varphi(\hat x) = \sum_i \hat s_i(\hat x) x_{(F,i)}$. Function $\hat s_i: \hat F \rightarrow \mathbb{R}$ is the scalar basis function number $i$ in the reference (interpolation) space of $F$. The vector $x_{(F,i)}$ contains the coordinates of the local node $i$ in face $F$.
 #
-# Functions to create and to work with meshes are listed in docstring of [`AbstractMesh`](@ref).
-#
-# ```@docs; canonical=false
-# AbstractMesh
-# ```
 #
 # ## Creating a mesh
 # 
@@ -143,10 +138,164 @@ GT.makie_edges!(mesh;dim=1,shrink)
 GT.makie_vertices!(mesh;dim=0)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_2.png"),Makie.current_figure()) # hide
 nothing # hide
-
-
+#
 # ![](fig_meshes_2.png)
 #
+# ## Creating a chain
+#
+# Using function [`create_mesh`](@ref) might be tedious if all faces are of the same dimension. In this case, we can use the simpler constructor [`create_chain`](@ref). It works like 
+# [`create_mesh`](@ref), but we pass data only for one face dimension. The resulting object
+# is still a mesh object whose type is a subtype of [`AbstractMesh`](@ref).
+#
+# ```@docs; canonical=false
+# create_chain
+# ```
+# ### Example
+#
+# We create the mesh of the first example, but using [`create_chain`](@ref).
+#
+#Face nodes
+face_nodes = [[1,2,3],[2,3,4],[2,4,5]]
+
+#Reference spaces
+reference_spaces = (triangle3,)
+
+#Create mesh
+chain = GT.create_chain(;
+    node_coordinates,
+    face_nodes,
+    reference_spaces)
+
+#Visualize
+GT.makie_surfaces(chain;axis,shading)
+GT.makie_edges!(chain;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_1a.png"),Makie.current_figure()) # hide
+nothing # hide
+
+# ![](fig_meshes_1a.png)
+#
+# ## Accessing mesh data
+#
+# The underlying data defining a mesh can be accessed with functions listed in the docstring of the type [`AbstractMesh`](@ref).
+#
+# ```@docs; canonical=false
+# AbstractMesh
+# ```
+#
+#
+# Several of these queries return information for faces of all dimensions present in the mesh. For instance, `GT.num_faces(mesh)` returns a vector containing the number of faces in each dimension. It is often possible to restrict these queries to a given dimension. The call `GT.num_faces(mesh,d)` returns an integer with the number of faces of dimension `d`. When information for all dimensions is returned in a vector, position `d+1` in the vector contains the information for dimension `d`. Remember that the lowest dimension is `d=0` for the vertices. In particular, `GT.num_faces(mesh,d) == GT.num_faces(mesh)[d+1]`.
+#
+# ### Example
+#
+#  Let us get some information from the mesh object we created in the previous example. First, let us get the number of dimensions, number of nodes and number of faces
+
+GT.num_dims(mesh)
+
+#
+#
+
+GT.num_nodes(mesh)
+
+#
+#
+
+GT.num_faces(mesh)
+
+# To get the number of faces in a dimension 2, we do
+
+GT.num_faces(mesh,2)
+
+# Similarly we can get the node coordinates and face nodes for faces of dimension 2.
+
+GT.node_coordinates(mesh)
+
+#
+#
+
+GT.face_nodes(mesh,2)
+
+# To get the face node ids for all dimensions, we skip the second argument:
+
+GT.face_nodes(mesh)
+
+# ### Reference spaces
+#
+# Information about the interpolation spaces used to define the mesh physical geometry is available via the function [`reference_spaces`](@ref) and [`face_reference_id`](@ref). Given a mesh object `mesh`,
+# one accesses the reference space of face number `f` in dimension `d` calling `ref_space = GT.reference_spaces(mesh,d)[r]` with `r=GT.face_reference_id(mesh,d)`. A mesh has typically a small number of reference spaces, and vector `GT.face_reference_id(mesh,d)` indicates which reference space is assigned to each mesh face. The object `ref_space` is of a type that implements the [`AbstractSpace`](@ref) interface. All details about interpolation spaces are given in the section about [Interpolation](@ref). In particular, we can get some basic information from this space like the number of degrees of freedom (DOFs), and the shape functions.
+#
+# ### Example
+#
+# We manually build the physical map that transforms a reference face into a physical face. We consider face number `f=2` in dimension `d=1` from the mesh previously defined. We need to get the reference shape functions and the face node coordinates for the given face.
+
+#Get data
+d = 1
+f = 2
+r = GT.face_reference_id(mesh,d)[f]
+ref_space = GT.reference_spaces(mesh,d)[r]
+lnode_s = GT.shape_functions(ref_space)
+lnode_node = GT.face_nodes(mesh,d)[f]
+nlnodes = length(lnode_node)
+node_x = GT.node_coordinates(mesh)
+
+#Define the map
+φ = y -> begin
+    sum(1:nlnodes) do lnode
+        s = lnode_s[lnode]
+        x = node_x[lnode_node[lnode]]
+        s(y)*x
+    end
+end
+
+#Apply the map to a given 1-d point
+y = StaticArrays.SVector(0.5,)
+φ(y)
+
+# The returned value should be the mid point of the edge number 2.
+
+# ### Accessors
+#
+# Geting information from a mesh might be tedious for the many array indirection present. To fix this, we can create *accessor* objects that hide all these indirections.
+# These are created with functions
+# [`reference_space_accessor`](@ref) and [`node_coordinate_accessor`](@ref).
+#
+# ```@docs; canonical=false
+# reference_space_accessor
+# node_coordinate_accessor
+# ```
+#
+# ### Example
+#
+# We rewrite the previous example using accessor objects.
+
+
+#Accessors
+d = 1
+g = GT.shape_functions
+f_lnode_x = GT.node_coordinate_accessor(mesh,d)
+f_lnode_s = GT.reference_space_accessor(g,mesh,d)
+
+#Restrict accessors at current face
+f = 2
+lnode_s = f_lnode_s(f)
+lnode_x = f_lnode_x(f)
+
+#Define the map
+φ = y -> begin
+    sum(1:nlnodes) do lnode
+        s = lnode_s[lnode]
+        x = lnode_x(lnode)
+        s(y)*x
+    end
+end
+
+#Apply the map to a given 1-d point
+y = StaticArrays.SVector(0.5,)
+φ(y)
+
+
+
+
+
 # ## Cell complexes
 #
 # The mesh object described above is general enough to describe cell or [polyhedral complexes](https://en.wikipedia.org/wiki/Polyhedral_complex), but it is not guaranteed that the mesh is indeed a cell complex. For instance, none of the meshes in the two last examples is a cell complex. The first one has no vertices nor edges. The second one has only few vertices and edges, but many are missing.
@@ -238,18 +387,26 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 #
 # If a mesh is a cell complex, each face in the boundary of a face is also explicitly contained in the mesh. However, the incidence relations of these two faces are the same but might be stored in different order.
 #
-# Let us consider a topology  object `topo` and two integers `d<D`. We get the incident relations `D_d = GT.face_incidence(topo,D,d)`, `d_0 = GT.face_incidence(topo,d,0)` and `D_0 = GT.face_incidence(topo,D,0)`. Consider face number `v` in dimension `D`. The `d`-faces on its boundary are given in vector `D_d[v]`. Consider the integer in `l` position in this list, namely `s=D_d[v][l]`. `s` is the id of a face of dimension `d`. The 0-faces on the boundary of `v` are  in `D_0[v]` and on the boundary of `s` are in `d_0[s]`.  Now, consider the reference topology of face `v`, namely `ref_topo_v`. We get this incidence relation from the reference topology: `ref_d_0 = GT.face_incidence(ref_topo_v,d,0)`. This gives us an alternative way of obtaining the 0-faces of `s`, namely `D_0[ref_d_0[l]]`. That is, we can take the id `s` and compute directly `d_0[s]`, or we can go to the neighbor face `v` and compute `D_0[ref_d_0[l]]` using the local id `l` corresponding to `s` in `v`. The vectors `d_0[s]` and  `D_0[ref_d_0[l]]` contain the same vertex ids, but not in the same order!
+# Let us consider a topology  object `topo` and two integers `d<D`. We get the incident relations `D_d = GT.face_incidence(topo,D,d)`, `d_0 = GT.face_incidence(topo,d,0)` and `D_0 = GT.face_incidence(topo,D,0)`. Consider face number `v` in dimension `D`. The `d`-faces on its boundary are given in vector `D_d[v]`. Consider the integer in `l` position in this list, namely `s=D_d[v][l]`. `s` is the id of a face of dimension `d`. The 0-faces on the boundary of `v` are  in `D_0[v]` and on the boundary of `s` are in `d_0[s]`.  Now, consider the reference topology of face `v`, namely `ref_topo_v`. We get this incidence relation from the reference topology: `ref_d_0 = GT.face_incidence(ref_topo_v,d,0)`. This gives us an alternative way of obtaining the 0-faces of `s`, namely `D_0[v][ref_d_0[l]]`. That is, we can take the id `s` and compute directly `d_0[s]`, or we can go to the neighbor face `v` and compute `D_0[v][ref_d_0[l]]` using the local id `l` corresponding to `s` in `v`. The vectors `d_0[s]` and  `D_0[v][ref_d_0[l]]` contain the same vertex ids, but not in the same order!
 #
-# To fix this issue we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
+# To fix this issue, we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[v][ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
 #
 # This information is needed in many situations, including the generation of high-order interpolation spaces and integration of jump and average terms on interior faces in discontinuous Galerkin methods.
+#
+# ### Accessors
+#
+# We can conveniently access quantities in the reference topologies using accessor objects created with the function [`reference_topology_accessor`](@ref).
+#
+# ```@docs; canonical=false
+# reference_topology_accessor
+# ```
 #
 # ## Face groups
 #
 # Face groups allow us to select specific faces in a mesh for different modeling purposes: impose boundary conditions, define different equations in different parts of the mesh etc. A face group is a vector of integers containing the ids of the faces in this group plus a string containing a name for this group. This groups are stored using a dictionary that maps strings to vectors (group names to group definitions) in a per dimension basis (one dictionary per dimension). The vector contains faces of the same dimension, but it is possible define groups containing faces of different dimensions by splitting them in a vector per dimension.
 # Face groups can overlap and can be added after the mesh object is created.
 #
-# Face groups are accessed and added using function [`group_faces`](@ref).
+# Face groups are accessed and added using the function [`group_faces`](@ref).
 #
 # ```@docs; canonical=false
 # group_faces
@@ -262,7 +419,7 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 # - [`group_interior_faces!`](@ref)
 # - [`group_faces_in_dim!`](@ref)
 #
-# These function do what the name suggests (see the docstrings for further details). The first one is often use to impose boundary
+# These functions do what the name suggests (see the docstrings for further details). The first one is often used to impose boundary
 # conditions and the second one in discontinuous Galerkin methods to define interior penalty terms. They are often called under the hood when calling functions like [`boundary`](@ref) and [`skeleton`](@ref).
 #
 #
@@ -400,4 +557,101 @@ FileIO.save(joinpath(@__DIR__,"fig_meshes_7.png"),Makie.current_figure()) # hide
 nothing # hide
 
 # ![](fig_meshes_7.png)
+#
+#
+# ## Cartesian meshes
+#
+# GalerkinToolkit comes with a built-in Cartesian mesh generator implemented in function [`cartesian_mesh`](@ref).
+#
+# ```@docs
+# cartesian_mesh
+# ```
+#
+# ### Example
+#
+# Generate a 3D Cartesian mesh  of the box $(0,1)\times(-1,1)\times(3,4)$ with
+# 10, 20 , and 10 cells in each axis.
 
+#Create mesh
+domain = (0,1,-1,1,3,4)
+cells = (10,20,10)
+mesh = GT.cartesian_mesh(domain,cells)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis=(;aspect=:data))
+GT.makie_edges!(mesh;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_8.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_8.png)
+#
+# ### Example
+#
+# Create a mesh with the same geometry as before, but using simplex cells instead. We also manually add a face group named `"foo"` containing all volumes to the left of the plain $y=0$. To build this group, we check if the cell mid point is on the left of the plain. This example also shows how to use accessors to compute
+# the midpoint of each volume in the mesh.
+
+#Create mesh
+domain = (0,1,-1,1,3,4)
+cells = (10,20,10)
+mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
+
+#Find faces in new group
+d = 3
+g = GT.num_nodes
+face_nlnodes = GT.reference_space_accessor(g,mesh,d)
+face_lnode_x = GT.node_coordinate_accessor(mesh,d)
+nfaces = GT.num_faces(mesh,d)
+new_group_faces = findall(1:nfaces) do face
+    nlnodes = face_nlnodes(face)
+    lnode_x = face_lnode_x(face)
+    xm = sum(lnode_x,1:nlnodes) / nlnodes
+    xm[2] < 0
+end
+
+#Add new group to mesh
+GT.group_faces(mesh,d)["foo"] = new_group_faces
+
+#Visualize
+color = GT.FaceColor("foo")
+GT.makie_surfaces(mesh;color,colormap,axis=(;aspect=:data))
+GT.makie_edges!(mesh;color=:black)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_9.png"),Makie.current_figure()) # hide
+nothing # hide
+
+# ![](fig_meshes_9.png)
+#
+# ### Example
+#
+# Create a coarse cartesian mesh of the unit square with 4 and 4 cells in each axis. Visualize faces in all dimensions, shrinking them to avoid overlaps.
+#
+
+#Generate mesh
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis,shading,shrink)
+GT.makie_edges!(mesh;dim=1,shrink)
+GT.makie_vertices!(mesh;dim=0)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_10.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_10.png)
+#
+# Now, the same as before, but only generate low-dimensional faces on the boundary.
+
+
+#Generate mesh
+domain = (0,1,0,1)
+cells = (4,4)
+mesh = GT.cartesian_mesh(domain,cells;complexify=false)
+
+#Visualize it
+GT.makie_surfaces(mesh;axis,shading,shrink)
+GT.makie_edges!(mesh;dim=1,shrink)
+GT.makie_vertices!(mesh;dim=0)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_11.png"),Makie.current_figure()) # hide
+nothing # hide
+#
+# ![](fig_meshes_11.png)

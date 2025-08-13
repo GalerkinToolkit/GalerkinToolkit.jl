@@ -327,7 +327,7 @@ function simplex_nodes(geo::UnitNCube)
     elseif D == 1
         [[1,2]]
     elseif D == 2
-        [[1,2,3],[2,3,4]]
+        [[1,2,3],[4,3,2]] # The second is oriented for proper shadowing with Makie
     elseif D ==3
         [[1,2,3,7], [1,2,5,7], [2,3,4,7],
         [2,4,7,8], [2,5,6,7], [2,6,7,8]]

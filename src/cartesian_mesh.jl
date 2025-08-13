@@ -1,5 +1,17 @@
 
 """
+    cartesian_mesh(domain,cells_per_dir)
+
+Create a multi-dimensional Cartesian mesh. The dimension of the mesh
+is defined by the length of `cells_per_dir`.
+The number of cells in direction `i` is given by `cells_per_dir[i]`. The extends
+of the Cartesian mesh are given in `domain`. The range in direction `i` covered
+by the mesh is given by `domain[2*i-1,2*i]`.
+
+# Keyword arguments
+- `boundary=true` [optional]: Include faces on the boundary and generate face groups identifying which faces are  on which face of  bounding box of the mesh. The groups are named `\$d-face-\$i` for the face `i` of dimension `d` of the bounding box.
+- `complexify=true` [optional]: Generate all low dimensional faces so that the mesh is  a cell complex.
+- `simplexify=false` [optional]: Generate a mesh of simplex faces instead of hyper-cubes.
 """
 function cartesian_mesh(
     domain,cells_per_dir;

@@ -189,18 +189,42 @@ function mesh_from_gmsh(gmsh::Module;complexify=true)
 
     # Setup reference faces
     my_reference_spaces = ()
+    d_drid_lib_to_gmsh = Vector{Vector{Int}}[]
     for d in D:-1:0
         elemTypes, elemTags, nodeTags = gmsh.model.mesh.getElements(d)
         refdfaces = ()
+        drid_lib_to_gmsh = Vector{Int}[]
         for t in 1:length(elemTypes)
-            refface = reference_face_from_gmsh_eltype(elemTypes[t])
+            refface, lib_to_gmsh = reference_face_from_gmsh_eltype(elemTypes[t])
             refdfaces = (refdfaces...,refface)
+            push!(drid_lib_to_gmsh,lib_to_gmsh)
         end
         if refdfaces == ()
             meshd = GT.complexify(first(first(my_reference_spaces)))
             refdfaces = GT.reference_spaces(meshd,d)
         end
         my_reference_spaces = (refdfaces,my_reference_spaces...)
+        pushfirst!(d_drid_lib_to_gmsh,drid_lib_to_gmsh)
+    end
+
+    # Change numeration of nodes according to GT
+    for d in 0:D
+        dface_nodes = my_face_nodes[d+1]
+        dface_drid = my_face_reference_id[d+1]
+        ndfaces = length(dface_nodes)
+        drid_lib_to_gmsh = d_drid_lib_to_gmsh[d+1]
+        drid_nodes_tmp = map(a->zeros(Int,length(a)),drid_lib_to_gmsh)
+        for dface in 1:ndfaces
+            nodes = dface_nodes[dface]
+            drid = dface_drid[dface]
+            lib_to_gmsh = drid_lib_to_gmsh[drid]
+            nodes_tmp = drid_nodes_tmp[drid]
+            nodes_tmp[:] = nodes
+            for lib_i in 1:length(nodes)
+                gmsh_i = lib_to_gmsh[lib_i]
+                nodes[lib_i] = nodes_tmp[gmsh_i]
+            end
+        end
     end
 
     ## Setup periodic nodes
@@ -265,11 +289,11 @@ function reference_face_from_gmsh_eltype(eltype)
     if eltype == 1
         order = 1
         geom = unit_simplex(Val(1))
-        lib_to_gmsh = :default#[1,2]
+        lib_to_gmsh = [1,2]
     elseif eltype == 2
         order = 1
         geom = unit_simplex(Val(2))
-        lib_to_gmsh = :default#[1,2,3]
+        lib_to_gmsh = [1,2,3]
     elseif eltype == 3
         order = 1
         geom = unit_n_cube(Val(2))
@@ -277,7 +301,7 @@ function reference_face_from_gmsh_eltype(eltype)
     elseif eltype == 4
         order = 1
         geom = unit_simplex(Val(3))
-        lib_to_gmsh = :default# [1,2,3,4]
+        lib_to_gmsh =[1,2,3,4]
     elseif eltype == 5
         order = 1
         geom = unit_n_cube(Val(3))
@@ -298,6 +322,7 @@ function reference_face_from_gmsh_eltype(eltype)
         en, = gmsh.model.mesh.getElementProperties(eltype)
         error("Unsupported element type. elemType: $eltype ($en)")
     end
-    lagrange_space(geom,order;lib_to_user_nodes=lib_to_gmsh)
+    reffe = lagrange_space(geom,order)
+    reffe, lib_to_gmsh
 end
 
