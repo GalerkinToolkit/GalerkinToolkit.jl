@@ -569,7 +569,7 @@ end
 
 function plot(mesh::AbstractMesh)
     fd = face_data(mesh)
-    if num_dims(mesh) == 3
+    if num_dims(mesh) == 3 && is_cell_complex(mesh)
         Γ = GT.domain(mesh,Val(2))
         dΓ = GT.measure(Γ,0)
         dface_point_n = GT.unit_normal_accessor(dΓ)
