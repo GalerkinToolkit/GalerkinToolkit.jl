@@ -509,32 +509,39 @@ function solution_field!(uh::DiscreteField,x::AbstractVector;
 end
 
 function solution_field(U::AbstractSpace,p::PS.AbstractProblem)
-    (;assembly_method) = PS.workspace(p)
+    # TODO add a workspace in LinearProblem
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
     solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::DiscreteField,p::PS.AbstractProblem)
-    (;assembly_method) = PS.workspace(p)
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
     solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::AbstractSpace,p::PS.AbstractSolver)
-    (;assembly_method) = PS.workspace(PS.problem(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
     solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::DiscreteField,p::PS.AbstractSolver)
-    (;assembly_method) = PS.workspace(PS.problem(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
     solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field!(uh::DiscreteField,p::PS.AbstractProblem)
-    (;assembly_method) = PS.workspace(p)
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
     solution_field!(uh,PS.solution(p);assembly_method)
 end
 
 function solution_field!(uh::DiscreteField,p::PS.AbstractSolver)
-    (;assembly_method) = PS.workspace(PS.problem(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
     solution_field!(uh,PS.solution(p);assembly_method)
 end
 
