@@ -88,6 +88,30 @@ el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
 eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 @test el2 < tol
 
+
+assembly_options = (;matrix=(;index_type=Int))
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l;assembly_options)
+
+A = PS.matrix(p)
+display(A)
+
+b = PS.rhs(p)
+x = A\b
+uh = GT.solution_field(uhd,x)
+
+eh(q) = u(q) - uh(q)
+∇eh(q) = ∇(u,q) - ∇(uh,q)
+
+tol = 1.e-10
+
+el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+
+
 domain = (0,1,0,1)
 cells = (4,4)
 mesh = GT.cartesian_mesh(domain,cells)
