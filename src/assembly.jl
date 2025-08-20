@@ -59,7 +59,7 @@ function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free
                     if skip_dof(dof_i,free_or_diri_i)
                         continue
                     end
-                    contribute!(counter,nothing,dof_i,field_i,map_i)
+                    contribute!(counter,nothing,map_i(dof_i),field_i)
                 end
             end
         end
@@ -116,7 +116,7 @@ function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_do
                                 if skip_dof(dof_j,free_or_diri_j)
                                     continue
                                 end
-                                contribute!(counter,nothing,dof_i,dof_j,field_i,field_j,map_i,map_j)
+                                contribute!(counter,nothing,map_i(dof_i),map_j(dof_j),field_i,field_j)
                             end
                         end
                     end
@@ -147,7 +147,7 @@ const AssemblyAllocation = Union{VectorAllocation,MatrixAllocation}
 
 Base.eltype(alloc::AssemblyAllocation) = eltype(alloc.allocation)
 
-function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1,map_i=identity)
+function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1)
     free_or_diri_i  = malloc.free_or_dirichlet
     map_i = malloc.dof_map
     alloc = malloc.allocation
@@ -157,11 +157,11 @@ function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1,map_i=identi
         if skip_dof(dof_i,free_or_diri_i)
             continue
         end
-        contribute!(alloc,vals[i],dof_i,field_i,map_i)
+        contribute!(alloc,vals[i],map_i(dof_i),field_i)
     end
 end
 
-function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field_j=1,map_i=identity,map_j=identity)
+function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field_j=1)
     free_or_diri_i, free_or_diri_j = malloc.free_or_dirichlet
     map_i,map_j = malloc.dof_maps
     alloc = malloc.allocation
@@ -177,7 +177,7 @@ function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field
             if skip_dof(dof_i,free_or_diri_i)
                 continue
             end
-            contribute!(alloc,vals[i,j],dof_i,dof_j,field_i,field_j,map_i,map_j)
+            contribute!(alloc,vals[i,j],map_i(dof_i),map_j(dof_j),field_i,field_j)
         end
     end
 end
@@ -322,21 +322,21 @@ function reset!(counter::MonolithicAssemblyCounter)
     counter
 end
 
-function contribute!(counter::MonolithicAssemblyCounter,v,i,field_i,map_i)
+function contribute!(counter::MonolithicAssemblyCounter,v,i,field_i)
     if counter.block_mask[field_i]
         offsets_i, = counter.offsets
-        i2 = offsets_i[field_i]+map_i(i)
-        contribute!(counter.counter,v,i2,1,identity)
+        i2 = offsets_i[field_i]+i
+        contribute!(counter.counter,v,i2,1)
     end
     counter
 end
 
-function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j)
     if counter.block_mask[field_i,field_j]
         offsets_i,offsets_j = counter.offsets
-        i2 = offsets_i[field_i]+map_i(i)
-        j2 = offsets_j[field_j]+map_j(j)
-        contribute!(counter.counter,v,i2,j2,1,1,identity,identity)
+        i2 = offsets_i[field_i]+i
+        j2 = offsets_j[field_j]+j
+        contribute!(counter.counter,v,i2,j2,1,1)
     end
     counter
 end
@@ -356,21 +356,21 @@ end
 
 Base.eltype(alloc::MonolithicAssemblyAllocation) = eltype(alloc.allocation)
 
-function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i,map_i)
+function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
     if alloc.block_mask[field_i]
         offsets_i, = alloc.offsets
-        i2 = offsets_i[field_i]+map_i(i)
-        contribute!(alloc.allocation,v,i2,1,identity)
+        i2 = offsets_i[field_i]+i
+        contribute!(alloc.allocation,v,i2,1)
     end
     alloc
 end
 
-function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j)
     if alloc.block_mask[field_i,field_j]
         offsets_i,offsets_j = alloc.offsets
-        i2 = offsets_i[field_i]+map_i(i)
-        j2 = offsets_j[field_j]+map_j(j)
-        contribute!(alloc.allocation,v,i2,j2,1,1,identity,identity)
+        i2 = offsets_i[field_i]+i
+        j2 = offsets_j[field_j]+j
+        contribute!(alloc.allocation,v,i2,j2,1,1)
     end
     alloc
 end
@@ -430,7 +430,7 @@ function reset!(counter::COOCounter)
     counter
 end
 
-function contribute!(counter::COOVectorCounter,v,i,field_i,map_i)
+function contribute!(counter::COOVectorCounter,v,i,field_i)
     @boundscheck @assert v === nothing
     @boundscheck @assert length(i) == 1
     @boundscheck @assert field_i == 1
@@ -438,7 +438,7 @@ function contribute!(counter::COOVectorCounter,v,i,field_i,map_i)
     counter
 end
 
-function contribute!(counter::COOMatrixCounter,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(counter::COOMatrixCounter,v,i,j,field_i,field_j)
     @boundscheck @assert v === nothing
     @boundscheck @assert length(i) == 1
     @boundscheck @assert length(j) == 1
@@ -492,25 +492,25 @@ function reset!(alloc::COOAllocation)
     alloc
 end
 
-function contribute!(alloc::COOVectorAllocation,v,i,field_i,map_i)
+function contribute!(alloc::COOVectorAllocation,v,i,field_i)
     @boundscheck @assert length(i) == 1
     @boundscheck @assert field_i == 1
     alloc.counter.nnz[] += 1
     n = alloc.counter.nnz[]
-    alloc.I[n] = map_i(i)
+    alloc.I[n] = i
     alloc.V[n] = v
     alloc
 end
 
-function contribute!(alloc::COOMatrixAllocation,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(alloc::COOMatrixAllocation,v,i,j,field_i,field_j)
     @boundscheck @assert length(i) == 1
     @boundscheck @assert length(j) == 1
     @boundscheck @assert field_i == 1
     @boundscheck @assert field_j == 1
     alloc.counter.nnz[] += 1
     n = alloc.counter.nnz[]
-    alloc.I[n] = map_i(i)
-    alloc.J[n] = map_j(j)
+    alloc.I[n] = i
+    alloc.J[n] = j
     alloc.V[n] = v
     alloc
 end
@@ -581,13 +581,13 @@ function reset!(counter::CSCCounter)
     counter
 end
 
-function contribute!(counter::CSCCounter,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(counter::CSCCounter,v,i,j,field_i,field_j)
     @boundscheck @assert v === nothing
     @boundscheck @assert length(i) == 1
     @boundscheck @assert length(j) == 1
     @boundscheck @assert field_i == 1
     @boundscheck @assert field_j == 1
-    counter.colnnz[map_j(j)] += 1
+    counter.colnnz[j] += 1
     counter
 end
 
@@ -625,13 +625,11 @@ function reset!(alloc::CSCAllocation)
     alloc
 end
 
-function contribute!(alloc::CSCAllocation,v,i0,j0,field_i,field_j,map_i,map_j)
-    @boundscheck @assert length(i0) == 1
-    @boundscheck @assert length(j0) == 1
+function contribute!(alloc::CSCAllocation,v,i,j,field_i,field_j)
+    @boundscheck @assert length(i) == 1
+    @boundscheck @assert length(j) == 1
     @boundscheck @assert field_i == 1
     @boundscheck @assert field_j == 1
-    i = map_i(i0)
-    j = map_j(j0)
     pini = Int(alloc.colptr[j])
     pend = pini + Int(alloc.colnnz[j]) - 1
     p = searchsortedfirst(alloc.rowval,i,pini,pend,Base.Order.Forward)
