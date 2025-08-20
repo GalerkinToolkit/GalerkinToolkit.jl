@@ -24,17 +24,18 @@ function GT.solution_field(U::GT.DiscreteField,sol::SciMLBase.LinearSolution)
 end
 
 function GT.SciMLBase_NonlinearProblem(uh::GT.DiscreteField,r,j;
-        matrix_strategy = GT.monolithic_matrix_assembly_strategy(),
-        vector_strategy = GT.monolithic_vector_assembly_strategy(),
+        assembly_method = (;),
+        kwargs...
     )
 
     U = GT.space(uh)
     V = U
-    x = vector_strategy.values_to_solution(GT.free_values(uh))
+    method = vector_assembly_method(;assembly_method...)
+    x = vector_from_values(method,free_values(uh))
     T = eltype(x)
     parameters = (uh,)
-    b,residual_cache = GT.assemble_vector(r(uh),T,V;parameters,reuse=Val(true),vector_strategy)
-    A,jacobian_cache = GT.assemble_matrix(j(uh),T,U,V;parameters,reuse=Val(true),matrix_strategy)
+    b,residual_cache = GT.assemble_vector(r(uh),T,V;parameters,reuse=Val(true),assembly_method,kwargs...)
+    A,jacobian_cache = GT.assemble_matrix(j(uh),T,U,V;parameters,reuse=Val(true),assembly_method,kwargs...)
 
     function f(dx,x,p)
         GT.solution_field!(uh,x)
@@ -65,28 +66,29 @@ end
 
 function GT.SciMLBase_ODEProblem(interval,uh::GT.DiscreteField,m,r,j;
     dirichlet_dynamics! =nothing,
-    matrix_strategy = GT.monolithic_matrix_assembly_strategy(),
-    vector_strategy = GT.monolithic_vector_assembly_strategy(),
+    assembly_method = (;),
+    kwargs...
     )
 
     t = first(interval)
     U = GT.space(uh)
     V = U
-    x = vector_strategy.values_to_solution(GT.free_values(uh))
+    method = vector_assembly_method(;assembly_method...)
+    x = vector_from_values(method,free_values(uh))
     T = eltype(x)
     parameters = map(GT.parameter,(uh,t))
-    b,residual_cache = GT.assemble_vector(r(parameters...),T,V;parameters,reuse=Val(true),vector_strategy)
-    A,jacobian_cache = GT.assemble_matrix(j(parameters...),T,U,V;parameters,reuse=Val(true),matrix_strategy)
-    M,Md = GT.assemble_matrix_with_free_and_dirichlet_columns(m,T,U,V;matrix_strategy)
+    b,residual_cache = GT.assemble_vector(r(parameters...),T,V;parameters,reuse=Val(true);assembly_method,kwargs...)
+    A,jacobian_cache = GT.assemble_matrix(j(parameters...),T,U,V;parameters,reuse=Val(true);assembly_method,kwargs...)
+    M,Md = GT.assemble_matrix_with_free_and_dirichlet_columns(m,T,U,V;assembly_method,kwargs...)
     vh = GT.zero_field(T,U)
-    vxd = vector_strategy.values_to_solution(GT.dirichlet_values(vh))
+    vxd = vector_from_values(method,GT.dirichlet_values(vh))
 
     function f(dx,x,p,t)
         if dirichlet_dynamics! !== nothing
             dirichlet_dynamics!(t,uh,vh)
         end
         GT.solution_field!(uh,x)
-        vector_strategy.values_to_solution!(vxd,GT.dirichlet_values(vh))
+        vector_from_values!(method,vxd,GT.dirichlet_values(vh))
         GT.update_vector!(dx,residual_cache;parameters)
         mul!(dx,Md,vxd,-1,1)
         dx

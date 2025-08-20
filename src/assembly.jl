@@ -1,25 +1,39 @@
 
+
+function default_vector_assembly_method()
+    monolithic_assembly(coo_assembly())
+end
+
+function default_matrix_assembly_method()
+    monolithic_assembly(coo_assembly())
+end
+
+function vector_assembly_method(;vector=default_vector_assembly_method(),matrix=nothing)
+    vector
+end
+
+function matrix_assembly_method(;matrix=default_matrix_assembly_method(),vector=nothing)
+    matrix
+end
+
+function vector_assembly_options(;vector=(;),matrix=nothing)
+    vector
+end
+
+function matrix_assembly_options(;matrix=(;),vector=nothing)
+    matrix
+end
+
 function allocate_vector(::Type{T},space_i::AbstractSpace,domains::AbstractDomain...;
         free_or_dirichlet = FREE,
-        kwargs...) where T
-    inner_strategy = coo_assembly(;eltype=T)
-    outer_strategy = monolithic_assembly(inner_trategy)
-    allocate_vector(outer_strategy,space_i,domains...;free_or_dirichlet,kwargs...)
-end
-
-function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
-        free_or_dirichlet = (FREE,FREE),
-        kwargs...) where T
-    inner_strategy = coo_assembly(;eltype=T)
-    outer_strategy = monolithic_assembly(inner_trategy)
-    allocate_matrix(outer_strategy,space_i,space_j,domains...;free_or_dirichlet,kwargs...)
-end
-
-function allocate_vector(strategy,space_i::AbstractSpace,domains::AbstractDomain...;
-        free_or_dirichlet = FREE,kwargs...)
+        assembly_method = (;),
+        assembly_options = (;),
+    ) where T
     free_or_diri_i = free_or_dirichlet
     dofs_i = GT.dofs(space_i,free_or_diri_i)
-    counter = GT.counter(strategy,dofs_i;kwargs...)
+    method = vector_assembly_method(;assembly_method...)
+    options = vector_assembly_options(;assembly_options...)
+    counter = GT.counter(method,T,dofs_i;options...)
     dof_map_i = free_or_diri_i == FREE ? identity : -
     fields_i = ntuple(num_fields(space_i))
     for domain in domains
@@ -32,7 +46,7 @@ function allocate_vector(strategy,space_i::AbstractSpace,domains::AbstractDomain
 end
 
 function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,map_i)
-    if do_not_loop(counter)
+    if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces
@@ -50,12 +64,17 @@ function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,map_
     counter
 end
 
-function allocate_matrix(strategy,space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
-        free_or_dirichlet = (FREE,FREE),kwargs...)
+function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
+        free_or_dirichlet = (FREE,FREE),
+        assembly_method = (;)
+        assembly_options = (;)
+        ) where T
     free_or_diri_i, free_or_diri_j = free_or_dirichlet
+    method = matrix_assembly_method(;assembly_method...)
+    options = matrix_assembly_options(;assembly_options...)
     dofs_i = GT.dofs(space_i,free_or_diri_i)
     dofs_j = GT.dofs(space_j,free_or_diri_j)
-    counter = GT.counter(strategy,dofs_i,dofs_j;kwargs...)
+    counter = GT.counter(method,T,dofs_i,dofs_j;options...)
     dof_map_i = free_or_diri_i == FREE ? identity : -
     dof_map_j = free_or_diri_j == FREE ? identity : -
     dof_maps = (dof_map_i,dof_map_j)
@@ -72,7 +91,7 @@ function allocate_matrix(strategy,space_i::AbstractSpace,space_j::AbstractSpace,
 end
 
 function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,map_i,map_j)
-    if do_not_loop(counter)
+    if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces
@@ -100,7 +119,7 @@ function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_do
 end
 
 function skip_dof(i,free_or_dirichlet)
-    (i>0 && free_or_dirichlet == DIRICHLET) || (j>0 && free_or_dirichlet == FREE)
+    (i>0 && free_or_dirichlet == DIRICHLET) || (i<0 && free_or_dirichlet == FREE)
 end
 
 struct MatrixAllocation{A,B,C} <: AbstractType
@@ -166,23 +185,25 @@ function compress!(malloc::AssemblyAllocation,A,A_cache)
     A
 end
 
-function monolithic_assembly(strategy)
-    MonolithicAssembly(strategy)
+# Monolithic assembly related
+
+function monolithic_assembly(method)
+    MonolithicAssembly(method)
 end
 
 struct MonolithicAssembly{A} <: AbstractType
-    strategy::A
+    method::A
 end
 
 function values_from_vector!(s::MonolithicAssembly,coeffs::BVector,x)
-        dofs = axes(coeffs,1)
-        nfields = blocklength(dofs)
-        for field in 1:nfields
-            pend = blocklasts(dofs)[field]
-            pini = 1 + pend - length(blocks(dofs)[field])
-            copyto!(coeffs[Block(field)],view(x,pini:pend))
-        end
-        coeffs
+    dofs = axes(coeffs,1)
+    nfields = blocklength(dofs)
+    for field in 1:nfields
+        pend = blocklasts(dofs)[field]
+        pini = 1 + pend - length(blocks(dofs)[field])
+        copyto!(coeffs[Block(field)],view(x,pini:pend))
+    end
+    coeffs
 end
 
 function values_from_vector(s::MonolithicAssembly,dofs::BRange,x)
@@ -210,19 +231,19 @@ function vector_from_values(s::MonolithicAssembly,coeffs::BVector)
 end
 
 function vector_from_values!(s::MonolithicAssembly,x,coeffs)
-    vector_from_values!(s.strategy,x,coeffs)
+    vector_from_values!(s.method,x,coeffs)
 end
 
 function vector_from_values(s::MonolithicAssembly,coeffs)
-    vector_from_values(s.strategy,coeffs)
+    vector_from_values(s.method,coeffs)
 end
 
 function values_from_vector!(s::MonolithicAssembly,coeffs,x)
-    values_from_vector!(s.strategy,coeffs,x)
+    values_from_vector!(s.method,coeffs,x)
 end
 
 function values_from_vector(s::MonolithicAssembly,dofs,x)
-    values_from_vector(s.strategy,dofs,x)
+    values_from_vector(s.method,dofs,x)
 end
 
 function vector_from_values!(s,x,coeffs)
@@ -247,41 +268,42 @@ function values_from_vector(s,dofs,x)
     x
 end
 
-function counter(s::MonolithicAssembly,dofs_i;field_coupling,kwargs...)
-    GT.counter(s.strategy,dofs_i;kwargs...)
+function counter(s::MonolithicAssembly,::Type{T},dofs_i;block_mask=nothing,kwargs...)
+    GT.counter(s.method,T,dofs_i;kwargs...) where T
 end
 
-function counter(s::MonolithicAssembly,dofs_i::BRange;
-    field_coupling=fill(true,blocklength(dofs_i)),
-    kwargs...)
-    counter = GT.counter(s.strategy,dofs_i;kwargs...)
+function counter(s::MonolithicAssembly,::Type{T},dofs_i::BRange;
+    block_mask=fill(true,blocklength(dofs_i)),
+    kwargs...) where T
+    counter = GT.counter(s.method,T,dofs_i;kwargs...)
     offsets_i = blocklasts(dofs_i) .- map(length,blocks(dofs_i))
     offsets = (offsets_i,)
-    MonolithicAssemblyCounter(counter,offsets,field_coupling)
+    MonolithicAssemblyCounter(counter,offsets,block_mask)
 end
 
-function counter(s::MonolithicAssembly,dofs_i,dofs_j;field_coupling,kwargs...)
-    GT.counter(s.strategy,dofs_i,dofs_j;kwargs...)
+function counter(s::MonolithicAssembly,::Type{T},dofs_i,dofs_j;
+        block_mask=nothing,kwargs...) where T
+    GT.counter(s.method,T,dofs_i,dofs_j;kwargs...)
 end
 
-function counter(s::MonolithicAssembly,dofs_i::BRange,dofs_j::BRange;
-    field_coupling=fill(true,blocklength(dofs_i),blocklength(dofs_j)),
-    kwargs...)
-    counter = GT.counter(s.strategy,dofs_i,dofs_j;kwargs...)
+function counter(s::MonolithicAssembly,::Type{T},dofs_i::BRange,dofs_j::BRange;
+    block_mask=fill(true,blocklength(dofs_i),blocklength(dofs_j)),
+    kwargs...) where T
+    counter = GT.counter(s.method,T,dofs_i,dofs_j;kwargs...)
     offsets_i = blocklasts(dofs_i) .- map(length,blocks(dofs_i))
     offsets_j = blocklasts(dofs_j) .- map(length,blocks(dofs_i))
     offsets = (offsets_i,offsets_j)
-    MonolithicAssemblyCounter(counter,offsets,field_coupling)
+    MonolithicAssemblyCounter(counter,offsets,block_mask)
 end
 
 struct MonolithicAssemblyCounter{A,B,C} <: AbstractType
     counter::A
     offsets::B
-    field_coupling::C
+    block_mask::C
 end
 
-function do_not_loop(mcounter::MonolithicAssemblyCounter)
-    do_not_loop(mcounter.counter)
+function do_loop(mcounter::MonolithicAssemblyCounter)
+    do_loop(mcounter.counter)
 end
 
 function reset!(counter::MonolithicAssemblyCounter)
@@ -290,7 +312,7 @@ function reset!(counter::MonolithicAssemblyCounter)
 end
 
 function contribute!(counter::MonolithicAssemblyCounter,v,i,field_i,map_i)
-    if counter.field_coupling[field_i,field_j]
+    if counter.block_mask[field_i]
         offsets_i, = counter.offsets
         i2 = offsets_i[field_i]+map_i(i)
         contribute!(counter.counter,v,i2,1,identity)
@@ -299,7 +321,7 @@ function contribute!(counter::MonolithicAssemblyCounter,v,i,field_i,map_i)
 end
 
 function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j,map_i,map_j)
-    if counter.field_coupling[field_i,field_j]
+    if counter.block_mask[field_i,field_j]
         offsets_i,offsets_j = counter.offsets
         i2 = offsets_i[field_i]+map_i(i)
         j2 = offsets_j[field_j]+map_j(j)
@@ -309,35 +331,35 @@ function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j,ma
 end
 
 function allocate(mcounter::MonolithicAssemblyCounter)
-    (;counter,offsets,field_coupling) = mcounter
+    (;counter,offsets,block_mask) = mcounter
     alloc = allocate(counter)
     reset!(counter)
-    MonolithicAssemblyAllocation(alloc,offsets,field_coupling)
+    MonolithicAssemblyAllocation(alloc,offsets,block_mask)
 end
 
 struct MonolithicAssemblyAllocation{A,B,C} <: AbstractType
-    counter::A
+    allocation::A
     offsets::B
-    field_coupling::C
+    block_mask::C
 end
 
-function contribute!(counter::MonolithicAssemblyAllocation,v,i,field_i,map_i)
-    if counter.field_coupling[field_i,field_j]
-        offsets_i, = counter.offsets
+function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i,map_i)
+    if alloc.block_mask[field_i]
+        offsets_i, = alloc.offsets
         i2 = offsets_i[field_i]+map_i(i)
-        contribute!(counter.counter,v,i2,1,identity)
+        contribute!(alloc.alloc,v,i2,1,identity)
     end
-    counter
+    alloc
 end
 
-function contribute!(counter::MonolithicAssemblyAllocation,v,i,j,field_i,field_j,map_i,map_j)
-    if counter.field_coupling[field_i,field_j]
-        offsets_i,offsets_j = counter.offsets
+function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j,map_i,map_j)
+    if alloc.block_mask[field_i,field_j]
+        offsets_i,offsets_j = alloc.offsets
         i2 = offsets_i[field_i]+map_i(i)
         j2 = offsets_j[field_j]+map_j(j)
-        contribute!(counter.counter,v,i2,j2,1,1,identity,identity)
+        contribute!(alloc.alloc,v,i2,j2,1,1,identity,identity)
     end
-    counter
+    alloc
 end
 
 function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(false))
@@ -348,31 +370,29 @@ function comperss!(malloc::MonolithicAssemblyAllocation,A,cache)
     compress!(malloc.alloc,A,cache)
 end
 
-function coo_assembly(dofs_i;eltype=Float64,index_type=Int32,matrix_type=SparseMatrixCSC{eltype,index_type},vector_type=Vector{eltype})
+# COO related
+
+function coo_assembly()
+    COOAssembly()
+end
+
+struct COOAssembly <: AbstractType end
+
+function counter(s::COOAssembly,::Type{T},dofs_i;index_type=Int32,eltype=T,vector_type=Vector{eltype}) where T
     @assert vector_type <: Vector "Case not implemented"
-    COOAssembly(eltype,index_type,matrix_type,vector_type)
-end
-
-struct COOAssembly{Tv,Ti,M,V} <: AbstractType
-    eltype::Type{Tv}
-    index_type::Type{Ti}
-    matrix_type::Type{M}
-    vector_type::Type{V}
-end
-
-function counter(s::COOAssembly,dofs_i)
     ni = length(dofs_i)
     COOVectorCounter(vector_type,index_type,ni,Ref(0))
 end
 
-function counter(s::COOAssembly,dofs_i,dofs_j)
+function counter(s::COOAssembly,::Type{T},dofs_i,dofs_j;
+    eltype=T,index_type=Int32;matrix_type=SparseMatrixCSC{eltype,Int32}) where T
     ni = length(dofs_i)
     nj = length(dofs_j)
     COOMatrixCounter(matrix_type,index_type,ni,nj,Ref(0))
 end
 
 function COOVectorCounter{A,B} <: AbstractType
-    eltype::Type{A}
+    vector_type::Type{A}
     index_type::Type{B}
     nrows::Int
     nnz::Ref{Int}
@@ -388,8 +408,8 @@ end
 
 const COOCounter = Union{COOVectorCounter,COOMatrixCounter}
 
-function do_not_loop(counter::COOCounter)
-    false
+function do_loop(counter::COOCounter)
+    true
 end
 
 function reset!(counter::COOCounter)
@@ -417,7 +437,7 @@ end
 
 function allocate(counter::COOVectorCounter)
     Ti = counter.index_type
-    T = counter.eltype
+    T = eltype(counter.vector_type)
     I = zeros(Ti,n)
     V = zeros(T,n)
     reset!(counter)
@@ -432,7 +452,7 @@ function allocate(counter::COOMatrixCounter)
     J = zeros(Ti,n)
     V = zeros(T,n)
     reset!(counter)
-    COOAllocation(I,J,V,counter)
+    COOMatrixAllocation(I,J,V,counter)
 end
 
 struct COOVectorAllocation{Tv,Ti,C} <: AbstractType
@@ -481,6 +501,7 @@ end
 function compress(alloc::COOVectorAllocation;reuse=Val(false))
     (;I,V,counter) = alloc
     nrows = counter.nrows
+    @assert alloc.counter.vector_type <: Vector
     vec = PartitionedArrays.dense_vector(I,V,nrows)
     cache = nothing
     if val_parameter(reuse)
