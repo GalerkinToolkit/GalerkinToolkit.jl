@@ -110,7 +110,26 @@ el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
 eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
 @test el2 < tol
 
+assembly_method = (;matrix=GT.csc_assembly(),vector=GT.coo_assembly())
+p = GT.PartitionedSolvers_linear_problem(uhd,a,l;assembly_method)
 
+A = PS.matrix(p)
+display(A)
+
+b = PS.rhs(p)
+x = A\b
+uh = GT.solution_field(uhd,x)
+
+eh(q) = u(q) - uh(q)
+∇eh(q) = ∇(u,q) - ∇(uh,q)
+
+tol = 1.e-10
+
+el2 = ∫( q->abs2(eh(q)), dΩ) |> sum |> sqrt
+@test el2 < tol
+
+eh1 = ∫( q->∇eh(q)⋅∇eh(q), dΩ) |> sum |> sqrt
+@test el2 < tol
 
 domain = (0,1,0,1)
 cells = (4,4)
@@ -646,6 +665,15 @@ jac(u) = (du,v) -> ∫( x-> ∇(v,x)⋅GT.call(dflux,∇(du,x),∇(u,x)) , dΩ)
 
 uh = GT.rand_field(Float64,V)
 p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac)
+
+linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
+s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)
+s = PS.solve(s)
+uh = GT.solution_field(uh,s)
+
+uh = GT.rand_field(Float64,V)
+assembly_method = (;matrix=GT.csc_assembly())
+p = GT.PartitionedSolvers_nonlinear_problem(uh,res,jac;assembly_method)
 
 linsolve = PS.NLsolve_nlsolve_linsolve(PS.LinearAlgebra_lu,p)
 s = PS.NLsolve_nlsolve(p;show_trace=true,method=:newton)

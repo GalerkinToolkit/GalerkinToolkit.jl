@@ -547,3 +547,149 @@ function compress!(alloc::COOMatrixAllocation,A,cache)
     A
 end
 
+## CSC assembly
+
+function csc_assembly()
+    CSCAssembly()
+end
+
+struct CSCAssembly <: AbstractType end
+
+function counter(s::CSCAssembly,::Type{T},dofs_i,dofs_j;
+    eltype=T,index_type=Int32,matrix_type=SparseMatrixCSC{eltype,index_type}) where T
+    @assert matrix_type <: SparseMatrixCSC
+    ni = length(dofs_i)
+    nj = length(dofs_j)
+    colnnz = zeros(index_type,nj)
+    CSCCounter(matrix_type,index_type,ni,nj,colnnz)
+end
+
+struct CSCCounter{A,B} <: AbstractType
+    matrix_type::Type{A}
+    index_type::Type{B}
+    nrows::Int
+    ncols::Int
+    colnnz::Vector{B}
+end
+
+function do_loop(counter::CSCCounter)
+    true
+end
+
+function reset!(counter::CSCCounter)
+    fill!(counter.colnnz,zero(eltype(counter.colnnz)))
+    counter
+end
+
+function contribute!(counter::CSCCounter,v,i,j,field_i,field_j,map_i,map_j)
+    @boundscheck @assert v === nothing
+    @boundscheck @assert length(i) == 1
+    @boundscheck @assert length(j) == 1
+    @boundscheck @assert field_i == 1
+    @boundscheck @assert field_j == 1
+    counter.colnnz[map_j(j)] += 1
+    counter
+end
+
+function allocate(counter::CSCCounter)
+    Ti = counter.index_type
+    T = eltype(counter.matrix_type)
+    nrows = counter.nrows
+    ncols = counter.ncols
+    colnnz = counter.colnnz
+    colptr = Vector{Ti}(undef,ncols+1)
+    @inbounds for i in 1:ncols
+        colptr[i+1] = colnnz[i]
+    end
+    length_to_ptrs!(colptr)
+    ndata = colptr[end] - one(Ti)
+    rowval = Vector{Ti}(undef,ndata)
+    nzval = zeros(T,ndata)
+    reset!(counter)
+    CSCAllocation(nrows,ncols,colptr,colnnz,rowval,nzval)
+end
+
+struct CSCAllocation{Tv,Ti} <: AbstractType
+  nrows::Int
+  ncols::Int
+  colptr::Vector{Ti}
+  colnnz::Vector{Ti}
+  rowval::Vector{Ti}
+  nzval::Vector{Tv}
+end
+
+Base.eltype(alloc::CSCAllocation) = eltype(alloc.nzval)
+
+function reset!(alloc::CSCAllocation)
+    fill!(alloc.nzval,zero(eltype(alloc.nzval)))
+    alloc
+end
+
+function contribute!(alloc::CSCAllocation,v,i0,j0,field_i,field_j,map_i,map_j)
+    @boundscheck @assert length(i0) == 1
+    @boundscheck @assert length(j0) == 1
+    @boundscheck @assert field_i == 1
+    @boundscheck @assert field_j == 1
+    i = map_i(i0)
+    j = map_j(j0)
+    pini = Int(alloc.colptr[j])
+    pend = pini + Int(alloc.colnnz[j]) - 1
+    p = searchsortedfirst(alloc.rowval,i,pini,pend,Base.Order.Forward)
+    if (p>pend)
+        # add new entry
+        alloc.colnnz[j] += 1
+        alloc.rowval[p] = i
+        alloc.nzval[p] = v
+    elseif alloc.rowval[p] != i
+        # shift one forward from p to pend
+        @boundscheck @assert pend+1 < Int(alloc.colptr[j+1])
+        for k in pend:-1:p
+            o = k + 1
+            alloc.rowval[o] = alloc.rowval[k]
+            alloc.nzval[o] = alloc.nzval[k]
+        end
+        # add new entry
+        alloc.colnnz[j] += 1
+        alloc.rowval[p] = i
+        alloc.nzval[p] = v
+    else 
+        # update existing entry
+        alloc.nzval[p] += v 
+    end
+    alloc
+end
+
+function compress(alloc::CSCAllocation{Tv,Ti};reuse=Val(true)) where {Tv,Ti}
+  k = 1
+  for j in 1:alloc.ncols
+    pini = Int(alloc.colptr[j])
+    pend = pini + Int(alloc.colnnz[j]) - 1
+    for p in pini:pend
+      alloc.nzval[k] = alloc.nzval[p]
+      alloc.rowval[k] = alloc.rowval[p]
+      k += 1
+    end
+  end
+  @inbounds for j in 1:alloc.ncols
+    alloc.colptr[j+1] = alloc.colnnz[j]
+  end
+  length_to_ptrs!(alloc.colptr)
+  nnz = alloc.colptr[end]-1
+  resize!(alloc.rowval,nnz)
+  resize!(alloc.nzval,nnz)
+  A = SparseMatrixCSC(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval)
+  if val_parameter(reuse)
+      (A, nothing)
+  else
+      A
+  end
+end
+
+function compress!(alloc::CSCAllocation,A::SparseMatrixCSC,cache)
+    if alloc.nzval !== A.nzval
+        copyto!(A.nzval,alloc.nzval)
+    end
+    A
+end
+
+
