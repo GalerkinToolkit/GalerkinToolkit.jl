@@ -35,29 +35,32 @@ function allocate_vector(::Type{T},space_i::AbstractSpace,domains::AbstractDomai
     options = vector_assembly_options(;assembly_options...)
     counter = GT.counter(method,T,dofs_i;options...)
     dof_map_i = free_or_diri_i == FREE ? identity : -
-    fields_i = ntuple(num_fields(space_i))
+    fields_i = ntuple(identity,num_fields(space_i))
     for domain in domains
         nfaces = num_faces(domain)
-        field_face_dofs_i = map(field_i->dofs_accessor(GT.fields(space_i,field_i)),fields_i)
-        allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,dof_map_i)
+        field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
+        field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
+        allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free_or_diri_i,dof_map_i,field_face_nfaces_around_i)
     end
     alloc = allocate(counter)
     VectorAllocation(alloc,free_or_dirichlet,dof_map_i)
 end
 
-function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,map_i)
+function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free_or_diri_i,map_i,field_face_nfaces_around_i)
     if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces
-        field_dofs_i = map(field_i->field_face_dofs_i[field_i](face),fields_i)
         for field_i in fields_i
-            dofs_i = field_dofs_i[field_i]
-            for dof_i in dofs_i
-                if skip_dof(dof_i,free_or_diri_i)
-                    continue
+            nfaces_around_i = field_face_nfaces_around_i[field_i](face)
+            for face_around_i in 1:nfaces_around_i
+                dofs_i = field_face_dofs_i[field_i](face,face_around_i)
+                for dof_i in dofs_i
+                    if skip_dof(dof_i,free_or_diri_i)
+                        continue
+                    end
+                    contribute!(counter,nothing,dof_i,field_i,map_i)
                 end
-                contribute!(counter,nothing,dof_i,field_i,map_i)
             end
         end
     end
@@ -66,7 +69,7 @@ end
 
 function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
         free_or_dirichlet = (FREE,FREE),
-        assembly_method = (;)
+        assembly_method = (;),
         assembly_options = (;)
         ) where T
     free_or_diri_i, free_or_diri_j = free_or_dirichlet
@@ -78,38 +81,44 @@ function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace
     dof_map_i = free_or_diri_i == FREE ? identity : -
     dof_map_j = free_or_diri_j == FREE ? identity : -
     dof_maps = (dof_map_i,dof_map_j)
-    fields_i = ntuple(num_fields(space_i))
-    fields_j = ntuple(num_fields(space_j))
+    fields_i = ntuple(identity,num_fields(space_i))
+    fields_j = ntuple(identity,num_fields(space_j))
     for domain in domains
         nfaces = num_faces(domain)
-        field_face_dofs_i = map(field_i->dofs_accessor(GT.fields(space_i,field_i)),fields_i)
-        field_face_dofs_j = map(field_j->dofs_accessor(GT.fields(space_j,field_j)),fields_j)
-        allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,dof_map_i,dof_map_j)
+        field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
+        field_face_dofs_j = map(field_j->dofs_accessor(GT.field(space_j,field_j),domain),fields_j)
+        field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
+        field_face_nfaces_around_j = map(field_j->num_faces_around_accesor(GT.domain(GT.field(space_j,field_j)),domain),fields_j)
+        allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
     end
     alloc = allocate(counter)
     MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
 end
 
-function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,map_i,map_j)
+function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,map_i,map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
     if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces
-        field_dofs_i = map(field_i->field_face_dofs_i[field_i](face),fields_i)
-        field_dofs_j = map(field_j->field_face_dofs_j[field_j](face),fields_j)
         for field_i in fields_i
-            dofs_i = field_dofs_i[field_i]
+            nfaces_around_i = field_face_nfaces_around_i[field_i](face)
             for field_j in fields_j
-                dofs_j = field_dofs_j[field_j]
-                for dof_i in dofs_i
-                    if skip_dof(dof_i,free_or_diri_i)
-                        continue
-                    end
-                    for dof_j in dofs_j
-                        if skip_dof(dof_j,free_or_diri_j)
-                            continue
+                nfaces_around_j = field_face_nfaces_around_j[field_j](face)
+                for face_around_i in 1:nfaces_around_i
+                    dofs_i = field_face_dofs_i[field_i](face,face_around_i)
+                    for face_around_j in 1:nfaces_around_j
+                        dofs_j = field_face_dofs_j[field_j](face,face_around_j)
+                        for dof_i in dofs_i
+                            if skip_dof(dof_i,free_or_diri_i)
+                                continue
+                            end
+                            for dof_j in dofs_j
+                                if skip_dof(dof_j,free_or_diri_j)
+                                    continue
+                                end
+                                contribute!(counter,nothing,dof_i,dof_j,field_i,field_j,map_i,map_j)
+                            end
                         end
-                        contribute!(counter,nothing,dof_i,dof_j,field_i,field_j,map_i,map_j)
                     end
                 end
             end
@@ -123,37 +132,39 @@ function skip_dof(i,free_or_dirichlet)
 end
 
 struct MatrixAllocation{A,B,C} <: AbstractType
-    alloc::A
+    allocation::A
     free_or_dirichlet::B
     dof_maps::C
 end
 
 struct VectorAllocation{A,B,C} <: AbstractType
-    alloc::A
+    allocation::A
     free_or_dirichlet::B
     dof_map::C
 end
 
 const AssemblyAllocation = Union{VectorAllocation,MatrixAllocation}
 
+Base.eltype(alloc::AssemblyAllocation) = eltype(alloc.allocation)
+
 function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1,map_i=identity)
     free_or_diri_i  = malloc.free_or_dirichlet
     map_i = malloc.dof_map
-    alloc = malloc.alloc
+    alloc = malloc.allocation
     ndofs_i = length(dofs_i)
     for i in 1:ndofs_i
         dof_i = dofs_i[i]
         if skip_dof(dof_i,free_or_diri_i)
             continue
         end
-        contribute!(alloc,vals,dof_i,field_i,map_i)
+        contribute!(alloc,vals[i],dof_i,field_i,map_i)
     end
 end
 
 function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field_j=1,map_i=identity,map_j=identity)
     free_or_diri_i, free_or_diri_j = malloc.free_or_dirichlet
     map_i,map_j = malloc.dof_maps
-    alloc = malloc.alloc
+    alloc = malloc.allocation
     ndofs_i = length(dofs_i)
     ndofs_j = length(dofs_j)
     for j in 1:ndofs_j
@@ -166,22 +177,22 @@ function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field
             if skip_dof(dof_i,free_or_diri_i)
                 continue
             end
-            contribute!(alloc,vals,dof_i,dof_j,field_i,field_j,map_i,map_j)
+            contribute!(alloc,vals[i,j],dof_i,dof_j,field_i,field_j,map_i,map_j)
         end
     end
 end
 
 function reset!(malloc::AssemblyAllocation)
-    reset!(malloc.alloc)
+    reset!(malloc.allocation)
     malloc
 end
 
 function compress(malloc::AssemblyAllocation;reuse=Val(false))
-    compress(malloc.alloc;reuse)
+    compress(malloc.allocation;reuse)
 end
 
 function compress!(malloc::AssemblyAllocation,A,A_cache)
-    compress!(malloc.alloc,A,A_cache)
+    compress!(malloc.allocation,A,A_cache)
     A
 end
 
@@ -268,8 +279,8 @@ function values_from_vector(s,dofs,x)
     x
 end
 
-function counter(s::MonolithicAssembly,::Type{T},dofs_i;block_mask=nothing,kwargs...)
-    GT.counter(s.method,T,dofs_i;kwargs...) where T
+function counter(s::MonolithicAssembly,::Type{T},dofs_i;block_mask=nothing,kwargs...) where T
+    GT.counter(s.method,T,dofs_i;kwargs...)
 end
 
 function counter(s::MonolithicAssembly,::Type{T},dofs_i::BRange;
@@ -343,11 +354,13 @@ struct MonolithicAssemblyAllocation{A,B,C} <: AbstractType
     block_mask::C
 end
 
+Base.eltype(alloc::MonolithicAssemblyAllocation) = eltype(alloc.allocation)
+
 function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i,map_i)
     if alloc.block_mask[field_i]
         offsets_i, = alloc.offsets
         i2 = offsets_i[field_i]+map_i(i)
-        contribute!(alloc.alloc,v,i2,1,identity)
+        contribute!(alloc.allocation,v,i2,1,identity)
     end
     alloc
 end
@@ -357,17 +370,17 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j,m
         offsets_i,offsets_j = alloc.offsets
         i2 = offsets_i[field_i]+map_i(i)
         j2 = offsets_j[field_j]+map_j(j)
-        contribute!(alloc.alloc,v,i2,j2,1,1,identity,identity)
+        contribute!(alloc.allocation,v,i2,j2,1,1,identity,identity)
     end
     alloc
 end
 
 function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(false))
-    compress(malloc.alloc;reuse)
+    compress(malloc.allocation;reuse)
 end
 
 function comperss!(malloc::MonolithicAssemblyAllocation,A,cache)
-    compress!(malloc.alloc,A,cache)
+    compress!(malloc.allocation,A,cache)
 end
 
 # COO related
@@ -385,20 +398,20 @@ function counter(s::COOAssembly,::Type{T},dofs_i;index_type=Int32,eltype=T,vecto
 end
 
 function counter(s::COOAssembly,::Type{T},dofs_i,dofs_j;
-    eltype=T,index_type=Int32;matrix_type=SparseMatrixCSC{eltype,Int32}) where T
+    eltype=T,index_type=Int32,matrix_type=SparseMatrixCSC{eltype,index_type}) where T
     ni = length(dofs_i)
     nj = length(dofs_j)
     COOMatrixCounter(matrix_type,index_type,ni,nj,Ref(0))
 end
 
-function COOVectorCounter{A,B} <: AbstractType
+struct COOVectorCounter{A,B} <: AbstractType
     vector_type::Type{A}
     index_type::Type{B}
     nrows::Int
     nnz::Ref{Int}
 end
 
-function COOMatrixCounter{A,B} <: AbstractType
+struct COOMatrixCounter{A,B} <: AbstractType
     matrix_type::Type{A}
     index_type::Type{B}
     nrows::Int
@@ -438,6 +451,7 @@ end
 function allocate(counter::COOVectorCounter)
     Ti = counter.index_type
     T = eltype(counter.vector_type)
+    n = counter.nnz[]
     I = zeros(Ti,n)
     V = zeros(T,n)
     reset!(counter)
@@ -461,6 +475,7 @@ struct COOVectorAllocation{Tv,Ti,C} <: AbstractType
     counter::C
 end
 
+
 struct COOMatrixAllocation{Tv,Ti,C} <: AbstractType
     I::Vector{Ti}
     J::Vector{Ti}
@@ -470,12 +485,14 @@ end
 
 const COOAllocation = Union{COOVectorAllocation,COOMatrixAllocation}
 
+Base.eltype(alloc::COOAllocation) = eltype(alloc.V)
+
 function reset!(alloc::COOAllocation)
     reset!(alloc.counter)
     alloc
 end
 
-function contribute!(counter::COOVectorAllocation,v,i,field_i,map_i)
+function contribute!(alloc::COOVectorAllocation,v,i,field_i,map_i)
     @boundscheck @assert length(i) == 1
     @boundscheck @assert field_i == 1
     alloc.counter.nnz[] += 1
@@ -485,7 +502,7 @@ function contribute!(counter::COOVectorAllocation,v,i,field_i,map_i)
     alloc
 end
 
-function contribute!(counter::COOMatrixAllocation,v,i,j,field_i,field_j,map_i,map_j)
+function contribute!(alloc::COOMatrixAllocation,v,i,j,field_i,field_j,map_i,map_j)
     @boundscheck @assert length(i) == 1
     @boundscheck @assert length(j) == 1
     @boundscheck @assert field_i == 1
@@ -505,9 +522,9 @@ function compress(alloc::COOVectorAllocation;reuse=Val(false))
     vec = PartitionedArrays.dense_vector(I,V,nrows)
     cache = nothing
     if val_parameter(reuse)
-        (A, cache)
+        (vec, cache)
     else
-        A
+        vec
     end
 end
 
