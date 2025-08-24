@@ -237,9 +237,7 @@ end
 function assemble_vector(f,::Type{T},space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
-    vector_strategy = monolithic_vector_assembly_strategy(),
-    free_or_dirichlet = FREE,
-    optimize_options = nothing,
+    kwargs...
     ) where T
 
     arg = 1
@@ -247,7 +245,12 @@ function assemble_vector(f,::Type{T},space;
     integral = f(dv)
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
-    alloc = allocate_vector(T,space,domains...;vector_strategy,free_or_dirichlet)
+    alloc = allocate_vector(T,space,domains...;kwargs...)
+    optimize_options = if haskey(kwargs, :optimize_options)
+        kwargs[:optimize_options]
+    else
+        nothing
+    end
     loops = map(contributions) do contribution
         params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
@@ -309,9 +312,7 @@ end
 function assemble_matrix(f,::Type{T},trial_space,test_space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
-    matrix_strategy = monolithic_matrix_assembly_strategy(),
-    free_or_dirichlet = (FREE,FREE),
-    optimize_options = nothing,
+    kwargs...
     ) where T
     arg_test = 1
     arg_trial = 2
@@ -320,7 +321,12 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     integral = f(du,dv)
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
-    alloc = allocate_matrix(T,test_space,trial_space,domains...;matrix_strategy,free_or_dirichlet)
+    alloc = allocate_matrix(T,test_space,trial_space,domains...;kwargs...)
+    optimize_options = if haskey(kwargs, :optimize_options)
+        kwargs[:optimize_options]
+    else
+        nothing
+    end
     loops = map(contributions) do contribution
         params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters, optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
@@ -350,15 +356,14 @@ end
 function assemble_matrix_with_free_and_dirichlet_columns(f,::Type{T},trial_space,test_space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
-    matrix_strategy = monolithic_matrix_assembly_strategy(),
     free_or_dirichlet = FREE, # Rows
-    optimize_options = nothing,
+    kwargs...
     ) where T
     # We are doing two calls, this can be optimized
     A,Acache = assemble_matrix(f,T,trial_space,test_space;
-        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,FREE),optimize_options)
+        parameters,reuse=Val(true),free_or_dirichlet=(free_or_dirichlet,FREE),kwargs...)
     Ad,Adcache = assemble_matrix(f,T,trial_space,test_space;
-        parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet=(free_or_dirichlet,DIRICHLET),optimize_options)
+        parameters,reuse=Val(true),free_or_dirichlet=(free_or_dirichlet,DIRICHLET),kwargs...)
     cache = (Acache,Adcache)
     if val_parameter(reuse)
         A,Ad,cache
@@ -379,12 +384,10 @@ end
 function assemble_matrix_and_vector(a,l,::Type{T},U,V;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
-    matrix_strategy = monolithic_matrix_assembly_strategy(),
-    vector_strategy = monolithic_vector_assembly_strategy(),
-    optimize_options = nothing,
+    kwargs...
     ) where T
-    A,matrix_cache = assemble_matrix(a,T,U,V;parameters,reuse=Val(true),matrix_strategy,optimize_options)
-    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy,optimize_options)
+    A,matrix_cache = assemble_matrix(a,T,U,V;parameters,reuse=Val(true),kwargs...)
+    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),kwargs...)
     cache = (;matrix_cache,vector_cache)
     if val_parameter(reuse)
         A,b,cache
@@ -403,14 +406,12 @@ end
 function assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,::Type{T},U,V;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
-    matrix_strategy = monolithic_matrix_assembly_strategy(),
-    vector_strategy = monolithic_vector_assembly_strategy(),
     free_or_dirichlet = FREE, #Rows
-    optimize_options = nothing,
+    kwargs...
     ) where T
     A,Ad,matrix_cache = assemble_matrix_with_free_and_dirichlet_columns(
-        a,T,U,V;parameters,reuse=Val(true),matrix_strategy,free_or_dirichlet)
-    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),vector_strategy,free_or_dirichlet,optimize_options)
+        a,T,U,V;parameters,reuse=Val(true),free_or_dirichlet,kwargs...)
+    b,vector_cache = assemble_vector(l,T,V;parameters,reuse=Val(true),free_or_dirichlet,kwargs...)
     cache = (;matrix_cache,vector_cache)
     if val_parameter(reuse)
         A,Ad,b,cache
@@ -429,14 +430,15 @@ end
 # Linear problems
 
 function PartitionedSolvers_linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd);
-        matrix_strategy = monolithic_matrix_assembly_strategy(),
-        vector_strategy = monolithic_vector_assembly_strategy(),
+        assembly_method = (;),
+        kwargs...
     )
     U = GT.space(uhd)
     diri_vals = dirichlet_values(uhd)
-    xd = vector_strategy.values_to_solution(diri_vals)
+    method = vector_assembly_method(;assembly_method...)
+    xd = vector_from_values(method,diri_vals)
     T = eltype(xd)
-    A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;matrix_strategy,vector_strategy)
+    A,Ad,b = assemble_matrix_and_vector_with_free_and_dirichlet_columns(a,l,T,U,V;assembly_method,kwargs...)
     mul!(b,Ad,xd,-1,1)
     x = similar(b,axes(A,2))
     fill!(x,zero(eltype(x)))
@@ -444,10 +446,9 @@ function PartitionedSolvers_linear_problem(uhd::DiscreteField,a,l,V=GT.space(uhd
 end
 
 function PartitionedSolvers_linear_problem(::Type{T},U::AbstractSpace,a,l,V=U;
-        matrix_strategy = monolithic_matrix_assembly_strategy(),
-        vector_strategy = monolithic_vector_assembly_strategy(),
+    kwargs...
     ) where T
-    A,b = assemble_matrix_and_vector(a,l,T,U,V;matrix_strategy,vector_strategy)
+    A,b = assemble_matrix_and_vector(a,l,T,U,V;kwargs...)
     x = similar(b,axes(A,2))
     fill!(x,zero(eltype(x)))
     PS.linear_problem(x,A,b)
@@ -456,23 +457,24 @@ end
 # Nonlinear problems
 
 function PartitionedSolvers_nonlinear_problem(uh::DiscreteField,r,j,V=GT.space(uh);
-        matrix_strategy = monolithic_matrix_assembly_strategy(),
-        vector_strategy = monolithic_vector_assembly_strategy(),
+        assembly_method = (;),
+        kwargs...
     )
     U = GT.space(uh)
     parameters = (uh,)
-    x = vector_strategy.values_to_solution(free_values(uh))
+    method = vector_assembly_method(;assembly_method...)
+    x = vector_from_values(method,free_values(uh))
     T = eltype(x)
-    b,residual_cache = assemble_vector(r(uh),T,V;parameters,vector_strategy)
-    A,jacobian_cache = assemble_matrix(j(uh),T,U,V;parameters,matrix_strategy)
-    workspace = (;uh,residual_cache,jacobian_cache)
+    b,residual_cache = assemble_vector(r(uh),T,V;parameters,assembly_method,kwargs...)
+    A,jacobian_cache = assemble_matrix(j(uh),T,U,V;parameters,assembly_method,kwargs...)
+    workspace = (;uh,residual_cache,jacobian_cache,assembly_method)
     PS.nonlinear_problem(nonlinear_problem_update,x,b,A,workspace)
 end
 
 function nonlinear_problem_update(p)
-    (;uh,residual_cache,jacobian_cache) = PS.workspace(p)
+    (;uh,residual_cache,jacobian_cache,assembly_method) = PS.workspace(p)
     x = PS.solution(p)
-    solution_field!(uh,x)
+    solution_field!(uh,x;assembly_method)
     A = PS.jacobian(p)
     b = PS.residual(p)
     parameters = (uh,)
@@ -496,64 +498,62 @@ function solution_field(U::AbstractSpace,x::AbstractVector;kwargs...)
 end
 
 function solution_field(uhd::DiscreteField,x::AbstractVector;
-        vector_strategy=monolithic_vector_assembly_strategy()
+        assembly_method = (;)
     )
     diri_vals = dirichlet_values(uhd)
     T = eltype(diri_vals)
     U = GT.space(uhd)
-    free_vals = vector_strategy.solution_to_values(free_dofs(U),x)
+    method = vector_assembly_method(;assembly_method...)
+    free_vals = values_from_vector(method,free_dofs(U),x)
     uh = discrete_field(U,free_vals,diri_vals)
 end
 
 function solution_field!(uh::DiscreteField,x::AbstractVector;
-        vector_strategy=monolithic_vector_assembly_strategy()
+        assembly_method = (;)
     )
     U = GT.space(uh)
     free_vals = free_values(uh)
-    vector_strategy.solution_to_values!(free_vals,x)
+    method = vector_assembly_method(;assembly_method...)
+    values_from_vector!(method,free_vals,x)
     uh
 end
 
 function solution_field(U::AbstractSpace,p::PS.AbstractProblem)
-    solution_field(U,PS.solution(p))
+    # TODO add a workspace in LinearProblem
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
+    solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::DiscreteField,p::PS.AbstractProblem)
-    solution_field(U,PS.solution(p))
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
+    solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::AbstractSpace,p::PS.AbstractSolver)
-    solution_field(U,PS.solution(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
+    solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field(U::DiscreteField,p::PS.AbstractSolver)
-    solution_field(U,PS.solution(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
+    solution_field(U,PS.solution(p);assembly_method)
 end
 
 function solution_field!(uh::DiscreteField,p::PS.AbstractProblem)
-    solution_field!(uh,PS.solution(p))
+    #(;assembly_method) = PS.workspace(p)
+    assembly_method = (;)
+    solution_field!(uh,PS.solution(p);assembly_method)
 end
 
 function solution_field!(uh::DiscreteField,p::PS.AbstractSolver)
-    solution_field!(uh,PS.solution(p))
+    #(;assembly_method) = PS.workspace(PS.problem(p))
+    assembly_method = (;)
+    solution_field!(uh,PS.solution(p);assembly_method)
 end
-
-#function free_values_from_solution(x,dofs)
-#    x
-#end
-#
-#function free_values_from_solution(x,dofs::BRange)
-#    nfields = blocklength(dofs)
-#    map(1:nfields) do field
-#        pend = blocklasts(dofs)[field]
-#        pini = 1 + pend - length(blocks(dofs)[field])
-#        view(x,pini:pend)
-#    end |> BVector
-#end
-#
-#function free_values_from_solution(x::BVector,dofs::BRange)
-#    x
-#end
 
 # Functions to be extended in the extension modules
 
