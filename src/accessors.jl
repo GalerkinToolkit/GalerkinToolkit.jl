@@ -25,6 +25,27 @@ function Base.iterate(iter::ForeachFace,face=1)
     end
 end
 
+function foreach_face_around(a)
+    ForeachFaceAround(a)
+end
+
+struct ForeachFaceAround{A} <: AbstractType
+    accessor::A
+end
+
+Base.length(iter::ForeachFaceAround) = num_faces_around(iter.accessor)
+Base.isdone(iter::ForeachFaceAround,face_around) = face_around > length(iter)
+Base.getindex(iter::ForeachFaceAround,face_around) = at_face_around(iter.accessor,face_around)
+
+function Base.iterate(iter::ForeachFaceAround,face_around=1)
+    if Base.isdone(iter,face_around)
+        nothing
+    else
+        accessor = iter[face_around]
+        (accessor,face_around+1)
+    end
+end
+
 function foreach_point(a)
     ForeachPoint(a)
 end
@@ -123,12 +144,20 @@ function at_face(a::MeshAccessor{AtSkeleton},face)
     replace_contents(a,contents)
 end
 
+function num_faces_around(a::MeshAccessor)
+    (;mesh,d,D,dface) = a.contents
+    topo = topology(mesh)
+    dface_Dfaces = face_incidence(topo,d,D)
+    Dfaces = dface_Dfaces[dface]
+    length(Dfaces)
+end
+
 function at_face_around(a::MeshAccessor,face_around)
     (;mesh,d,D,dface) = a.contents
     topo = topology(mesh)
     dface_Dfaces = face_incidence(topo,d,D)
-    Dface = dface_to_Dfaces[dface][face_around]
-    contents = (;a.contents...,face,dface,Dface,face_around)
+    Dface = dface_Dfaces[dface][face_around]
+    contents = (;a.contents...,Dface,face_around)
     replace_contents(a,contents)
 end
 
