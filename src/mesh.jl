@@ -612,13 +612,13 @@ end
 
 node_coordinates(m::Mesh) = m.contents.node_coordinates
 face_nodes(m::Mesh) = m.contents.face_nodes
-face_nodes(m::Mesh,d) = m.contents.face_nodes[d+1]
+face_nodes(m::Mesh,d) = m.contents.face_nodes[val_parameter(d)+1]
 face_reference_id(m::Mesh) = m.contents.face_reference_id
-face_reference_id(m::Mesh,d) = m.contents.face_reference_id[d+1]
+face_reference_id(m::Mesh,d) = m.contents.face_reference_id[val_parameter(d)+1]
 reference_spaces(m::Mesh) = m.contents.reference_spaces
 reference_spaces(m::Mesh,d) = m.contents.reference_spaces[val_parameter(d)+1]
 group_faces(m::Mesh) = m.contents.group_faces
-group_faces(m::Mesh,d) = m.contents.group_faces[d+1]
+group_faces(m::Mesh,d) = m.contents.group_faces[val_parameter(d)+1]
 periodic_nodes(m::Mesh) = m.contents.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
 workspace(m::Mesh) = m.contents.workspace

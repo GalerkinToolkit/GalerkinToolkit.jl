@@ -1,4 +1,306 @@
 
+function foreach_face(a)
+    ForeachFace(a)
+end
+
+struct ForeachFace{A} <: AbstractType
+    accessor::A
+end
+
+Base.length(iter::ForeachFace) = num_faces(iter.accessor)
+Base.isdone(iter::ForeachFace,face) = face > length(iter)
+Base.getindex(iter::ForeachFace,face) = at_face(iter.accessor,face)
+
+function compute(f,iter::ForeachFace)
+    acc = compute(f,iter.accessor)
+    ForeachFace(acc)
+end
+
+function Base.iterate(iter::ForeachFace,face=1)
+    if Base.isdone(iter,face)
+        nothing
+    else
+        accessor = iter[face]
+        (accessor,face+1)
+    end
+end
+
+function foreach_point(a)
+    ForeachPoint(a)
+end
+
+struct ForeachPoint{A} <: AbstractType
+    accessor::A
+end
+
+Base.length(iter::ForeachPoint) = num_points(iter.accessor)
+Base.isdone(iter::ForeachPoint,point) = point > length(iter)
+Base.getindex(iter::ForeachPoint,point) = at_point(iter.accessor,point)
+
+function Base.iterate(iter::ForeachPoint,point=1)
+    if Base.isdone(iter,point)
+        nothing
+    else
+        accessor = iter[point]
+        (accessor,point+1)
+    end
+end
+
+function foreach_face(mesh::AbstractMesh,args...)
+    mesh_acc = mesh_accessor(mesh,args...)
+    foreach_face(mesh_acc)
+end
+
+function mesh_accessor(mesh::AbstractMesh)
+    D = num_dims(mesh)
+    domain = GT.domain(mesh,Val(D))
+    mesh_accessor(mesh,domain)
+end
+
+function mesh_accessor(mesh::AbstractMesh,domain::AbstractDomain,D=Val(num_dims(mesh)))
+    degree = 0
+    quadrature = GT.quadrature(domain,degree)
+    mesh_accessor(mesh,quadrature,Val(val_parameter(D)))
+end
+
+function mesh_accessor(mesh::AbstractMesh,quadrature::AbstractQuadrature,D=Val(num_dims(mesh)))
+    domain = GT.domain(quadrature)
+    d = Val(num_dims(domain))
+    if val_parameter(D) == val_parameter(d)
+        loop_case = AtInterior()
+        contents = (;mesh,quadrature,d,D)
+    else
+        loop_case = AtSkeleton()
+        topo = topology(mesh)
+        dface_ldfaces = face_local_faces(topo,d,D)
+        contents = (;mesh,quadrature,d,D,dface_ldfaces)
+    end
+    MeshAccessor(loop_case,contents)
+end
+
+struct AtInterior end
+struct AtSkeleton end
+
+struct MeshAccessor{A,B} <: AbstractType
+    loop_case::A
+    contents::B
+end
+
+function replace_contents(a::MeshAccessor,contents)
+    MeshAccessor(a.loop_case,contents)
+end
+
+function num_faces(a::MeshAccessor)
+    (;quadrature) = a.contents
+    domain = GT.domain(quadrature)
+    num_faces(domain)
+end
+
+function at_face(a::MeshAccessor{AtInterior},face)
+    (;quadrature) = a.contents
+    domain = GT.domain(quadrature)
+    face_dface = GT.faces(domain)
+    dface = face_dface[face]
+    Dface = dface
+    contents = (;a.contents...,face,dface,Dface,)
+    replace_contents(a,contents)
+end
+
+function at_face(a::MeshAccessor{AtSkeleton},face)
+    (;mesh,quadrature,d,D) = a.contents
+    domain = GT.domain(quadrature)
+    face_dface = GT.faces(domain)
+    dface = face_dface[face]
+    face_around = GT.face_around(domain)
+    if face_around !== nothing
+        topo = topology(mesh)
+        dface_Dfaces = face_incidence(topo,d,D)
+        Dface = dface_Dfaces[dface][face_around]
+        contents = (;a.contents...,face,dface,Dface,face_around)
+    else
+        contents = (;a.contents...,face,dface)
+    end
+    replace_contents(a,contents)
+end
+
+function at_face_around(a::MeshAccessor,face_around)
+    (;mesh,d,D,dface) = a.contents
+    topo = topology(mesh)
+    dface_Dfaces = face_incidence(topo,d,D)
+    Dface = dface_to_Dfaces[dface][face_around]
+    contents = (;a.contents...,face,dface,Dface,face_around)
+    replace_contents(a,contents)
+end
+
+function nodes(a::MeshAccessor)
+    (;Dface,mesh,D) = a.contents
+    Dface_nodes = face_nodes(mesh,D)
+    Dface_nodes[Dface]
+end
+
+function num_nodes(a::MeshAccessor)
+    length(nodes(a))
+end
+
+function node_coordinates(a::MeshAccessor)
+    (;mesh) = a.contents
+    node_x = node_coordinates(mesh)
+    view(node_x,nodes(a))
+end
+
+function compute(f,a::MeshAccessor{AtInterior})
+    (;quadrature,mesh,D) = a.contents
+    rid_to_point_to_x = map(coordinates,reference_quadratures(quadrature))
+    # NB the TODOs below can be solved by introducing an extra nesting level
+    # TODO assumes same reference elems for integration and for interpolation
+    rid_to_tab = map(rid_to_point_to_x,reference_spaces(mesh,D)) do point_to_x, refface
+        collect(permutedims(tabulator(refface)(f,point_to_x))) # TODO fix this globally
+    end
+    replace_tabulators(f,a,rid_to_tab)
+end
+
+function compute(f,a::MeshAccessor{AtSkeleton})
+    (;quadrature,mesh,D,d) = a.contents
+    topo = topology(mesh)
+    drid_to_refdface = reference_spaces(mesh,d)
+    Drid_to_refDface = reference_spaces(mesh,D)
+    Drid_to_reffe = reference_spaces(mesh,D)
+    drid_to_point_to_x = map(coordinates,reference_quadratures(quadrature))
+    # NB the TODOs below can be solved by introducing two extra nesting levels
+    # TODO this assumes the same reffes for mesh and quadrature
+    drid_Drid_ldface_perm_tab = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
+        # TODO this assumes the same reffes for mesh and interpolation
+        map(Drid_to_reffe,Drid_to_refDface) do reffe,refDface
+            ldface_perm_varphi = reference_map(refdface,refDface)
+            map(ldface_perm_varphi) do perm_varphi
+                map(perm_varphi) do varphi
+                    point_to_q = varphi.(point_to_x)
+                    collect(permutedims(tabulator(reffe)(f,point_to_q)))
+                end
+            end
+        end
+    end
+    replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
+end
+
+function replace_tabulators(::typeof(GT.value),a,values)
+    contents = (;a.contents...,values)
+    replace_contents(a,contents)
+end
+
+function replace_tabulators(::typeof(ForwardDiff.gradient),a,gradients)
+    contents = (;a.contents...,gradients)
+    replace_contents(a,contents)
+end
+
+function tabulator(f,a::MeshAccessor{AtInterior})
+    (;Dface,mesh,D) = a.contents
+    Drid = face_reference_id(mesh,D)[Dface]
+    Drid_tab = tabulators(f,a)
+    tab = Drid_tab[Drid]
+end
+
+function tabulator(f,a::MeshAccessor{AtSkeleton})
+    (;Dface,dface,face_around,mesh,quadrature,dface_ldfaces,d,D) = a.contents
+    dface_drid = face_reference_id(mesh,d)
+    Dface_Drid = face_reference_id(mesh,D)
+    Drid = Dface_Drid[Dface]
+    drid = dface_drid[dface]
+    topo = topology(mesh)
+    ldface = dface_ldfaces[dface][face_around]
+    Dface_ldface_perm = GT.face_permutation_ids(topo,D,d)
+    perm = Dface_ldface_perm[Dface][ldface]
+    drid_Drid_ldface_perm_tab = tabulators(f,a)
+    tab = drid_Drid_ldface_perm_tab[drid][Drid][ldface][perm]
+end
+
+function tabulators(::typeof(GT.value),a::MeshAccessor)
+    (;values) = a.contents
+    values
+end
+
+function tabulators(::typeof(ForwardDiff.gradient),a::MeshAccessor)
+    (;gradients) = a.contents
+    gradients
+end
+
+function shape_functions(a::MeshAccessor)
+    (;Dface,mesh) = a.contents
+    Dface_Drid = face_reference_id(mesh,D)
+    Drid = Dface_Drid[Dface]
+    Drid_space = reference_spaces(mesh,D)
+    space = Drid_space[Drid]
+    shape_functions(space)
+end
+
+function num_points(a::MeshAccessor)
+    num_points(quadrature(a))
+end
+
+function quadrature(a::MeshAccessor)
+    (;quadrature,dface) = a.contents
+    dface_drid = GT.face_reference_id(quadrature)
+    drid_refqua = reference_quadratures(quadrature)
+    drid = dface_drid[dface]
+    drid_refqua[drid]
+end
+
+function at_point(a::MeshAccessor,point)
+    contents = (;a.contents...,point)
+    replace_contents(a,contents)
+end
+
+function shape_functions(f,a::MeshAccessor)
+    (;point) = a.contents
+    tab = tabulator(f,a)
+    view(tab,:,point)
+end
+
+function coordinate(a::MeshAccessor)
+    coordinate(GT.value,a)
+end
+
+function coordinate(::typeof(value),a::MeshAccessor)
+    s = shape_functions(value,a)
+    x = node_coordinates(a)
+    n = num_nodes(a)
+    sum(i->x[i]*s[i],1:n)
+end
+
+function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
+    s = shape_functions(ForwardDiff.gradient,a)
+    x = node_coordinates(a)
+    n = num_nodes(a)
+    sum(i->outer(x[i],s[i]),1:n)
+end
+
+function weight(a::MeshAccessor)
+    (;point) = a.contents
+    qua = quadrature(a)
+    w = weights(qua)[point]
+    J = coordinate(ForwardDiff.jacobian,a)
+    change_of_measure(J)*w
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function accessor(a,b)
     Accessor(a,b)
 end

@@ -21,6 +21,52 @@ dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
 
+mesh_iter = GT.foreach_face(mesh)
+mesh_iter = GT.compute(GT.value,mesh_iter)
+mesh_iter = GT.compute(ForwardDiff.gradient,mesh_iter)
+mesh_face = mesh_iter[2]
+@show GT.nodes(mesh_face)
+@show GT.node_coordinates(mesh_face)
+mesh_point = GT.at_point(mesh_face,1)
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+
+for mesh_face in mesh_iter
+    GT.nodes(mesh_face)
+    GT.node_coordinates(mesh_face)
+    GT.num_nodes(mesh_face)
+    for mesh_point in GT.foreach_point(mesh_face)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+    end
+end
+
+mesh_iter = GT.foreach_face(mesh,dΓ)
+mesh_iter = GT.compute(GT.value,mesh_iter)
+mesh_iter = GT.compute(ForwardDiff.gradient,mesh_iter)
+mesh_face = mesh_iter[2]
+@show GT.nodes(mesh_face)
+@show GT.node_coordinates(mesh_face)
+mesh_point = GT.at_point(mesh_face,1)
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+
+for mesh_face in mesh_iter
+    GT.nodes(mesh_face)
+    GT.node_coordinates(mesh_face)
+    GT.num_nodes(mesh_face)
+    for mesh_point in GT.foreach_point(mesh_face)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+    end
+end
+
 f_l_x = GT.node_coordinate_accessor(mesh,2)
 @show f_l_x(2)(1)
 
