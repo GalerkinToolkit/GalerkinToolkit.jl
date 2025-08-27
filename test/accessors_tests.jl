@@ -70,6 +70,7 @@ end
 mesh_iter = GT.foreach_face(mesh,dΛ)
 mesh_iter = GT.compute(GT.value,mesh_iter)
 mesh_iter = GT.compute(ForwardDiff.gradient,mesh_iter)
+mesh_iter = GT.compute(GT.unit_normal,mesh_iter)
 mesh_dface = mesh_iter[2]
 mesh_Dface = GT.at_face_around(mesh_dface,2)
 @show GT.nodes(mesh_Dface)
@@ -78,6 +79,7 @@ mesh_point = GT.at_point(mesh_Dface,1)
 @show GT.coordinate(GT.value,mesh_point)
 @show GT.coordinate(ForwardDiff.jacobian,mesh_point)
 @show GT.weight(mesh_point)
+@show GT.unit_normal(mesh_point)
 
 for mesh_dface in mesh_iter
     for mesh_Dface in GT.foreach_face_around(mesh_dface)
@@ -89,9 +91,12 @@ for mesh_dface in mesh_iter
             GT.coordinate(GT.value,mesh_point)
             GT.coordinate(ForwardDiff.jacobian,mesh_point)
             GT.weight(mesh_point)
+            GT.unit_normal(mesh_point)
         end
     end
 end
+
+xxx
 
 f_l_x = GT.node_coordinate_accessor(mesh,2)
 @show f_l_x(2)(1)

@@ -132,16 +132,15 @@ function at_face(a::MeshAccessor{AtSkeleton},face)
     domain = GT.domain(quadrature)
     face_dface = GT.faces(domain)
     dface = face_dface[face]
+    contents = (;a.contents...,face,dface)
+    a2 = replace_contents(a,contents)
     face_around = GT.face_around(domain)
     if face_around !== nothing
-        topo = topology(mesh)
-        dface_Dfaces = face_incidence(topo,d,D)
-        Dface = dface_Dfaces[dface][face_around]
-        contents = (;a.contents...,face,dface,Dface,face_around)
+        a3 = at_face_around(a2,face_around)
     else
-        contents = (;a.contents...,face,dface)
+        a3 = a2
     end
-    replace_contents(a,contents)
+    a3
 end
 
 function num_faces_around(a::MeshAccessor)
@@ -153,11 +152,12 @@ function num_faces_around(a::MeshAccessor)
 end
 
 function at_face_around(a::MeshAccessor,face_around)
-    (;mesh,d,D,dface) = a.contents
+    (;mesh,d,D,dface,dface_ldfaces) = a.contents
     topo = topology(mesh)
     dface_Dfaces = face_incidence(topo,d,D)
     Dface = dface_Dfaces[dface][face_around]
-    contents = (;a.contents...,Dface,face_around)
+    ldface = dface_ldfaces[dface][face_around]
+    contents = (;a.contents...,Dface,face_around,ldface)
     replace_contents(a,contents)
 end
 
@@ -212,6 +212,18 @@ function compute(f,a::MeshAccessor{AtSkeleton})
     replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
 end
 
+function unit_normal end
+
+function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
+    (;mesh,D,d) = a.contents
+    @assert val_parameter(d) + 1 == val_parameter(D)
+    Drid_ldface_nref = map(GT.reference_spaces(mesh,D)) do refface
+        GT.normals(GT.mesh(GT.domain(refface)))# TODO rename normals?
+    end
+    contents = (;a.contents...,Drid_ldface_nref)
+    replace_contents(a,contents)
+end
+
 function replace_tabulators(::typeof(GT.value),a,values)
     contents = (;a.contents...,values)
     replace_contents(a,contents)
@@ -230,13 +242,12 @@ function tabulator(f,a::MeshAccessor{AtInterior})
 end
 
 function tabulator(f,a::MeshAccessor{AtSkeleton})
-    (;Dface,dface,face_around,mesh,quadrature,dface_ldfaces,d,D) = a.contents
+    (;Dface,dface,mesh,quadrature,ldface,d,D) = a.contents
     dface_drid = face_reference_id(mesh,d)
     Dface_Drid = face_reference_id(mesh,D)
     Drid = Dface_Drid[Dface]
     drid = dface_drid[dface]
     topo = topology(mesh)
-    ldface = dface_ldfaces[dface][face_around]
     Dface_ldface_perm = GT.face_permutation_ids(topo,D,d)
     perm = Dface_ldface_perm[Dface][ldface]
     drid_Drid_ldface_perm_tab = tabulators(f,a)
@@ -311,6 +322,27 @@ function weight(a::MeshAccessor)
     change_of_measure(J)*w
 end
 
+function unit_normal(a::MeshAccessor)
+    (;D,Dface,ldface,Drid_ldface_nref,mesh) = a.contents
+    Dface_Drid = face_reference_id(mesh,D)
+    Drid = Dface_Drid[Dface]
+    nref = Drid_ldface_nref[Drid][ldface]
+    J = coordinate(ForwardDiff.jacobian,a)
+    nphys = map_unit_normal(J,nref)
+    nphys
+end
+
+function map_unit_normal(J,n)
+    Jt = transpose(J)
+    pinvJt = transpose(inv(Jt*J)*Jt)
+    v = pinvJt*n
+    m = sqrt(v⋅v)
+    if m < eps()
+        return zero(v)
+    else
+        return v/m
+    end
+end
 
 
 
@@ -1269,17 +1301,6 @@ function unit_normal_accessor_physical(measure::AbstractQuadrature)
     accessor(face_point_n,GT.prototype(face_n_ref))
 end
 
-function map_unit_normal(J,n)
-    Jt = transpose(J)
-    pinvJt = transpose(inv(Jt*J)*Jt)
-    v = pinvJt*n
-    m = sqrt(v⋅v)
-    if m < eps()
-        return zero(v)
-    else
-        return v/m
-    end
-end
 
 function unit_normal_accessor_reference(measure::AbstractQuadrature)
     D = num_dims(mesh(measure))
