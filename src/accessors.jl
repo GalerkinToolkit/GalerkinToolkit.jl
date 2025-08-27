@@ -3,6 +3,16 @@ function foreach_face(a)
     ForeachFace(a)
 end
 
+function foreach_face(mesh::AbstractMesh,args...)
+    mesh_acc = mesh_accessor(mesh,args...)
+    foreach_face(mesh_acc)
+end
+
+function foreach_face(quadrature::AbstractQuadrature)
+    acc = quadrature_accessor(quadrature)
+    foreach_face(acc)
+end
+
 struct ForeachFace{A} <: AbstractType
     accessor::A
 end
@@ -65,11 +75,6 @@ function Base.iterate(iter::ForeachPoint,point=1)
         accessor = iter[point]
         (accessor,point+1)
     end
-end
-
-function foreach_face(mesh::AbstractMesh,args...)
-    mesh_acc = mesh_accessor(mesh,args...)
-    foreach_face(mesh_acc)
 end
 
 function mesh_accessor(mesh::AbstractMesh)
@@ -344,7 +349,15 @@ function map_unit_normal(J,n)
     end
 end
 
-
+function quadrature_accessor(quadrature::AbstractQuadrature)
+    domain = GT.domain(quadrature)
+    mesh = GT.mesh(domain)
+    d = Val(num_dims(domain))
+    acc1 = mesh_accessor(mesh,quadrature,d)
+    acc2 = compute(GT.value,acc1)
+    acc3 = compute(ForwardDiff.gradient,acc2)
+    acc3
+end
 
 
 

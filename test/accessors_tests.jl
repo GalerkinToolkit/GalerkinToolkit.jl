@@ -96,7 +96,27 @@ for mesh_dface in mesh_iter
     end
 end
 
-xxx
+dΩ_iter = GT.foreach_face(dΩ)
+dΩ_face = dΩ_iter[2]
+dΩ_iter = GT.foreach_point(dΩ_face)
+dΩ_point = dΩ_iter[2]
+@show GT.coordinate(dΩ_point)
+@show GT.weight(dΩ_point)
+
+dΓ_iter = GT.foreach_face(dΓ)
+dΓ_face = dΓ_iter[2]
+dΓ_iter = GT.foreach_point(dΓ_face)
+dΓ_point = dΓ_iter[2]
+@show GT.coordinate(dΓ_point)
+@show GT.weight(dΓ_point)
+
+dΛ_iter = GT.foreach_face(dΛ)
+dΛ_face = dΛ_iter[2]
+dΛ_iter = GT.foreach_point(dΛ_face)
+dΛ_point = dΛ_iter[2]
+@show GT.coordinate(dΛ_point)
+@show GT.weight(dΛ_point)
+
 
 f_l_x = GT.node_coordinate_accessor(mesh,2)
 @show f_l_x(2)(1)
