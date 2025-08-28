@@ -67,17 +67,12 @@ GT.makie_surfaces!(Ω;color=uh)</code></pre><h2 id="Explicit-integration-loops">
 #Always use a function, never the global scope
 function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
-    Ω = GT.domain(dΩ)
-    face_point_x = GT.coordinate_accessor(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_dofs = GT.dofs_accessor(V,Ω)
-    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
-    ∇ = ForwardDiff.gradient
-    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+    V_faces_1 = GT.foreach_face(V,dΩ)
+    V_faces_2 = GT.tabulate(∇,V_faces_1)
+    V_faces_3 = GT.tabulate(GT.value,V_faces_2)
+    V_faces = GT.compute(GT.coordinate,V_faces_3)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -86,38 +81,31 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Ω)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_dof_s = face_point_dof_s(face)
-        point_dof_∇s = face_point_dof_∇s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
 
         #Reset face matrix
         fill!(Auu,zero(T))
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.foreach_point(V_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            J = point_J(point)
-            dV = point_dV(point,J)
-            dof_s = point_dof_s(point)
-            dof_∇s = point_dof_∇s(point,J)
+            x = GT.coordinate(V_point)
+            dV = GT.weight(V_point)
+            dof_s = GT.shape_functions(GT.value,V_point)
+            dof_∇s = GT.shape_functions(∇,V_point)
 
             #Fill in face matrix and vector
             for (i,dofi) in enumerate(dofs)
-                v = dof_s(i)
-                ∇v = dof_∇s(i)
+                v = dof_s[i]
+                ∇v = dof_∇s[i]
                 bu[i] += f.definition(x)*v*dV
                 for (j,dofj) in enumerate(dofs)
-                    ∇u = dof_∇s(j)
+                    ∇u = dof_∇s[j]
                     Auu[i,j] += ∇v⋅∇u*dV
                 end
             end
@@ -135,14 +123,11 @@ end
 #Always use a function, never the global scope
 function assemble_in_Γn!(b_alloc,V,h,dΓn)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
-    Γn = GT.domain(dΓn)
-    face_point_x = GT.coordinate_accessor(dΓn)
-    face_point_dV = GT.weight_accessor(dΓn)
-    face_npoints = GT.num_points_accessor(dΓn)
-    face_dofs = GT.dofs_accessor(V,Γn)
-    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΓn)
+    V_faces_1 = GT.foreach_face(V,dΓn)
+    V_faces_2 = GT.tabulate(GT.value,V_faces_1)
+    V_faces = GT.compute(GT.coordinate,V_faces_2)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -151,29 +136,25 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Γn)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_dV = face_point_dV(face)
-        point_dof_s = face_point_dof_s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
 
         #Reset face vector
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.foreach_point(V_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            dV = point_dV(point)
-            dof_s = point_dof_s(point)
+            x = GT.coordinate(V_point)
+            dV = GT.weight(V_point)
+            dof_s = GT.shape_functions(GT.value,V_point)
 
             #Fill in face matrix and vector
             for (i,dofi) in enumerate(dofs)
-                v = dof_s(i)
+                v = dof_s[i]
                 bu[i] += h.definition(x)*v*dV
             end
         end
@@ -220,4 +201,4 @@ aspect = :data
 ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surfaces!(Ω;color=uh)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_hello_world/">« Hello, World!</a><a class="docs-footer-nextpage" href="../example_p_laplacian/">p-Laplacian »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Wednesday 20 August 2025 13:13">Wednesday 20 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+GT.makie_surfaces!(Ω;color=uh)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_hello_world/">« Hello, World!</a><a class="docs-footer-nextpage" href="../example_p_laplacian/">p-Laplacian »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 28 August 2025 17:39">Thursday 28 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

@@ -100,4 +100,917 @@ fn = &quot;fig_transient_heat_equation_1.gif&quot;
 file = joinpath(@__DIR__,fn)
 Makie.record(fig,file,integrator) do integrator
     sc.color = GT.solution_field(integrator)
-end</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_stokes/">« Stokes lid-driven cavity</a><a class="docs-footer-nextpage" href="../../tutorials/">Tutorials »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Wednesday 20 August 2025 13:13">Wednesday 20 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Precompiling DifferentialEquations...
+   1643.2 ms  ? DiffEqBase
+   1176.5 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1195.8 ms  ? DiffEqCallbacks
+   1239.5 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1504.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2026.8 ms  ? DiffEqBase → DiffEqBaseDistributionsExt
+   1072.1 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1285.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1972.0 ms  ? OrdinaryDiffEqCore
+   1213.1 ms  ? JumpProcesses
+   1928.2 ms  ? Sundials
+   1307.5 ms  ? NonlinearSolveSpectralMethods
+   1664.5 ms  ? DiffEqNoiseProcess
+   1453.2 ms  ? NonlinearSolveQuasiNewton
+   1771.5 ms  ? SteadyStateDiffEq
+   1679.1 ms  ? NonlinearSolveFirstOrder
+   1933.8 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   2135.4 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+    944.4 ms  ? BoundaryValueDiffEqCore
+   1823.7 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1360.5 ms  ? OrdinaryDiffEqTsit5
+   2390.7 ms  ? OrdinaryDiffEqLinear
+   2933.2 ms  ? OrdinaryDiffEqExplicitRK
+   4442.5 ms  ? OrdinaryDiffEqFunctionMap
+   4111.5 ms  ? OrdinaryDiffEqStabilizedRK
+   6392.8 ms  ? OrdinaryDiffEqPRK
+   4113.5 ms  ? OrdinaryDiffEqRKN
+   4162.1 ms  ? OrdinaryDiffEqQPRK
+   4191.8 ms  ? OrdinaryDiffEqHighOrderRK
+   8346.6 ms  ? OrdinaryDiffEqSSPRK
+   5308.6 ms  ? OrdinaryDiffEqSymplecticRK
+   5356.8 ms  ? OrdinaryDiffEqLowOrderRK
+    859.9 ms  ? BoundaryValueDiffEqAscher
+   2399.4 ms  ? OrdinaryDiffEqDifferentiation
+   4784.7 ms  ? OrdinaryDiffEqFeagin
+   2130.4 ms  ? BoundaryValueDiffEqShooting
+   7412.0 ms  ? OrdinaryDiffEqVerner
+   2718.1 ms  ? BoundaryValueDiffEqFIRK
+   1011.7 ms  ? NonlinearSolve
+   6894.5 ms  ? OrdinaryDiffEqLowStorageRK
+   3392.2 ms  ? BoundaryValueDiffEqMIRK
+   2735.3 ms  ? BoundaryValueDiffEqMIRKN
+   1855.1 ms  ? OrdinaryDiffEqNordsieck
+   2804.6 ms  ? OrdinaryDiffEqAdamsBashforthMoulton
+   1110.8 ms  ? NonlinearSolve → NonlinearSolveNLsolveExt
+   3070.3 ms  ? OrdinaryDiffEqExponentialRK
+   1389.6 ms  ? OrdinaryDiffEqNonlinearSolve
+   1809.3 ms  ? NonlinearSolve → NonlinearSolveSundialsExt
+   1283.5 ms  ? BoundaryValueDiffEq
+   4689.2 ms  ? OrdinaryDiffEqRosenbrock
+   4751.3 ms  ? OrdinaryDiffEqExtrapolation
+   2769.2 ms  ? OrdinaryDiffEqStabilizedIRK
+    748.9 ms  ? StochasticDiffEq
+   4171.4 ms  ? OrdinaryDiffEqPDIRK
+   4334.6 ms  ? OrdinaryDiffEqSDIRK
+   5237.8 ms  ? OrdinaryDiffEqFIRK
+   5222.5 ms  ? OrdinaryDiffEqIMEXMultistep
+   3107.2 ms  ? OrdinaryDiffEqBDF
+   1227.2 ms  ? OrdinaryDiffEqDefault
+   1614.4 ms  ? OrdinaryDiffEq
+   1188.2 ms  ? DelayDiffEq
+Info Given DifferentialEquations was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    689.2 ms  ? DifferentialEquations
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling DiffEqNoiseProcess...
+   1638.3 ms  ? DiffEqBase
+    767.5 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    885.9 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1298.4 ms  ? DiffEqBase → DiffEqBaseDistributionsExt
+Info Given DiffEqNoiseProcess was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    798.9 ms  ? DiffEqNoiseProcess
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling SteadyStateDiffEq...
+   1635.5 ms  ? DiffEqBase
+    653.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    668.0 ms  ? DiffEqCallbacks
+Info Given SteadyStateDiffEq was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1016.9 ms  ? SteadyStateDiffEq
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling DiffEqCallbacks...
+   1636.6 ms  ? DiffEqBase
+Info Given DiffEqCallbacks was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    649.7 ms  ? DiffEqCallbacks
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling StochasticDiffEq...
+   1638.1 ms  ? DiffEqBase
+   1065.4 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1153.1 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1561.6 ms  ? DiffEqCallbacks
+   1572.7 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1843.3 ms  ? DiffEqBase → DiffEqBaseDistributionsExt
+   1190.2 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1290.9 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1362.0 ms  ? JumpProcesses
+   2026.5 ms  ? OrdinaryDiffEqCore
+   1516.7 ms  ? DiffEqNoiseProcess
+   1211.0 ms  ? NonlinearSolveSpectralMethods
+   1049.0 ms  ? NonlinearSolveQuasiNewton
+   1631.9 ms  ? NonlinearSolveFirstOrder
+   1846.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1570.4 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1372.2 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    663.8 ms  ? NonlinearSolve
+   1988.1 ms  ? OrdinaryDiffEqDifferentiation
+   1092.4 ms  ? NonlinearSolve → NonlinearSolveNLsolveExt
+    910.9 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given StochasticDiffEq was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    725.3 ms  ? StochasticDiffEq
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqCore...
+   1642.2 ms  ? DiffEqBase
+Info Given OrdinaryDiffEqCore was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1002.2 ms  ? OrdinaryDiffEqCore
+   1230.5 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling GalerkinToolkitOrdinaryDiffEqCoreExt...
+   1693.9 ms  ? DiffEqBase
+    980.5 ms  ? DiffEqBase → DiffEqBaseMPIExt
+   1011.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1195.1 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1397.0 ms  ? OrdinaryDiffEqCore
+    653.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given GalerkinToolkitOrdinaryDiffEqCoreExt was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   2464.2 ms  ? GalerkinToolkit → GalerkinToolkitOrdinaryDiffEqCoreExt
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqCoreEnzymeCoreExt...
+   1633.7 ms  ? DiffEqBase
+    989.4 ms  ? OrdinaryDiffEqCore
+Info Given OrdinaryDiffEqCoreEnzymeCoreExt was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    615.2 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqNonlinearSolve...
+   1637.0 ms  ? DiffEqBase
+   1140.4 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1211.3 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1208.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1455.8 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1874.8 ms  ? OrdinaryDiffEqCore
+    994.5 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1081.3 ms  ? NonlinearSolveSpectralMethods
+   1200.3 ms  ? NonlinearSolveQuasiNewton
+   1004.7 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1685.6 ms  ? NonlinearSolveFirstOrder
+   1612.2 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1497.6 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    658.8 ms  ? NonlinearSolve
+   2005.1 ms  ? OrdinaryDiffEqDifferentiation
+Info Given OrdinaryDiffEqNonlinearSolve was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    906.1 ms  ? OrdinaryDiffEqNonlinearSolve
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqDifferentiation...
+   1631.9 ms  ? DiffEqBase
+    975.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    974.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1125.2 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1350.4 ms  ? OrdinaryDiffEqCore
+    619.7 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqDifferentiation was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1905.6 ms  ? OrdinaryDiffEqDifferentiation
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling JumpProcesses...
+   1613.5 ms  ? DiffEqBase
+    658.8 ms  ? DiffEqCallbacks
+    765.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+Info Given JumpProcesses was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    686.3 ms  ? JumpProcesses
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEq...
+   1621.8 ms  ? DiffEqBase
+   1078.0 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1188.5 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1234.1 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1450.3 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1868.3 ms  ? OrdinaryDiffEqCore
+   1034.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1179.0 ms  ? NonlinearSolveSpectralMethods
+   1200.1 ms  ? NonlinearSolveQuasiNewton
+   1052.3 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1619.1 ms  ? NonlinearSolveFirstOrder
+   1172.1 ms  ? OrdinaryDiffEqFunctionMap
+   1203.4 ms  ? OrdinaryDiffEqLinear
+   1157.2 ms  ? OrdinaryDiffEqTsit5
+   1935.4 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   2012.1 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1037.4 ms  ? OrdinaryDiffEqPRK
+   1160.6 ms  ? OrdinaryDiffEqStabilizedRK
+   1213.0 ms  ? OrdinaryDiffEqSSPRK
+   1516.3 ms  ? OrdinaryDiffEqExplicitRK
+   1100.5 ms  ? OrdinaryDiffEqRKN
+   1256.9 ms  ? OrdinaryDiffEqQPRK
+   1090.9 ms  ? OrdinaryDiffEqSymplecticRK
+   1325.3 ms  ? OrdinaryDiffEqHighOrderRK
+   1108.9 ms  ? OrdinaryDiffEqLowOrderRK
+   1301.2 ms  ? OrdinaryDiffEqVerner
+   1279.2 ms  ? OrdinaryDiffEqFeagin
+   1295.9 ms  ? OrdinaryDiffEqLowStorageRK
+   1253.7 ms  ? OrdinaryDiffEqNordsieck
+   1107.8 ms  ? NonlinearSolve
+    802.2 ms  ? OrdinaryDiffEqAdamsBashforthMoulton
+   2528.8 ms  ? OrdinaryDiffEqDifferentiation
+    940.6 ms  ? OrdinaryDiffEqRosenbrock
+    990.2 ms  ? OrdinaryDiffEqExponentialRK
+    988.4 ms  ? OrdinaryDiffEqExtrapolation
+   1253.0 ms  ? OrdinaryDiffEqNonlinearSolve
+   1080.2 ms  ? OrdinaryDiffEqStabilizedIRK
+   1091.5 ms  ? OrdinaryDiffEqSDIRK
+   1106.7 ms  ? OrdinaryDiffEqIMEXMultistep
+   1242.4 ms  ? OrdinaryDiffEqPDIRK
+   1318.2 ms  ? OrdinaryDiffEqFIRK
+    647.2 ms  ? OrdinaryDiffEqBDF
+    624.3 ms  ? OrdinaryDiffEqDefault
+Info Given OrdinaryDiffEq was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    987.9 ms  ? OrdinaryDiffEq
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqExtrapolation...
+   1629.5 ms  ? DiffEqBase
+    947.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1008.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1177.9 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1351.4 ms  ? OrdinaryDiffEqCore
+    622.7 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1927.6 ms  ? OrdinaryDiffEqDifferentiation
+Info Given OrdinaryDiffEqExtrapolation was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    650.3 ms  ? OrdinaryDiffEqExtrapolation
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqStabilizedRK...
+   1623.4 ms  ? DiffEqBase
+   1019.7 ms  ? OrdinaryDiffEqCore
+    632.8 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqStabilizedRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    612.0 ms  ? OrdinaryDiffEqStabilizedRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqStabilizedIRK...
+   1612.2 ms  ? DiffEqBase
+   1169.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1176.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1255.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1358.1 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2114.0 ms  ? OrdinaryDiffEqCore
+   1056.2 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1182.1 ms  ? NonlinearSolveSpectralMethods
+   1156.1 ms  ? NonlinearSolveQuasiNewton
+   1711.7 ms  ? NonlinearSolveFirstOrder
+    994.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1613.6 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+    932.6 ms  ? OrdinaryDiffEqStabilizedRK
+   1614.4 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    691.6 ms  ? NonlinearSolve
+   2255.1 ms  ? OrdinaryDiffEqDifferentiation
+    896.5 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given OrdinaryDiffEqStabilizedIRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    611.7 ms  ? OrdinaryDiffEqStabilizedIRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqLowStorageRK...
+   1654.8 ms  ? DiffEqBase
+   1010.9 ms  ? OrdinaryDiffEqCore
+    638.1 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqLowStorageRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    622.2 ms  ? OrdinaryDiffEqLowStorageRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqSSPRK...
+   1642.6 ms  ? DiffEqBase
+    995.9 ms  ? OrdinaryDiffEqCore
+    623.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqSSPRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    613.9 ms  ? OrdinaryDiffEqSSPRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqFeagin...
+   1625.5 ms  ? DiffEqBase
+    997.4 ms  ? OrdinaryDiffEqCore
+    630.5 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqFeagin was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    612.3 ms  ? OrdinaryDiffEqFeagin
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqSymplecticRK...
+   1636.7 ms  ? DiffEqBase
+    995.9 ms  ? OrdinaryDiffEqCore
+    615.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqSymplecticRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    619.2 ms  ? OrdinaryDiffEqSymplecticRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqRKN...
+   1639.5 ms  ? DiffEqBase
+   1002.8 ms  ? OrdinaryDiffEqCore
+    632.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqRKN was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    618.3 ms  ? OrdinaryDiffEqRKN
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqVerner...
+   1655.2 ms  ? DiffEqBase
+   1016.4 ms  ? OrdinaryDiffEqCore
+    642.0 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqVerner was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    623.0 ms  ? OrdinaryDiffEqVerner
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqHighOrderRK...
+   1635.2 ms  ? DiffEqBase
+   1010.3 ms  ? OrdinaryDiffEqCore
+    636.0 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqHighOrderRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    617.2 ms  ? OrdinaryDiffEqHighOrderRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqSDIRK...
+   1618.8 ms  ? DiffEqBase
+   1098.2 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1295.4 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1373.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1398.4 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1882.2 ms  ? OrdinaryDiffEqCore
+   1261.2 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1230.3 ms  ? NonlinearSolveSpectralMethods
+   1253.7 ms  ? NonlinearSolveQuasiNewton
+   1075.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1740.6 ms  ? NonlinearSolveFirstOrder
+   1671.0 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1662.8 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   2009.5 ms  ? OrdinaryDiffEqDifferentiation
+    675.5 ms  ? NonlinearSolve
+    911.0 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given OrdinaryDiffEqSDIRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    632.0 ms  ? OrdinaryDiffEqSDIRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqBDF...
+   1635.6 ms  ? DiffEqBase
+   1047.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1132.0 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1196.3 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1452.0 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2043.7 ms  ? OrdinaryDiffEqCore
+   1191.3 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1126.1 ms  ? NonlinearSolveSpectralMethods
+   1218.3 ms  ? NonlinearSolveQuasiNewton
+   1565.9 ms  ? NonlinearSolveFirstOrder
+   1040.4 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1635.0 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1499.0 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    664.9 ms  ? NonlinearSolve
+   1913.4 ms  ? OrdinaryDiffEqDifferentiation
+    893.1 ms  ? OrdinaryDiffEqNonlinearSolve
+    616.3 ms  ? OrdinaryDiffEqSDIRK
+Info Given OrdinaryDiffEqBDF was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    634.1 ms  ? OrdinaryDiffEqBDF
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqTsit5...
+   1667.7 ms  ? DiffEqBase
+   1015.6 ms  ? OrdinaryDiffEqCore
+    635.2 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqTsit5 was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    632.4 ms  ? OrdinaryDiffEqTsit5
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqRosenbrock...
+   1642.5 ms  ? DiffEqBase
+    950.6 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    987.9 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1154.7 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1347.7 ms  ? OrdinaryDiffEqCore
+    627.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1877.4 ms  ? OrdinaryDiffEqDifferentiation
+Info Given OrdinaryDiffEqRosenbrock was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    641.0 ms  ? OrdinaryDiffEqRosenbrock
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqDefault...
+   1662.1 ms  ? DiffEqBase
+   1248.4 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1274.2 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1299.5 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1355.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1936.6 ms  ? OrdinaryDiffEqCore
+   1239.9 ms  ? NonlinearSolveSpectralMethods
+   1313.1 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1308.3 ms  ? NonlinearSolveQuasiNewton
+   1012.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1684.5 ms  ? NonlinearSolveFirstOrder
+   1243.5 ms  ? OrdinaryDiffEqTsit5
+   1274.8 ms  ? OrdinaryDiffEqVerner
+   1715.4 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1894.5 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+    675.8 ms  ? NonlinearSolve
+   2606.8 ms  ? OrdinaryDiffEqDifferentiation
+    656.0 ms  ? OrdinaryDiffEqRosenbrock
+    931.6 ms  ? OrdinaryDiffEqNonlinearSolve
+    642.4 ms  ? OrdinaryDiffEqSDIRK
+    647.7 ms  ? OrdinaryDiffEqBDF
+Info Given OrdinaryDiffEqDefault was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    639.4 ms  ? OrdinaryDiffEqDefault
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqFIRK...
+   1634.4 ms  ? DiffEqBase
+   1180.6 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1210.2 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1294.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1334.4 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2082.8 ms  ? OrdinaryDiffEqCore
+   1134.5 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1148.6 ms  ? NonlinearSolveQuasiNewton
+   1206.8 ms  ? NonlinearSolveSpectralMethods
+   1711.8 ms  ? NonlinearSolveFirstOrder
+    991.1 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1282.3 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1508.7 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+    692.5 ms  ? NonlinearSolve
+   2163.2 ms  ? OrdinaryDiffEqDifferentiation
+    898.8 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given OrdinaryDiffEqFIRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    613.9 ms  ? OrdinaryDiffEqFIRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqQPRK...
+   1632.5 ms  ? DiffEqBase
+    998.0 ms  ? OrdinaryDiffEqCore
+    628.3 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqQPRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    632.9 ms  ? OrdinaryDiffEqQPRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqPDIRK...
+   1643.7 ms  ? DiffEqBase
+   1106.6 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1199.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1269.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1385.4 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1919.0 ms  ? OrdinaryDiffEqCore
+   1232.9 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1149.7 ms  ? NonlinearSolveSpectralMethods
+   1294.0 ms  ? NonlinearSolveQuasiNewton
+   1026.9 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1661.0 ms  ? NonlinearSolveFirstOrder
+   1433.5 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1476.8 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    680.9 ms  ? NonlinearSolve
+   2123.0 ms  ? OrdinaryDiffEqDifferentiation
+    920.4 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given OrdinaryDiffEqPDIRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    649.4 ms  ? OrdinaryDiffEqPDIRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqPRK...
+   1641.4 ms  ? DiffEqBase
+    994.4 ms  ? OrdinaryDiffEqCore
+    623.7 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqPRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    631.3 ms  ? OrdinaryDiffEqPRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqLowOrderRK...
+   1612.4 ms  ? DiffEqBase
+    996.8 ms  ? OrdinaryDiffEqCore
+    631.2 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqLowOrderRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    626.2 ms  ? OrdinaryDiffEqLowOrderRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqFunctionMap...
+   1615.5 ms  ? DiffEqBase
+   1012.0 ms  ? OrdinaryDiffEqCore
+    641.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqFunctionMap was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    613.0 ms  ? OrdinaryDiffEqFunctionMap
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqAdamsBashforthMoulton...
+   1633.9 ms  ? DiffEqBase
+   1001.2 ms  ? OrdinaryDiffEqCore
+    629.6 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+    636.9 ms  ? OrdinaryDiffEqLowOrderRK
+Info Given OrdinaryDiffEqAdamsBashforthMoulton was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    638.0 ms  ? OrdinaryDiffEqAdamsBashforthMoulton
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqNordsieck...
+   1630.2 ms  ? DiffEqBase
+    998.4 ms  ? OrdinaryDiffEqCore
+    627.2 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+    624.1 ms  ? OrdinaryDiffEqTsit5
+Info Given OrdinaryDiffEqNordsieck was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    628.8 ms  ? OrdinaryDiffEqNordsieck
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqExplicitRK...
+   1640.3 ms  ? DiffEqBase
+   1006.0 ms  ? OrdinaryDiffEqCore
+    628.8 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqExplicitRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    622.3 ms  ? OrdinaryDiffEqExplicitRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqLinear...
+   1641.3 ms  ? DiffEqBase
+    797.8 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1030.0 ms  ? OrdinaryDiffEqCore
+    641.7 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+Info Given OrdinaryDiffEqLinear was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    621.3 ms  ? OrdinaryDiffEqLinear
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqIMEXMultistep...
+   1658.0 ms  ? DiffEqBase
+   1118.3 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1229.5 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1304.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1414.2 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2127.0 ms  ? OrdinaryDiffEqCore
+   1080.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1132.7 ms  ? NonlinearSolveSpectralMethods
+   1316.6 ms  ? NonlinearSolveQuasiNewton
+    968.1 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1706.1 ms  ? NonlinearSolveFirstOrder
+   1236.6 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1622.6 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+    663.9 ms  ? NonlinearSolve
+   2237.1 ms  ? OrdinaryDiffEqDifferentiation
+    906.3 ms  ? OrdinaryDiffEqNonlinearSolve
+Info Given OrdinaryDiffEqIMEXMultistep was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    620.5 ms  ? OrdinaryDiffEqIMEXMultistep
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling OrdinaryDiffEqExponentialRK...
+   1627.9 ms  ? DiffEqBase
+   1017.5 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1015.9 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1143.3 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1370.8 ms  ? OrdinaryDiffEqCore
+    619.3 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1909.6 ms  ? OrdinaryDiffEqDifferentiation
+Info Given OrdinaryDiffEqExponentialRK was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    627.4 ms  ? OrdinaryDiffEqExponentialRK
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEq...
+   1663.5 ms  ? DiffEqBase
+    948.8 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    956.3 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    996.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1164.1 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    924.1 ms  ? NonlinearSolveFirstOrder
+    637.4 ms  ? BoundaryValueDiffEqCore
+   1497.2 ms  ? BoundaryValueDiffEqAscher
+   2470.4 ms  ? BoundaryValueDiffEqFIRK
+   3161.2 ms  ? BoundaryValueDiffEqMIRK
+   3842.8 ms  ? BoundaryValueDiffEqMIRKN
+   4505.6 ms  ? BoundaryValueDiffEqShooting
+Info Given BoundaryValueDiffEq was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1120.8 ms  ? BoundaryValueDiffEq
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqAscher...
+   1621.8 ms  ? DiffEqBase
+    994.9 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    997.8 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    998.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1171.1 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    926.8 ms  ? NonlinearSolveFirstOrder
+    643.7 ms  ? BoundaryValueDiffEqCore
+Info Given BoundaryValueDiffEqAscher was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    867.3 ms  ? BoundaryValueDiffEqAscher
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqCore...
+   1641.7 ms  ? DiffEqBase
+    974.2 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    974.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    986.5 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1155.7 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    923.4 ms  ? NonlinearSolveFirstOrder
+Info Given BoundaryValueDiffEqCore was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    646.9 ms  ? BoundaryValueDiffEqCore
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqFIRK...
+   1629.2 ms  ? DiffEqBase
+   1008.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1006.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    960.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1136.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    921.0 ms  ? NonlinearSolveFirstOrder
+    640.7 ms  ? BoundaryValueDiffEqCore
+Info Given BoundaryValueDiffEqFIRK was explicitly requested, output will be shown live 
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1427.6 ms  ? BoundaryValueDiffEqFIRK
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqMIRK...
+   1631.6 ms  ? DiffEqBase
+    996.8 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1030.4 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1033.8 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1169.2 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    932.0 ms  ? NonlinearSolveFirstOrder
+    650.7 ms  ? BoundaryValueDiffEqCore
+Info Given BoundaryValueDiffEqMIRK was explicitly requested, output will be shown live 
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1404.6 ms  ? BoundaryValueDiffEqMIRK
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqMIRKN...
+   1696.8 ms  ? DiffEqBase
+   1027.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1033.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1035.3 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1194.2 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    968.4 ms  ? NonlinearSolveFirstOrder
+    646.5 ms  ? BoundaryValueDiffEqCore
+Info Given BoundaryValueDiffEqMIRKN was explicitly requested, output will be shown live 
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1411.8 ms  ? BoundaryValueDiffEqMIRKN
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling BoundaryValueDiffEqShooting...
+   1676.1 ms  ? DiffEqBase
+    975.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1004.5 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    997.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1167.9 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    920.5 ms  ? NonlinearSolveFirstOrder
+    626.2 ms  ? BoundaryValueDiffEqCore
+Info Given BoundaryValueDiffEqShooting was explicitly requested, output will be shown live 
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+   1406.0 ms  ? BoundaryValueDiffEqShooting
+┌ Warning: Module BoundaryValueDiffEqCore with build ID ffffffff-ffff-ffff-8736-376676577a94 is missing from the cache.
+│ This may mean BoundaryValueDiffEqCore [56b672f2-a5fe-4263-ab2d-da677488eb3a] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling Sundials...
+   1635.3 ms  ? DiffEqBase
+    765.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+Info Given Sundials was explicitly requested, output will be shown live 
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    990.9 ms  ? Sundials
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-c56e-b69818e1983e is missing from the cache.
+│ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling NonlinearSolveSundialsExt...
+   1658.9 ms  ? DiffEqBase
+   1144.8 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1163.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1217.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1289.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1344.0 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    984.0 ms  ? NonlinearSolveSpectralMethods
+   1055.4 ms  ? NonlinearSolveQuasiNewton
+   1442.8 ms  ? NonlinearSolveFirstOrder
+   1614.4 ms  ? Sundials
+   1277.2 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1263.0 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    680.9 ms  ? NonlinearSolve
+Info Given NonlinearSolveSundialsExt was explicitly requested, output will be shown live 
+┌ Warning: Module Sundials with build ID ffffffff-ffff-ffff-e4d0-c7c7a6bf87e2 is missing from the cache.
+│ This may mean Sundials [c3572dad-4567-51f8-b174-8c6c989267f4] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    647.8 ms  ? NonlinearSolve → NonlinearSolveSundialsExt
+┌ Warning: Module Sundials with build ID ffffffff-ffff-ffff-e4d0-c7c7a6bf87e2 is missing from the cache.
+│ This may mean Sundials [c3572dad-4567-51f8-b174-8c6c989267f4] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+Precompiling DelayDiffEq...
+   1625.8 ms  ? DiffEqBase
+   1097.6 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1198.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1313.7 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   2185.5 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   2183.3 ms  ? OrdinaryDiffEqCore
+   1092.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+    981.1 ms  ? NonlinearSolveSpectralMethods
+    951.5 ms  ? OrdinaryDiffEqCore → OrdinaryDiffEqCoreEnzymeCoreExt
+   1003.2 ms  ? NonlinearSolveQuasiNewton
+   1670.1 ms  ? NonlinearSolveFirstOrder
+   1787.4 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1109.6 ms  ? OrdinaryDiffEqTsit5
+   1254.2 ms  ? OrdinaryDiffEqLinear
+   1286.8 ms  ? OrdinaryDiffEqFunctionMap
+   1133.4 ms  ? OrdinaryDiffEqPRK
+   1122.8 ms  ? OrdinaryDiffEqExplicitRK
+   1135.4 ms  ? OrdinaryDiffEqSSPRK
+   1311.4 ms  ? OrdinaryDiffEqStabilizedRK
+   1350.9 ms  ? OrdinaryDiffEqRKN
+   1055.3 ms  ? OrdinaryDiffEqHighOrderRK
+   1352.0 ms  ? OrdinaryDiffEqQPRK
+   1256.0 ms  ? OrdinaryDiffEqSymplecticRK
+   1188.2 ms  ? OrdinaryDiffEqLowOrderRK
+   1137.2 ms  ? OrdinaryDiffEqVerner
+   1247.7 ms  ? OrdinaryDiffEqFeagin
+   1251.0 ms  ? OrdinaryDiffEqLowStorageRK
+   1119.2 ms  ? OrdinaryDiffEqNordsieck
+    964.6 ms  ? OrdinaryDiffEqAdamsBashforthMoulton
+   1705.9 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    675.9 ms  ? NonlinearSolve
+   2544.1 ms  ? OrdinaryDiffEqDifferentiation
+    949.8 ms  ? OrdinaryDiffEqRosenbrock
+    993.4 ms  ? OrdinaryDiffEqExponentialRK
+    993.1 ms  ? OrdinaryDiffEqExtrapolation
+   1257.5 ms  ? OrdinaryDiffEqNonlinearSolve
+   1155.2 ms  ? OrdinaryDiffEqStabilizedIRK
+   1163.9 ms  ? OrdinaryDiffEqSDIRK
+   1197.2 ms  ? OrdinaryDiffEqFIRK
+   1221.9 ms  ? OrdinaryDiffEqPDIRK
+   1227.9 ms  ? OrdinaryDiffEqIMEXMultistep
+    637.9 ms  ? OrdinaryDiffEqBDF
+    643.5 ms  ? OrdinaryDiffEqDefault
+   1000.3 ms  ? OrdinaryDiffEq
+Info Given DelayDiffEq was explicitly requested, output will be shown live 
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541
+    629.1 ms  ? DelayDiffEq
+┌ Warning: Module OrdinaryDiffEqCore with build ID ffffffff-ffff-ffff-2baf-8465ab056b24 is missing from the cache.
+│ This may mean OrdinaryDiffEqCore [bbf590c4-e513-4bbe-9b18-05decba2e5d8] does not support precompilation but is imported by a module that does.
+└ @ Base loading.jl:2541</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_stokes/">« Stokes lid-driven cavity</a><a class="docs-footer-nextpage" href="../../tutorials/">Tutorials »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 28 August 2025 17:39">Thursday 28 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
