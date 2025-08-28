@@ -125,16 +125,22 @@ dΛ_point = dΛ_points[2]
 @show GT.weight(dΛ_point)
 
 V_dΩ = GT.space_accessor(V,dΩ)
-V_Ω = GT.compute(GT.value,V_dΩ)
-V_Ω = GT.compute(ForwardDiff.gradient,V_dΩ)
+V_dΩ = GT.compute(GT.value,V_dΩ)
+V_dΩ = GT.compute(ForwardDiff.gradient,V_dΩ)
 V_faces = GT.foreach_face(V_dΩ)
 V_face = V_faces[1]
 V_points = GT.foreach_point(V_face)
 V_point = V_points[1]
 @show GT.shape_functions(GT.value,V_point)
 
-xxx
-
+uh = GT.zero_field(Float64,V)
+uh_dΩ = GT.field_accessor(uh,dΩ)
+uh_dΩ = GT.compute(GT.value,uh_dΩ)
+uh_faces = GT.foreach_face(uh_dΩ)
+uh_face = uh_faces[1]
+uh_points = GT.foreach_point(uh_face)
+uh_point = uh_points[1]
+@show GT.field(GT.value,uh_point)
 
 f_l_x = GT.node_coordinate_accessor(mesh,2)
 @show f_l_x(2)(1)

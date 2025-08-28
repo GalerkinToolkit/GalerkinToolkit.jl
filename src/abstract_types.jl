@@ -1,3 +1,5 @@
+abstract type NewAbstractAccessor <: AbstractType end
+
 abstract type AbstractAccessor <: Function end
 
 function Base.show(io::IO,data::GT.AbstractAccessor)

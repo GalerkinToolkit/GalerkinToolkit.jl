@@ -18,6 +18,11 @@ function foreach_face(space::AbstractSpace)
     foreach_face(acc)
 end
 
+function foreach_face(uh::AbstractField)
+    acc = field_accessor(uh)
+    foreach_face(acc)
+end
+
 struct ForeachFace{A} <: AbstractType
     accessor::A
 end
@@ -102,7 +107,7 @@ end
 struct AtInterior end
 struct AtSkeleton end
 
-struct ReferenceSpaceAccessor{A,B} <: AbstractType
+struct ReferenceSpaceAccessor{A,B} <: NewAbstractAccessor
     loop_case::A
     contents::B
 end
@@ -337,7 +342,7 @@ function mesh_accessor(mesh::AbstractMesh,quadrature::AbstractQuadrature,D=Val(n
     MeshAccessor(loop_case,contents)
 end
 
-struct MeshAccessor{A,B} <: AbstractType
+struct MeshAccessor{A,B} <: NewAbstractAccessor
     loop_case::A
     contents::B
 end
@@ -498,7 +503,7 @@ function quadrature_accessor(quadrature::AbstractQuadrature)
     acc3
 end
 
-struct SpaceAccessor{A,B} <: AbstractType
+struct SpaceAccessor{A,B} <: NewAbstractAccessor
     loop_case::A
     contents::B
 end
@@ -540,7 +545,7 @@ function compute(f,a::SpaceAccessor{AtInterior})
     sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
     ndofs = max_num_reference_dofs(space)
     dof_sphys = zeros(eltype(sphys),ndofs)
-    contents = (a.contents...,reference_space_accessor)
+    contents = (;a.contents...,reference_space_accessor)
     a2 = replace_contents(a,contents)
     replace_workspace(f,a2,dof_sphys)
 end
@@ -680,6 +685,152 @@ end
 function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_accessor,sref)
     J = coordinate(ForwardDiff.jacobian,mesh_accessor)
     sphys = sref/J
+end
+
+struct NewDiscreteFieldAccessor{A,B} <: NewAbstractAccessor
+    loop_case::A
+    contents::B
+end
+
+function field_accessor(field::DiscreteField,args...)
+    space = GT.space(field)
+    space_accessor = GT.space_accessor(space,args...)
+    contents = (;field,space_accessor)
+    loop_case = space_accessor.loop_case
+    a = NewDiscreteFieldAccessor(loop_case,contents)
+    setup_workspace(a)
+end
+
+function replace_contents(a::NewDiscreteFieldAccessor,contents)
+    NewDiscreteFieldAccessor(a.loop_case,contents)
+end
+
+function setup_workspace(a::NewDiscreteFieldAccessor{AtInterior})
+    (;field) = a.contents
+    space = GT.space(field)
+    n = max_num_reference_dofs(space)
+    T = eltype(free_values(field))
+    dof_value = zeros(T,n)
+    workspace = dof_value
+    contents = (;a.contents...,workspace)
+    replace_contents(a,contents)
+end
+
+function setup_workspace(a::NewDiscreteFieldAccessor{AtSkeleton})
+    (;field) = a.contents
+    space = GT.space(field)
+    n = max_num_reference_dofs(space)
+    max_num_faces_around = 2 # todo
+    m = max_num_faces_around
+    T = eltype(free_values(space))
+    face_around_dof_value = [zeros(T,n) for _ in 1:m]
+    workspace = face_around_dof_value
+    contents = (;a.contents,workspace)
+    replace_contents(a.contents)
+end
+
+function num_faces(a::NewDiscreteFieldAccessor)
+    (;space_accessor) = a.contents
+    num_faces(space_accessor)
+end
+
+function at_face(a::NewDiscreteFieldAccessor,face)
+    space_accessor = at_face(a.contents.space_accessor,face)
+    contents = (;a.contents...,space_accessor)
+    replace_contents(a,contents)
+end
+
+function at_any_index(a::NewDiscreteFieldAccessor)
+    space_accessor = at_any_index(a.contents.space_accessor)
+    contents = (;a.contents...,space_accessor)
+    replace_contents(a,contents)
+end
+
+function num_faces_around(a::NewDiscreteFieldAccessor)
+    (;space_accessor) = a.contents
+    num_faces_around(space_accessor)
+end
+
+function at_face_around(a::NewDiscreteFieldAccessor,face_around)
+    space_accessor = at_face_around(a.contents.space_accessor,face_around)
+    contents = (;a.contents...,space_accessor)
+    replace_contents(a,contents)
+end
+
+function dofs(a::NewDiscreteFieldAccessor)
+    (;space_accessor) = a.contents
+    dofs(space_accessor)
+end
+
+function num_dofs(a::NewDiscreteFieldAccessor)
+    length(dofs(a))
+end
+
+function values(a::NewDiscreteFieldAccessor{AtInterior})
+    (;space_accessor,field,workspace) = a.contents
+    free_dof_value = free_values(field)
+    diri_dof_value = dirichlet_values(field)
+    idof_value = workspace
+    dofs = GT.dofs(a)
+    ndofs = length(dofs)
+    for idof in 1:ndofs
+        dof = dofs[idof]
+        if dof > 0
+            free_dof = dof
+            value = free_dof_value[dof]
+        else
+            diri_dof = -dof
+            value = diri_dof_value[diri_dof]
+        end
+        idof_value[idof] = value
+    end
+    view(idof_value,1:ndofs)
+end
+
+function values(a::NewDiscreteFieldAccessor{AtSkeleton})
+    (;space_accessor,field,workspace) = a.contents
+    free_dof_value = free_values(field)
+    diri_dof_value = dirichlet_values(field)
+    face_around = GT.face_around(a)
+    idof_value = workspace[face_around]
+    dofs = GT.dofs(a)
+    ndofs = length(dofs)
+    for idof in 1:ndofs
+        dof = dofs[idof]
+        if dof > 0
+            free_dof = dof
+            value = free_dof_value[dof]
+        else
+            diri_dof = -dof
+            value = diri_dof_value[diri_dof]
+        end
+        idof_value[idof] = value
+    end
+    view(idof_value,1:ndofs)
+end
+
+function compute(f,a::NewDiscreteFieldAccessor)
+    space_accessor = compute(f,a.contents.space_accessor)
+    contents = (;a.contents...,space_accessor)
+    replace_contents(a,contents)
+end
+
+function at_point(a::NewDiscreteFieldAccessor,point)
+    space_accessor = at_point(a.contents.space_accessor,point)
+    contents = (;a.contents...,space_accessor)
+    replace_contents(a,contents)
+end
+
+function shape_functions(f,a::NewDiscreteFieldAccessor)
+    (;space_accessor) = a.contents
+    shape_functions(f,space_accessor)
+end
+
+function field(f,a::NewDiscreteFieldAccessor)
+    s = shape_functions(f,a)
+    x = values(a)
+    n = num_dofs(a)
+    sum(i->x[i]*s[i],1:n)
 end
 
 # Old stuff
