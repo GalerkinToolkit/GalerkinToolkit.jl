@@ -410,7 +410,7 @@ struct COOVectorCounter{A,B} <: AbstractType
     vector_type::Type{A}
     index_type::Type{B}
     nrows::Int
-    nnz::Ref{Int}
+    nnz::Base.RefValue{Int}
 end
 
 struct COOMatrixCounter{A,B} <: AbstractType
@@ -418,7 +418,7 @@ struct COOMatrixCounter{A,B} <: AbstractType
     index_type::Type{B}
     nrows::Int
     ncols::Int
-    nnz::Ref{Int}
+    nnz::Base.RefValue{Int}
 end
 
 const COOCounter = Union{COOVectorCounter,COOMatrixCounter}
