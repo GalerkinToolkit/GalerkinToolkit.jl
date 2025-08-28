@@ -93,7 +93,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     ∇ = ForwardDiff.gradient
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
     V_faces_0 = GT.foreach_face(V,dΩ)
     V_faces = GT.tabulate(∇,V_faces_0)
@@ -140,7 +140,7 @@ end
 #Always use a function, never the global scope
 function integrate_l2_error(g,uh,dΩ)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
     uh_faces_1 = GT.foreach_face(uh,dΩ)
     uh_faces_2 = GT.tabulate(GT.value,uh_faces_1)

@@ -252,16 +252,9 @@ y = StaticArrays.SVector(0.5,)
 
 # The returned value should be the mid point of the edge number 2.
 
-# ### Iterators
-#
 # Geting information from a mesh might be tedious for the many array indirection present.
 # To fix this, the library provides iterators to visit the faces of the mesh.
-# These functions are fully explained in Section Iterators. Here, we provide an example of they in action.
-#
-# ### Example
-#
-# We rewrite the previous example using an iterator object.
-
+# These functions are fully explained in Section Iterators. We rewrite this example using an iterator object.
 
 #Face iterator
 d = 1

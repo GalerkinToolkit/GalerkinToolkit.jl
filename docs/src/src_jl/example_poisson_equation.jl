@@ -104,7 +104,7 @@ nothing # hide
 #Always use a function, never the global scope
 function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
     V_faces_1 = GT.foreach_face(V,dΩ)
     V_faces_2 = GT.tabulate(∇,V_faces_1)
@@ -160,7 +160,7 @@ end
 #Always use a function, never the global scope
 function assemble_in_Γn!(b_alloc,V,h,dΓn)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
     V_faces_1 = GT.foreach_face(V,dΓn)
     V_faces_2 = GT.tabulate(GT.value,V_faces_1)
