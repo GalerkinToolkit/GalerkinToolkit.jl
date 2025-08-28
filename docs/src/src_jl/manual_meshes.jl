@@ -252,38 +252,32 @@ y = StaticArrays.SVector(0.5,)
 
 # The returned value should be the mid point of the edge number 2.
 
-# ### Accessors
+# ### Iterators
 #
-# Geting information from a mesh might be tedious for the many array indirection present. To fix this, we can create *accessor* objects that hide all these indirections.
-# These are created with functions
-# [`reference_space_accessor`](@ref) and [`node_coordinate_accessor`](@ref).
-#
-# ```@docs; canonical=false
-# reference_space_accessor
-# node_coordinate_accessor
-# ```
+# Geting information from a mesh might be tedious for the many array indirection present.
+# To fix this, the library provides accessors objects to visit the faces of the mesh.
+# These functions are fully explained in Section Iterators. Here, we provide an example of they in action.
 #
 # ### Example
 #
-# We rewrite the previous example using accessor objects.
+# We rewrite the previous example using an iterator object.
 
 
-#Accessors
+# Face iterator
 d = 1
-g = GT.shape_functions
-f_lnode_x = GT.node_coordinate_accessor(mesh,d)
-f_lnode_s = GT.reference_space_accessor(g,mesh,d)
+mesh_faces = GT.foreach_face(mesh,d)
 
-#Restrict accessors at current face
-f = 2
-lnode_s = f_lnode_s(f)
-lnode_x = f_lnode_x(f)
+# Restrict iterator at current face
+face = 2
+mesh_face = mesh_faces[face]
+lnode_s = GT.shape_functions(mesh_face)
+lnode_x = GT.node_coordinates(mesh_face)
 
 #Define the map
 φ = y -> begin
     sum(1:nlnodes) do lnode
         s = lnode_s[lnode]
-        x = lnode_x(lnode)
+        x = lnode_x[lnode]
         s(y)*x
     end
 end
@@ -291,10 +285,6 @@ end
 #Apply the map to a given 1-d point
 y = StaticArrays.SVector(0.5,)
 φ(y)
-
-
-
-
 
 # ## Cell complexes
 #
@@ -392,14 +382,6 @@ edge_to_vertices = GT.face_incidence(ref_topo,1,0)
 # To fix this issue, we provide the permutation `P` that transforms one vector into the other, namely `d_0[s][P] == D_0[v][ref_d_0[l]]`. For `d==1`, the permutation vector `P` is either `[1,2]` or `[2,1]` since an edge has two vertices. In general, the possible permutations are enumerated and stored in the reference topology associated with face `s`, namely `ref_topo_s`. They are accessed with function [`vertex_permutations`](@ref) in this way: `k_P = GT.vertex_permutations(ref_topo_s)`. This is a vector of vectors containing all permutations. To get the permutation `P` from this list, we use function [`face_permutation_ids`](@ref). First we get an index into the list of permutations with `k=GT.face_permutation_ids(topo,D,0)[v][l]` and using the index `k`, we get the permutation from the list `P = k_P[k]`.
 #
 # This information is needed in many situations, including the generation of high-order interpolation spaces and integration of jump and average terms on interior faces in discontinuous Galerkin methods.
-#
-# ### Accessors
-#
-# We can conveniently access quantities in the reference topologies using accessor objects created with the function [`reference_topology_accessor`](@ref).
-#
-# ```@docs; canonical=false
-# reference_topology_accessor
-# ```
 #
 # ## Face groups
 #
@@ -596,19 +578,15 @@ cells = (10,20,10)
 mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
 
 #Find faces in new group
-d = 3
-g = GT.num_nodes
-face_nlnodes = GT.reference_space_accessor(g,mesh,d)
-face_lnode_x = GT.node_coordinate_accessor(mesh,d)
-nfaces = GT.num_faces(mesh,d)
-new_group_faces = findall(1:nfaces) do face
-    nlnodes = face_nlnodes(face)
-    lnode_x = face_lnode_x(face)
-    xm = sum(lnode_x,1:nlnodes) / nlnodes
+mesh_faces = GT.foreach_face(mesh)
+new_group_faces = findall(mesh_faces) do mesh_face
+    lnode_x = GT.node_coordinates(mesh_face)
+    xm = sum(lnode_x) / length(lnode_x)
     xm[2] < 0
 end
 
 #Add new group to mesh
+d = GT.num_dims(mesh)
 GT.group_faces(mesh,d)["foo"] = new_group_faces
 
 #Visualize

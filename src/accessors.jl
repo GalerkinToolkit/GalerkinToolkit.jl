@@ -3,8 +3,9 @@ function foreach_face(a)
     ForeachFace(a)
 end
 
-function foreach_face(mesh::AbstractMesh)
-    mesh_acc = mesh_accessor(mesh)
+function foreach_face(mesh::AbstractMesh,D=Val(num_dims(mesh)))
+    domain = GT.domain(mesh,D)
+    mesh_acc = mesh_accessor(mesh,domain,Val(val_parameter(D)))
     foreach_face(mesh_acc)
 end
 
@@ -30,6 +31,7 @@ end
 Base.length(iter::ForeachFace) = num_faces(iter.accessor)
 Base.isdone(iter::ForeachFace,face) = face > length(iter)
 Base.getindex(iter::ForeachFace,face) = at_face(iter.accessor,face)
+Base.keys(iter::ForeachFace) = LinearIndices((length(iter),))
 
 function Base.iterate(iter::ForeachFace,face=1)
     if Base.isdone(iter,face)
@@ -51,6 +53,7 @@ end
 Base.length(iter::ForeachFaceAround) = num_faces_around(iter.accessor)
 Base.isdone(iter::ForeachFaceAround,face_around) = face_around > length(iter)
 Base.getindex(iter::ForeachFaceAround,face_around) = at_face_around(iter.accessor,face_around)
+Base.keys(iter::ForeachFaceAround) = LinearIndices((length(iter),))
 
 function Base.iterate(iter::ForeachFaceAround,face_around=1)
     if Base.isdone(iter,face_around)
@@ -72,6 +75,7 @@ end
 Base.length(iter::ForeachPoint) = num_points(iter.accessor)
 Base.isdone(iter::ForeachPoint,point) = point > length(iter)
 Base.getindex(iter::ForeachPoint,point) = at_point(iter.accessor,point)
+Base.keys(iter::ForeachPoint) = LinearIndices((length(iter),))
 
 function Base.iterate(iter::ForeachPoint,point=1)
     if Base.isdone(iter,point)
@@ -286,8 +290,8 @@ function shape_functions(a::ReferenceSpaceAccessor)
     (;Dface,space) = a.contents
     Dface_Drid = face_reference_id(space)
     Drid = Dface_Drid[Dface]
-    Drid_rspace = reference_spaces(mesh,D)
-    rspace = Drid_space[Drid]
+    Drid_rspace = reference_spaces(space)
+    rspace = Drid_rspace[Drid]
     shape_functions(rspace)
 end
 
