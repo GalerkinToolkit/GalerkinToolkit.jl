@@ -104,17 +104,12 @@ nothing # hide
 #Always use a function, never the global scope
 function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
-    Ω = GT.domain(dΩ)
-    face_point_x = GT.coordinate_accessor(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_dofs = GT.dofs_accessor(V,Ω)
-    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
-    ∇ = ForwardDiff.gradient
-    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+    V_faces_1 = GT.foreach_face(V,dΩ)
+    V_faces_2 = GT.tabulate(∇,V_faces_1)
+    V_faces_3 = GT.tabulate(GT.value,V_faces_2)
+    V_faces = GT.compute(GT.coordinate,V_faces_3)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -123,38 +118,31 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Ω)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_dof_s = face_point_dof_s(face)
-        point_dof_∇s = face_point_dof_∇s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
 
         #Reset face matrix
         fill!(Auu,zero(T))
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.foreach_point(V_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            J = point_J(point)
-            dV = point_dV(point,J)
-            dof_s = point_dof_s(point)
-            dof_∇s = point_dof_∇s(point,J)
+            x = GT.coordinate(V_point)
+            dV = GT.weight(V_point)
+            dof_s = GT.shape_functions(GT.value,V_point)
+            dof_∇s = GT.shape_functions(∇,V_point)
 
             #Fill in face matrix and vector
             for (i,dofi) in enumerate(dofs)
-                v = dof_s(i)
-                ∇v = dof_∇s(i)
+                v = dof_s[i]
+                ∇v = dof_∇s[i]
                 bu[i] += f.definition(x)*v*dV
                 for (j,dofj) in enumerate(dofs)
-                    ∇u = dof_∇s(j)
+                    ∇u = dof_∇s[j]
                     Auu[i,j] += ∇v⋅∇u*dV
                 end
             end
@@ -172,14 +160,11 @@ end
 #Always use a function, never the global scope
 function assemble_in_Γn!(b_alloc,V,h,dΓn)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
-    Γn = GT.domain(dΓn)
-    face_point_x = GT.coordinate_accessor(dΓn)
-    face_point_dV = GT.weight_accessor(dΓn)
-    face_npoints = GT.num_points_accessor(dΓn)
-    face_dofs = GT.dofs_accessor(V,Γn)
-    face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΓn)
+    V_faces_1 = GT.foreach_face(V,dΓn)
+    V_faces_2 = GT.tabulate(GT.value,V_faces_1)
+    V_faces = GT.compute(GT.coordinate,V_faces_2)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -188,29 +173,25 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Γn)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_dV = face_point_dV(face)
-        point_dof_s = face_point_dof_s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
 
         #Reset face vector
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.foreach_point(V_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            dV = point_dV(point)
-            dof_s = point_dof_s(point)
+            x = GT.coordinate(V_point)
+            dV = GT.weight(V_point)
+            dof_s = GT.shape_functions(GT.value,V_point)
 
             #Fill in face matrix and vector
             for (i,dofi) in enumerate(dofs)
-                v = dof_s(i)
+                v = dof_s[i]
                 bu[i] += h.definition(x)*v*dV
             end
         end

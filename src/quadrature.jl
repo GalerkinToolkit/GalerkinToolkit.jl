@@ -18,6 +18,10 @@ function face_quadrature(;domain,coordinates,weights)
     FaceQuadrature(contents)
 end
 
+function num_points(q::AbstractQuadrature)
+    length(weights(q))
+end
+
 struct FaceQuadrature{A} <: AbstractFaceQuadrature
     contents::A
 end

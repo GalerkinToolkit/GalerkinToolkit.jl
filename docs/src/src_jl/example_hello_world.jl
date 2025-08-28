@@ -91,15 +91,12 @@ nothing # hide
 #Always use a function, never the global scope
 function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
-    #Accessors to the quantities on the
-    #integration points
-    Ω = GT.domain(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_dofs = GT.dofs_accessor(V,Ω)
     ∇ = ForwardDiff.gradient
-    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+
+    #Iterators to the quantities on the
+    #integration points
+    V_faces_0 = GT.foreach_face(V,dΩ)
+    V_faces = GT.tabulate(∇,V_faces_0)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -107,31 +104,26 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
     Auu = zeros(T,n,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Ω)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_dof_∇s = face_point_dof_∇s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
 
         #Reset face matrix
         fill!(Auu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.foreach_point(V_face)
 
             #Get quantities at current integration point
-            J = point_J(point)
-            dV = point_dV(point,J)
-            dof_∇s = point_dof_∇s(point,J)
+            dV = GT.weight(V_point)
+            dof_∇s = GT.shape_functions(∇,V_point)
 
             #Fill in face matrix
             for (i,dofi) in enumerate(dofs)
-                ∇v = dof_∇s(i)
+                ∇v = dof_∇s[i]
                 for (j,dofj) in enumerate(dofs)
-                    ∇u = dof_∇s(j)
+                    ∇u = dof_∇s[j]
                     Auu[i,j] += ∇v⋅∇u*dV
                 end
             end
@@ -148,33 +140,21 @@ end
 #Always use a function, never the global scope
 function integrate_l2_error(g,uh,dΩ)
 
-    #Accessors to the quantities on the
+    #Iterators to the quantities on the
     #integration points
-    face_point_x = GT.coordinate_accessor(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_point_uhx = GT.discrete_field_accessor(GT.value,uh,dΩ)
+    uh_faces_1 = GT.foreach_face(uh,dΩ)
+    uh_faces_2 = GT.tabulate(GT.value,uh_faces_1)
+    uh_faces = GT.compute(GT.coordinate,uh_faces_2)
 
     #Numerical integration loop
     s = 0.0
-    Ω = GT.domain(dΩ)
-    for face in 1:GT.num_faces(Ω)
-
-        #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_uhx = face_point_uhx(face)
-
-        for point in 1:npoints
+    for uh_face in uh_faces
+        for uh_point in GT.foreach_point(uh_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            J = point_J(point)
-            dV = point_dV(point,J)
-            uhx = point_uhx(point,J)
+            x = GT.coordinate(uh_point)
+            dV = GT.weight(uh_point)
+            uhx = GT.field(GT.value,uh_point)
 
             #Add contribution
             s += abs2(uhx-g.definition(x))*dV
