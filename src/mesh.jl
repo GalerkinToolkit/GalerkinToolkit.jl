@@ -838,7 +838,7 @@ num_dirichlet_dofs(space::MeshSpace) = 0
 
 function face_dofs(space::MeshSpace)
     D = num_dims(space)
-    face_dofs(space.mesh,D)
+    face_nodes(space.mesh,D)
 end
 
 

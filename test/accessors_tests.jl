@@ -50,7 +50,7 @@ mesh_dΓ = GT.mesh_accessor(mesh,dΓ)
 mesh_dΓ = GT.compute(GT.value,mesh_dΓ)
 mesh_dΓ = GT.compute(ForwardDiff.gradient,mesh_dΓ)
 mesh_faces = GT.foreach_face(mesh_dΓ)
-mesh_face = mesh_iter[2]
+mesh_face = mesh_faces[2]
 @show GT.nodes(mesh_face)
 @show GT.node_coordinates(mesh_face)
 mesh_points = GT.foreach_point(mesh_face)
@@ -82,7 +82,7 @@ mesh_Dface = mesh_Dfaces[2]
 @show GT.nodes(mesh_Dface)
 @show GT.node_coordinates(mesh_Dface)
 mesh_points = GT.foreach_point(mesh_Dface)
-mesh_point = mesh_point[1]
+mesh_point = mesh_points[1]
 @show GT.coordinate(GT.value,mesh_point)
 @show GT.coordinate(ForwardDiff.jacobian,mesh_point)
 @show GT.weight(mesh_point)
@@ -113,15 +113,13 @@ dΩ_point = dΩ_points[2]
 dΓ_faces = GT.foreach_face(dΓ)
 dΓ_face = dΓ_faces[2]
 dΓ_points = GT.foreach_point(dΓ_face)
-dΓ_point = dΓ_iter[2]
+dΓ_point = dΓ_points[2]
 @show GT.coordinate(dΓ_point)
 @show GT.weight(dΓ_point)
 
 dΛ_dfaces = GT.foreach_face(dΛ)
 dΛ_dface = dΛ_dfaces[2]
-dΛ_Dfaces = GT.foreach_face_around(dΛ_dface)
-dΛ_Dface = dΛ_Dfaces[2]
-dΛ_points = GT.foreach_point(dΛ_Dface)
+dΛ_points = GT.foreach_point(dΛ_dface)
 dΛ_point = dΛ_points[2]
 @show GT.coordinate(dΛ_point)
 @show GT.weight(dΛ_point)
@@ -134,6 +132,8 @@ V_face = V_faces[1]
 V_points = GT.foreach_point(V_face)
 V_point = V_points[1]
 @show GT.shape_functions(GT.value,V_point)
+
+xxx
 
 
 f_l_x = GT.node_coordinate_accessor(mesh,2)
