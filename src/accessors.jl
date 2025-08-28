@@ -3,13 +3,18 @@ function foreach_face(a)
     ForeachFace(a)
 end
 
-function foreach_face(mesh::AbstractMesh,args...)
-    mesh_acc = mesh_accessor(mesh,args...)
+function foreach_face(mesh::AbstractMesh)
+    mesh_acc = mesh_accessor(mesh)
     foreach_face(mesh_acc)
 end
 
 function foreach_face(quadrature::AbstractQuadrature)
     acc = quadrature_accessor(quadrature)
+    foreach_face(acc)
+end
+
+function foreach_face(space::AbstractSpace)
+    acc = space_accessor(space)
     foreach_face(acc)
 end
 
@@ -148,6 +153,24 @@ function at_face(a::MeshAccessor{AtSkeleton},face)
     a3
 end
 
+function at_any_index(a::MeshAccessor{AtInterior})
+    # TODO the asserts can be removed by playing with AnyIndex
+    @assert num_faces(a) > 0
+    a2 = at_face(a,1)
+    @assert num_points(a2) > 0
+    a3 = at_point(a2,1)
+end
+
+function at_any_index(a::MeshAccessor{AtSkeleton})
+    # TODO the asserts can be removed by playing with AnyIndex
+    @assert num_faces(a) > 0
+    a2 = at_face(a,1)
+    @assert num_faces_around(a2) > 0
+    a3 = at_face_around(a2,1)
+    @assert num_points(a3) > 0
+    a4 = at_point(a3,1)
+end
+
 function num_faces_around(a::MeshAccessor)
     (;mesh,d,D,dface) = a.contents
     topo = topology(mesh)
@@ -184,10 +207,10 @@ end
 
 function compute(f,a::MeshAccessor{AtInterior})
     (;quadrature,mesh,D) = a.contents
-    rid_to_point_to_x = map(coordinates,reference_quadratures(quadrature))
+    rid_point_x = map(coordinates,reference_quadratures(quadrature))
     # NB the TODOs below can be solved by introducing an extra nesting level
     # TODO assumes same reference elems for integration and for interpolation
-    rid_to_tab = map(rid_to_point_to_x,reference_spaces(mesh,D)) do point_to_x, refface
+    rid_to_tab = map(rid_point_x,reference_spaces(mesh,D)) do point_to_x, refface
         collect(permutedims(tabulator(refface)(f,point_to_x))) # TODO fix this globally
     end
     replace_tabulators(f,a,rid_to_tab)
@@ -196,15 +219,15 @@ end
 function compute(f,a::MeshAccessor{AtSkeleton})
     (;quadrature,mesh,D,d) = a.contents
     topo = topology(mesh)
-    drid_to_refdface = reference_spaces(mesh,d)
-    Drid_to_refDface = reference_spaces(mesh,D)
-    Drid_to_reffe = reference_spaces(mesh,D)
-    drid_to_point_to_x = map(coordinates,reference_quadratures(quadrature))
+    drid_refdface = reference_spaces(mesh,d)
+    Drid_refDface = reference_spaces(mesh,D)
+    Drid_reffe = reference_spaces(mesh,D)
+    drid_point_x = map(coordinates,reference_quadratures(quadrature))
     # NB the TODOs below can be solved by introducing two extra nesting levels
     # TODO this assumes the same reffes for mesh and quadrature
-    drid_Drid_ldface_perm_tab = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
+    drid_Drid_ldface_perm_tab = map(drid_point_x,drid_refdface) do point_to_x,refdface
         # TODO this assumes the same reffes for mesh and interpolation
-        map(Drid_to_reffe,Drid_to_refDface) do reffe,refDface
+        map(Drid_reffe,Drid_refDface) do reffe,refDface
             ldface_perm_varphi = reference_map(refdface,refDface)
             map(ldface_perm_varphi) do perm_varphi
                 map(perm_varphi) do varphi
@@ -229,12 +252,12 @@ function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
     replace_contents(a,contents)
 end
 
-function replace_tabulators(::typeof(GT.value),a,values)
+function replace_tabulators(::typeof(GT.value),a::MeshAccessor,values)
     contents = (;a.contents...,values)
     replace_contents(a,contents)
 end
 
-function replace_tabulators(::typeof(ForwardDiff.gradient),a,gradients)
+function replace_tabulators(::typeof(ForwardDiff.gradient),a::MeshAccessor,gradients)
     contents = (;a.contents...,gradients)
     replace_contents(a,contents)
 end
@@ -359,21 +382,210 @@ function quadrature_accessor(quadrature::AbstractQuadrature)
     acc3
 end
 
+struct AtReference end
+struct AtPhysical end
 
+struct SpaceAccessor{A,B,C} <: AbstractType
+    loop_case::A
+    domain_case::B
+    contents::B
+end
 
+function space_accessor(space::AbstractSpace,domain::AbstractDomain)
+    degree = 0
+    quadrature = GT.quadrature(domain,degree)
+    space_accessor(space,quadrature)
+end
 
+function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature)
+    D = num_dims(GT.domain(space))
+    mesh = GT.mesh(space)
+    mesh_accessor = GT.mesh_accessor(mesh,quadrature,D)
+    space_accessor(space,mesh_accessor)
+end
 
+function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor)
+    (;D) = mesh_accessor.contents
+    domain = GT.domain(space)
+    @assert num_dims(domain) == val_parameter(D)
+    contents = (;space,mesh_accessor)
+    loop_case = mesh_accessor.loop_case
+    domain_case = is_physical_domain(domain) ? AtPhysical() : AtReference()
+    acc = SpaceAccessor(loop_case,domain_case,contents)
+end
 
+#TODO some code duplication with the mesh accesssor
 
+struct AnyIndex end
 
+function compute(f,a::SpaceAccessor{AtInterior})
+    (;space,mesh_accessor) = a.contents
+    (;quadrature) = mesh_accessor.contents
+    rid_point_x = map(coordinates,reference_quadratures(quadrature))
+    # NB the TODOs below can be solved by introducing an extra nesting level
+    # TODO assumes same reference elems for integration and for interpolation
+    rid_tab = map(rid_point_x,reference_spaces(space)) do point_to_x, refface
+        collect(permutedims(tabulator(refface)(f,point_to_x))) # TODO fix this globally
+    end
+    rid_dof_s = map(rid_tab) do tab
+        sref = zero(eltype(tab))
+        dof = AnyIndex()
+        mesh_accessor_2 = at_any_index(mesh_accessor)
+        s = map_shape_function(f,space,dof,mesh_accessor_2,sref)
+        ndofs = size(tab,1)
+        zeros(typeof(s),ndofs)
+    end
+    replace_tabulators(f,a,(rid_tab,rid_dof_s))
+end
 
+function compute(f,a::MeshAccessor{AtSkeleton})
+    (;space,mesh_accessor) = a.contents
+    (;quadrature,mesh,d,D) = mesh_accessor.contents
+    topo = topology(mesh)
+    drid_refdface = reference_spaces(mesh,d)
+    Drid_refDface = reference_spaces(mesh,D)
+    Drid_reffe = reference_spaces(space)
+    drid_point_x = map(coordinates,reference_quadratures(quadrature))
+    # NB the TODOs below can be solved by introducing two extra nesting levels
+    # TODO this assumes the same reffes for mesh and quadrature
+    drid_Drid_ldface_perm_tab = map(drid_point_x,drid_refdface) do point_to_x,refdface
+        # TODO this assumes the same reffes for mesh and interpolation
+        map(Drid_reffe,Drid_refDface) do reffe,refDface
+            ldface_perm_varphi = reference_map(refdface,refDface)
+            map(ldface_perm_varphi) do perm_varphi
+                map(perm_varphi) do varphi
+                    point_to_q = varphi.(point_to_x)
+                    collect(permutedims(tabulator(reffe)(f,point_to_q)))
+                end
+            end
+        end
+    end
+    replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
+end
 
+function replace_tabulators(::typeof(GT.value),a::SpaceAccessor,values)
+    contents = (;a.contents...,values)
+    replace_contents(a,contents)
+end
 
+function replace_tabulators(::typeof(ForwardDiff.gradient),a::SpaceAccessor,gradients)
+    contents = (;a.contents...,gradients)
+    replace_contents(a,contents)
+end
 
+function replace_tabulators(::typeof(ForwardDiff.jacobian),a::SpaceAccessor,jacobians)
+    contents = (;a.contents...,jacobians)
+    replace_contents(a,contents)
+end
 
+function num_faces(a::SpaceAccessor)
+    num_faces(a.contents.mesh_accessor)
+end
 
+function at_face(a::SpaceAccessor,face)
+    acc = at_face(a.contents.mesh_accessor,face)
+    a2 = replace_mesh_accessor(a,acc)
+    workspace = at_face(a2.workspace,space,a2)
+    replace_workspace(a2,workspace)
+end
 
+function num_faces_around(a::SpaceAccessor)
+    num_faces_around(a.contents.mesh_accessor)
+end
 
+function at_face_around(a::SpaceAccessor,face)
+    acc = at_face(a.contents.mesh_accessor,face)
+    replace_mesh_accessor(a,acc)
+end
+
+function dofs(a::SpaceAccessor)
+end
+
+function num_dofs(a::SpaceAccessor)
+    length(dofs(a))
+end
+
+function num_points(a::SpaceAccessor)
+    num_points(a.contents.mesh_accessor)
+end
+
+function at_point(a::SpaceAccessor,point)
+    acc = at_point(a.contents.mesh_accessor,face)
+    replace_mesh_accessor(a,acc)
+end
+
+function tabulator(f,a::SpaceAccessor{AtInterior})
+    (;space,mesh_accessor) = a.contents
+    (;Dface,mesh,D) = mesh_accessor.contents
+    Drid = face_reference_id(space)[Dface]
+    Drid_tab,Drid_dof_s = tabulators(f,a)
+    tab = Drid_tab[Drid]
+    dof_s = Drid_dof_s[Drid]
+    (tab,dof_s)
+end
+
+function tabulator(f,a::SpaceAccessor{AtSkeleton})
+    (;space,mesh_accessor) = a.contents
+    (;Dface,dface,mesh,quadrature,ldface,d,D) = mesh_accessor.contents
+    dface_drid = face_reference_id(mesh,d)
+    Dface_Drid = face_reference_id(mesh,D)
+    Drid = Dface_Drid[Dface]
+    drid = dface_drid[dface]
+    topo = topology(mesh)
+    Dface_ldface_perm = GT.face_permutation_ids(topo,D,d)
+    perm = Dface_ldface_perm[Dface][ldface]
+    drid_Drid_ldface_perm_tab = tabulators(f,a)
+    tab = drid_Drid_ldface_perm_tab[drid][Drid][ldface][perm]
+end
+
+function tabulators(::typeof(GT.value),a::SpaceAccessor)
+    (;values) = a.contents
+    values
+end
+
+function tabulators(::typeof(ForwardDiff.gradient),a::SpaceAccessor)
+    (;gradients) = a.contents
+    gradients
+end
+
+function tabulators(::typeof(ForwardDiff.jacobian),a::SpaceAccessor)
+    (;jacobians) = a.contents
+    jacobians
+end
+
+function shape_functions(f,a::SpaceAccessor{T,AtReference} where T)
+    (;point) = a.contents.mesh_accessor.contents
+    tab, = tabulator(f,a)
+    view(tab,:,point)
+end
+
+function shape_functions(f,a::SpaceAccessor{T,AtPhysical} where T)
+    (;mesh_accessor,face_around) = a.contents
+    (;point) = mesh_accessor.contents
+    tab, dof_s = tabulator(f,a)
+    dof_sref = view(tab,:,point)
+    for dof in 1:length(dof_sref)
+        sref = dof_sref[dof]
+        dof_s[dof] = map_shape_function(f,space,dof,mesh_accessor,sref)
+    end
+    dof_s
+end
+
+function map_shape_function(::typeof(GT.value),space,dof,mesh_accessor,sref)
+    sref
+end
+
+function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_accessor,sref)
+    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+    sphys = transpose(J)\sref
+end
+
+function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_accessor,sref)
+    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+    sphys = sref/J
+end
+
+# Old stuff
 
 function accessor(a,b)
     Accessor(a,b)
