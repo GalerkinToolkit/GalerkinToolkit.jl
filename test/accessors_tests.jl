@@ -21,7 +21,8 @@ dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
 
-mesh_dΩ = GT.mesh_accessor(mesh,dΩ)
+D = GT.num_dims(mesh)
+mesh_dΩ = GT.mesh_accessor(mesh,D,dΩ)
 mesh_dΩ = GT.tabulate(GT.value,mesh_dΩ)
 mesh_dΩ = GT.tabulate(ForwardDiff.gradient,mesh_dΩ)
 mesh_faces = GT.foreach_face(mesh_dΩ)
@@ -46,7 +47,7 @@ for mesh_face in GT.foreach_face(mesh_dΩ)
     end
 end
 
-mesh_dΓ = GT.mesh_accessor(mesh,dΓ)
+mesh_dΓ = GT.mesh_accessor(mesh,D,dΓ)
 mesh_dΓ = GT.tabulate(GT.value,mesh_dΓ)
 mesh_dΓ = GT.tabulate(ForwardDiff.gradient,mesh_dΓ)
 mesh_faces = GT.foreach_face(mesh_dΓ)
@@ -71,7 +72,7 @@ for mesh_face in GT.foreach_face(mesh_dΓ)
     end
 end
 
-mesh_dΛ = GT.mesh_accessor(mesh,dΛ)
+mesh_dΛ = GT.mesh_accessor(mesh,D,dΛ)
 mesh_dΛ = GT.tabulate(GT.value,mesh_dΛ)
 mesh_dΛ = GT.tabulate(ForwardDiff.gradient,mesh_dΛ)
 mesh_dΛ = GT.compute(GT.unit_normal,mesh_dΛ)

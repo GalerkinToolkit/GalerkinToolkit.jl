@@ -255,7 +255,7 @@ y = StaticArrays.SVector(0.5,)
 # ### Iterators
 #
 # Geting information from a mesh might be tedious for the many array indirection present.
-# To fix this, the library provides accessors objects to visit the faces of the mesh.
+# To fix this, the library provides iterators to visit the faces of the mesh.
 # These functions are fully explained in Section Iterators. Here, we provide an example of they in action.
 #
 # ### Example
@@ -263,11 +263,11 @@ y = StaticArrays.SVector(0.5,)
 # We rewrite the previous example using an iterator object.
 
 
-# Face iterator
+#Face iterator
 d = 1
 mesh_faces = GT.foreach_face(mesh,d)
 
-# Restrict iterator at current face
+#Restrict iterator at current face
 face = 2
 mesh_face = mesh_faces[face]
 lnode_s = GT.shape_functions(mesh_face)

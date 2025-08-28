@@ -1,31 +1,40 @@
 
-function foreach_face(a)
+function foreach_face(a::NewAbstractAccessor)
     ForeachFace(a)
 end
 
-function foreach_face(mesh::AbstractMesh,D=Val(num_dims(mesh)))
-    domain = GT.domain(mesh,D)
-    mesh_acc = mesh_accessor(mesh,domain,Val(val_parameter(D)))
+function foreach_face(mesh::AbstractMesh,args...)
+    mesh_acc = mesh_accessor(mesh,args...)
     foreach_face(mesh_acc)
 end
 
-function foreach_face(quadrature::AbstractQuadrature)
-    acc = quadrature_accessor(quadrature)
+function foreach_face(quadrature::AbstractQuadrature,args...)
+    acc = quadrature_accessor(quadrature,args...)
     foreach_face(acc)
 end
 
-function foreach_face(space::AbstractSpace)
-    acc = space_accessor(space)
+function foreach_face(space::AbstractSpace,args...)
+    acc = space_accessor(space,args...)
     foreach_face(acc)
 end
 
-function foreach_face(uh::AbstractField)
-    acc = field_accessor(uh)
+function foreach_face(uh::AbstractField,args...)
+    acc = field_accessor(uh,args...)
     foreach_face(acc)
 end
 
 struct ForeachFace{A} <: AbstractType
     accessor::A
+end
+
+function tabulate(f,iter::ForeachFace)
+    accessor = tabulate(f,iter.accessor)
+    ForeachFace(accessor)
+end
+
+function compute(f,iter::ForeachFace)
+    accessor = compute(f,iter.accessor)
+    ForeachFace(accessor)
 end
 
 Base.length(iter::ForeachFace) = num_faces(iter.accessor)
@@ -320,20 +329,15 @@ end
 
 # Mesh accessor
 
-
-function mesh_accessor(mesh::AbstractMesh)
-    D = num_dims(mesh)
-    domain = GT.domain(mesh,Val(D))
-    mesh_accessor(mesh,domain)
-end
-
-function mesh_accessor(mesh::AbstractMesh,domain::AbstractDomain,D=Val(num_dims(mesh)))
+function mesh_accessor(mesh::AbstractMesh,
+    D=Val(num_dims(mesh)),
+    domain=GT.domain(mesh,Val(val_parameter(D))) )
     degree = 0
     quadrature = GT.quadrature(domain,degree)
-    mesh_accessor(mesh,quadrature,Val(val_parameter(D)))
+    mesh_accessor(mesh,Val(val_parameter(D)),quadrature)
 end
 
-function mesh_accessor(mesh::AbstractMesh,quadrature::AbstractQuadrature,D=Val(num_dims(mesh)))
+function mesh_accessor(mesh::AbstractMesh,D,quadrature::AbstractQuadrature)
     space = mesh_space(mesh,D)
     space_accessor = reference_space_accessor(space,quadrature)
     loop_case = space_accessor.loop_case
@@ -496,7 +500,7 @@ function quadrature_accessor(quadrature::AbstractQuadrature)
     domain = GT.domain(quadrature)
     mesh = GT.mesh(domain)
     d = Val(num_dims(domain))
-    acc1 = mesh_accessor(mesh,quadrature,d)
+    acc1 = mesh_accessor(mesh,d,quadrature)
     acc2 = tabulate(GT.value,acc1)
     acc3 = tabulate(ForwardDiff.gradient,acc2)
     acc3
@@ -511,7 +515,7 @@ function replace_contents(a::SpaceAccessor,contents)
     SpaceAccessor(a.loop_case,contents)
 end
 
-function space_accessor(space::AbstractSpace,domain::AbstractDomain)
+function space_accessor(space::AbstractSpace,domain::AbstractDomain=GT.domain(space))
     degree = 0
     quadrature = GT.quadrature(domain,degree)
     space_accessor(space,quadrature)
@@ -520,7 +524,7 @@ end
 function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature)
     D = num_dims(GT.domain(space))
     mesh = GT.mesh(space)
-    mesh_accessor = GT.mesh_accessor(mesh,quadrature,D)
+    mesh_accessor = GT.mesh_accessor(mesh,D,quadrature)
     mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
     space_accessor(space,mesh_accessor_2)
 end

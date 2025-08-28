@@ -106,10 +106,10 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
 
     #Accessors to the quantities on the
     #integration points
-    V_dΩ_1 = GT.space_accessor(V,dΩ)
-    V_dΩ_2 = GT.tabulate(∇,V_dΩ_1)
-    V_dΩ_3 = GT.tabulate(GT.value,V_dΩ_2)
-    V_dΩ = GT.compute(GT.coordinate,V_dΩ_3)
+    V_faces_1 = GT.foreach_face(V,dΩ)
+    V_faces_2 = GT.tabulate(∇,V_faces_1)
+    V_faces_3 = GT.tabulate(GT.value,V_faces_2)
+    V_faces = GT.compute(GT.coordinate,V_faces_3)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -118,7 +118,7 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for V_face in GT.foreach_face(V_dΩ)
+    for V_face in V_faces
 
         #Get quantities at current face
         dofs = GT.dofs(V_face)
@@ -162,9 +162,9 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
 
     #Accessors to the quantities on the
     #integration points
-    V_dΓn_1 = GT.space_accessor(V,dΓn)
-    V_dΓn_2 = GT.tabulate(GT.value,V_dΓn_1)
-    V_dΓn = GT.compute(GT.coordinate,V_dΓn_2)
+    V_faces_1 = GT.foreach_face(V,dΓn)
+    V_faces_2 = GT.tabulate(GT.value,V_faces_1)
+    V_faces = GT.compute(GT.coordinate,V_faces_2)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -173,7 +173,7 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
     bu = zeros(T,n)
 
     #Numerical integration loop
-    for V_face in GT.foreach_face(V_dΓn)
+    for V_face in V_faces
 
         #Get quantities at current face
         dofs = GT.dofs(V_face)

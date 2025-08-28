@@ -95,8 +95,8 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     #Accessors to the quantities on the
     #integration points
-    V_dΩ_0 = GT.space_accessor(V,dΩ)
-    V_dΩ = GT.tabulate(∇,V_dΩ_0)
+    V_faces_0 = GT.foreach_face(V,dΩ)
+    V_faces = GT.tabulate(∇,V_faces_0)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -104,7 +104,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
     Auu = zeros(T,n,n)
 
     #Numerical integration loop
-    for V_face in GT.foreach_face(V_dΩ)
+    for V_face in V_faces
 
         #Get quantities at current face
         dofs = GT.dofs(V_face)
@@ -142,13 +142,13 @@ function integrate_l2_error(g,uh,dΩ)
 
     #Accessors to the quantities on the
     #integration points
-    uh_dΩ_1 = GT.field_accessor(uh,dΩ)
-    uh_dΩ_2 = GT.tabulate(GT.value,uh_dΩ_1)
-    uh_dΩ = GT.compute(GT.coordinate,uh_dΩ_2)
+    uh_faces_1 = GT.foreach_face(uh,dΩ)
+    uh_faces_2 = GT.tabulate(GT.value,uh_faces_1)
+    uh_faces = GT.compute(GT.coordinate,uh_faces_2)
 
     #Numerical integration loop
     s = 0.0
-    for uh_face in GT.foreach_face(uh_dΩ)
+    for uh_face in uh_faces
         for uh_point in GT.foreach_point(uh_face)
 
             #Get quantities at current integration point
