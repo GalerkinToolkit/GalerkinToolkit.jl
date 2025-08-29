@@ -81,10 +81,11 @@ end
 
 # term is defined in compiler.jl
 
-Base.iterate(m::DiscreteField) = iterate(fields(m))
-Base.iterate(m::DiscreteField,state) = iterate(fields(m),state)
-Base.getindex(m::DiscreteField,field::Integer) = field(m,field)
-Base.length(m::DiscreteField) = num_fields(m)
+#Moved to CartesianProductSpace
+#Base.iterate(m::DiscreteField) = iterate(fields(m))
+#Base.iterate(m::DiscreteField,state) = iterate(fields(m),state)
+#Base.getindex(m::DiscreteField,field::Integer) = field(m,field)
+#Base.length(m::DiscreteField) = num_fields(m)
 
 @enum FreeOrDirichlet FREE=1 DIRICHLET=2 FREE_AND_DIRICHLET=3
 

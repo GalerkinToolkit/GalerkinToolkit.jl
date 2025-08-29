@@ -2354,6 +2354,13 @@ function form_argument_quantity(a::CartesianProductSpace,axis)
     end
 end
 
+#The following functions and the previous ones are a hack
+# Should the CartesianProductSpace really have a different behavior?
+Base.iterate(m::DiscreteField{A,<:CartesianProductSpace} where A) = iterate(fields(m))
+Base.iterate(m::DiscreteField{A,<:CartesianProductSpace} where A,state) = iterate(fields(m),state)
+Base.getindex(m::DiscreteField{A,<:CartesianProductSpace} where A,field::Integer) = field(m,field)
+Base.length(m::DiscreteField{A,<:CartesianProductSpace} where A) = num_fields(m)
+
 function discrete_field_quantity(a::CartesianProductSpace,free_vals,diri_vals)
     nothing
 end
