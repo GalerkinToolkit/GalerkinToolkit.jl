@@ -87,7 +87,14 @@ end
 #Base.getindex(m::DiscreteField,field::Integer) = field(m,field)
 #Base.length(m::DiscreteField) = num_fields(m)
 
-@enum FreeOrDirichlet FREE=1 DIRICHLET=2 FREE_AND_DIRICHLET=3
+# @enum FreeOrDirichlet FREE=1 DIRICHLET=2 FREE_AND_DIRICHLET=3
+abstract type FreeOrDirichlet <: AbstractType end
+struct EnumFree <: FreeOrDirichlet end # fix type instability by making the enum different types
+struct EnumDirichlet <: FreeOrDirichlet end
+struct EnumFreeAndDirichlet <: FreeOrDirichlet end
+const FREE = EnumFree()
+const DIRICHLET = EnumDirichlet()
+const FREE_AND_DIRICHLET = EnumFreeAndDirichlet()
 
 function values(a::DiscreteField,free_or_diri::FreeOrDirichlet)
     @assert free_or_diri != FREE_AND_DIRICHLET
