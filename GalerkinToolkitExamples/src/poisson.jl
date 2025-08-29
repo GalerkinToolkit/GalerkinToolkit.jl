@@ -62,29 +62,29 @@ function main_automatic(params)
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
     if params[:discretization_method] !== :continuous_galerkin
-        conformity = :L2
+        continuous = false
         GT.group_interior_faces!(mesh;group_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
     else
-        conformity = :default
+        continuous = true
     end
 
     if params[:dirichlet_method] === :strong
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous,dirichlet_boundary=Γd)
         uhd = GT.zero_dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(mesh,D-1)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous)
     end
 
     if params[:dirichlet_method] === :multipliers
-        Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        Q = GT.lagrange_space(Γd,interpolation_degree-1;continuous=false)
         VxQ = V × Q
     end
 
@@ -249,7 +249,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     #Accessors to the quantities on the
     #integration points
-    V_faces = GT.foreach_face(V,dΩ;tabulate=(∇,))
+    V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -266,7 +266,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
         fill!(Auu,zero(T))
 
         #Loop over integration points
-        for V_point in GT.foreach_point(V_face)
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
             dV = GT.weight(V_point)
@@ -301,13 +301,13 @@ function integrate_error(g,uh,dΩ)
     #integration points
     tabulate = (∇,GT.value)
     compute = (GT.coordinate,)
-    uh_faces = GT.foreach_face(uh,dΩ;tabulate,compute)
+    uh_faces = GT.each_face(uh,dΩ;tabulate,compute)
 
     #Numerical integration loop
     s = 0.0
     s1 = 0.0
     for uh_face in uh_faces
-        for uh_point in GT.foreach_point(uh_face)
+        for uh_point in GT.each_point(uh_face)
 
             #Get quantities at current integration point
             x = GT.coordinate(uh_point)

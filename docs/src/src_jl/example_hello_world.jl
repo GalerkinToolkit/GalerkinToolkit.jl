@@ -95,7 +95,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     #Iterators to the quantities on the
     #integration points
-    V_faces = GT.foreach_face(V,dΩ;tabulate=(∇,))
+    V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -112,7 +112,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
         fill!(Auu,zero(T))
 
         #Loop over integration points
-        for V_point in GT.foreach_point(V_face)
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
             dV = GT.weight(V_point)
@@ -143,12 +143,12 @@ function integrate_l2_error(g,uh,dΩ)
     #integration points
     tabulate = (GT.value,)
     compute = (GT.coordinate,)
-    uh_faces = GT.foreach_face(uh,dΩ;tabulate,compute)
+    uh_faces = GT.each_face(uh,dΩ;tabulate,compute)
 
     #Numerical integration loop
     s = 0.0
     for uh_face in uh_faces
-        for uh_point in GT.foreach_point(uh_face)
+        for uh_point in GT.each_point(uh_face)
 
             #Get quantities at current integration point
             x = GT.coordinate(uh_point)

@@ -258,7 +258,7 @@ y = StaticArrays.SVector(0.5,)
 
 #Face iterator
 d = 1
-mesh_faces = GT.foreach_face(mesh,d)
+mesh_faces = GT.each_face(mesh,d)
 
 #Restrict iterator at current face
 face = 2
@@ -571,7 +571,7 @@ cells = (10,20,10)
 mesh = GT.cartesian_mesh(domain,cells;simplexify=true)
 
 #Find faces in new group
-mesh_faces = GT.foreach_face(mesh)
+mesh_faces = GT.each_face(mesh)
 new_group_faces = findall(mesh_faces) do mesh_face
     lnode_x = GT.node_coordinates(mesh_face)
     xm = sum(lnode_x) / length(lnode_x)
