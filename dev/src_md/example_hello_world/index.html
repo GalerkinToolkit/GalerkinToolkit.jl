@@ -59,8 +59,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     #Iterators to the quantities on the
     #integration points
-    V_faces_0 = GT.foreach_face(V,dΩ)
-    V_faces = GT.tabulate(∇,V_faces_0)
+    V_faces = GT.foreach_face(V,dΩ;tabulate=(∇,))
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -106,9 +105,9 @@ function integrate_l2_error(g,uh,dΩ)
 
     #Iterators to the quantities on the
     #integration points
-    uh_faces_1 = GT.foreach_face(uh,dΩ)
-    uh_faces_2 = GT.tabulate(GT.value,uh_faces_1)
-    uh_faces = GT.compute(GT.coordinate,uh_faces_2)
+    tabulate = (GT.value,)
+    compute = (GT.coordinate,)
+    uh_faces = GT.foreach_face(uh,dΩ;tabulate,compute)
 
     #Numerical integration loop
     s = 0.0
@@ -155,4 +154,4 @@ uh = GT.solution_field(uhd,sol)
 #Integrate the error l2 norm
 #with the function we wrote above
 el2 = integrate_l2_error(g,uh,dΩ)
-@assert el2 &lt; 1.0e-9</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../examples/">« Examples</a><a class="docs-footer-nextpage" href="../example_poisson_equation/">Poisson equation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Thursday 28 August 2025 17:39">Thursday 28 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+@assert el2 &lt; 1.0e-9</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../examples/">« Examples</a><a class="docs-footer-nextpage" href="../example_poisson_equation/">Poisson equation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 29 August 2025 08:05">Friday 29 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
