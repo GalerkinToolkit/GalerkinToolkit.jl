@@ -59,7 +59,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     #Iterators to the quantities on the
     #integration points
-    V_faces = GT.foreach_face(V,dΩ;tabulate=(∇,))
+    V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -76,7 +76,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
         fill!(Auu,zero(T))
 
         #Loop over integration points
-        for V_point in GT.foreach_point(V_face)
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
             dV = GT.weight(V_point)
@@ -107,12 +107,12 @@ function integrate_l2_error(g,uh,dΩ)
     #integration points
     tabulate = (GT.value,)
     compute = (GT.coordinate,)
-    uh_faces = GT.foreach_face(uh,dΩ;tabulate,compute)
+    uh_faces = GT.each_face(uh,dΩ;tabulate,compute)
 
     #Numerical integration loop
     s = 0.0
     for uh_face in uh_faces
-        for uh_point in GT.foreach_point(uh_face)
+        for uh_point in GT.each_point(uh_face)
 
             #Get quantities at current integration point
             x = GT.coordinate(uh_point)
@@ -154,4 +154,4 @@ uh = GT.solution_field(uhd,sol)
 #Integrate the error l2 norm
 #with the function we wrote above
 el2 = integrate_l2_error(g,uh,dΩ)
-@assert el2 &lt; 1.0e-9</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../examples/">« Examples</a><a class="docs-footer-nextpage" href="../example_poisson_equation/">Poisson equation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 29 August 2025 08:05">Friday 29 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+@assert el2 &lt; 1.0e-9</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../examples/">« Examples</a><a class="docs-footer-nextpage" href="../example_poisson_equation/">Poisson equation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 29 August 2025 11:14">Friday 29 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

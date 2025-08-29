@@ -71,198 +71,198 @@ ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
 GT.makie_surfaces!(Ω;color=uh)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Precompiling NonlinearSolve...
-   1726.3 ms  ? DiffEqBase
-   2071.4 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-   3798.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
-   5595.5 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-  13774.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-  15608.2 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
-   3567.8 ms  ? NonlinearSolveFirstOrder
-   5308.1 ms  ? NonlinearSolveSpectralMethods
-   2586.2 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
-  13530.3 ms  ? NonlinearSolveQuasiNewton
-   2557.8 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+   1686.0 ms  ? DiffEqBase
+   2015.7 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   3665.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   5454.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   7032.3 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   5141.2 ms  ? NonlinearSolveSpectralMethods
+   3483.1 ms  ? NonlinearSolveFirstOrder
+   5155.2 ms  ? NonlinearSolveQuasiNewton
+   5091.7 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   3372.1 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+  17199.8 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
 Info Given NonlinearSolve was explicitly requested, output will be shown live 
 WARNING: Method definition solve(SciMLBase.EnsembleProblem{T, T2, T3, T4, T5} where T5 where T4 where T3 where T2 where T, Any...) in module SciMLBase at /home/runner/.julia/packages/SciMLBase/wQHrI/src/ensemble/basic_ensemble_solve.jl:356 overwritten in module DiffEqBase at /home/runner/.julia/packages/DiffEqBase/AfBQT/src/solve.jl:1224.
 ERROR: Method overwriting is not permitted during Module precompilation. Use `__precompile__(false)` to opt-out of precompilation.
-   1938.8 ms  ? NonlinearSolve
+   1894.9 ms  ? NonlinearSolve
 WARNING: Method definition solve(SciMLBase.EnsembleProblem{T, T2, T3, T4, T5} where T5 where T4 where T3 where T2 where T, Any...) in module SciMLBase at /home/runner/.julia/packages/SciMLBase/wQHrI/src/ensemble/basic_ensemble_solve.jl:356 overwritten in module DiffEqBase at /home/runner/.julia/packages/DiffEqBase/AfBQT/src/solve.jl:1224.
 ERROR: Method overwriting is not permitted during Module precompilation. Use `__precompile__(false)` to opt-out of precompilation.
 Precompiling DiffEqBase...
 Info Given DiffEqBase was explicitly requested, output will be shown live 
 WARNING: Method definition solve(SciMLBase.EnsembleProblem{T, T2, T3, T4, T5} where T5 where T4 where T3 where T2 where T, Any...) in module SciMLBase at /home/runner/.julia/packages/SciMLBase/wQHrI/src/ensemble/basic_ensemble_solve.jl:356 overwritten in module DiffEqBase at /home/runner/.julia/packages/DiffEqBase/AfBQT/src/solve.jl:1224.
 ERROR: Method overwriting is not permitted during Module precompilation. Use `__precompile__(false)` to opt-out of precompilation.
-   1672.4 ms  ? DiffEqBase
+   1632.7 ms  ? DiffEqBase
 WARNING: Method definition solve(SciMLBase.EnsembleProblem{T, T2, T3, T4, T5} where T5 where T4 where T3 where T2 where T, Any...) in module SciMLBase at /home/runner/.julia/packages/SciMLBase/wQHrI/src/ensemble/basic_ensemble_solve.jl:356 overwritten in module DiffEqBase at /home/runner/.julia/packages/DiffEqBase/AfBQT/src/solve.jl:1224.
 ERROR: Method overwriting is not permitted during Module precompilation. Use `__precompile__(false)` to opt-out of precompilation.
 Precompiling DiffEqBaseUnitfulExt...
-   1622.3 ms  ? DiffEqBase
+   1627.9 ms  ? DiffEqBase
 Info Given DiffEqBaseUnitfulExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    607.7 ms  ? DiffEqBase → DiffEqBaseUnitfulExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    611.0 ms  ? DiffEqBase → DiffEqBaseUnitfulExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling DiffEqBaseDistributionsExt...
-   1671.7 ms  ? DiffEqBase
-    792.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1607.2 ms  ? DiffEqBase
+    780.7 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
 Info Given DiffEqBaseDistributionsExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-   1032.1 ms  ? DiffEqBase → DiffEqBaseDistributionsExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+   1001.0 ms  ? DiffEqBase → DiffEqBaseDistributionsExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling DiffEqBaseForwardDiffExt...
-   1640.6 ms  ? DiffEqBase
+   1609.4 ms  ? DiffEqBase
 Info Given DiffEqBaseForwardDiffExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    614.5 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    621.6 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling DiffEqBaseMPIExt...
-   1648.0 ms  ? DiffEqBase
+   1614.0 ms  ? DiffEqBase
 Info Given DiffEqBaseMPIExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    611.1 ms  ? DiffEqBase → DiffEqBaseMPIExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    605.6 ms  ? DiffEqBase → DiffEqBaseMPIExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling DiffEqBaseChainRulesCoreExt...
-   1645.1 ms  ? DiffEqBase
+   1605.8 ms  ? DiffEqBase
 Info Given DiffEqBaseChainRulesCoreExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    613.2 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    610.2 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling DiffEqBaseSparseArraysExt...
-   1647.9 ms  ? DiffEqBase
+   1634.9 ms  ? DiffEqBase
 Info Given DiffEqBaseSparseArraysExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    785.9 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    749.8 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveBaseDiffEqBaseExt...
-   1659.1 ms  ? DiffEqBase
+   1625.3 ms  ? DiffEqBase
 Info Given NonlinearSolveBaseDiffEqBaseExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    646.3 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    627.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveFirstOrder...
-   1653.1 ms  ? DiffEqBase
-    993.1 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-    989.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-    995.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-   1157.0 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1634.7 ms  ? DiffEqBase
+    963.3 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    961.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    973.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1144.9 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
 Info Given NonlinearSolveFirstOrder was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    949.6 ms  ? NonlinearSolveFirstOrder
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    917.4 ms  ? NonlinearSolveFirstOrder
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveQuasiNewton...
-   1636.4 ms  ? DiffEqBase
-    635.7 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-    851.1 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-   1026.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+   1627.3 ms  ? DiffEqBase
+    634.5 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    840.0 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1016.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
 Info Given NonlinearSolveQuasiNewton was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    646.4 ms  ? NonlinearSolveQuasiNewton
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    661.6 ms  ? NonlinearSolveQuasiNewton
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveQuasiNewtonForwardDiffExt...
-   1630.1 ms  ? DiffEqBase
-    960.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-    968.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-    975.8 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-   1148.5 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
-    642.0 ms  ? NonlinearSolveQuasiNewton
+   1628.6 ms  ? DiffEqBase
+    966.9 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    986.9 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+    985.2 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1133.6 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    660.4 ms  ? NonlinearSolveQuasiNewton
 Info Given NonlinearSolveQuasiNewtonForwardDiffExt was explicitly requested, output will be shown live 
-┌ Warning: Module NonlinearSolveQuasiNewton with build ID ffffffff-ffff-ffff-af56-a5eab0f338c8 is missing from the cache.
+┌ Warning: Module NonlinearSolveQuasiNewton with build ID ffffffff-ffff-ffff-03e0-13a292f6b6c5 is missing from the cache.
 │ This may mean NonlinearSolveQuasiNewton [9a2c21bd-3a47-402d-9113-8faf9a0ee114] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-   1059.6 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
-┌ Warning: Module NonlinearSolveQuasiNewton with build ID ffffffff-ffff-ffff-af56-a5eab0f338c8 is missing from the cache.
+   1034.7 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+┌ Warning: Module NonlinearSolveQuasiNewton with build ID ffffffff-ffff-ffff-03e0-13a292f6b6c5 is missing from the cache.
 │ This may mean NonlinearSolveQuasiNewton [9a2c21bd-3a47-402d-9113-8faf9a0ee114] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling SimpleNonlinearSolveDiffEqBaseExt...
-   1635.5 ms  ? DiffEqBase
+   1635.9 ms  ? DiffEqBase
+    636.8 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
 Info Given SimpleNonlinearSolveDiffEqBaseExt was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    630.4 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
-    856.8 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-    866.1 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    854.9 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    854.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveSpectralMethods...
-   1635.7 ms  ? DiffEqBase
-    636.3 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1619.1 ms  ? DiffEqBase
+    627.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
 Info Given NonlinearSolveSpectralMethods was explicitly requested, output will be shown live 
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-    665.5 ms  ? NonlinearSolveSpectralMethods
-┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-e0dd-55d1cb8c521e is missing from the cache.
+    650.8 ms  ? NonlinearSolveSpectralMethods
+┌ Warning: Module DiffEqBase with build ID ffffffff-ffff-ffff-d13e-a1878c5fbd8b is missing from the cache.
 │ This may mean DiffEqBase [2b5f629d-d688-5b77-993f-72d75c75574e] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveSpectralMethodsForwardDiffExt...
-   1634.4 ms  ? DiffEqBase
-    652.0 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-    650.8 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-    662.4 ms  ? NonlinearSolveSpectralMethods
+   1609.1 ms  ? DiffEqBase
+    629.4 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+    647.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+    647.7 ms  ? NonlinearSolveSpectralMethods
 Info Given NonlinearSolveSpectralMethodsForwardDiffExt was explicitly requested, output will be shown live 
-┌ Warning: Module NonlinearSolveSpectralMethods with build ID ffffffff-ffff-ffff-27ec-98c496b15875 is missing from the cache.
+┌ Warning: Module NonlinearSolveSpectralMethods with build ID ffffffff-ffff-ffff-3662-2adb65855073 is missing from the cache.
 │ This may mean NonlinearSolveSpectralMethods [26075421-4e9a-44e1-8bd1-420ed7ad02b2] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-   1057.4 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
-┌ Warning: Module NonlinearSolveSpectralMethods with build ID ffffffff-ffff-ffff-27ec-98c496b15875 is missing from the cache.
+   1054.1 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+┌ Warning: Module NonlinearSolveSpectralMethods with build ID ffffffff-ffff-ffff-3662-2adb65855073 is missing from the cache.
 │ This may mean NonlinearSolveSpectralMethods [26075421-4e9a-44e1-8bd1-420ed7ad02b2] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 Precompiling NonlinearSolveNLsolveExt...
-   1634.3 ms  ? DiffEqBase
-   1150.6 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
-   1153.4 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
-   1178.8 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
-   1277.0 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
-   1362.8 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
-    666.0 ms  ? NonlinearSolveQuasiNewton
-    943.9 ms  ? NonlinearSolveSpectralMethods
-   1429.2 ms  ? NonlinearSolveFirstOrder
-   1074.2 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
-   1304.0 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
-    664.9 ms  ? NonlinearSolve
+   1632.3 ms  ? DiffEqBase
+   1141.2 ms  ? DiffEqBase → DiffEqBaseChainRulesCoreExt
+   1192.4 ms  ? NonlinearSolveBase → NonlinearSolveBaseDiffEqBaseExt
+   1220.0 ms  ? SimpleNonlinearSolve → SimpleNonlinearSolveDiffEqBaseExt
+   1251.6 ms  ? DiffEqBase → DiffEqBaseForwardDiffExt
+   1340.7 ms  ? DiffEqBase → DiffEqBaseSparseArraysExt
+    692.4 ms  ? NonlinearSolveSpectralMethods
+   1011.6 ms  ? NonlinearSolveQuasiNewton
+   1309.1 ms  ? NonlinearSolveFirstOrder
+   1202.5 ms  ? NonlinearSolveSpectralMethods → NonlinearSolveSpectralMethodsForwardDiffExt
+   1141.1 ms  ? NonlinearSolveQuasiNewton → NonlinearSolveQuasiNewtonForwardDiffExt
+    662.9 ms  ? NonlinearSolve
 Info Given NonlinearSolveNLsolveExt was explicitly requested, output will be shown live 
-┌ Warning: Module NonlinearSolve with build ID ffffffff-ffff-ffff-6f2c-253290340001 is missing from the cache.
+┌ Warning: Module NonlinearSolve with build ID ffffffff-ffff-ffff-e208-8d1f8ace80a3 is missing from the cache.
 │ This may mean NonlinearSolve [8913a72c-1f9b-4ce2-8d82-65094dcecaec] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
-   1072.8 ms  ? NonlinearSolve → NonlinearSolveNLsolveExt
-┌ Warning: Module NonlinearSolve with build ID ffffffff-ffff-ffff-6f2c-253290340001 is missing from the cache.
+   1043.8 ms  ? NonlinearSolve → NonlinearSolveNLsolveExt
+┌ Warning: Module NonlinearSolve with build ID ffffffff-ffff-ffff-e208-8d1f8ace80a3 is missing from the cache.
 │ This may mean NonlinearSolve [8913a72c-1f9b-4ce2-8d82-65094dcecaec] does not support precompilation but is imported by a module that does.
 └ @ Base loading.jl:2541
 
@@ -282,18 +282,18 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	1.82909823e+01      	NaN
-1       	4.60712564e+00      	1.69616236e+01
-2       	1.17698064e+00      	7.86434040e+00
-3       	2.15778945e-01      	3.16754262e+00
-4       	4.82179774e-02      	1.04512758e+00
-5       	1.06988767e-02      	2.46690320e-01
-6       	8.45449244e-04      	6.04773171e-02
-7       	1.19085834e-04      	1.08937640e-02
-8       	3.68098184e-06      	2.10598235e-03
-9       	4.23147531e-09      	6.98021436e-05
-10      	8.67719525e-15      	8.40220492e-08
-Final   	8.67719525e-15
+0       	1.37169847e+01      	0.00000000e+00
+1       	3.44236501e+00      	1.65895054e+01
+2       	8.74334474e-01      	7.89290402e+00
+3       	2.30591355e-01      	3.16101881e+00
+4       	3.13559578e-02      	9.79149738e-01
+5       	6.75383603e-03      	2.54921282e-01
+6       	1.11402840e-03      	5.85724071e-02
+7       	1.13129801e-04      	1.27151308e-02
+8       	6.54478853e-06      	2.30450943e-03
+9       	1.90984395e-08      	1.34622148e-04
+10      	2.87485964e-13      	4.14265762e-07
+Final   	2.87485964e-13
 ----------------------</code></pre><h2 id="Building-the-algebraic-non-linear-problem-explicitly"><a class="docs-heading-anchor" href="#Building-the-algebraic-non-linear-problem-explicitly">Building the algebraic non-linear problem explicitly</a><a id="Building-the-algebraic-non-linear-problem-explicitly-1"></a><a class="docs-heading-anchor-permalink" href="#Building-the-algebraic-non-linear-problem-explicitly" title="Permalink"></a></h2><p>In this other version, we explicitly build the algebraic residual and Jacobian (functions that take plain Julia vectors) and build a algebraic non-linear problem from them.</p><pre><code class="language-julia hljs">import SciMLBase
 
 #Initial guess
@@ -357,17 +357,17 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	1.25599207e+01      	NaN
-1       	3.14545983e+00      	1.70448104e+01
-2       	8.02420899e-01      	7.92658422e+00
-3       	2.00416848e-01      	3.22735384e+00
-4       	4.16128025e-02      	9.95968439e-01
-5       	1.11225985e-02      	2.50645886e-01
-6       	9.45410817e-04      	5.68860153e-02
-7       	1.52585239e-04      	1.11623716e-02
-8       	1.41886408e-05      	2.72648156e-03
-9       	9.09289823e-08      	3.12644936e-04
-10      	4.21595532e-12      	2.08721492e-06
-11      	4.47558657e-16      	9.70564092e-11
-Final   	4.47558657e-16
-----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_stokes/">Stokes lid-driven cavity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 29 August 2025 08:05">Friday 29 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+0       	2.12107678e+01      	NaN
+1       	5.35297661e+00      	1.69623576e+01
+2       	1.46448445e+00      	7.85256522e+00
+3       	2.33772711e-01      	3.12742743e+00
+4       	3.93671905e-02      	9.94761741e-01
+5       	7.33660800e-03      	2.61044589e-01
+6       	1.81616801e-03      	5.91519382e-02
+7       	4.26487612e-04      	1.59251807e-02
+8       	4.56219193e-05      	4.09259821e-03
+9       	5.43817795e-07      	4.97626803e-04
+10      	8.71713637e-11      	6.73783321e-06
+11      	3.74700271e-16      	1.23559082e-09
+Final   	3.74700271e-16
+----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_stokes/">Stokes lid-driven cavity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 29 August 2025 11:14">Friday 29 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

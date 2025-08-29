@@ -108,7 +108,7 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
     #integration points
     tabulate = (GT.value,∇)
     compute = (GT.coordinate,)
-    V_faces = GT.foreach_face(V,dΩ;tabulate,compute)
+    V_faces = GT.each_face(V,dΩ;tabulate,compute)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -127,7 +127,7 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for V_point in GT.foreach_point(V_face)
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
             x = GT.coordinate(V_point)
@@ -163,7 +163,7 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
     #integration points
     tabulate = (GT.value,)
     compute = (GT.coordinate,)
-    V_faces = GT.foreach_face(V,dΓn;tabulate,compute)
+    V_faces = GT.each_face(V,dΓn;tabulate,compute)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -181,7 +181,7 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
         fill!(bu,zero(T))
 
         #Loop over integration points
-        for V_point in GT.foreach_point(V_face)
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
             x = GT.coordinate(V_point)
