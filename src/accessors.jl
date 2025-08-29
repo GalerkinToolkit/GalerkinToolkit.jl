@@ -3,23 +3,23 @@ function foreach_face(a::NewAbstractAccessor)
     ForeachFace(a)
 end
 
-function foreach_face(mesh::AbstractMesh,args...)
-    mesh_acc = mesh_accessor(mesh,args...)
+function foreach_face(mesh::AbstractMesh,args...;kwargs...)
+    mesh_acc = mesh_accessor(mesh,args...;kwargs...)
     foreach_face(mesh_acc)
 end
 
-function foreach_face(quadrature::AbstractQuadrature,args...)
-    acc = quadrature_accessor(quadrature,args...)
+function foreach_face(quadrature::AbstractQuadrature,args...;kwargs...)
+    acc = quadrature_accessor(quadrature,args...;kwargs...)
     foreach_face(acc)
 end
 
-function foreach_face(space::AbstractSpace,args...)
-    acc = space_accessor(space,args...)
+function foreach_face(space::AbstractSpace,args...;kwargs...)
+    acc = space_accessor(space,args...;kwargs...)
     foreach_face(acc)
 end
 
-function foreach_face(uh::AbstractField,args...)
-    acc = field_accessor(uh,args...)
+function foreach_face(uh::AbstractField,args...;kwargs...)
+    acc = field_accessor(uh,args...;kwargs...)
     foreach_face(acc)
 end
 
@@ -95,7 +95,7 @@ function Base.iterate(iter::ForeachPoint,point=1)
     end
 end
 
-function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature)
+function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;compute=(),tabulate=())
     domain = GT.domain(quadrature)
     mesh = GT.mesh(space)
     d = Val(num_dims(domain))
@@ -109,7 +109,42 @@ function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadr
         dface_ldfaces = face_local_faces(topo,d,D)
         contents = (;space,quadrature,d,D,dface_ldfaces)
     end
-    ReferenceSpaceAccessor(loop_case,contents)
+    a = ReferenceSpaceAccessor(loop_case,contents)
+    setup_accessor(a,tabulate,compute)
+end
+
+function setup_accessor(a0,tabulate,compute)
+    if GT.value in tabulate
+        a1 = GT.tabulate(GT.value,a0)
+    else
+        a1 = a0
+    end
+    if ForwardDiff.gradient in tabulate
+        a2 = GT.tabulate(ForwardDiff.gradient,a1)
+    else
+        a2 = a1
+    end
+    if ForwardDiff.jacobian in tabulate
+        a3 = GT.tabulate(ForwardDiff.jacobian,a2)
+    else
+        a3 = a2
+    end
+    if unit_normal in compute
+        a4 = GT.compute(unit_normal,a3)
+    else
+        a4 = a3
+    end
+    if coordinate in compute
+        a5 = GT.compute(coordinate,a4)
+    else
+        a5 = a4
+    end
+    if ForwardDiff.jacobian in compute
+        a6 = GT.compute(ForwardDiff.jacobian,a5)
+    else
+        a6 = a5
+    end
+    a6
 end
 
 struct AtInterior end
@@ -331,18 +366,20 @@ end
 
 function mesh_accessor(mesh::AbstractMesh,
     D=Val(num_dims(mesh)),
-    domain=GT.domain(mesh,Val(val_parameter(D))) )
+    domain=GT.domain(mesh,Val(val_parameter(D)));kwargs...)
     degree = 0
     quadrature = GT.quadrature(domain,degree)
-    mesh_accessor(mesh,Val(val_parameter(D)),quadrature)
+    a = mesh_accessor(mesh,Val(val_parameter(D)),quadrature)
 end
 
-function mesh_accessor(mesh::AbstractMesh,D,quadrature::AbstractQuadrature)
+function mesh_accessor(mesh::AbstractMesh,D,quadrature::AbstractQuadrature;
+        tabulate=(), compute=())
     space = mesh_space(mesh,D)
     space_accessor = reference_space_accessor(space,quadrature)
     loop_case = space_accessor.loop_case
     contents = (;space_accessor)
-    MeshAccessor(loop_case,contents)
+    a = MeshAccessor(loop_case,contents)
+    setup_accessor(a,tabulate,compute)
 end
 
 struct MeshAccessor{A,B} <: NewAbstractAccessor
@@ -419,6 +456,16 @@ function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
     replace_contents(a,contents)
 end
 
+function coordinate end
+
+function compute(::typeof(GT.coordinate),a::MeshAccessor)
+    tabulate(GT.value,a)
+end
+
+function compute(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
+    tabulate(ForwardDiff.gradient,a)
+end
+
 function shape_functions(a::MeshAccessor)
     (;space_accessor) = a.contents
     shape_functions(space_accessor)
@@ -447,6 +494,10 @@ end
 
 function coordinate(a::MeshAccessor)
     coordinate(GT.value,a)
+end
+
+function ForwardDiff.jacobian(a::MeshAccessor)
+    coordinate(ForwardDiff.jacobian,a)
 end
 
 function coordinate(::typeof(value),a::MeshAccessor)
@@ -515,26 +566,28 @@ function replace_contents(a::SpaceAccessor,contents)
     SpaceAccessor(a.loop_case,contents)
 end
 
-function space_accessor(space::AbstractSpace,domain::AbstractDomain=GT.domain(space))
+function space_accessor(space::AbstractSpace,domain::AbstractDomain=GT.domain(space);kwargs...)
     degree = 0
     quadrature = GT.quadrature(domain,degree)
-    space_accessor(space,quadrature)
+    space_accessor(space,quadrature;kwargs...)
 end
 
-function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature)
+function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwargs...)
     D = num_dims(GT.domain(space))
     mesh = GT.mesh(space)
     mesh_accessor = GT.mesh_accessor(mesh,D,quadrature)
     mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
-    space_accessor(space,mesh_accessor_2)
+    space_accessor(space,mesh_accessor_2;kwargs...)
 end
 
-function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor)
+function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor;
+        tabulate=(), compute = ())
     quadrature = mesh_accessor.contents.space_accessor.contents.quadrature
     reference_space_accessor = GT.reference_space_accessor(space,quadrature)
     contents = (;space,mesh_accessor,reference_space_accessor)
     loop_case = mesh_accessor.loop_case
-    SpaceAccessor(loop_case,contents)
+    a = SpaceAccessor(loop_case,contents)
+    setup_accessor(a,tabulate,compute)
 end
 
 function tabulate(f,a::SpaceAccessor{AtInterior})
@@ -711,9 +764,9 @@ struct NewDiscreteFieldAccessor{A,B} <: NewAbstractAccessor
     contents::B
 end
 
-function field_accessor(field::DiscreteField,args...)
+function field_accessor(field::DiscreteField,args...;kwargs...)
     space = GT.space(field)
-    space_accessor = GT.space_accessor(space,args...)
+    space_accessor = GT.space_accessor(space,args...;kwargs...)
     contents = (;field,space_accessor)
     loop_case = space_accessor.loop_case
     a = NewDiscreteFieldAccessor(loop_case,contents)
@@ -739,7 +792,7 @@ function setup_workspace(a::NewDiscreteFieldAccessor{AtSkeleton})
     (;field) = a.contents
     space = GT.space(field)
     n = max_num_reference_dofs(space)
-    max_num_faces_around = 2 # todo
+    max_num_faces_around = 2 # TODO
     m = max_num_faces_around
     T = eltype(free_values(space))
     face_around_dof_value = [zeros(T,n) for _ in 1:m]

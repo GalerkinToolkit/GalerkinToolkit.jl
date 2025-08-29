@@ -21,6 +21,8 @@ import PartitionedSolvers: update
 import AutoHashEquals
 import AbstractTrees
 
+import ForwardDiff: gradient, jacobian
+
 include("helpers.jl")
 include("abstract_types.jl")
 include("domain.jl")
