@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756481433043,
+  "lastUpdate": 1756483596344,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2264,6 +2264,36 @@ window.BENCHMARK_DATA = {
             "value": 3244631437.5,
             "unit": "ns",
             "extra": "gctime=342576240\nmemory=8991339412\nallocs=20241584\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "42371e732f4592338ec9242ca603a2e626897600",
+          "message": "Merge pull request #237 from GalerkinToolkit/fix_type_instability",
+          "timestamp": "2025-08-29T17:26:42+02:00",
+          "tree_id": "d6ef4ec2b46468d7414d86ca1f066db9b252fb96",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/42371e732f4592338ec9242ca603a2e626897600"
+        },
+        "date": 1756483595903,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 3169199131,
+            "unit": "ns",
+            "extra": "gctime=298734934.5\nmemory=8986260276\nallocs=19924134\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
