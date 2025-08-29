@@ -1,48 +1,48 @@
 
-function foreach_face(a::NewAbstractAccessor)
-    ForeachFace(a)
+function each_face(a::NewAbstractAccessor)
+    EachFace(a)
 end
 
-function foreach_face(mesh::AbstractMesh,args...;kwargs...)
+function each_face(mesh::AbstractMesh,args...;kwargs...)
     mesh_acc = mesh_accessor(mesh,args...;kwargs...)
-    foreach_face(mesh_acc)
+    each_face(mesh_acc)
 end
 
-function foreach_face(quadrature::AbstractQuadrature,args...;kwargs...)
+function each_face(quadrature::AbstractQuadrature,args...;kwargs...)
     acc = quadrature_accessor(quadrature,args...;kwargs...)
-    foreach_face(acc)
+    each_face(acc)
 end
 
-function foreach_face(space::AbstractSpace,args...;kwargs...)
+function each_face(space::AbstractSpace,args...;kwargs...)
     acc = space_accessor(space,args...;kwargs...)
-    foreach_face(acc)
+    each_face(acc)
 end
 
-function foreach_face(uh::AbstractField,args...;kwargs...)
+function each_face(uh::AbstractField,args...;kwargs...)
     acc = field_accessor(uh,args...;kwargs...)
-    foreach_face(acc)
+    each_face(acc)
 end
 
-struct ForeachFace{A} <: AbstractType
+struct EachFace{A} <: AbstractType
     accessor::A
 end
 
-function tabulate(f,iter::ForeachFace)
+function tabulate(f,iter::EachFace)
     accessor = tabulate(f,iter.accessor)
-    ForeachFace(accessor)
+    EachFace(accessor)
 end
 
-function compute(f,iter::ForeachFace)
+function compute(f,iter::EachFace)
     accessor = compute(f,iter.accessor)
-    ForeachFace(accessor)
+    EachFace(accessor)
 end
 
-Base.length(iter::ForeachFace) = num_faces(iter.accessor)
-Base.isdone(iter::ForeachFace,face) = face > length(iter)
-Base.getindex(iter::ForeachFace,face) = at_face(iter.accessor,face)
-Base.keys(iter::ForeachFace) = LinearIndices((length(iter),))
+Base.length(iter::EachFace) = num_faces(iter.accessor)
+Base.isdone(iter::EachFace,face) = face > length(iter)
+Base.getindex(iter::EachFace,face) = at_face(iter.accessor,face)
+Base.keys(iter::EachFace) = LinearIndices((length(iter),))
 
-function Base.iterate(iter::ForeachFace,face=1)
+function Base.iterate(iter::EachFace,face=1)
     if Base.isdone(iter,face)
         nothing
     else
@@ -51,20 +51,20 @@ function Base.iterate(iter::ForeachFace,face=1)
     end
 end
 
-function foreach_face_around(a)
-    ForeachFaceAround(a)
+function each_face_around(a)
+    EachFaceAround(a)
 end
 
-struct ForeachFaceAround{A} <: AbstractType
+struct EachFaceAround{A} <: AbstractType
     accessor::A
 end
 
-Base.length(iter::ForeachFaceAround) = num_faces_around(iter.accessor)
-Base.isdone(iter::ForeachFaceAround,face_around) = face_around > length(iter)
-Base.getindex(iter::ForeachFaceAround,face_around) = at_face_around(iter.accessor,face_around)
-Base.keys(iter::ForeachFaceAround) = LinearIndices((length(iter),))
+Base.length(iter::EachFaceAround) = num_faces_around(iter.accessor)
+Base.isdone(iter::EachFaceAround,face_around) = face_around > length(iter)
+Base.getindex(iter::EachFaceAround,face_around) = at_face_around(iter.accessor,face_around)
+Base.keys(iter::EachFaceAround) = LinearIndices((length(iter),))
 
-function Base.iterate(iter::ForeachFaceAround,face_around=1)
+function Base.iterate(iter::EachFaceAround,face_around=1)
     if Base.isdone(iter,face_around)
         nothing
     else
@@ -73,20 +73,20 @@ function Base.iterate(iter::ForeachFaceAround,face_around=1)
     end
 end
 
-function foreach_point(a)
-    ForeachPoint(a)
+function each_point(a)
+    EachPoint(a)
 end
 
-struct ForeachPoint{A} <: AbstractType
+struct EachPoint{A} <: AbstractType
     accessor::A
 end
 
-Base.length(iter::ForeachPoint) = num_points(iter.accessor)
-Base.isdone(iter::ForeachPoint,point) = point > length(iter)
-Base.getindex(iter::ForeachPoint,point) = at_point(iter.accessor,point)
-Base.keys(iter::ForeachPoint) = LinearIndices((length(iter),))
+Base.length(iter::EachPoint) = num_points(iter.accessor)
+Base.isdone(iter::EachPoint,point) = point > length(iter)
+Base.getindex(iter::EachPoint,point) = at_point(iter.accessor,point)
+Base.keys(iter::EachPoint) = LinearIndices((length(iter),))
 
-function Base.iterate(iter::ForeachPoint,point=1)
+function Base.iterate(iter::EachPoint,point=1)
     if Base.isdone(iter,point)
         nothing
     else
