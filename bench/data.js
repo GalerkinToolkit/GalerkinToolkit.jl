@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756400832701,
+  "lastUpdate": 1756452678745,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2174,6 +2174,36 @@ window.BENCHMARK_DATA = {
             "value": 3183483177.5,
             "unit": "ns",
             "extra": "gctime=288025714.5\nmemory=8991519540\nallocs=20241619\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5e8331cfd8a183695aa76e29aca530561980fbf7",
+          "message": "Merge pull request #234 from GalerkinToolkit/new-accessors\n\nSimplifying the creation of iterators",
+          "timestamp": "2025-08-29T09:26:28+02:00",
+          "tree_id": "eb233c7848ddc6ea344662198358d4d6145461ca",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/5e8331cfd8a183695aa76e29aca530561980fbf7"
+        },
+        "date": 1756452678131,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 3095021172,
+            "unit": "ns",
+            "extra": "gctime=297476601\nmemory=8991339412\nallocs=20241584\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
