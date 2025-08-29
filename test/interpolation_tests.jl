@@ -256,11 +256,11 @@ uh2 = GT.zero_field(Float64,V)
 GT.interpolate_dirichlet!(udiri,uh2)
 
 order = 1
-V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,conformity=:L2)
+V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,continuous=false)
 
 @test V.cache.face_dofs == GT.face_dofs(V)
 
-V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,conformity=:L2)
+V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,continuous=false)
 
 @test V.cache.face_dofs == GT.face_dofs(V)
 
@@ -278,11 +278,11 @@ end
 
 Γ = GT.boundary(mesh;group_names=["boundary_faces"])
 
-V = GT.lagrange_space(Γ,order;conformity=:L2)
+V = GT.lagrange_space(Γ,order;continuous=false)
 
 @test V.cache.face_dofs == GT.face_dofs(V)
 
-V = GT.lagrange_space(Γ,order-1;conformity=:L2)
+V = GT.lagrange_space(Γ,order-1;continuous=false)
 GT.reference_fes(V) # TODO why 2 reference fes?
 
 @test V.cache.face_dofs == GT.face_dofs(V)

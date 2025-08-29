@@ -744,9 +744,9 @@ end
 function reference_face_own_dofs(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
-    r = if GT.conformity(space) === :default
+    r = if GT.continuous(space)
         ctype_to_ldface_to_own_ldofs
-    elseif GT.conformity(space) === :L2
+    else
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
@@ -760,8 +760,6 @@ function reference_face_own_dofs(space::AbstractSpace,d)
                 convert(typeof(own_ldofs),dofs)
             end
         end
-    else
-        error("This line cannot be reached")
     end
     collect(r)
 end
@@ -769,9 +767,9 @@ end
 function reference_face_own_dof_permutations(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    r = if GT.conformity(space) === :default
+    r = if GT.continuous(space)
         ctype_to_ldface_to_pindex_to_perm
-    elseif GT.conformity(space) === :L2
+    else
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
@@ -787,8 +785,6 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
                 end
             end
         end
-    else
-        error("This line cannot be reached")
     end
     collect(r)
 end
@@ -972,8 +968,8 @@ function face_reference_id(fe::LagrangeFaceSpace)
     [1]
 end
 
-function conformity(fe::LagrangeFaceSpace)
-    :default
+function continuous(fe::LagrangeFaceSpace)
+    true
 end
 
 function monomial_exponents(a::LagrangeFaceSpace)
@@ -1532,7 +1528,7 @@ function simplexify(ref_face::LagrangeFaceSpace)
 end
 
 function lagrange_space(domain::AbstractDomain,order;
-    conformity = Val(:default),
+    continuous = Val(true),
     dirichlet_boundary=nothing,
     space_type = Val(:default),
     major = Val(:component),
@@ -1541,12 +1537,10 @@ function lagrange_space(domain::AbstractDomain,order;
     setup = Val(true),
     )
 
-    @assert val_parameter(conformity) in (:default,:L2)
-
     space = lagrange_mesh_space(;
                         domain,
                         order,
-                        conformity,
+                        continuous,
                         dirichlet_boundary,
                         space_type,
                         major,
@@ -1563,7 +1557,7 @@ end
 function lagrange_mesh_space(;
         domain,
         order,
-        conformity,
+        continuous,
         dirichlet_boundary,
         space_type,
         major,
@@ -1573,7 +1567,7 @@ function lagrange_mesh_space(;
     contents = (;
         domain,
         order,
-        conformity,
+        continuous,
         dirichlet_boundary,
         space_type,
         major,
@@ -1600,7 +1594,7 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
             lagrange_space(
                            domain,
                            order(pspace);
-                           conformity = Val(conformity(pspace)),
+                           continuous = Val(continuous(pspace)),
                            dirichlet_boundary,
                            space_type = Val(space_type(pspace)),
                            major = Val(major(pspace)),
@@ -1614,7 +1608,7 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
             lagrange_space(
                            domain,
                            order(pspace);
-                           conformity = Val(conformity(pspace)),
+                           continuous = Val(continuous(pspace)),
                            dirichlet_boundary = pdirichlet_boundary,
                            space_type = Val(space_type(pspace)),
                            major = Val(major(pspace)),
@@ -1625,7 +1619,7 @@ function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
     end
 end
 
-conformity(space::LagrangeMeshSpace) = val_parameter(space.contents.conformity)
+continuous(space::LagrangeMeshSpace) = val_parameter(space.contents.continuous)
 dirichlet_boundary(space::LagrangeMeshSpace) = space.contents.dirichlet_boundary
 domain(space::LagrangeMeshSpace) = space.contents.domain
 order(space::LagrangeMeshSpace) = space.contents.order
@@ -1638,7 +1632,7 @@ function replace_workspace(space::LagrangeMeshSpace,workspace)
     contents = (;
         domain = space.contents.domain,
         order = space.contents.order,
-        conformity = space.contents.conformity,
+        continuous = space.contents.continuous,
         space_type = space.contents.space_type,
         major = space.contents.major,
         tensor_size = space.contents.tensor_size,
@@ -1688,7 +1682,7 @@ function face_nodes(a::LagrangeMeshSpace)
     V = lagrange_space(
                        domain(a),
                        order(a);
-                       conformity = conformity(a),
+                       continuous = GT.continuous(a),
                        space_type = space_type(a))
 
     face_dofs(V)
@@ -1722,7 +1716,7 @@ function node_coordinates(a::LagrangeMeshSpace)
     V = lagrange_space(
                        GT.domain(a),
                        GT.order(a);
-                       conformity = Val(GT.conformity(a)),
+                       continuous = Val(GT.continuous(a)),
                        space_type = Val(GT.space_type(a)))
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
@@ -1787,7 +1781,7 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
     V = lagrange_space(
                        GT.domain(space),
                        GT.order(space);
-                       conformity = GT.conformity(space),
+                       continuous = GT.continuous(space),
                        space_type = GT.space_type(space))
     face_to_nodes = GT.face_dofs(V)
     face_to_dofs = GT.face_dofs(space)
@@ -2123,7 +2117,7 @@ function face_own_dof_permutations(fe::RaviartThomasFaceSpace,d)
     end
 end
 
-function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformity=:default,dirichlet_boundary=nothing)
+function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;continuous=true,dirichlet_boundary=nothing)
     mesh = domain |> GT.mesh
     cell_to_Dface = domain |> GT.faces
     D = domain |> GT.num_dims
@@ -2139,7 +2133,7 @@ function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformi
         mesh,
         domain,
         order,
-        conformity,
+        continuous,
         dirichlet_boundary,
         cell_to_ctype,
         ctype_to_reffe,
@@ -2150,7 +2144,7 @@ struct RaviartThomasMeshSpace{M,A,B,C,D,E,F} <: AbstractSpace{M}
     mesh::M
     domain::A
     order::B
-    conformity::Symbol
+    continuous::Bool
     dirichlet_boundary::C
     face_reference_id::D
     reference_spaces::E
@@ -2159,7 +2153,7 @@ end
 
 domain(a::RaviartThomasMeshSpace) = a.domain
 order(a::RaviartThomasMeshSpace) = a.order
-conformity(a::RaviartThomasMeshSpace) = a.conformity
+continuous(a::RaviartThomasMeshSpace) = a.continuous
 dirichlet_boundary(a::RaviartThomasMeshSpace) = a.dirichlet_boundary
 face_reference_id(a::RaviartThomasMeshSpace) = a.face_reference_id
 reference_spaces(a::RaviartThomasMeshSpace) = a.reference_spaces
@@ -2170,7 +2164,7 @@ function replace_workspace(space::RaviartThomasMeshSpace,workspace)
         space.mesh,
         space.domain,
         space.order,
-        space.conformity,
+        space.continuous,
         space.dirichlet_boundary,
         space.face_reference_id,
         space.reference_spaces,

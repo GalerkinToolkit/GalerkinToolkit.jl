@@ -62,29 +62,29 @@ function main_automatic(params)
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
     if params[:discretization_method] !== :continuous_galerkin
-        conformity = :L2
+        continuous = false
         GT.group_interior_faces!(mesh;group_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
     else
-        conformity = :default
+        continuous = true
     end
 
     if params[:dirichlet_method] === :strong
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous,dirichlet_boundary=Γd)
         uhd = GT.zero_dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(mesh,D-1)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous)
     end
 
     if params[:dirichlet_method] === :multipliers
-        Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        Q = GT.lagrange_space(Γd,interpolation_degree-1;continuous=false)
         VxQ = V × Q
     end
 
