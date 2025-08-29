@@ -53,7 +53,6 @@ Q = GT.lagrange_space(Ω,order-1;space_type,dirichlet_boundary)
 
 #Cartesian product space
 VxQ = V × Q
-u_field, p_field = 1,2
 
 #Dirichlet condition
 uhph_dirichlet = GT.zero_dirichlet_field(Float64,VxQ)
