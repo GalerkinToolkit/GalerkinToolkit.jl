@@ -72,10 +72,8 @@ for mesh_face in GT.foreach_face(mesh_dΓ)
     end
 end
 
-mesh_dΛ = GT.mesh_accessor(mesh,D,dΛ)
-mesh_dΛ = GT.tabulate(GT.value,mesh_dΛ)
-mesh_dΛ = GT.tabulate(ForwardDiff.gradient,mesh_dΛ)
-mesh_dΛ = GT.compute(GT.unit_normal,mesh_dΛ)
+compute = (GT.unit_normal,GT.coordinate,GT.jacobian)
+mesh_dΛ = GT.mesh_accessor(mesh,D,dΛ;compute)
 mesh_dfaces = GT.foreach_face(mesh_dΛ)
 mesh_dface = mesh_dfaces[2]
 mesh_Dfaces = GT.foreach_face_around(mesh_dface)
@@ -88,6 +86,8 @@ mesh_point = mesh_points[1]
 @show GT.coordinate(ForwardDiff.jacobian,mesh_point)
 @show GT.weight(mesh_point)
 @show GT.unit_normal(mesh_point)
+@show GT.coordinate(mesh_point)
+@show GT.jacobian(mesh_point)
 
 for mesh_dface in GT.foreach_face(mesh_dΛ)
     for mesh_Dface in GT.foreach_face_around(mesh_dface)
@@ -135,8 +135,7 @@ V_point = V_points[1]
 @show GT.shape_functions(GT.value,V_point)
 
 uh = GT.zero_field(Float64,V)
-uh_dΩ = GT.field_accessor(uh,dΩ)
-uh_dΩ = GT.tabulate(GT.value,uh_dΩ)
+uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,))
 uh_faces = GT.foreach_face(uh_dΩ)
 uh_face = uh_faces[1]
 uh_points = GT.foreach_point(uh_face)

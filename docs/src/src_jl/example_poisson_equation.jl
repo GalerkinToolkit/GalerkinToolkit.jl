@@ -106,10 +106,9 @@ function assemble_in_Ω!(A_alloc,Ad_alloc,b_alloc,V,f,dΩ)
 
     #Iterators to the quantities on the
     #integration points
-    V_faces_1 = GT.foreach_face(V,dΩ)
-    V_faces_2 = GT.tabulate(∇,V_faces_1)
-    V_faces_3 = GT.tabulate(GT.value,V_faces_2)
-    V_faces = GT.compute(GT.coordinate,V_faces_3)
+    tabulate = (GT.value,∇)
+    compute = (GT.coordinate,)
+    V_faces = GT.foreach_face(V,dΩ;tabulate,compute)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -162,9 +161,9 @@ function assemble_in_Γn!(b_alloc,V,h,dΓn)
 
     #Iterators to the quantities on the
     #integration points
-    V_faces_1 = GT.foreach_face(V,dΓn)
-    V_faces_2 = GT.tabulate(GT.value,V_faces_1)
-    V_faces = GT.compute(GT.coordinate,V_faces_2)
+    tabulate = (GT.value,)
+    compute = (GT.coordinate,)
+    V_faces = GT.foreach_face(V,dΓn;tabulate,compute)
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
