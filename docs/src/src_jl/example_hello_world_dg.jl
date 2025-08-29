@@ -16,7 +16,7 @@
 #  on the interior $2$-faces of the computational mesh. There faces are where the interior penalty is enforced.
 #
 
-
+# ## Implementation
 
 import FileIO # hide
 using LinearAlgebra
