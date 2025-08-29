@@ -97,6 +97,11 @@ function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace
     MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
 end
 
+struct SparseMatrixCSCWithCache{A, B} <: AbstractType
+    matrix::A
+    cache::B
+end
+
 function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,map_i,map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
     if ! do_loop(counter)
         return counter
