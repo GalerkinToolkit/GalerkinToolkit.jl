@@ -51,7 +51,7 @@ function Base.iterate(iter::EachFace,face=1)
     end
 end
 
-function each_face_around(a)
+function each_face_around(a::NewAbstractAccessor)
     EachFaceAround(a)
 end
 
@@ -73,7 +73,7 @@ function Base.iterate(iter::EachFaceAround,face_around=1)
     end
 end
 
-function each_point(a)
+function each_point(a::NewAbstractAccessor)
     EachPoint(a)
 end
 
