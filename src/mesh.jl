@@ -199,8 +199,7 @@ function domain(mesh::AbstractMesh,d;
     is_reference_domain=Val(false),
     group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
-    mesh_domain(;
-        mesh,
+    mesh_domain(mesh;
         mesh_id,
         num_dims=Val(val_parameter(d)),
         group_names,
@@ -213,8 +212,7 @@ function interior(mesh::AbstractMesh;
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh)
-    mesh_domain(;
-        mesh,
+    mesh_domain(mesh;
         mesh_id,
         group_names,
         num_dims=Val(val_parameter(d)),
@@ -227,8 +225,7 @@ function skeleton(mesh::AbstractMesh;
     is_reference_domain=Val(false)
     )
     d = num_dims(mesh) - 1
-    mesh_domain(;
-        mesh,
+    mesh_domain(mesh;
         mesh_id,
         group_names,
         num_dims=Val(val_parameter(d)),
@@ -242,8 +239,7 @@ function boundary(mesh::AbstractMesh;
     face_around = 1,
     )
     d = num_dims(mesh) - 1
-    mesh_domain(;
-        mesh,
+    mesh_domain(mesh;
         mesh_id,
         group_names,
         face_around,
@@ -259,8 +255,7 @@ function boundary(domain::AbstractDomain;
     )
     mesh = GT.mesh(domain)
     d = num_dims(mesh) - 1
-    mesh_domain(;
-        mesh,
+    mesh_domain(mesh;
         mesh_id,
         group_names,
         face_around,
@@ -807,13 +802,30 @@ function mesh(chain::Chain)
 end
 
 function mesh_space(mesh::AbstractMesh,D)
-    vD = Val(val_parameter(D))
-    MeshSpace(mesh,vD)
+    #We avoid calling mesh_domain here
+    #since it is type instable (but why?)
+    num_dims = Val(val_parameter(D))
+    mesh_id = objectid(mesh)
+    group_names=GT.group_names(mesh,num_dims)
+    is_reference_domain = Val(false)
+    face_around=nothing
+    workspace=nothing
+    contents = (;
+                mesh_id,
+                group_names,
+                num_dims,
+                face_around,
+                workspace,
+               )
+    domain = ReferenceDomain(mesh,contents)
+    domain2 = setup_domain(domain)
+    MeshSpace(mesh,num_dims,domain2)
 end
 
-struct MeshSpace{A,B} <: AbstractSpace{A}
+struct MeshSpace{A,B,C} <: AbstractSpace{A}
     mesh::A
     num_dims::Val{B}
+    domain::C
 end
 
 function num_dims(space::MeshSpace)
@@ -830,7 +842,7 @@ function face_reference_id(space::MeshSpace)
 end
 
 function domain(space::MeshSpace)
-    domain(space.mesh,space.num_dims)
+    space.domain
 end
 
 num_free_dofs(space::MeshSpace) = num_nondes(space.mesh)

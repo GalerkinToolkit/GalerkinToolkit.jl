@@ -480,8 +480,7 @@ is_reference_domain(a::ReferenceDomain) = true
 
 const MeshDomain = Union{PhysicalDomain{A,B},ReferenceDomain{A,B}} where {A,B} 
 
-function mesh_domain(;
-    mesh,
+function mesh_domain(mesh;
     mesh_id = objectid(mesh),
     num_dims = Val(GT.num_dims(mesh)),
     group_names=GT.group_names(mesh,num_dims),
@@ -491,11 +490,6 @@ function mesh_domain(;
     setup = Val(true),
     )
 
-    if val_parameter(is_reference_domain)
-        constructor = ReferenceDomain
-    else
-        constructor = PhysicalDomain
-    end
     contents = (;
                 mesh_id,
                 group_names,
@@ -503,22 +497,23 @@ function mesh_domain(;
                 face_around,
                 workspace,
                )
+    domain = ReferenceDomain(mesh,contents)
     if val_parameter(setup)
-        constructor(mesh,contents) |> setup_domain
+        domain2 = setup_domain(domain)
     else
-        constructor(mesh,contents)
+        domain2 = domain
     end
+    if val_parameter(is_reference_domain)
+        domain3 = domain2
+    else
+        domain3 = physical_domain(domain2)
+    end
+    domain3
 end
 
 function reference_domain(domain::PhysicalDomain)
-    mesh = GT.mesh(domain)
-    num_dims = GT.num_dims(domain)
-    mesh_id = GT.mesh_id(domain)
-    group_names = GT.group_names(domain)
-    is_reference_domain = Val(true)
-    face_around = GT.face_around(domain)
-    workspace = GT.workspace(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
+    (;mesh, contents) = domain
+    ReferenceDomain(mesh,contents)
 end
 
 function reference_domain(domain::ReferenceDomain)
@@ -526,14 +521,8 @@ function reference_domain(domain::ReferenceDomain)
 end
 
 function physical_domain(domain::ReferenceDomain)
-    mesh = GT.mesh(domain)
-    num_dims = GT.num_dims(domain)
-    mesh_id = GT.mesh_id(domain)
-    group_names = GT.group_names(domain)
-    face_around = GT.face_around(domain)
-    is_reference_domain = Val(false)
-    workspace = GT.workspace(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
+    (;mesh, contents) = domain
+    PhysicalDomain(mesh,contents)
 end
 
 function physical_domain(domain::PhysicalDomain)
@@ -564,8 +553,7 @@ function PartitionedArrays.partition(pdomain::MeshDomain)
     pmesh = GT.mesh(pdomain)
     p_mesh = partition(pmesh)
     domain_partition = map(p_mesh) do mesh
-        mesh_domain(;
-                    mesh,
+        mesh_domain(mesh;
                     num_dims = Val(GT.num_dims(pdomain)),
                     group_names=GT.group_names(pdomain),
                     is_reference_domain = Val(is_reference_domain(pdomain)),
@@ -591,7 +579,7 @@ function replace_workspace(domain::MeshDomain,workspace)
     group_names = GT.group_names(domain)
     is_reference_domain = GT.is_reference_domain(domain)
     face_around = GT.face_around(domain)
-    GT.mesh_domain(;mesh,num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
+    GT.mesh_domain(mesh;num_dims,mesh_id,group_names,is_reference_domain,face_around,workspace)
 end
 
 function faces(domain::MeshDomain)
