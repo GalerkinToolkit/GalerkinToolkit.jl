@@ -501,8 +501,19 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     lmesh
 end
 
-struct Mesh{A} <: AbstractMesh
-    contents::A
+struct Mesh{A,B,C,D,E,F,G,H,I,J,K,W} <: AbstractMesh
+    node_coordinates::A
+    face_nodes::B
+    face_reference_id::C
+    reference_spaces::D
+    periodic_nodes::E
+    group_faces::F
+    normals::G
+    geometry_names::H
+    is_cell_complex::I
+    node_local_indices::J
+    face_local_indices::K
+    workspace::W
 end
 
 """
@@ -552,7 +563,7 @@ function mesh(;
         face_local_indices = [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
     )
-    contents = (;
+    mesh = Mesh(
                 node_coordinates,
                 face_nodes,
                 face_reference_id,
@@ -566,61 +577,66 @@ function mesh(;
                 face_local_indices,
                 workspace,
                )
-    mesh = Mesh(contents)
 end
 
 function replace_workspace(mesh::Mesh,workspace)
-    contents = (;
-                node_coordinates=node_coordinates(mesh),
-                face_nodes=face_nodes(mesh),
-                face_reference_id=face_reference_id(mesh),
-                reference_spaces=reference_spaces(mesh),
-                periodic_nodes=periodic_nodes(mesh),
-                geometry_names=geometry_names(mesh),
-                group_faces=group_faces(mesh),
-                normals=normals(mesh),
-                is_cell_complex=Val(is_cell_complex(mesh)),
-                node_local_indices=node_local_indices(mesh),
-                face_local_indices=face_local_indices(mesh),
-                workspace,
-               )
-    Mesh(contents)
+    Mesh(
+         mesh.node_coordinates,
+         mesh.face_nodes,
+         mesh.face_reference_id,
+         mesh.reference_spaces,
+         mesh.periodic_nodes,
+         mesh.group_faces,
+         mesh.normals,
+         mesh.geometry_names,
+         mesh.is_cell_complex,
+         mesh.node_local_indices,
+         mesh.face_local_indices,
+         workspace,
+        )
+end
+
+function mesh_workspace(;topology)
+    MeshWorkspace(topology)
+end
+
+struct MeshWorkspace{A} <: AbstractType
+    topology::A
 end
 
 function replace_node_coordinates(mesh::Mesh,node_coordinates)
-    contents = (;
-                node_coordinates,
-                face_nodes=face_nodes(mesh),
-                face_reference_id=face_reference_id(mesh),
-                reference_spaces=reference_spaces(mesh),
-                periodic_nodes=periodic_nodes(mesh),
-                group_faces=group_faces(mesh),
-                geometry_names=geometry_names(mesh),
-                normals=normals(mesh),
-                is_cell_complex=Val(is_cell_complex(mesh)),
-                node_local_indices=node_local_indices(mesh),
-                face_local_indices=face_local_indices(mesh),
-                workspace=workspace(mesh),
-               )
-    Mesh(contents)
+    Mesh(
+         node_coordinates,
+         mesh.face_nodes,
+         mesh.face_reference_id,
+         mesh.reference_spaces,
+         mesh.periodic_nodes,
+         mesh.group_faces,
+         mesh.normals,
+         mesh.geometry_names,
+         mesh.is_cell_complex,
+         mesh.node_local_indices,
+         mesh.face_local_indices,
+         mesh.workspace,
+        )
 end
 
-node_coordinates(m::Mesh) = m.contents.node_coordinates
-face_nodes(m::Mesh) = m.contents.face_nodes
-face_nodes(m::Mesh,d) = m.contents.face_nodes[val_parameter(d)+1]
-face_reference_id(m::Mesh) = m.contents.face_reference_id
-face_reference_id(m::Mesh,d) = m.contents.face_reference_id[val_parameter(d)+1]
-reference_spaces(m::Mesh) = m.contents.reference_spaces
-reference_spaces(m::Mesh,d) = m.contents.reference_spaces[val_parameter(d)+1]
-group_faces(m::Mesh) = m.contents.group_faces
-group_faces(m::Mesh,d) = m.contents.group_faces[val_parameter(d)+1]
-periodic_nodes(m::Mesh) = m.contents.periodic_nodes
-is_cell_complex(m::Mesh) = val_parameter(m.contents.is_cell_complex)
-workspace(m::Mesh) = m.contents.workspace
+node_coordinates(m::Mesh) = m.node_coordinates
+face_nodes(m::Mesh) = m.face_nodes
+face_nodes(m::Mesh,d) = m.face_nodes[val_parameter(d)+1]
+face_reference_id(m::Mesh) = m.face_reference_id
+face_reference_id(m::Mesh,d) = m.face_reference_id[val_parameter(d)+1]
+reference_spaces(m::Mesh) = m.reference_spaces
+reference_spaces(m::Mesh,d) = m.reference_spaces[val_parameter(d)+1]
+group_faces(m::Mesh) = m.group_faces
+group_faces(m::Mesh,d) = m.group_faces[val_parameter(d)+1]
+periodic_nodes(m::Mesh) = m.periodic_nodes
+is_cell_complex(m::Mesh) = val_parameter(m.is_cell_complex)
+workspace(m::Mesh) = m.workspace
 
-node_local_indices(m::Mesh) = m.contents.node_local_indices
-face_local_indices(m::Mesh) = m.contents.face_local_indices
-face_local_indices(m::Mesh,d) = m.contents.face_local_indices[d+1]
+node_local_indices(m::Mesh) = m.node_local_indices
+face_local_indices(m::Mesh) = m.face_local_indices
+face_local_indices(m::Mesh,d) = m.face_local_indices[d+1]
 
 function default_group_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
@@ -632,7 +648,7 @@ function default_periodic_nodes(reference_spaces)
 end
 
 function normals(m::Mesh)
-    m.contents.normals
+    m.normals
 end
 
 function group_names(mesh,d)
@@ -650,7 +666,7 @@ function group_names(mesh;merge_dims=Val(false))
 end
 
 function geometry_names(a::Mesh)
-    a.contents.geometry_names
+    a.geometry_names
 end
 
 struct Chain{A} <: AbstractMesh
