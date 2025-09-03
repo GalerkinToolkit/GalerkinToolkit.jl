@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756876301312,
+  "lastUpdate": 1756902344417,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2324,6 +2324,36 @@ window.BENCHMARK_DATA = {
             "value": 897209813,
             "unit": "ns",
             "extra": "gctime=28971030\nmemory=722778132\nallocs=13257517\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1197470184ba4a69e1105d82cf8364168d7dc4c3",
+          "message": "Merge pull request #239 from GalerkinToolkit/types\n\nSimplifying type signatures of some key types.",
+          "timestamp": "2025-09-03T14:21:23+02:00",
+          "tree_id": "680f9bce7ecd840175e4d59720a362a36596add2",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/1197470184ba4a69e1105d82cf8364168d7dc4c3"
+        },
+        "date": 1756902343815,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 916306318,
+            "unit": "ns",
+            "extra": "gctime=37381261\nmemory=701833380\nallocs=13262555\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
