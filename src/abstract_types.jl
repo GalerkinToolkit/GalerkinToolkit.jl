@@ -43,17 +43,15 @@ Beginner
 """
 abstract type AbstractMesh <: AbstractType end
 
-"""
-"""
-abstract type AbstractPMesh <: AbstractMesh end
+#"""
+#"""
+#abstract type AbstractPMesh <: AbstractMesh end
 
 @doc raw"""
-    abstract type AbstractDomain{A} <: AbstractType end
+    abstract type AbstractDomain <: AbstractType end
 
 Abstract type representing a subset of $\mathbb{R}^d$, typically $d\in\{0,1,2,3\}$.
-Domains are defined using an underlying computational mesh. `A` is an (abstract) type
-indicating on which type of mesh this domain is defined.
-
+Domains are defined using an underlying computational mesh.
 See also [`AbstractMesh`](@ref).
 
 # Level
@@ -90,10 +88,10 @@ Beginner
 - [`face_around`](@ref)
 
 """
-abstract type AbstractDomain{A} <: AbstractType end
+abstract type AbstractDomain <: AbstractType end
 
 """
-    abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
+    abstract type AbstractFaceDomain <: AbstractDomain end
 
 A domain defined on a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
 
@@ -107,7 +105,7 @@ Advanced
 - [`unit_n_cube`](@ref)
 
 """
-abstract type AbstractFaceDomain <: AbstractDomain{AbstractMesh} end
+abstract type AbstractFaceDomain <: AbstractDomain end
 
 """
     abstract type AbstractTopology
@@ -145,10 +143,9 @@ Advanced
 abstract type AbstractFaceTopology <: AbstractTopology end
 
 """
-    abstract type AbstractSpace{A} <: AbstractType end
+    abstract type AbstractSpace <: AbstractType end
 
-Abstract type representing a finite element space.  `A` is an (abstract) type
- indicating on which type of mesh this domain is defined.
+Abstract type representing a finite element space.
 
 # Level
 
@@ -182,10 +179,10 @@ For spaces, used as reference spaces in [`AbstractMesh`](@ref) specializations.
 - [`geometry_nodes`](@ref)
 - [`geometry_nodes_permutations`](@ref)
 """
-abstract type AbstractSpace{A} <: AbstractType end
+abstract type AbstractSpace <: AbstractType end
 
 """
-abstract type AbstractFaceSpace <: AbstractSpace{AbstractMesh} end
+abstract type AbstractFaceSpace <: AbstractSpace end
 
 Like [`AbstractSpace`](@ref), but for a single mesh face. Typically used as helper to identify cases that only make sense for a single mesh face.
 
@@ -193,7 +190,7 @@ Like [`AbstractSpace`](@ref), but for a single mesh face. Typically used as help
 
 Advanced
 """
-abstract type AbstractFaceSpace <: AbstractSpace{AbstractMesh} end
+abstract type AbstractFaceSpace <: AbstractSpace end
 
 """
     abstract type AbstractQuadrature
@@ -222,7 +219,7 @@ abstract type AbstractQuadrature <: AbstractType end
 
 abstract type AbstractFaceQuadrature <: AbstractQuadrature end
 
-abstract type AbstractMeshQuadrature{A} <: AbstractQuadrature end
+abstract type AbstractMeshQuadrature <: AbstractQuadrature end
 
 abstract type AbstractQuantity <: GT.AbstractType end
 
