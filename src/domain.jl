@@ -53,9 +53,10 @@ function vertex_permutations(geo::AbstractFaceDomain)
     ## Admissible if the following map is admissible
     # phi_i(x) = sum_i x_perm[i] * fun_i(x)
     # This map sends vertex i to vertex perm[i]
+    Ti = int_type(options(geo))
     D = num_dims(geo)
     if D == 0
-        return [[1]]
+        return [[Ti(1)]]
     end
     geo_mesh = mesh(geo)
     vertex_to_geo_nodes = face_nodes(geo_mesh,0)
@@ -65,13 +66,13 @@ function vertex_permutations(geo::AbstractFaceDomain)
     # so that we never compute it for 3d 
     # since it is not needed
     if D > 2
-        return [collect(1:nvertices)]
+        return [collect(Ti,1:nvertices)]
     end
     permutations = Combinatorics.permutations(1:nvertices)
     if is_simplex(geo)
-        return collect(permutations)
+        return collect(Vector{Ti},permutations)
     end
-    admissible_permutations = Vector{Int}[]
+    admissible_permutations = Vector{Ti}[]
     ref_face = lagrange_space(geo,1)
     fun_mesh = complexify(ref_face)
     geo_node_coords = node_coordinates(geo_mesh)

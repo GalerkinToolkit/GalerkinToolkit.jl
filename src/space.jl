@@ -863,20 +863,19 @@ function lagrange_space end
 const LagrangeFaceDomain = Union{UnitNCube,UnitSimplex}
 
 function lagrange_space(domain::LagrangeFaceDomain, order;
-        space_type = default_space_type(domain),
-        lib_to_user_nodes = :default,
+        space_type = Val(default_space_type(domain)),
+        lib_to_user_nodes = Val(:default),
         major = Val(:component),
         tensor_size = Val(:scalar),
         dirichlet_boundary = nothing,
     )
 
-
     D = num_dims(domain)
     order_per_dir = ntuple(d->order,Val(D))
-    lagrange_face_space(;
+    lagrange_face_space(
                domain,
                order_per_dir,
-               space_type,
+               Val(val_parameter(space_type)),
                lib_to_user_nodes,
                major,
                tensor_size,
@@ -892,7 +891,7 @@ function default_space_type(geom::UnitSimplex)
     :P
 end
 
-function lagrange_face_space(;
+function lagrange_face_space(
         domain,
         order_per_dir,
         space_type,
@@ -901,7 +900,7 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
     )
-    contents = (;
+    space = LagrangeFaceSpace(
         domain,
         order_per_dir,
         space_type,
@@ -909,55 +908,79 @@ function lagrange_face_space(;
         major,
         tensor_size,
         dirichlet_boundary,
+        nothing
        )
-    space = LagrangeFaceSpace(nothing,contents)
     workspace = generate_workspace(space)
     space2 = replace_workspace(space,workspace)
 end
 
-@auto_hash_equals struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
-    workspace::A
-    contents::B
+@auto_hash_equals struct LagrangeFaceSpace{A,B,C,D,E,F,G,W} <: AbstractFaceSpace
+    domain::A
+    order_per_dir::B
+    space_type::Val{C}
+    lib_to_user_nodes::D
+    major::Val{E}
+    tensor_size::Val{F}
+    dirichlet_boundary::G
+    workspace::W
 end
 
-domain(a::LagrangeFaceSpace) = a.contents.domain
-order_per_dir(a::LagrangeFaceSpace) = a.contents.order_per_dir
+@auto_hash_equals struct LagrangeFaceSpaceWorskspace{D,Ti} <: AbstractType
+    monomial_exponents::Vector{StaticArrays.SVector{D,Ti}}
+    face_dofs::PartitionedArrays.JaggedArray{Ti,Ti}
+    free_dofs::Vector{Ti}
+    dirichlet_dofs::Vector{Ti}
+    dirichlet_dof_location::Vector{Ti}
+end
+
+domain(a::LagrangeFaceSpace) = a.domain
+order_per_dir(a::LagrangeFaceSpace) = a.order_per_dir
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
-space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
-major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
-tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
-dirichlet_boundary(fe::LagrangeFaceSpace) = fe.contents.dirichlet_boundary
-
-function replace_workspace(fe::LagrangeFaceSpace,workspace)
-    LagrangeFaceSpace(workspace,fe.contents)
-end
-
-function generate_workspace(fe::LagrangeFaceSpace)
-    monomial_exponents = GT.monomial_exponents(fe)
-    if fe.contents.dirichlet_boundary === nothing
-        ndofs = num_dofs(fe)
-        face_dofs = JaggedArray([collect(Int32,1:ndofs)])
-        free_dofs = Base.OneTo(ndofs)
-        dirichlet_dofs = Base.OneTo(ndofs)
-        dirichlet_dof_location = Int32[]
-    else
-        state = generate_dof_ids(fe)
-        face_dofs = state.Dface_to_dofs
-        free_dofs = state.free_dofs
-        dirichlet_dofs = state.dirichlet_dofs
-        dirichlet_dof_location = state.dirichlet_dof_location
-    end
-    workspace = (;monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
-end
-
+space_type(fe::LagrangeFaceSpace) = val_parameter(fe.space_type)
+major(fe::LagrangeFaceSpace) = val_parameter(fe.major)
+tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.tensor_size)
+dirichlet_boundary(fe::LagrangeFaceSpace) = fe.dirichlet_boundary
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
-    if val_parameter(fe.contents.lib_to_user_nodes) === :default
+    if val_parameter(fe.lib_to_user_nodes) === :default
         nnodes = num_nodes(fe)
         Ti = int_type(options(fe))
         collect(Ti.(1:nnodes))
     else
-        fe.contents.lib_to_user_nodes
+        lib_to_user_nodes(fe)
     end
+end
+
+
+function replace_workspace(fe::LagrangeFaceSpace,workspace)
+    space = LagrangeFaceSpace(
+        fe.domain,
+        fe.order_per_dir,
+        fe.space_type,
+        fe.lib_to_user_nodes,
+        fe.major,
+        fe.tensor_size,
+        fe.dirichlet_boundary,
+        workspace,
+       )
+end
+
+function generate_workspace(fe::LagrangeFaceSpace)
+    monomial_exponents = GT.monomial_exponents(fe)
+    Ti = int_type(options(fe))
+    if dirichlet_boundary(fe) === nothing
+        ndofs = num_dofs(fe)
+        face_dofs = JaggedArray([collect(Ti,1:ndofs)])
+        free_dofs = collect(Ti,1:ndofs)
+        dirichlet_dofs = Ti[]
+        dirichlet_dof_location = Ti[]
+    else
+        state = generate_dof_ids(fe)
+        face_dofs = state.Dface_to_dofs
+        free_dofs = collect(Ti,state.free_dofs)
+        dirichlet_dofs = collect(Ti,state.dirichlet_dofs)
+        dirichlet_dof_location = state.dirichlet_dof_location
+    end
+    workspace = LagrangeFaceSpaceWorskspace(monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
 end
 
 function reference_spaces(fe::LagrangeFaceSpace)
@@ -965,7 +988,8 @@ function reference_spaces(fe::LagrangeFaceSpace)
 end
 
 function face_reference_id(fe::LagrangeFaceSpace)
-    [1]
+    Ti = reference_int_type(options(fe))
+    [Ti(1)]
 end
 
 function continuous(fe::LagrangeFaceSpace)
@@ -973,10 +997,9 @@ function continuous(fe::LagrangeFaceSpace)
 end
 
 function monomial_exponents(a::LagrangeFaceSpace)
-    a.workspace.monomial_exponents
-end
-
-function monomial_exponents(a::LagrangeFaceSpace{Nothing})
+    if a.workspace !== nothing
+        return a.workspace.monomial_exponents
+    end
     range_per_dir = map(k->0:k,order_per_dir(a))
     exponents_list = map(CartesianIndices(range_per_dir)) do ci
         exponent = Tuple(ci)
@@ -1109,7 +1132,7 @@ function node_dofs(fe::LagrangeFaceSpace)
             init_tensor(t)
         end
     end
-    if fe.contents.dirichlet_boundary === nothing
+    if dirichlet_boundary(fe) === nothing
         node_to_ldofs
     else
         ldof_to_dof = first(face_dofs(fe))

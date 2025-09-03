@@ -3,19 +3,23 @@ topology(a::AbstractTopology) = a
 num_dims(t::AbstractTopology) = length(reference_topologies(t))-1
 num_faces(t::AbstractTopology,d) = length(face_reference_id(t,d))
 
-struct FaceTopology{A} <: AbstractFaceTopology
-    contents::A
+struct FaceTopology{A,B} <: AbstractFaceTopology
+    boundary::A
+    vertex_permutations::B
 end
 
 function face_topology(;boundary,vertex_permutations)
-    contents = (;boundary,vertex_permutations)
-    FaceTopology(contents)
+    face_topology(boundary,vertex_permutations)
 end
 
-boundary(a::FaceTopology) = a.contents.boundary
-vertex_permutations(a::FaceTopology) = a.contents.vertex_permutations
+function face_topology(boundary,vertex_permutations)
+    FaceTopology(boundary,vertex_permutations)
+end
 
-function num_dims(a::FaceTopology)
+boundary(a::FaceTopology) = a.boundary
+vertex_permutations(a::FaceTopology) = a.vertex_permutations
+
+function num_dims(a::AbstractFaceTopology)
     if boundary(a) === nothing
         0
     else
@@ -23,7 +27,7 @@ function num_dims(a::FaceTopology)
     end
 end
 
-function num_faces(a::FaceTopology,d)
+function num_faces(a::AbstractFaceTopology,d)
     m = num_dims(a)
     if d == m
         1
@@ -32,7 +36,7 @@ function num_faces(a::FaceTopology,d)
     end
 end
 
-function face_incidence(a::FaceTopology)
+function face_incidence(a::AbstractFaceTopology)
     m = num_dims(a)
     if m==0
         return fill([[1]],1,1)
@@ -50,11 +54,11 @@ function face_incidence(a::FaceTopology)
     fi
 end
 
-function face_incidence(a::FaceTopology,d,D)
+function face_incidence(a::AbstractFaceTopology,d,D)
     face_incidence(a)[d+1,D+1]
 end
 
-function face_reference_id(a::FaceTopology,d)
+function face_reference_id(a::AbstractFaceTopology,d)
     m = num_dims(a)
     if m == d
         Int[1]
@@ -63,7 +67,7 @@ function face_reference_id(a::FaceTopology,d)
     end
 end
 
-function reference_topologies(a::FaceTopology,d)
+function reference_topologies(a::AbstractFaceTopology,d)
     m = num_dims(a)
     if m == d
         (a,)
@@ -72,7 +76,7 @@ function reference_topologies(a::FaceTopology,d)
     end
 end
 
-function face_permutation_ids(a::FaceTopology)
+function face_permutation_ids(a::AbstractFaceTopology)
     m = num_dims(a)
     if m==0
         return fill([[[1]]],1,1)
@@ -89,12 +93,15 @@ function face_permutation_ids(a::FaceTopology)
     fi
 end
 
-function face_permutation_ids(a::FaceTopology,d,D)
+function face_permutation_ids(a::AbstractFaceTopology,d,D)
     face_permutation_ids(a)[d+1,D+1]
 end
 
-struct MeshTopology{A} <: AbstractTopology
-    contents::A
+struct MeshTopology{A,B,C,D} <: AbstractTopology
+    face_incidence::A
+    face_reference_id::B
+    face_permutation_ids::C
+    reference_topologies::D
 end
 
 function mesh_topology(;
@@ -103,23 +110,21 @@ function mesh_topology(;
         face_permutation_ids,
         reference_topologies,)
 
-    contents = (;
-                face_incidence,
-                face_reference_id,
-                face_permutation_ids,
-                reference_topologies,)
-
-    MeshTopology(contents)
+    MeshTopology(
+                 face_incidence,
+                 face_reference_id,
+                 face_permutation_ids,
+                 reference_topologies,)
 end
 
-face_incidence(a::MeshTopology) = a.contents.face_incidence
-face_incidence(a::MeshTopology,d,D) = a.contents.face_incidence[val_parameter(d)+1,val_parameter(D)+1]
-face_reference_id(a::MeshTopology) = a.contents.face_reference_id
-face_reference_id(a::MeshTopology,d) = a.contents.face_reference_id[val_parameter(d)+1]
-face_permutation_ids(a::MeshTopology) = a.contents.face_permutation_ids
-face_permutation_ids(a::MeshTopology,d,D) = a.contents.face_permutation_ids[val_parameter(d)+1,val_parameter(D)+1]
-reference_topologies(a::MeshTopology) = a.contents.reference_topologies
-reference_topologies(a::MeshTopology,d) = a.contents.reference_topologies[val_parameter(d)+1]
+face_incidence(a::MeshTopology) = a.face_incidence
+face_incidence(a::MeshTopology,d,D) = a.face_incidence[val_parameter(d)+1,val_parameter(D)+1]
+face_reference_id(a::MeshTopology) = a.face_reference_id
+face_reference_id(a::MeshTopology,d) = a.face_reference_id[val_parameter(d)+1]
+face_permutation_ids(a::MeshTopology) = a.face_permutation_ids
+face_permutation_ids(a::MeshTopology,d,D) = a.face_permutation_ids[val_parameter(d)+1,val_parameter(D)+1]
+reference_topologies(a::MeshTopology) = a.reference_topologies
+reference_topologies(a::MeshTopology,d) = a.reference_topologies[val_parameter(d)+1]
 
 function face_local_faces(topo,d,D)
     dface_to_Dface_around_to_Dface = GT.face_incidence(topo,d,D) |> JaggedArray
@@ -597,7 +602,7 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             is_cell_complex = Val(true),
            )
     mtopology = GT.topology(new_mesh)
-    workspace = (;topology=mtopology)
+    workspace = mesh_workspace(;topology=mtopology)
     new_mesh2 = replace_workspace(new_mesh,workspace)
     if val_parameter(glue)
         new_mesh2, old_to_new
@@ -931,5 +936,52 @@ function find_node_to_vertex(mesh)
     end
     node_to_vertex, vertex
 end
+
+# The following is a bit ugly but is necessary to dramatically decrease
+# the type complexity of meshes and thus of many other types in the code.
+
+function face_topology(boundary::Nothing,vertex_permutations)
+    VertexTopology(vertex_permutations)
+end
+
+struct VertexTopology{Ti} <: AbstractFaceTopology
+    vertex_permutations::Vector{Vector{Ti}}
+end
+boundary(a::VertexTopology) = nothing
+vertex_permutations(a::VertexTopology) = a.vertex_permutations
+
+function face_topology(boundary::MeshTopology,vertex_permutations)
+    D = num_dims(boundary) + 1
+    if D == 1
+        EdgeTopology(boundary,vertex_permutations)
+    elseif D == 2
+        SurfaceTopology(boundary,vertex_permutations)
+    elseif D == 3
+        VolumeTopology(boundary,vertex_permutations)
+    else
+        FaceTopology(boundary,vertex_permutations)
+    end
+end
+
+struct EdgeTopology{Ti,Tr} <: AbstractFaceTopology
+    boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}},Tuple{Tuple{VertexTopology{Ti}}}}
+    vertex_permutations::Vector{Vector{Ti}}
+end
+boundary(a::EdgeTopology) = a.boundary
+vertex_permutations(a::EdgeTopology) = a.vertex_permutations
+
+struct SurfaceTopology{Ti,Tr} <: AbstractFaceTopology
+    boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}}, Tuple{Tuple{VertexTopology{Ti}},Tuple{EdgeTopology{Ti,Tr}}}}
+    vertex_permutations::Vector{Vector{Ti}}
+end
+boundary(a::SurfaceTopology) = a.boundary
+vertex_permutations(a::SurfaceTopology) = a.vertex_permutations
+
+struct VolumeTopology{Ti,Tr} <: AbstractFaceTopology
+    boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}}, Tuple{Tuple{VertexTopology{Ti}},Tuple{EdgeTopology{Ti,Tr}},Tuple{SurfaceTopology{Ti,Tr}}}}
+    vertex_permutations::Vector{Vector{Ti}}
+end
+boundary(a::VolumeTopology) = a.boundary
+vertex_permutations(a::VolumeTopology) = a.vertex_permutations
 
 
