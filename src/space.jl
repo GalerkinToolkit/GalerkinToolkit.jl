@@ -870,13 +870,12 @@ function lagrange_space(domain::LagrangeFaceDomain, order;
         dirichlet_boundary = nothing,
     )
 
-
     D = num_dims(domain)
     order_per_dir = ntuple(d->order,Val(D))
     lagrange_face_space(
                domain,
                order_per_dir,
-               space_type,
+               Val(val_parameter(space_type)),
                lib_to_user_nodes,
                major,
                tensor_size,
@@ -977,8 +976,8 @@ function generate_workspace(fe::LagrangeFaceSpace)
     else
         state = generate_dof_ids(fe)
         face_dofs = state.Dface_to_dofs
-        free_dofs = state.free_dofs
-        dirichlet_dofs = state.dirichlet_dofs
+        free_dofs = collect(Ti,state.free_dofs)
+        dirichlet_dofs = collect(Ti,state.dirichlet_dofs)
         dirichlet_dof_location = state.dirichlet_dof_location
     end
     workspace = LagrangeFaceSpaceWorskspace(monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
