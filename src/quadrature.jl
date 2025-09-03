@@ -14,21 +14,22 @@ function face_reference_id(q::AbstractFaceQuadrature)
 end
 
 function face_quadrature(;domain,coordinates,weights)
-    contents = (;domain,coordinates,weights)
-    FaceQuadrature(contents)
+    FaceQuadrature(domain,coordinates,weights)
 end
 
 function num_points(q::AbstractQuadrature)
     length(weights(q))
 end
 
-struct FaceQuadrature{A} <: AbstractFaceQuadrature
-    contents::A
+struct FaceQuadrature{A,B,C} <: AbstractFaceQuadrature
+    domain::A
+    coordinates::B
+    weights::C
 end
 
-domain(a::FaceQuadrature) = a.contents.domain
-coordinates(a::FaceQuadrature) = a.contents.coordinates
-weights(a::FaceQuadrature) = a.contents.weights
+domain(a::FaceQuadrature) = a.domain
+coordinates(a::FaceQuadrature) = a.coordinates
+weights(a::FaceQuadrature) = a.weights
 
 """
 """
@@ -648,19 +649,19 @@ function node_quadrature(domain::AbstractMeshDomain)
     mesh_quadrature(;domain,face_reference_id,reference_quadratures)
 end
 
-struct MeshQuadrature{A,B} <: AbstractMeshQuadrature{A}
-    mesh::A
-    contents::B
+struct MeshQuadrature{A,B,C} <: AbstractMeshQuadrature
+    domain::A
+    face_reference_id::B
+    reference_quadratures::C
 end
 
 function mesh_quadrature(;domain,face_reference_id,reference_quadratures)
-    contents = (;domain,face_reference_id,reference_quadratures)
-    MeshQuadrature(mesh(domain),contents)
+    MeshQuadrature(domain,face_reference_id,reference_quadratures)
 end
 
-mesh(q::MeshQuadrature) = q.mesh
-domain(q::MeshQuadrature) = q.contents.domain
-face_reference_id(q::MeshQuadrature) = q.contents.face_reference_id
-reference_quadratures(q::MeshQuadrature) = q.contents.reference_quadratures
+mesh(q::MeshQuadrature) = mesh(domain(q))
+domain(q::MeshQuadrature) = q.domain
+face_reference_id(q::MeshQuadrature) = q.face_reference_id
+reference_quadratures(q::MeshQuadrature) = q.reference_quadratures
 
 
