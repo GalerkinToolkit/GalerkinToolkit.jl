@@ -361,6 +361,11 @@ struct MonolithicAssemblyAllocation{A,B,C} <: AbstractType
     block_mask::C
 end
 
+function reset!(alloc::MonolithicAssemblyAllocation)
+    reset!(alloc.allocation)
+    alloc
+end
+
 Base.eltype(alloc::MonolithicAssemblyAllocation) = eltype(alloc.allocation)
 
 function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
@@ -386,7 +391,7 @@ function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(false))
     compress(malloc.allocation;reuse)
 end
 
-function comperss!(malloc::MonolithicAssemblyAllocation,A,cache)
+function compress!(malloc::MonolithicAssemblyAllocation,A,cache)
     compress!(malloc.allocation,A,cache)
 end
 
