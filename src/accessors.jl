@@ -402,10 +402,22 @@ function at_face(a::MeshAccessor,face)
     replace_contents(a,contents)
 end
 
-function at_any_index(a::MeshAccessor)
-    space_accessor = at_any_index(a.contents.space_accessor)
-    contents = (;a.contents...,space_accessor)
-    replace_contents(a,contents)
+function at_any_index(a::MeshAccessor{AtInterior})
+    # TODO the asserts can be removed by playing with AnyIndex
+    @assert num_faces(a) > 0
+    a2 = at_face(a,1)
+    @assert num_points(a2) > 0
+    a3 = at_point(a2,1)
+end
+
+function at_any_index(a::MeshAccessor{AtSkeleton})
+    # TODO the asserts can be removed by playing with AnyIndex
+    @assert num_faces(a) > 0
+    a2 = at_face(a,1)
+    @assert num_faces_around(a2) > 0
+    a3 = at_face_around(a2,1)
+    @assert num_points(a3) > 0
+    a4 = at_point(a3,1)
 end
 
 function num_faces_around(a::MeshAccessor)
@@ -593,7 +605,7 @@ end
 function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwargs...)
     D = num_dims(GT.domain(space))
     mesh = GT.mesh(space)
-    mesh_accessor = GT.mesh_accessor(mesh,D,quadrature)
+    mesh_accessor = GT.mesh_accessor(mesh,Val(D),quadrature)
     mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
     space_accessor(space,mesh_accessor_2;kwargs...)
 end
@@ -726,7 +738,7 @@ function at_point(a::SpaceAccessor,point)
     replace_contents(a,contents)
 end
 
-function shape_functions(f,a::SpaceAccessor{AtInterior})
+@inline function shape_functions(f,a::SpaceAccessor{AtInterior})
     (;space,mesh_accessor,reference_space_accessor) = a.contents
     dof_sref = GT.shape_functions(f,reference_space_accessor)
     dof_sphys = workspace(f,a)
@@ -736,6 +748,7 @@ function shape_functions(f,a::SpaceAccessor{AtInterior})
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
+    dof_sphys
     view(dof_sphys,1:ndofs)
 end
 
@@ -750,6 +763,7 @@ function shape_functions(f,a::SpaceAccessor{AtSkeleton})
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
+    dof_sphys
     view(dof_sphys,1:ndofs)
 end
 
@@ -757,8 +771,8 @@ function map_shape_function(::typeof(GT.value),space,dof,mesh_accessor,sref)
     sref
 end
 
-function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_accessor,sref)
-    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_accessor,sref)
+    J = jacobian(mesh_accessor)
     sphys = transpose(J)\sref
 end
 
