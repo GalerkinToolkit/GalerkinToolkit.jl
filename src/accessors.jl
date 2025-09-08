@@ -428,7 +428,7 @@ function num_nodes(a::MeshAccessor)
     length(nodes(a))
 end
 
-function node_coordinates(a::MeshAccessor)
+@noinline function node_coordinates(a::MeshAccessor)
     (;space_accessor) = a.contents
     (;space) = space_accessor.contents
     mesh = GT.mesh(space) 
@@ -482,8 +482,23 @@ function quadrature(a::MeshAccessor)
 end
 
 function at_point(a::MeshAccessor,point)
+    if hasproperty(a.contents.space_accessor.contents,:point)
+        if point == a.contents.space_accessor.contents.point
+            return a
+        end
+    end
     space_accessor = at_point(a.contents.space_accessor,point)
-    contents = (;a.contents...,space_accessor)
+    if hasproperty(space_accessor.contents,:gradients)
+        i_s = shape_functions(ForwardDiff.gradient,space_accessor)
+        i_node = nodes(a)
+        mesh = GT.mesh(space_accessor.contents.space)
+        node_x = node_coordinates(mesh)
+        n = num_nodes(a)
+        J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n)
+    else
+        J = nothing
+    end
+    contents = (;a.contents...,space_accessor,J)
     replace_contents(a,contents)
 end
 
@@ -508,10 +523,13 @@ function coordinate(::typeof(value),a::MeshAccessor)
 end
 
 function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
-    s = shape_functions(ForwardDiff.gradient,a)
-    x = node_coordinates(a)
-    n = num_nodes(a)
-    sum(i->outer(x[i],s[i]),1:n)
+    J = a.contents.J
+    @assert J !== nothing
+    J
+    #s = shape_functions(ForwardDiff.gradient,a)
+    #x = node_coordinates(a)
+    #n = num_nodes(a)
+    #sum(i->outer(x[i],s[i]),1:n)
 end
 
 function weight(a::MeshAccessor)
