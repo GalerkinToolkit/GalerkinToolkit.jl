@@ -86,8 +86,7 @@ function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace
     args = (domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
     allocate_matrix_barrier!(counter, args...)
     alloc_0 = allocate(counter)
-    
-    alloc = if alloc_0 isa CachedCSCCounterStep1
+    alloc = if (alloc_0 isa CachedCSCCounterStep1) || (alloc_0 isa MonolithicAssemblyCounter) # TODO: make it more general
         allocate_matrix_barrier!(alloc_0, args...)
         alloc_1 = allocate(alloc_0)
         allocate_matrix_barrier!(alloc_1, args...)
@@ -122,12 +121,12 @@ function allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_fa
                     dofs_i = field_face_dofs_i[field_i](face,face_around_i)
                     for face_around_j in 1:nfaces_around_j
                         dofs_j = field_face_dofs_j[field_j](face,face_around_j)
-                        for dof_i in dofs_i
-                            if skip_dof(dof_i,free_or_diri_i)
+                        for dof_j in dofs_j
+                            if skip_dof(dof_j,free_or_diri_j)
                                 continue
                             end
-                            for dof_j in dofs_j
-                                if skip_dof(dof_j,free_or_diri_j)
+                            for dof_i in dofs_i
+                                if skip_dof(dof_i,free_or_diri_i)
                                     continue
                                 end
                                 contribute!(counter,nothing,map_i(dof_i),map_j(dof_j),field_i,field_j)
@@ -358,7 +357,17 @@ end
 function allocate(mcounter::MonolithicAssemblyCounter)
     (;counter,offsets,block_mask) = mcounter
     alloc = allocate(counter)
-    reset!(counter)
+    if ((counter isa CSCCounter) && val_parameter(counter.use_cache)) || (counter isa CachedCSCCounterStep1)
+        MonolithicAssemblyCounter(alloc, offsets, block_mask)
+    else
+        reset!(counter)
+        MonolithicAssemblyAllocation(alloc,offsets,block_mask)
+    end
+end
+
+function finalize(mcounter::MonolithicAssemblyCounter)
+    (;counter,offsets,block_mask) = mcounter
+    alloc = finalize(counter)
     MonolithicAssemblyAllocation(alloc,offsets,block_mask)
 end
 
@@ -376,6 +385,11 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
         i2 = offsets_i[field_i]+i
         contribute!(alloc.allocation,v,i2,1)
     end
+    alloc
+end
+
+function reset!(alloc::MonolithicAssemblyAllocation)
+    reset!(alloc.allocation)
     alloc
 end
 
