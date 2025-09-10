@@ -679,6 +679,17 @@ function tabulate(f,a::MeshAccessor)
     replace_space_accessor(a,space_accessor)
 end
 
+function tabulate(f::typeof(ForwardDiff.gradient),a::MeshAccessor)
+    space_accessor = tabulate(f,a.space_accessor)
+    space_accessor_2 = at_any_index(space_accessor)
+    mesh = GT.mesh(space_accessor.space)
+    x = zero(eltype(node_coordinates(mesh)))
+    g = zero(eltype(shape_functions(f,space_accessor_2)))
+    J = zero(outer(x,g))
+    a2 = replace_space_accessor(a,space_accessor)
+    replace_jacobian(a2,J)
+end
+
 function unit_normal end
 
 function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
@@ -719,22 +730,37 @@ function quadrature(a::MeshAccessor)
 end
 
 function at_point(a::MeshAccessor,point)
-    #if point == a.space_accessor.location.point
-    #    return a
-    #end
     space_accessor = at_point(a.space_accessor,point)
-    if hasproperty(space_accessor.workspace,:gradients)
-        i_s = shape_functions(ForwardDiff.gradient,space_accessor)
-        i_node = nodes(a)
-        mesh = GT.mesh(space_accessor.space)
-        node_x = node_coordinates(mesh)
-        n = num_nodes(a)
-        J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n)
-        a2 = replace_jacobian(a,J)
-    else
-        a2 = a
+    a2 = replace_space_accessor(a,space_accessor)
+    compute_jacobian(a2)
+end
+
+function sum_jacobian(node_x,i_node,i_s,n,J0)
+    #J = zero(J0)
+    #i = 0
+    #while i < n
+    #    i += 1
+    #    J += outer(node_x[i_node[i]],i_s[i])
+    #end
+    #J
+    #TODO sum leads to much faster than hand-written loop, but why?
+    J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
+end
+
+ function compute_jacobian(a::MeshAccessor)
+    J0 = a.workspace.jacobian
+    if J0 === nothing
+        return a
     end
-    replace_space_accessor(a2,space_accessor)
+    space_accessor = a.space_accessor
+    point = space_accessor.location.point
+    i_s = shape_functions(ForwardDiff.gradient,space_accessor)
+    i_node = nodes(a)
+    mesh = GT.mesh(space_accessor.space)
+    node_x = node_coordinates(mesh)
+    n = length(i_s)
+    J = sum_jacobian(node_x,i_node,i_s,n,J0)
+    replace_jacobian(a,J)
 end
 
 function shape_functions(f,a::MeshAccessor)
@@ -753,7 +779,7 @@ end
 function coordinate(::typeof(value),a::MeshAccessor)
     s = shape_functions(value,a)
     x = node_coordinates(a)
-    n = num_nodes(a)
+    n = length(s)
     sum(i->x[i]*s[i],1:n)
 end
 
@@ -1049,7 +1075,9 @@ end
     dof_sref = GT.shape_functions(f,reference_space_accessor)
     dof_sphys = workspace(f,a)
     ndofs = length(dof_sref)
-    for dof in 1:ndofs
+    dof = 0
+    while dof < ndofs
+        dof += 1
         sref = dof_sref[dof]
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
