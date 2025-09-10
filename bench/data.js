@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756918306666,
+  "lastUpdate": 1757483678566,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2384,6 +2384,36 @@ window.BENCHMARK_DATA = {
             "value": 874544213,
             "unit": "ns",
             "extra": "gctime=30512752\nmemory=632515492\nallocs=13243879\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3fbb1bdeb07f420e707cde0b7d9d894891934f0e",
+          "message": "Merge pull request #241 from stijnh/fix-typo",
+          "timestamp": "2025-09-10T07:50:37+02:00",
+          "tree_id": "a60b6472a0e8af08107bb994c14c26172c78731c",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/3fbb1bdeb07f420e707cde0b7d9d894891934f0e"
+        },
+        "date": 1757483678176,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 868642202.5,
+            "unit": "ns",
+            "extra": "gctime=31537698\nmemory=632515796\nallocs=13243880\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
