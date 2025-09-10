@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757483678566,
+  "lastUpdate": 1757516238713,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2414,6 +2414,36 @@ window.BENCHMARK_DATA = {
             "value": 868642202.5,
             "unit": "ns",
             "extra": "gctime=31537698\nmemory=632515796\nallocs=13243880\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fbfeb4ab71812a9db2fd0aec8744c2073911055e",
+          "message": "Merge pull request #243 from GalerkinToolkit/types\n\nGetting rid of NamedTuples in accessors and more.",
+          "timestamp": "2025-09-10T16:53:07+02:00",
+          "tree_id": "fd5fb917e5411a3d837bc4c341addb844bd94b44",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/fbfeb4ab71812a9db2fd0aec8744c2073911055e"
+        },
+        "date": 1757516238328,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 745268826,
+            "unit": "ns",
+            "extra": "gctime=19315708\nmemory=342393204\nallocs=8609789\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
