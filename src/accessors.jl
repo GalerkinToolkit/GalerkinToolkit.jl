@@ -564,8 +564,9 @@ function mesh_accessor(mesh::AbstractMesh,D,quadrature::AbstractQuadrature;
     space_accessor = reference_space_accessor(space,quadrature)
     loop_case = space_accessor.loop_case
     J = nothing
+    J_point = nothing
     reference_normals = nothing
-    workspace = MeshAccessorWorkspace(J,reference_normals)
+    workspace = MeshAccessorWorkspace(J,J_point,reference_normals)
     a = MeshAccessor(loop_case,space_accessor,workspace)
     setup_accessor(a,tabulate,compute)
 end
@@ -576,9 +577,10 @@ struct MeshAccessor{A,B,C} <: NewAbstractAccessor
     workspace::C
 end
 
-struct MeshAccessorWorkspace{A,B}
+struct MeshAccessorWorkspace{A,B,C} <: AbstractType
     jacobian::A
-    reference_normals::B
+    jacobian_point::B
+    reference_normals::C
 end
 
 function replace_space_accessor(a::MeshAccessor,space_accessor)
@@ -595,14 +597,15 @@ function replace_workspace(a::MeshAccessor,workspace)
                  workspace)
 end
 
-function replace_jacobian(a::MeshAccessor,jacobian)
-    workspace = replace_jacobian(a.workspace,jacobian)
+function replace_jacobian(a::MeshAccessor,jacobian,point)
+    workspace = replace_jacobian(a.workspace,jacobian,point)
     replace_workspace(a,workspace)
 end
 
-function replace_jacobian(a::MeshAccessorWorkspace,jacobian)
+function replace_jacobian(a::MeshAccessorWorkspace,jacobian,jacobian_point)
     MeshAccessorWorkspace(
                           jacobian,
+                          jacobian_point,
                           a.reference_normals
                          )
 end
@@ -615,6 +618,7 @@ end
 function replace_reference_normals(a::MeshAccessorWorkspace,reference_normals)
     MeshAccessorWorkspace(
                           a.jacobian,
+                          a.jacobian_point,
                           reference_normals
                          )
 end
@@ -679,6 +683,33 @@ function tabulate(f,a::MeshAccessor)
     replace_space_accessor(a,space_accessor)
 end
 
+
+function tabulate(f::typeof(ForwardDiff.gradient),a::MeshAccessor{AtInterior})
+    space_accessor = tabulate(f,a.space_accessor)
+    space_accessor_2 = at_any_index(space_accessor)
+    mesh = GT.mesh(space_accessor.space)
+    g = zero(eltype(GT.shape_functions(ForwardDiff.gradient,space_accessor_2)))
+    x = zero(eltype(node_coordinates(mesh)))
+    J = Ref(zero(outer(x,g)))
+    J_point = Ref(-1)
+    a2 = replace_space_accessor(a,space_accessor)
+    replace_jacobian(a2,J,J_point)
+end
+
+function tabulate(f::typeof(ForwardDiff.gradient),a::MeshAccessor{AtSkeleton})
+    space_accessor = tabulate(f,a.space_accessor)
+    space_accessor_2 = at_any_index(space_accessor)
+    mesh = GT.mesh(space_accessor.space)
+    g = zero(eltype(GT.shape_functions(ForwardDiff.gradient,space_accessor_2)))
+    x = zero(eltype(node_coordinates(mesh)))
+    max_num_faces_around = 2 # TODO
+    T = typeof(outer(x,g))
+    J = zeros(T,max_num_faces_around)
+    J_point = fill(-1,max_num_faces_around)
+    a2 = replace_space_accessor(a,space_accessor)
+    replace_jacobian(a2,J,J_point)
+end
+
 function unit_normal end
 
 function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
@@ -719,22 +750,51 @@ function quadrature(a::MeshAccessor)
 end
 
 function at_point(a::MeshAccessor,point)
-    #if point == a.space_accessor.location.point
-    #    return a
-    #end
     space_accessor = at_point(a.space_accessor,point)
+    a2 = replace_space_accessor(a,space_accessor)
     if hasproperty(space_accessor.workspace,:gradients)
-        i_s = shape_functions(ForwardDiff.gradient,space_accessor)
-        i_node = nodes(a)
-        mesh = GT.mesh(space_accessor.space)
-        node_x = node_coordinates(mesh)
-        n = num_nodes(a)
-        J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n)
-        a2 = replace_jacobian(a,J)
-    else
-        a2 = a
+        compute_jacobian!(a2,point)
     end
-    replace_space_accessor(a2,space_accessor)
+    a2
+end
+
+function compute_jacobian!(a::MeshAccessor{AtInterior},point)
+    space_accessor = a.space_accessor
+    if a.workspace.jacobian_point[] == point
+        return a
+    end
+    i_s = shape_functions(ForwardDiff.gradient,space_accessor)
+    i_node = nodes(a)
+    mesh = GT.mesh(space_accessor.space)
+    node_x = node_coordinates(mesh)
+    n = num_nodes(a)
+    J = zero(a.workspace.jacobian[])
+    for i in 1:n
+        J += outer(node_x[i_node[i]],i_s[i])
+    end
+    a.workspace.jacobian[] = J
+    a.workspace.jacobian_point[] = point
+    a
+end
+
+function compute_jacobian!(a::MeshAccessor{AtSkeleton},point)
+    space_accessor = a.space_accessor
+    face_around = space_accessor.location.face_around
+    if a.workspace.jacobian_point[face_around] == point
+        return a
+    end
+    i_s = shape_functions(ForwardDiff.gradient,space_accessor)
+    i_node = nodes(a)
+    mesh = GT.mesh(space_accessor.space)
+    node_x = node_coordinates(mesh)
+    n = num_nodes(a)
+    J = zero(eltype(a.workspace.jacobian))
+    for i in 1:n
+        J += outer(node_x[i_node[i]],i_s[i])
+    end
+    a.workspace.jacobian[face_around] = J
+    a.workspace.jacobian_point[face_around] = point
+    a
 end
 
 function shape_functions(f,a::MeshAccessor)
@@ -757,14 +817,23 @@ function coordinate(::typeof(value),a::MeshAccessor)
     sum(i->x[i]*s[i],1:n)
 end
 
-function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
-    J = a.workspace.jacobian
-    @assert J !== nothing
-    J
-    #s = shape_functions(ForwardDiff.gradient,a)
-    #x = node_coordinates(a)
-    #n = num_nodes(a)
-    #sum(i->outer(x[i],s[i]),1:n)
+#function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
+#    J = a.workspace.jacobian
+#    @assert J !== nothing
+#    J
+#    #s = shape_functions(ForwardDiff.gradient,a)
+#    #x = node_coordinates(a)
+#    #n = num_nodes(a)
+#    #sum(i->outer(x[i],s[i]),1:n)
+#end
+
+function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor{AtInterior})
+    a.workspace.jacobian[]
+end
+
+function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor{AtSkeleton})
+    face_around = a.space_accessor.location.face_around
+    a.workspace.jacobian[face_around]
 end
 
 function weight(a::MeshAccessor)
