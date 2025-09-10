@@ -753,7 +753,6 @@ function allocate(counter::CachedCSCCounterStep1)
     nnz = colptr[end]-1
     # nnz = k
     resize!(rowval,nnz)
-    resize!(colnnz, 0) # deallocate colnnz. check whether it is needed
     nzval = zeros(T,nnz)
     cache_p = Vector{Ti}(undef, counter.cache_count[])
     reset!(counter)
