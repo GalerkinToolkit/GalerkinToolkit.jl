@@ -719,9 +719,9 @@ function quadrature(a::MeshAccessor)
 end
 
 function at_point(a::MeshAccessor,point)
-    if point == a.space_accessor.location.point
-        return a
-    end
+    #if point == a.space_accessor.location.point
+    #    return a
+    #end
     space_accessor = at_point(a.space_accessor,point)
     if hasproperty(space_accessor.workspace,:gradients)
         i_s = shape_functions(ForwardDiff.gradient,space_accessor)
