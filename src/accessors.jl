@@ -719,6 +719,22 @@ function shape_functions(a::MeshAccessor)
     shape_functions(space_accessor)
 end
 
+function diameter(a::MeshAccessor)
+    nodes = GT.nodes(a)
+    mesh = GT.mesh(a.space_accessor.space)
+    node_x = GT.node_coordinates(mesh)
+    nnodes = length(nodes)
+    diam = zero(eltype(eltype(node_x)))
+    for i in 1:nnodes
+        xi = node_x[nodes[i]]
+        for j in 1:nnodes
+            xj = node_x[nodes[j]]
+            diam = max(diam,norm(xi-xj))
+        end
+    end
+    diam
+end
+
 function num_points(a::MeshAccessor)
     (;space_accessor) = a
     num_points(space_accessor)

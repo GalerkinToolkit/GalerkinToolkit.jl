@@ -29,6 +29,7 @@ mesh_faces = GT.each_face(mesh_dΩ)
 mesh_face = mesh_faces[2]
 @show GT.nodes(mesh_face)
 @show GT.node_coordinates(mesh_face)
+@show GT.diameter(mesh_face)
 mesh_points = GT.each_point(mesh_face)
 mesh_point = mesh_points[1]
 @show GT.coordinate(GT.value,mesh_point)
