@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757516238713,
+  "lastUpdate": 1757594508617,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2444,6 +2444,36 @@ window.BENCHMARK_DATA = {
             "value": 745268826,
             "unit": "ns",
             "extra": "gctime=19315708\nmemory=342393204\nallocs=8609789\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b0e9e9104f4bc33c0b4653e7d0cc0f5567d8fb59",
+          "message": "Merge pull request #244 from GalerkinToolkit/performance\n\nAdding a handwritten version of Poisson example using plain arrays as a reference for performance",
+          "timestamp": "2025-09-11T14:37:38+02:00",
+          "tree_id": "7a1f116f299609ea2444e1737d95f00d12692d75",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/b0e9e9104f4bc33c0b4653e7d0cc0f5567d8fb59"
+        },
+        "date": 1757594508078,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 739674681,
+            "unit": "ns",
+            "extra": "gctime=17781142\nmemory=342392900\nallocs=8609788\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
