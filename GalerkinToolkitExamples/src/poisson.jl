@@ -318,43 +318,46 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
 
     #Important arrays
     face_rid = GT.face_reference_id(V)
-    rid_V_tab = V_dΩ.reference_space_accessor.workspace.gradients
-    rid_mesh_tab = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
-    node_x = GT.node_coordinates(mesh)
-    rid_ws = map(GT.weights,GT.reference_quadratures(dΩ))
-    face_nodes = GT.face_nodes(mesh,D)
-    face_dofs = GT.face_dofs(V)
+    rid_dof_point_ref∇s = V_dΩ.reference_space_accessor.workspace.gradients
+    rid_node_point_ref∇m = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
+    gnode_x = GT.node_coordinates(mesh)
+    rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
+    face_node_gnode = GT.face_nodes(mesh,D)
+    face_dof_gdof = GT.face_dofs(V)
 
     #Temporaries
-    n = GT.max_num_reference_dofs(V)
+    ndofs_max = GT.max_num_reference_dofs(V)
     T = Float64
-    Auu = zeros(T,n,n)
+    local_A = zeros(T,ndofs_max,ndofs_max)
     nfaces = GT.num_faces(V_dΩ)
-    rid_dof_∇s = map(rid_V_tab) do V_tab
-        G = eltype(V_tab)
-        ndofs = size(V_tab,1)
+    rid_dof_∇s = map(rid_dof_point_ref∇s) do dof_point_ref∇s
+        G = eltype(dof_point_ref∇s)
+        ndofs = size(dof_point_ref∇s,1)
         zeros(G,ndofs)
     end
 
     #Numerical integration loop
     for face in 1:nfaces
-        dofs = face_dofs[face]
-        nodes = face_nodes[face]
-        ndofs = length(dofs)
+        dof_gdof = face_dof_gdof[face]
+        node_gnode = face_node_gnode[face]
+        ndofs = length(dof_gdof)
         rid = face_rid[face]
-        V_tab = rid_V_tab[rid]
-        mesh_tab = rid_mesh_tab[rid]
-        nnodes = length(nodes)
-        ws = rid_ws[rid]
-        npoints = length(ws)
+        dof_point_ref∇s = rid_dof_point_ref∇s[rid]
+        node_point_ref∇m = rid_node_point_ref∇m[rid]
+        nnodes = length(node_gnode)
+        point_w = rid_point_w[rid]
+        npoints = length(point_w)
         dof_∇s = rid_dof_∇s[rid]
-        fill!(Auu,zero(T))
+        fill!(local_A,zero(T))
         for point in 1:npoints
-            J = sum_jacobian(nodes,node_x,mesh_tab,J0,point)
-            detJ =GT.change_of_measure(J) 
-            dV = detJ*ws[point]
-            for i in 1:ndofs
-                dof_∇s[i] = J\V_tab[i,point]
+            J = sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+            detJ = GT.change_of_measure(J) 
+            w = point_w[point]
+            dV = detJ*w
+            for dof in 1:ndofs
+                ref∇s = dof_point_ref∇s[dof,point]
+                ∇s = J\ref∇s
+                dof_∇s[dof] = ∇s
             end
             j = 0
             while j < ndofs
@@ -365,33 +368,33 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
                     i += 1
                     ∇v = dof_∇s[i]
                     Aij = ∇v⋅∇u*dV
-                    Auu[i,j] += Aij
+                    local_A[i,j] += Aij
                 end
             end
         end
         #Add face contribution to the
         #global allocations
-        GT.contribute!(A_alloc,Auu,dofs,dofs)
-        GT.contribute!(Ad_alloc,Auu,dofs,dofs)
+        GT.contribute!(A_alloc,local_A,dof_gdof,dof_gdof)
+        GT.contribute!(Ad_alloc,local_A,dof_gdof,dof_gdof)
     end
 end
 
 # Do not remove the @noinline
 # it seems to be performance relevant
-@noinline function sum_jacobian(nodes,node_x,mesh_tab,J0,point)
-    s = zero(J0)
-    i = 0
-    n = length(nodes)
-    while i < n
-        i += 1
-        node = nodes[i]
-        x = node_x[node]
-        g = mesh_tab[i,point]
-        s += GT.outer(x,g)
+# Also, do not merge into function above for the same reason.
+@noinline function sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+    J = zero(J0)
+    node = 0
+    nnodes = length(node_gnode)
+    while node < nnodes
+        node += 1
+        gnode = node_gnode[node]
+        x = gnode_x[gnode]
+        ref∇m = node_point_ref∇m[node,point]
+        J += GT.outer(x,ref∇m)
     end
-    return s
+    return J
 end
-
 
 function norm2(a)
     a⋅a
