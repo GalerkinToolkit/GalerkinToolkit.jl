@@ -751,16 +751,19 @@ function at_point(a::MeshAccessor,point)
     compute_jacobian(a2)
 end
 
-function sum_jacobian(node_x,i_node,i_s,n,J0)
-    #J = zero(J0)
-    #i = 0
-    #while i < n
-    #    i += 1
-    #    J += outer(node_x[i_node[i]],i_s[i])
-    #end
-    #J
-    #TODO sum leads to much faster than hand-written loop, but why?
-    J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
+# Do not remove the @noinline
+# it seems to be performance relevant
+@noinline function sum_jacobian(node_x,i_node,i_s,n,J0)
+    J = zero(J0)
+    i = 0
+    while i < n
+        i += 1
+        J += outer(node_x[i_node[i]],i_s[i])
+    end
+    J
+    ##TODO sum leads to much faster than hand-written loop, but why?
+    #the answer was the noinline above. But why?
+    #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
 end
 
  function compute_jacobian(a::MeshAccessor)

@@ -23,6 +23,8 @@ function main(params_in)
         main_automatic(params)
     elseif params[:implementation] === :hand_written
         main_hand_written(params)
+    elseif params[:implementation] === :hand_written_arrays_API
+        main_hand_written(params)
     else
         error(" implementation should be either :automatic or :hand_written")
     end
@@ -206,7 +208,13 @@ function main_hand_written(params)
         A_alloc = GT.allocate_matrix(T,V,V,Ω)
         free_or_dirichlet=(GT.FREE,GT.DIRICHLET)
         Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet)
-        assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+        if params[:implementation] === :hand_written
+            assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+        elseif params[:implementation] === :hand_written_arrays_API
+            assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+        else
+            error()
+        end
         A = GT.compress(A_alloc)
         Ad = GT.compress(Ad_alloc)
         xd = GT.dirichlet_values(uhd)
@@ -261,6 +269,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
         #Get quantities at current face
         dofs = GT.dofs(V_face)
+        ndofs = length(dofs)
 
         #Reset face matrix
         fill!(Auu,zero(T))
@@ -273,11 +282,18 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
             dof_∇s = GT.shape_functions(∇,V_point)
 
             #Fill in face matrix
-            for (i,dofi) in enumerate(dofs)
-                ∇v = dof_∇s[i]
-                for (j,dofj) in enumerate(dofs)
-                    ∇u = dof_∇s[j]
-                    Auu[i,j] += ∇v⋅∇u*dV
+            #Preferable to use while instead of for
+            #for the innermost loops.
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    Auu[i,j] += Aij
                 end
             end
         end
@@ -287,6 +303,97 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
         GT.contribute!(A_alloc,Auu,dofs,dofs)
         GT.contribute!(Ad_alloc,Auu,dofs,dofs)
     end
+end
+
+function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+
+    ∇ = ForwardDiff.gradient
+
+    #Accessors to the quantities on the
+    #integration points
+    V_dΩ = GT.space_accessor(V,dΩ;tabulate=(∇,))
+    mesh = GT.mesh(V_dΩ.reference_space_accessor.space)
+    J0 = V_dΩ.mesh_accessor.workspace.jacobian
+    D = GT.num_dims(mesh)
+
+    #Important arrays
+    face_rid = GT.face_reference_id(V)
+    rid_dof_point_ref∇s = V_dΩ.reference_space_accessor.workspace.gradients
+    rid_node_point_ref∇m = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
+    gnode_x = GT.node_coordinates(mesh)
+    rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
+    face_node_gnode = GT.face_nodes(mesh,D)
+    face_dof_gdof = GT.face_dofs(V)
+
+    #Temporaries
+    ndofs_max = GT.max_num_reference_dofs(V)
+    T = Float64
+    local_A = zeros(T,ndofs_max,ndofs_max)
+    nfaces = GT.num_faces(V_dΩ)
+    rid_dof_∇s = map(rid_dof_point_ref∇s) do dof_point_ref∇s
+        G = eltype(dof_point_ref∇s)
+        ndofs = size(dof_point_ref∇s,1)
+        zeros(G,ndofs)
+    end
+
+    #Numerical integration loop
+    for face in 1:nfaces
+        dof_gdof = face_dof_gdof[face]
+        node_gnode = face_node_gnode[face]
+        ndofs = length(dof_gdof)
+        rid = face_rid[face]
+        dof_point_ref∇s = rid_dof_point_ref∇s[rid]
+        node_point_ref∇m = rid_node_point_ref∇m[rid]
+        nnodes = length(node_gnode)
+        point_w = rid_point_w[rid]
+        npoints = length(point_w)
+        dof_∇s = rid_dof_∇s[rid]
+        fill!(local_A,zero(T))
+        for point in 1:npoints
+            J = sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+            detJ = GT.change_of_measure(J) 
+            w = point_w[point]
+            dV = detJ*w
+            for dof in 1:ndofs
+                ref∇s = dof_point_ref∇s[dof,point]
+                ∇s = J\ref∇s
+                dof_∇s[dof] = ∇s
+            end
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    local_A[i,j] += Aij
+                end
+            end
+        end
+        #Add face contribution to the
+        #global allocations
+        GT.contribute!(A_alloc,local_A,dof_gdof,dof_gdof)
+        GT.contribute!(Ad_alloc,local_A,dof_gdof,dof_gdof)
+    end
+end
+
+# Do not remove the @noinline
+# it seems to be performance relevant
+# Also, do not merge into function above for the same reason.
+@noinline function sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+    J = zero(J0)
+    node = 0
+    nnodes = length(node_gnode)
+    while node < nnodes
+        node += 1
+        gnode = node_gnode[node]
+        x = gnode_x[gnode]
+        ref∇m = node_point_ref∇m[node,point]
+        J += GT.outer(x,ref∇m)
+    end
+    return J
 end
 
 function norm2(a)
