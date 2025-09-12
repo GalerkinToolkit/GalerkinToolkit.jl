@@ -195,7 +195,7 @@ end
 """
 function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
-    face_around=nothing,
+    faces_around=nothing,
     is_reference_domain=Val(false),
     group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
@@ -236,31 +236,29 @@ function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
     group_names=[group_boundary_faces!(mesh)],
     is_reference_domain=Val(false),
-    face_around = 1,
+    faces_around = nothing,
     )
     d = num_dims(mesh) - 1
-    mesh_domain(mesh;
+    domain = mesh_domain(mesh;
         mesh_id,
         group_names,
-        face_around,
+        faces_around,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
+    if faces_around === nothing
+        nfaces = num_faces(domain)
+        new_faces_around = FillArrays.Fill(1,nfaces)
+        domain2 = replace_faces_around(domain,new_faces_around)
+    else
+        domain2 = domain
+    end
 end
 
 function boundary(domain::AbstractDomain;
-    mesh_id = objectid(GT.mesh(domain)),
     group_names=[group_boundary_faces!(domain)],
-    is_reference_domain=Val(false),
-    face_around = 1,
-    )
+    kwargs...)
     mesh = GT.mesh(domain)
-    d = num_dims(mesh) - 1
-    mesh_domain(mesh;
-        mesh_id,
-        group_names,
-        face_around,
-        num_dims=Val(val_parameter(d)),
-        is_reference_domain)
+    boundary(mesh;group_names,kwargs...)
 end
 
 function reference_domains(a::AbstractMesh,d)
