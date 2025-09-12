@@ -315,7 +315,7 @@ function counter(s::MonolithicAssembly,::Type{T},dofs_i::BRange,dofs_j::BRange;
     kwargs...) where T
     counter = GT.counter(s.method,T,dofs_i,dofs_j;kwargs...)
     offsets_i = blocklasts(dofs_i) .- map(length,blocks(dofs_i))
-    offsets_j = blocklasts(dofs_j) .- map(length,blocks(dofs_i))
+    offsets_j = blocklasts(dofs_j) .- map(length,blocks(dofs_j))
     offsets = (offsets_i,offsets_j)
     MonolithicAssemblyCounter(counter,offsets,block_mask)
 end
