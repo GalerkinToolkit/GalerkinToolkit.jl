@@ -2369,7 +2369,7 @@ function num_faces_around_accesor(domain_space,domain)
     faces_around = GT.faces_around(domain)
     if d == D
         num_faces_around_accesor_interior(domain_space,space)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         num_faces_around_accesor_interior(domain_space,space)
     else
         num_faces_around_accesor_skeleton(domain_space,space)

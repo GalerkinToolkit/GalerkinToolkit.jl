@@ -496,10 +496,11 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             face_around_term = leaf_term(nothing)
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
-        elseif D==d+1 && face_around !== nothing
+        elseif D==d+1 && faces_around !== nothing
+            #NB this is not constant anymore
             #the_face_around_term = leaf_term(face_around, is_compile_constant=true)
             #face_around_term = leaf_term(face_around)
-            the_face_around_term = GT.face_around_term(index,d,D)
+            the_face_around_term = RefTerm(leaf_term(GT.faces_around(domain)),leaf_term(face))
             face_around_term = the_face_around_term
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies)
