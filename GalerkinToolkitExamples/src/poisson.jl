@@ -324,6 +324,12 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
     rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
     face_node_gnode = GT.face_nodes(mesh,D)
     face_dof_gdof = GT.face_dofs(V)
+    nzindex_I = A_alloc.allocation.I
+    nzindex_J = A_alloc.allocation.J
+    nzindex_V = A_alloc.allocation.V
+    nzindex_Id = Ad_alloc.allocation.I
+    nzindex_Jd = Ad_alloc.allocation.J
+    nzindex_Vd = Ad_alloc.allocation.V
 
     #Temporaries
     ndofs_max = GT.max_num_reference_dofs(V)
@@ -337,7 +343,11 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
     end
 
     #Numerical integration loop
+    nzindex = 0
+    nzindex_d = 0
     for face in 1:nfaces
+
+        #Quantities at this face
         dof_gdof = face_dof_gdof[face]
         node_gnode = face_node_gnode[face]
         ndofs = length(dof_gdof)
@@ -348,6 +358,8 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
         point_w = rid_point_w[rid]
         npoints = length(point_w)
         dof_∇s = rid_dof_∇s[rid]
+
+        #Integrate local matrix
         fill!(local_A,zero(T))
         for point in 1:npoints
             J = sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
@@ -372,11 +384,33 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
                 end
             end
         end
+
         #Add face contribution to the
         #global allocations
-        GT.contribute!(A_alloc,local_A,dof_gdof,dof_gdof)
-        GT.contribute!(Ad_alloc,local_A,dof_gdof,dof_gdof)
-    end
+        for j in 1:ndofs
+            gdof_j = dof_gdof[j]
+            for i in 1:ndofs
+                gdof_i = dof_gdof[i]
+                if gdof_i < 0
+                    continue
+                end
+                Aij = local_A[i,j]
+                if gdof_j > 0
+                    nzindex += 1
+                    nzindex_I[nzindex] = gdof_i
+                    nzindex_J[nzindex] = gdof_j
+                    nzindex_V[nzindex] = Aij
+                else
+                    nzindex_d += 1
+                    nzindex_Id[nzindex_d] = gdof_i
+                    nzindex_Jd[nzindex_d] = -gdof_j
+                    nzindex_Vd[nzindex_d] = Aij
+                end
+            end
+        end
+
+    end # for face
+
 end
 
 # Do not remove the @noinline
