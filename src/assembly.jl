@@ -581,9 +581,8 @@ function csc_assembly(use_cache=Val(true))
     CSCAssembly(use_cache)
 end
 
-const ValBoolean = Union{Val{true}, Val{false}}
-struct CSCAssembly <: AbstractType
-    use_cache::ValBoolean
+struct CSCAssembly{A} <: AbstractType
+    use_cache::Val{A}
 end
 
 function counter(s::CSCAssembly,::Type{T},dofs_i,dofs_j;
@@ -595,13 +594,13 @@ function counter(s::CSCAssembly,::Type{T},dofs_i,dofs_j;
     CSCCounter(matrix_type,index_type,ni,nj,colnnz,s.use_cache)
 end
 
-struct CSCCounter{A,B} <: AbstractType
+struct CSCCounter{A,B,C} <: AbstractType
     matrix_type::Type{A}
     index_type::Type{B}
     nrows::Int
     ncols::Int
     colnnz::Vector{B}
-    use_cache::ValBoolean
+    use_cache::Val{C}
 end
 
 # in step 1, we allocate the contribution cache and precompute the colptr & rowval
