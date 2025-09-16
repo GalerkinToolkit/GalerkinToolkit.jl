@@ -568,10 +568,10 @@ end
 #    nodedata
 #end
 
-function plot(pmesh::PMesh)
-    plts = map(plot,partition(pmesh))
-    PPlot(plts)
-end
+#function plot(pmesh::PMesh)
+#    plts = map(plot,partition(pmesh))
+#    PPlot(plts)
+#end
 
 function restrict_to_dim(mesh::AbstractMesh,d)
     chain = GT.chain(;
@@ -799,14 +799,14 @@ function plot(domain::AbstractDomain;kwargs...)
     Plot(vmesh,fd,node_data,cache)
 end
 
-function plot(domain::AbstractMeshDomain{<:PMesh};kwargs...)
-    mesh = GT.mesh(domain)
-    plts = map(partition(domain)) do mydom
-        plt = plot(mydom;kwargs...)
-    end
-    cache = (;domain)
-    PPlot(plts,cache)
-end
+#function plot(domain::AbstractMeshDomain{<:PMesh};kwargs...)
+#    mesh = GT.mesh(domain)
+#    plts = map(partition(domain)) do mydom
+#        plt = plot(mydom;kwargs...)
+#    end
+#    cache = (;domain)
+#    PPlot(plts,cache)
+#end
 
 function plot!(field,plt::Plot;label)
     plot!(plt,field;label)

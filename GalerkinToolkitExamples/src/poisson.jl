@@ -23,6 +23,8 @@ function main(params_in)
         main_automatic(params)
     elseif params[:implementation] === :hand_written
         main_hand_written(params)
+    elseif params[:implementation] === :hand_written_arrays_API
+        main_hand_written(params)
     else
         error(" implementation should be either :automatic or :hand_written")
     end
@@ -62,29 +64,29 @@ function main_automatic(params)
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
     if params[:discretization_method] !== :continuous_galerkin
-        conformity = :L2
+        continuous = false
         GT.group_interior_faces!(mesh;group_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
     else
-        conformity = :default
+        continuous = true
     end
 
     if params[:dirichlet_method] === :strong
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous,dirichlet_boundary=Γd)
         uhd = GT.zero_dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(mesh,D-1)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous)
     end
 
     if params[:dirichlet_method] === :multipliers
-        Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        Q = GT.lagrange_space(Γd,interpolation_degree-1;continuous=false)
         VxQ = V × Q
     end
 
@@ -206,7 +208,13 @@ function main_hand_written(params)
         A_alloc = GT.allocate_matrix(T,V,V,Ω)
         free_or_dirichlet=(GT.FREE,GT.DIRICHLET)
         Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet)
-        assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+        if params[:implementation] === :hand_written
+            assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+        elseif params[:implementation] === :hand_written_arrays_API
+            assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+        else
+            error()
+        end
         A = GT.compress(A_alloc)
         Ad = GT.compress(Ad_alloc)
         xd = GT.dirichlet_values(uhd)
@@ -245,15 +253,11 @@ end
 
 function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
+    ∇ = ForwardDiff.gradient
+
     #Accessors to the quantities on the
     #integration points
-    Ω = GT.domain(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_dofs = GT.dofs_accessor(V,Ω)
-    ∇ = ForwardDiff.gradient
-    face_point_dof_∇s = GT.shape_function_accessor(∇,V,dΩ)
+    V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
 
     #Temporaries
     n = GT.max_num_reference_dofs(V)
@@ -261,32 +265,35 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
     Auu = zeros(T,n,n)
 
     #Numerical integration loop
-    for face in 1:GT.num_faces(Ω)
+    for V_face in V_faces
 
         #Get quantities at current face
-        npoints = face_npoints(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_dof_∇s = face_point_dof_∇s(face)
-        dofs = face_dofs(face)
+        dofs = GT.dofs(V_face)
+        ndofs = length(dofs)
 
         #Reset face matrix
         fill!(Auu,zero(T))
 
         #Loop over integration points
-        for point in 1:npoints
+        for V_point in GT.each_point(V_face)
 
             #Get quantities at current integration point
-            J = point_J(point)
-            dV = point_dV(point,J)
-            dof_∇s = point_dof_∇s(point,J)
+            dV = GT.weight(V_point)
+            dof_∇s = GT.shape_functions(∇,V_point)
 
             #Fill in face matrix
-            for (i,dofi) in enumerate(dofs)
-                ∇v = dof_∇s(i)
-                for (j,dofj) in enumerate(dofs)
-                    ∇u = dof_∇s(j)
-                    Auu[i,j] += ∇v⋅∇u*dV
+            #Preferable to use while instead of for
+            #for the innermost loops.
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    Auu[i,j] += Aij
                 end
             end
         end
@@ -298,43 +305,156 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
     end
 end
 
+function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+
+    ∇ = ForwardDiff.gradient
+
+    #Accessors to the quantities on the
+    #integration points
+    V_dΩ = GT.space_accessor(V,dΩ;tabulate=(∇,))
+    mesh = GT.mesh(V_dΩ.reference_space_accessor.space)
+    J0 = V_dΩ.mesh_accessor.workspace.jacobian
+    D = GT.num_dims(mesh)
+
+    #Important arrays
+    face_rid = GT.face_reference_id(V)
+    rid_dof_point_ref∇s = V_dΩ.reference_space_accessor.workspace.gradients
+    rid_node_point_ref∇m = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
+    gnode_x = GT.node_coordinates(mesh)
+    rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
+    face_node_gnode = GT.face_nodes(mesh,D)
+    face_dof_gdof = GT.face_dofs(V)
+    nzindex_I = A_alloc.allocation.I
+    nzindex_J = A_alloc.allocation.J
+    nzindex_V = A_alloc.allocation.V
+    nzindex_Id = Ad_alloc.allocation.I
+    nzindex_Jd = Ad_alloc.allocation.J
+    nzindex_Vd = Ad_alloc.allocation.V
+
+    #Temporaries
+    ndofs_max = GT.max_num_reference_dofs(V)
+    T = Float64
+    local_A = zeros(T,ndofs_max,ndofs_max)
+    nfaces = GT.num_faces(V_dΩ)
+    rid_dof_∇s = map(rid_dof_point_ref∇s) do dof_point_ref∇s
+        G = eltype(dof_point_ref∇s)
+        ndofs = size(dof_point_ref∇s,1)
+        zeros(G,ndofs)
+    end
+
+    #Numerical integration loop
+    nzindex = 0
+    nzindex_d = 0
+    for face in 1:nfaces
+
+        #Quantities at this face
+        dof_gdof = face_dof_gdof[face]
+        node_gnode = face_node_gnode[face]
+        ndofs = length(dof_gdof)
+        rid = face_rid[face]
+        dof_point_ref∇s = rid_dof_point_ref∇s[rid]
+        node_point_ref∇m = rid_node_point_ref∇m[rid]
+        nnodes = length(node_gnode)
+        point_w = rid_point_w[rid]
+        npoints = length(point_w)
+        dof_∇s = rid_dof_∇s[rid]
+
+        #Integrate local matrix
+        fill!(local_A,zero(T))
+        for point in 1:npoints
+            J = sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+            detJ = GT.change_of_measure(J) 
+            w = point_w[point]
+            dV = detJ*w
+            for dof in 1:ndofs
+                ref∇s = dof_point_ref∇s[dof,point]
+                ∇s = J\ref∇s
+                dof_∇s[dof] = ∇s
+            end
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    local_A[i,j] += Aij
+                end
+            end
+        end
+
+        #Add face contribution to the
+        #global allocations
+        for j in 1:ndofs
+            gdof_j = dof_gdof[j]
+            for i in 1:ndofs
+                gdof_i = dof_gdof[i]
+                if gdof_i < 0
+                    continue
+                end
+                Aij = local_A[i,j]
+                if gdof_j > 0
+                    nzindex += 1
+                    nzindex_I[nzindex] = gdof_i
+                    nzindex_J[nzindex] = gdof_j
+                    nzindex_V[nzindex] = Aij
+                else
+                    nzindex_d += 1
+                    nzindex_Id[nzindex_d] = gdof_i
+                    nzindex_Jd[nzindex_d] = -gdof_j
+                    nzindex_Vd[nzindex_d] = Aij
+                end
+            end
+        end
+
+    end # for face
+
+end
+
+# Do not remove the @noinline
+# it seems to be performance relevant
+# Also, do not merge into function above for the same reason.
+@noinline function sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+    J = zero(J0)
+    node = 0
+    nnodes = length(node_gnode)
+    while node < nnodes
+        node += 1
+        gnode = node_gnode[node]
+        x = gnode_x[gnode]
+        ref∇m = node_point_ref∇m[node,point]
+        J += GT.outer(x,ref∇m)
+    end
+    return J
+end
+
 function norm2(a)
     a⋅a
 end
 
 function integrate_error(g,uh,dΩ)
 
+    ∇ = ForwardDiff.gradient
+
     #Accessors to the quantities on the
     #integration points
-    face_point_x = GT.coordinate_accessor(dΩ)
-    face_point_J = GT.jacobian_accessor(dΩ)
-    face_point_dV = GT.weight_accessor(dΩ)
-    face_npoints = GT.num_points_accessor(dΩ)
-    face_point_uhx = GT.discrete_field_accessor(GT.value,uh,dΩ)
-    face_point_∇uhx = GT.discrete_field_accessor(ForwardDiff.gradient,uh,dΩ)
+    tabulate = (∇,GT.value)
+    compute = (GT.coordinate,)
+    uh_faces = GT.each_face(uh,dΩ;tabulate,compute)
 
     #Numerical integration loop
     s = 0.0
     s1 = 0.0
-    Ω = GT.domain(dΩ)
-    for face in 1:GT.num_faces(Ω)
-
-        #Get quantities at current face
-        npoints = face_npoints(face)
-        point_x = face_point_x(face)
-        point_J = face_point_J(face)
-        point_dV = face_point_dV(face)
-        point_uhx = face_point_uhx(face)
-        point_∇uhx = face_point_∇uhx(face)
-
-        for point in 1:npoints
+    for uh_face in uh_faces
+        for uh_point in GT.each_point(uh_face)
 
             #Get quantities at current integration point
-            x = point_x(point)
-            J = point_J(point)
-            dV = point_dV(point,J)
-            uhx = point_uhx(point,J)
-            ∇uhx = point_∇uhx(point,J)
+            x = GT.coordinate(uh_point)
+            dV = GT.weight(uh_point)
+            uhx = GT.field(GT.value,uh_point)
+            ∇uhx = GT.field(∇,uh_point)
 
             #Add contribution
             s += abs2(uhx-g.definition(x))*dV

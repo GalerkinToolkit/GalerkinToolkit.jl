@@ -21,6 +21,128 @@ dΩ = GT.measure(Ω,2*k)
 dΓ = GT.measure(Γ,2*k)
 dΛ = GT.measure(Λ,2*k)
 
+D = GT.num_dims(mesh)
+mesh_dΩ = GT.mesh_accessor(mesh,D,dΩ)
+mesh_dΩ = GT.tabulate(GT.value,mesh_dΩ)
+mesh_dΩ = GT.tabulate(ForwardDiff.gradient,mesh_dΩ)
+mesh_faces = GT.each_face(mesh_dΩ)
+mesh_face = mesh_faces[2]
+@show GT.nodes(mesh_face)
+@show GT.node_coordinates(mesh_face)
+@show GT.diameter(mesh_face)
+mesh_points = GT.each_point(mesh_face)
+mesh_point = mesh_points[1]
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+
+for mesh_face in GT.each_face(mesh_dΩ)
+    GT.nodes(mesh_face)
+    GT.node_coordinates(mesh_face)
+    GT.num_nodes(mesh_face)
+    for mesh_point in GT.each_point(mesh_face)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+    end
+end
+
+mesh_dΓ = GT.mesh_accessor(mesh,D,dΓ)
+mesh_dΓ = GT.tabulate(GT.value,mesh_dΓ)
+mesh_dΓ = GT.tabulate(ForwardDiff.gradient,mesh_dΓ)
+mesh_faces = GT.each_face(mesh_dΓ)
+mesh_face = mesh_faces[2]
+@show GT.nodes(mesh_face)
+@show GT.node_coordinates(mesh_face)
+mesh_points = GT.each_point(mesh_face)
+mesh_point = mesh_points[1]
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+
+for mesh_face in GT.each_face(mesh_dΓ)
+    GT.nodes(mesh_face)
+    GT.node_coordinates(mesh_face)
+    GT.num_nodes(mesh_face)
+    for mesh_point in GT.each_point(mesh_face)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+    end
+end
+
+compute = (GT.unit_normal,GT.coordinate,GT.jacobian)
+mesh_dΛ = GT.mesh_accessor(mesh,D,dΛ;compute)
+mesh_dfaces = GT.each_face(mesh_dΛ)
+mesh_dface = mesh_dfaces[2]
+mesh_Dfaces = GT.each_face_around(mesh_dface)
+mesh_Dface = mesh_Dfaces[2]
+@show GT.nodes(mesh_Dface)
+@show GT.node_coordinates(mesh_Dface)
+mesh_points = GT.each_point(mesh_Dface)
+mesh_point = mesh_points[1]
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+@show GT.unit_normal(mesh_point)
+@show GT.coordinate(mesh_point)
+@show GT.jacobian(mesh_point)
+
+for mesh_dface in GT.each_face(mesh_dΛ)
+    for mesh_Dface in GT.each_face_around(mesh_dface)
+        GT.nodes(mesh_Dface)
+        GT.node_coordinates(mesh_Dface)
+        GT.num_nodes(mesh_Dface)
+        for mesh_point in GT.each_point(mesh_Dface)
+            GT.coordinate(mesh_point)
+            GT.coordinate(GT.value,mesh_point)
+            GT.coordinate(ForwardDiff.jacobian,mesh_point)
+            GT.weight(mesh_point)
+            GT.unit_normal(mesh_point)
+        end
+    end
+end
+
+dΩ_faces = GT.each_face(dΩ)
+dΩ_face = dΩ_faces[2]
+dΩ_points = GT.each_point(dΩ_face)
+dΩ_point = dΩ_points[2]
+@show GT.coordinate(dΩ_point)
+@show GT.weight(dΩ_point)
+
+dΓ_faces = GT.each_face(dΓ)
+dΓ_face = dΓ_faces[2]
+dΓ_points = GT.each_point(dΓ_face)
+dΓ_point = dΓ_points[2]
+@show GT.coordinate(dΓ_point)
+@show GT.weight(dΓ_point)
+
+dΛ_dfaces = GT.each_face(dΛ)
+dΛ_dface = dΛ_dfaces[2]
+dΛ_points = GT.each_point(dΛ_dface)
+dΛ_point = dΛ_points[2]
+@show GT.coordinate(dΛ_point)
+@show GT.weight(dΛ_point)
+
+V_dΩ = GT.space_accessor(V,dΩ)
+V_dΩ = GT.tabulate(GT.value,V_dΩ)
+V_dΩ = GT.tabulate(ForwardDiff.gradient,V_dΩ)
+V_faces = GT.each_face(V_dΩ)
+V_face = V_faces[1]
+V_points = GT.each_point(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+
+uh = GT.zero_field(Float64,V)
+uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,))
+uh_faces = GT.each_face(uh_dΩ)
+uh_face = uh_faces[1]
+uh_points = GT.each_point(uh_face)
+uh_point = uh_points[1]
+@show GT.field(GT.value,uh_point)
+
 f_l_x = GT.node_coordinate_accessor(mesh,2)
 @show f_l_x(2)(1)
 

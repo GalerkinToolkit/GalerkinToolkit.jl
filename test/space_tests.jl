@@ -39,47 +39,47 @@ GT.interpolate_dirichlet(g,V)
 
 V = GT.lagrange_space(Λ,order)
 
-domain = (0,1,0,1)
-cells_per_dir = (4,4)
-parts_per_dir = (2,2)
-np = prod(parts_per_dir)
-parts = DebugArray(LinearIndices((np,)))
-mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
-
-Ω = GT.interior(mesh)
-Γ = GT.boundary(mesh)
-Λ = GT.skeleton(mesh)
-
-#vtk_grid("pgamma",Γ) |> close
-#vtk_grid("plam",Λ) |> close
-
-# TODO
-#map(partition(Ω)) do dom
-#    imesh = GT.mesh(dom)
-#    ids = GT.face_local_indices(imesh,2)
-#    local_to_owner(ids)
-#end |> display
-#vtk_grid("pdom",Ω) |> close
-
-order = 1
-
-V = GT.lagrange_space(Ω,order)
-V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
-
-@test GT.face_dofs(V) isa PVector
-
-#map(partition(GT.free_dofs(V))) do ids
-#    display(local_to_owner(ids))
+#domain = (0,1,0,1)
+#cells_per_dir = (4,4)
+#parts_per_dir = (2,2)
+#np = prod(parts_per_dir)
+#parts = DebugArray(LinearIndices((np,)))
+#mesh = GT.cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir)
+#
+#Ω = GT.interior(mesh)
+#Γ = GT.boundary(mesh)
+#Λ = GT.skeleton(mesh)
+#
+##vtk_grid("pgamma",Γ) |> close
+##vtk_grid("plam",Λ) |> close
+#
+## TODO
+##map(partition(Ω)) do dom
+##    imesh = GT.mesh(dom)
+##    ids = GT.face_local_indices(imesh,2)
+##    local_to_owner(ids)
+##end |> display
+##vtk_grid("pdom",Ω) |> close
+#
+#order = 1
+#
+#V = GT.lagrange_space(Ω,order)
+#V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+#
+#@test GT.face_dofs(V) isa PVector
+#
+##map(partition(GT.free_dofs(V))) do ids
+##    display(local_to_owner(ids))
+##end
+#
+#map(partition(V)) do space
+#    display(GT.face_dofs(space))
 #end
-
-map(partition(V)) do space
-    display(GT.face_dofs(space))
-end
-
-#u = GT.analytical_field(sum,Ω)
-#T = Float64
-#uh = GT.undef_field(T,V)
-#GT.interpolate!(u,uh)
+#
+##u = GT.analytical_field(sum,Ω)
+##T = Float64
+##uh = GT.undef_field(T,V)
+##GT.interpolate!(u,uh)
 
 
 #@code_warntype GT.unit_simplex(Val(3))
@@ -486,11 +486,11 @@ uh2 = GT.zero_field(Float64,V)
 GT.interpolate_dirichlet!(udiri,uh2)
 
 order = 1
-V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,conformity=:L2)
+V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri,continuous=false)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,conformity=:L2)
+V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,continuous=false)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
@@ -508,11 +508,11 @@ end
 
 Γ = GT.boundary(mesh;group_names=["boundary_faces"])
 
-V = GT.lagrange_space(Γ,order;conformity=:L2)
+V = GT.lagrange_space(Γ,order;continuous=false)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-V = GT.lagrange_space(Γ,order-1;conformity=:L2)
+V = GT.lagrange_space(Γ,order-1;continuous=false)
 GT.reference_spaces(V) # TODO why 2 reference fes?
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)

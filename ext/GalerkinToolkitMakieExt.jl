@@ -425,20 +425,20 @@ function Makie.convert_arguments(::Type{<:Makie_vertices},mesh::GT.AbstractMesh)
     (plt,)
 end
 
-function Makie.convert_arguments(::Type{<:Makie_surfaces},mesh::GT.AbstractPMesh)
-    plt = PartitionedArrays.centralize(GT.plot(mesh))
-    (plt,)
-end
-
-function Makie.convert_arguments(::Type{<:Makie_edges},mesh::GT.AbstractPMesh)
-    plt = PartitionedArrays.centralize(GT.plot(mesh))
-    (plt,)
-end
-
-function Makie.convert_arguments(::Type{<:Makie_vertices},mesh::GT.AbstractPMesh)
-    plt = PartitionedArrays.centralize(GT.plot(mesh))
-    (plt,)
-end
+#function Makie.convert_arguments(::Type{<:Makie_surfaces},mesh::GT.AbstractPMesh)
+#    plt = PartitionedArrays.centralize(GT.plot(mesh))
+#    (plt,)
+#end
+#
+#function Makie.convert_arguments(::Type{<:Makie_edges},mesh::GT.AbstractPMesh)
+#    plt = PartitionedArrays.centralize(GT.plot(mesh))
+#    (plt,)
+#end
+#
+#function Makie.convert_arguments(::Type{<:Makie_vertices},mesh::GT.AbstractPMesh)
+#    plt = PartitionedArrays.centralize(GT.plot(mesh))
+#    (plt,)
+#end
 
 function Makie.convert_single_argument(::Type{<:Makie.AbstractPlot},pplot::GT.PPlot)
     plt = PartitionedArrays.centralize(pplot)

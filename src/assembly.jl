@@ -85,24 +85,32 @@ function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace
     dof_maps = (dof_map_i,dof_map_j)
     fields_i = ntuple(identity,num_fields(space_i))
     fields_j = ntuple(identity,num_fields(space_j))
+    args = (domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
+    allocate_matrix_barrier!(counter, args...)
+    alloc_0 = allocate(counter)
+    alloc = if (alloc_0 isa CachedCSCCounterStep1) || (alloc_0 isa MonolithicAssemblyCounter) # TODO: make it more general
+        allocate_matrix_barrier!(alloc_0, args...)
+        alloc_1 = allocate(alloc_0)
+        allocate_matrix_barrier!(alloc_1, args...)
+        finalize(alloc_1)
+    else 
+        alloc_0
+    end
+    MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
+end
+
+function allocate_matrix_barrier!(counter, domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
     for domain in domains
         nfaces = num_faces(domain)
         field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
         field_face_dofs_j = map(field_j->dofs_accessor(GT.field(space_j,field_j),domain),fields_j)
         field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
         field_face_nfaces_around_j = map(field_j->num_faces_around_accesor(GT.domain(GT.field(space_j,field_j)),domain),fields_j)
-        allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
+        allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
     end
-    alloc = allocate(counter)
-    MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
 end
 
-struct SparseMatrixCSCWithCache{A, B} <: AbstractType
-    matrix::A
-    cache::B
-end
-
-function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,map_i,map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
+function allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,map_i,map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
     if ! do_loop(counter)
         return counter
     end
@@ -115,12 +123,12 @@ function allocate_matrix_barrier!(counter,nfaces,fields_i,fields_j,field_face_do
                     dofs_i = field_face_dofs_i[field_i](face,face_around_i)
                     for face_around_j in 1:nfaces_around_j
                         dofs_j = field_face_dofs_j[field_j](face,face_around_j)
-                        for dof_i in dofs_i
-                            if skip_dof(dof_i,free_or_diri_i)
+                        for dof_j in dofs_j
+                            if skip_dof(dof_j,free_or_diri_j)
                                 continue
                             end
-                            for dof_j in dofs_j
-                                if skip_dof(dof_j,free_or_diri_j)
+                            for dof_i in dofs_i
+                                if skip_dof(dof_i,free_or_diri_i)
                                     continue
                                 end
                                 contribute!(counter,nothing,map_i(dof_i),map_j(dof_j),field_i,field_j)
@@ -309,7 +317,7 @@ function counter(s::MonolithicAssembly,::Type{T},dofs_i::BRange,dofs_j::BRange;
     kwargs...) where T
     counter = GT.counter(s.method,T,dofs_i,dofs_j;kwargs...)
     offsets_i = blocklasts(dofs_i) .- map(length,blocks(dofs_i))
-    offsets_j = blocklasts(dofs_j) .- map(length,blocks(dofs_i))
+    offsets_j = blocklasts(dofs_j) .- map(length,blocks(dofs_j))
     offsets = (offsets_i,offsets_j)
     MonolithicAssemblyCounter(counter,offsets,block_mask)
 end
@@ -351,7 +359,17 @@ end
 function allocate(mcounter::MonolithicAssemblyCounter)
     (;counter,offsets,block_mask) = mcounter
     alloc = allocate(counter)
-    reset!(counter)
+    if ((counter isa CSCCounter) && val_parameter(counter.use_cache)) || (counter isa CachedCSCCounterStep1)
+        MonolithicAssemblyCounter(alloc, offsets, block_mask)
+    else
+        reset!(counter)
+        MonolithicAssemblyAllocation(alloc,offsets,block_mask)
+    end
+end
+
+function finalize(mcounter::MonolithicAssemblyCounter)
+    (;counter,offsets,block_mask) = mcounter
+    alloc = finalize(counter)
     MonolithicAssemblyAllocation(alloc,offsets,block_mask)
 end
 
@@ -359,11 +377,6 @@ struct MonolithicAssemblyAllocation{A,B,C} <: AbstractType
     allocation::A
     offsets::B
     block_mask::C
-end
-
-function reset!(alloc::MonolithicAssemblyAllocation)
-    reset!(alloc.allocation)
-    alloc
 end
 
 Base.eltype(alloc::MonolithicAssemblyAllocation) = eltype(alloc.allocation)
@@ -377,6 +390,11 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
     alloc
 end
 
+function reset!(alloc::MonolithicAssemblyAllocation)
+    reset!(alloc.allocation)
+    alloc
+end
+
 function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j)
     if alloc.block_mask[field_i,field_j]
         offsets_i,offsets_j = alloc.offsets
@@ -387,7 +405,7 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j)
     alloc
 end
 
-function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(false))
+function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(true))
     compress(malloc.allocation;reuse)
 end
 
@@ -561,11 +579,13 @@ end
 
 ## CSC assembly
 
-function csc_assembly()
-    CSCAssembly()
+function csc_assembly(use_cache=Val(true))
+    CSCAssembly(use_cache)
 end
 
-struct CSCAssembly <: AbstractType end
+struct CSCAssembly{A} <: AbstractType
+    use_cache::Val{A}
+end
 
 function counter(s::CSCAssembly,::Type{T},dofs_i,dofs_j;
     eltype=T,index_type=Int32,matrix_type=SparseMatrixCSC{eltype,index_type}) where T
@@ -573,24 +593,58 @@ function counter(s::CSCAssembly,::Type{T},dofs_i,dofs_j;
     ni = length(dofs_i)
     nj = length(dofs_j)
     colnnz = zeros(index_type,nj)
-    CSCCounter(matrix_type,index_type,ni,nj,colnnz)
+    CSCCounter(matrix_type,index_type,ni,nj,colnnz,s.use_cache)
 end
 
-struct CSCCounter{A,B} <: AbstractType
+struct CSCCounter{A,B,C} <: AbstractType
     matrix_type::Type{A}
     index_type::Type{B}
     nrows::Int
     ncols::Int
     colnnz::Vector{B}
+    use_cache::Val{C}
 end
 
-function do_loop(counter::CSCCounter)
+# in step 1, we allocate the contribution cache and precompute the colptr & rowval
+# in step 2, we precompute the positions of all contributions
+struct CachedCSCCounterStep1{A,B} <: AbstractType
+    matrix_type::Type{A}
+    index_type::Type{B}
+    nrows::Int
+    ncols::Int
+    colptr::Vector{B}
+    colnnz::Vector{B}
+    rowval::Vector{B}
+    cache_count::Base.RefValue{Int}
+end
+
+struct CachedCSCCounterStep2{Tv,Ti} <: AbstractType
+  nrows::Int
+  ncols::Int
+  colptr::Vector{Ti}
+  rowval::Vector{Ti}
+  nzval::Vector{Tv}
+  cache_p::Vector{Ti}
+  cache_id::Base.RefValue{Int}
+end
+
+
+function do_loop(counter::Union{CSCCounter, CachedCSCCounterStep1, CachedCSCCounterStep2})
     true
 end
 
 function reset!(counter::CSCCounter)
     fill!(counter.colnnz,zero(eltype(counter.colnnz)))
     counter
+end
+
+function reset!(counter::CachedCSCCounterStep1)
+    fill!(counter.colnnz,zero(eltype(counter.colnnz)))
+    counter
+end
+
+function finalize(counter::CachedCSCCounterStep2)
+    CachedCSCAllocation(counter.nrows, counter.ncols, counter.colptr, counter.rowval, counter.nzval, counter.cache_p, Ref(0))
 end
 
 function contribute!(counter::CSCCounter,v,i,j,field_i,field_j)
@@ -616,9 +670,94 @@ function allocate(counter::CSCCounter)
     length_to_ptrs!(colptr)
     ndata = colptr[end] - one(Ti)
     rowval = Vector{Ti}(undef,ndata)
-    nzval = zeros(T,ndata)
     reset!(counter)
-    CSCAllocation(nrows,ncols,colptr,colnnz,rowval,nzval)
+
+    if val_parameter(counter.use_cache)
+        CachedCSCCounterStep1(counter.matrix_type,counter.index_type,nrows,ncols,colptr,colnnz,rowval,Ref(0))
+    else
+        nzval = zeros(T,ndata)
+        CSCAllocation(nrows,ncols,colptr,colnnz,rowval,nzval) # cache_i, cache_j, Ref(0), Ref(0))
+    end 
+end
+
+
+function contribute!(counter::CachedCSCCounterStep1,v,i,j,field_i,field_j)
+    @boundscheck @assert length(i) == 1
+    @boundscheck @assert length(j) == 1
+    @boundscheck @assert field_i == 1
+    @boundscheck @assert field_j == 1
+    @boundscheck @assert v === nothing
+    pini = Int(counter.colptr[j])
+    pend = pini + Int(counter.colnnz[j]) - 1
+    p = searchsortedfirst(counter.rowval,i,pini,pend,Base.Order.Forward)
+    if (p>pend)
+        # add new entry
+        counter.colnnz[j] += 1
+        counter.rowval[p] = i
+    elseif counter.rowval[p] != i
+        # shift one forward from p to pend
+        @boundscheck @assert pend+1 < Int(counter.colptr[j+1])
+        for k in pend:-1:p
+            o = k + 1
+            counter.rowval[o] = counter.rowval[k]
+        end
+        # add new entry
+        counter.colnnz[j] += 1
+        counter.rowval[p] = i
+    else 
+        # skip
+    end
+    counter.cache_count[] += 1
+    counter
+end
+
+
+function contribute!(counter::CachedCSCCounterStep2,v,i,j,field_i,field_j)
+    @boundscheck @assert length(i) == 1
+    @boundscheck @assert length(j) == 1
+    @boundscheck @assert field_i == 1
+    @boundscheck @assert field_j == 1
+    @boundscheck @assert v === nothing
+    pini = Int(counter.colptr[j])
+    pend = Int(counter.colptr[j+1]) - 1
+    p = searchsortedfirst(counter.rowval,i,pini,pend,Base.Order.Forward)
+    cache_id = counter.cache_id[]+1
+    counter.cache_p[cache_id] = p
+    counter.cache_id[] = cache_id
+    counter
+end
+
+
+function allocate(counter::CachedCSCCounterStep1)
+    Ti = counter.index_type
+    T = eltype(counter.matrix_type)
+    nrows = counter.nrows
+    ncols = counter.ncols
+    colnnz = counter.colnnz
+    colptr = counter.colptr
+    rowval = counter.rowval
+
+
+    k = 1
+    for j in 1:ncols
+        pini = Int(colptr[j])
+        pend = pini + Int(colnnz[j]) - 1
+        for p in pini:pend
+            rowval[k] = rowval[p]
+            k += 1
+        end
+    end
+    @inbounds for j in 1:ncols
+        colptr[j+1] = colnnz[j]
+    end
+    length_to_ptrs!(colptr)
+    nnz = colptr[end]-1
+    # nnz = k
+    resize!(rowval,nnz)
+    nzval = zeros(T,nnz)
+    cache_p = Vector{Ti}(undef, counter.cache_count[])
+    reset!(counter)
+    CachedCSCCounterStep2(nrows,ncols,colptr,rowval,nzval,cache_p,Ref(0))
 end
 
 struct CSCAllocation{Tv,Ti} <: AbstractType
@@ -630,12 +769,43 @@ struct CSCAllocation{Tv,Ti} <: AbstractType
   nzval::Vector{Tv}
 end
 
-Base.eltype(alloc::CSCAllocation) = eltype(alloc.nzval)
+struct CachedCSCAllocation{Tv,Ti} <: AbstractType
+  nrows::Int
+  ncols::Int
+  colptr::Vector{Ti}
+  rowval::Vector{Ti}
+  nzval::Vector{Tv}
+  cache_p::Vector{Ti}
+  cache_id::Base.RefValue{Int}
+end
+
+
+Base.eltype(alloc::Union{CSCAllocation, CachedCSCAllocation}) = eltype(alloc.nzval)
 
 function reset!(alloc::CSCAllocation)
     fill!(alloc.nzval,zero(eltype(alloc.nzval)))
     alloc
 end
+
+function reset!(alloc::CachedCSCAllocation)
+    fill!(alloc.nzval,zero(eltype(alloc.nzval)))
+    alloc.cache_id[] = 0
+    alloc
+end
+
+
+function contribute!(alloc::CachedCSCAllocation,v,i,j,field_i,field_j)
+    @boundscheck @assert length(i) == 1
+    @boundscheck @assert length(j) == 1
+    @boundscheck @assert field_i == 1
+    @boundscheck @assert field_j == 1
+    cache_id = alloc.cache_id[] + 1
+    p = alloc.cache_p[cache_id]
+    alloc.nzval[p] += v 
+    alloc.cache_id[] = cache_id
+    alloc
+end
+
 
 function contribute!(alloc::CSCAllocation,v,i,j,field_i,field_j)
     @boundscheck @assert length(i) == 1
@@ -669,33 +839,43 @@ function contribute!(alloc::CSCAllocation,v,i,j,field_i,field_j)
     alloc
 end
 
-function compress(alloc::CSCAllocation{Tv,Ti};reuse=Val(true)) where {Tv,Ti}
-  k = 1
-  for j in 1:alloc.ncols
-    pini = Int(alloc.colptr[j])
-    pend = pini + Int(alloc.colnnz[j]) - 1
-    for p in pini:pend
-      alloc.nzval[k] = alloc.nzval[p]
-      alloc.rowval[k] = alloc.rowval[p]
-      k += 1
+function compress(alloc::CachedCSCAllocation{Tv,Ti};reuse=Val(true)) where {Tv,Ti}
+    A = SparseMatrixCSC(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval)
+    if val_parameter(reuse)
+        (A, nothing)
+    else
+        A
     end
-  end
-  @inbounds for j in 1:alloc.ncols
-    alloc.colptr[j+1] = alloc.colnnz[j]
-  end
-  length_to_ptrs!(alloc.colptr)
-  nnz = alloc.colptr[end]-1
-  resize!(alloc.rowval,nnz)
-  resize!(alloc.nzval,nnz)
-  A = SparseMatrixCSC(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval)
-  if val_parameter(reuse)
-      (A, nothing)
-  else
-      A
-  end
 end
 
-function compress!(alloc::CSCAllocation,A::SparseMatrixCSC,cache)
+function compress(alloc::CSCAllocation{Tv,Ti};reuse=Val(true)) where {Tv,Ti}
+    k = 1
+    for j in 1:alloc.ncols
+        pini = Int(alloc.colptr[j])
+        pend = pini + Int(alloc.colnnz[j]) - 1
+        for p in pini:pend
+        alloc.nzval[k] = alloc.nzval[p]
+        alloc.rowval[k] = alloc.rowval[p]
+        k += 1
+        end
+    end
+    @inbounds for j in 1:alloc.ncols
+        alloc.colptr[j+1] = alloc.colnnz[j]
+    end
+    length_to_ptrs!(alloc.colptr)
+    nnz = alloc.colptr[end]-1
+    resize!(alloc.rowval,nnz)
+    resize!(alloc.nzval,nnz)
+
+    A = SparseMatrixCSC(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval)
+    if val_parameter(reuse)
+        (A, nothing)
+    else
+        A
+    end
+end
+
+function compress!(alloc::Union{CSCAllocation, CachedCSCAllocation},A::SparseMatrixCSC,cache)
     if alloc.nzval !== A.nzval
         copyto!(A.nzval,alloc.nzval)
     end

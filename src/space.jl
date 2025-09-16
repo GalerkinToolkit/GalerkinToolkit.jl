@@ -54,7 +54,14 @@ function generate_workspace(space::AbstractSpace)
     free_dofs = state.free_dofs
     dirichlet_dofs = state.dirichlet_dofs
     dirichlet_dof_location = state.dirichlet_dof_location
-    workspace = (;face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
+    SpaceWorkspace(face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
+end
+
+struct SpaceWorkspace{A,B,C,D} <: AbstractType
+    face_dofs::A
+    free_dofs::B
+    dirichlet_dofs::C
+    dirichlet_dof_location::D
 end
 
 function setup_space(space::AbstractSpace)
@@ -89,31 +96,31 @@ function dirichlet_dof_local_indices(space::AbstractSpace)
     state.dirichlet_dof_local_indices
 end
 
-function face_dofs(pspace::AbstractSpace{<:AbstractPMesh})
-    p_space = partition(pspace)
-    values = map(p_space) do space
-        face_to_dofs = face_dofs(space)
-        face_to_gdofs = JaggedArray(copy(face_to_dofs))
-        free_global = local_to_global(free_dof_local_indices(space))
-        diri_global = local_to_global(dirichlet_dof_local_indices(space))
-        f = dof -> begin
-            if dof > 0
-                free_global[dof]
-            else
-                -diri_global[-dof]
-            end
-        end
-        data = face_to_gdofs.data
-        data .= f.(data)
-        face_to_gdofs
-    end
-    # TODO this assumes that all faces are active
-    # Eventually, this will be correct once we change the meaning of face_dofs
-    pmesh = mesh(pspace)
-    d = num_dims(domain(pspace))
-    ids = face_partition(pmesh,d)
-    PVector(values,ids)
-end
+#function face_dofs(pspace::AbstractSpace{<:AbstractPMesh})
+#    p_space = partition(pspace)
+#    values = map(p_space) do space
+#        face_to_dofs = face_dofs(space)
+#        face_to_gdofs = JaggedArray(copy(face_to_dofs))
+#        free_global = local_to_global(free_dof_local_indices(space))
+#        diri_global = local_to_global(dirichlet_dof_local_indices(space))
+#        f = dof -> begin
+#            if dof > 0
+#                free_global[dof]
+#            else
+#                -diri_global[-dof]
+#            end
+#        end
+#        data = face_to_gdofs.data
+#        data .= f.(data)
+#        face_to_gdofs
+#    end
+#    # TODO this assumes that all faces are active
+#    # Eventually, this will be correct once we change the meaning of face_dofs
+#    pmesh = mesh(pspace)
+#    d = num_dims(domain(pspace))
+#    ids = face_partition(pmesh,d)
+#    PVector(values,ids)
+#end
 
 #function face_dofs(space::AbstractSpace,field)
 #    @assert field == 1
@@ -744,9 +751,9 @@ end
 function reference_face_own_dofs(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_own_ldofs = map(fe->GT.face_own_dofs(fe,d),ctype_to_reference_fe)
-    r = if GT.conformity(space) === :default
+    r = if GT.continuous(space)
         ctype_to_ldface_to_own_ldofs
-    elseif GT.conformity(space) === :L2
+    else
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
@@ -760,8 +767,6 @@ function reference_face_own_dofs(space::AbstractSpace,d)
                 convert(typeof(own_ldofs),dofs)
             end
         end
-    else
-        error("This line cannot be reached")
     end
     collect(r)
 end
@@ -769,9 +774,9 @@ end
 function reference_face_own_dof_permutations(space::AbstractSpace,d)
     ctype_to_reference_fe = reference_spaces(space)
     ctype_to_ldface_to_pindex_to_perm = map(fe->GT.face_own_dof_permutations(fe,d),ctype_to_reference_fe)
-    r = if GT.conformity(space) === :default
+    r = if GT.continuous(space)
         ctype_to_ldface_to_pindex_to_perm
-    elseif GT.conformity(space) === :L2
+    else
         ctype_to_num_dofs = map(GT.num_dofs,ctype_to_reference_fe)
         domain = space |> GT.domain
         D = GT.num_dims(domain)
@@ -787,8 +792,6 @@ function reference_face_own_dof_permutations(space::AbstractSpace,d)
                 end
             end
         end
-    else
-        error("This line cannot be reached")
     end
     collect(r)
 end
@@ -867,20 +870,19 @@ function lagrange_space end
 const LagrangeFaceDomain = Union{UnitNCube,UnitSimplex}
 
 function lagrange_space(domain::LagrangeFaceDomain, order;
-        space_type = default_space_type(domain),
-        lib_to_user_nodes = :default,
+        space_type = Val(default_space_type(domain)),
+        lib_to_user_nodes = Val(:default),
         major = Val(:component),
         tensor_size = Val(:scalar),
         dirichlet_boundary = nothing,
     )
 
-
     D = num_dims(domain)
     order_per_dir = ntuple(d->order,Val(D))
-    lagrange_face_space(;
+    lagrange_face_space(
                domain,
                order_per_dir,
-               space_type,
+               Val(val_parameter(space_type)),
                lib_to_user_nodes,
                major,
                tensor_size,
@@ -896,7 +898,7 @@ function default_space_type(geom::UnitSimplex)
     :P
 end
 
-function lagrange_face_space(;
+function lagrange_face_space(
         domain,
         order_per_dir,
         space_type,
@@ -905,70 +907,90 @@ function lagrange_face_space(;
         tensor_size,
         dirichlet_boundary,
     )
-
-    contents = (;
+    space = LagrangeFaceSpace(
         domain,
         order_per_dir,
-        space_type=Val(val_parameter(space_type)),
+        space_type,
         lib_to_user_nodes,
-        major=Val(val_parameter(major)),
-        tensor_size=Val(val_parameter(tensor_size)),
+        major,
+        tensor_size,
         dirichlet_boundary,
+        nothing
        )
-    space = LagrangeFaceSpace(nothing,contents)
     workspace = generate_workspace(space)
     space2 = replace_workspace(space,workspace)
 end
 
-@auto_hash_equals struct LagrangeFaceSpace{A,B} <: AbstractFaceSpace
-    workspace::A
-    contents::B
+@auto_hash_equals struct LagrangeFaceSpace{A,B,C,D,E,F,G,W} <: AbstractFaceSpace
+    domain::A
+    order_per_dir::B
+    space_type::Val{C}
+    lib_to_user_nodes::D
+    major::Val{E}
+    tensor_size::Val{F}
+    dirichlet_boundary::G
+    workspace::W
 end
 
 
-domain(a::LagrangeFaceSpace) = a.contents.domain
-order_per_dir(a::LagrangeFaceSpace) = map(val_parameter, a.contents.order_per_dir)
+
+@auto_hash_equals struct LagrangeFaceSpaceWorskspace{D,Ti} <: AbstractType
+    monomial_exponents::Vector{StaticArrays.SVector{D,Ti}}
+    face_dofs::PartitionedArrays.JaggedArray{Ti,Ti}
+    free_dofs::Vector{Ti}
+    dirichlet_dofs::Vector{Ti}
+    dirichlet_dof_location::Vector{Ti}
+end
+
+domain(a::LagrangeFaceSpace) = a.domain
+order_per_dir(a::LagrangeFaceSpace) = a.order_per_dir
 order(fe::LagrangeFaceSpace) = maximum(order_per_dir(fe);init=0)
-space_type(fe::LagrangeFaceSpace) = val_parameter(fe.contents.space_type)
-major(fe::LagrangeFaceSpace) = val_parameter(fe.contents.major)
-tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.contents.tensor_size)
-dirichlet_boundary(fe::LagrangeFaceSpace) = fe.contents.dirichlet_boundary
-
-function replace_workspace(fe::LagrangeFaceSpace,workspace)
-    LagrangeFaceSpace(workspace,fe.contents)
-end
-
-function generate_workspace(fe::LagrangeFaceSpace)
-    monomial_exponents = GT.monomial_exponents(fe)
-    if fe.contents.dirichlet_boundary === nothing
-        ndofs = num_dofs(fe)
-        face_dofs = JaggedArray([collect(Int32,1:ndofs)])
-        free_dofs = Base.OneTo(ndofs)
-        dirichlet_dofs = Base.OneTo(ndofs)
-        dirichlet_dof_location = Int32[]
-    else
-        state = generate_dof_ids(fe)
-        face_dofs = state.Dface_to_dofs
-        free_dofs = state.free_dofs
-        dirichlet_dofs = state.dirichlet_dofs
-        dirichlet_dof_location = state.dirichlet_dof_location
-    end
-    node_coordinates = GT.node_coordinates(fe)
-    tensor_basis = GT.tensor_basis(fe)
-    primal_basis = GT.primal_basis(fe)
-    dual_basis = GT.dual_basis(fe)
-    workspace = (;monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location,
-            node_coordinates,tensor_basis, primal_basis,dual_basis)
-end
+space_type(fe::LagrangeFaceSpace) = val_parameter(fe.space_type)
+major(fe::LagrangeFaceSpace) = val_parameter(fe.major)
+tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.tensor_size)
+dirichlet_boundary(fe::LagrangeFaceSpace) = fe.dirichlet_boundary
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
-    if val_parameter(fe.contents.lib_to_user_nodes) === :default
+    if val_parameter(fe.lib_to_user_nodes) === :default
         nnodes = num_nodes(fe)
         Ti = int_type(options(fe))
         collect(Ti.(1:nnodes))
     else
-        fe.contents.lib_to_user_nodes
+        lib_to_user_nodes(fe)
     end
+end
+
+
+function replace_workspace(fe::LagrangeFaceSpace,workspace)
+    space = LagrangeFaceSpace(
+        fe.domain,
+        fe.order_per_dir,
+        fe.space_type,
+        fe.lib_to_user_nodes,
+        fe.major,
+        fe.tensor_size,
+        fe.dirichlet_boundary,
+        workspace,
+       )
+end
+
+function generate_workspace(fe::LagrangeFaceSpace)
+    monomial_exponents = GT.monomial_exponents(fe)
+    Ti = int_type(options(fe))
+    if dirichlet_boundary(fe) === nothing
+        ndofs = num_dofs(fe)
+        face_dofs = JaggedArray([collect(Ti,1:ndofs)])
+        free_dofs = collect(Ti,1:ndofs)
+        dirichlet_dofs = Ti[]
+        dirichlet_dof_location = Ti[]
+    else
+        state = generate_dof_ids(fe)
+        face_dofs = state.Dface_to_dofs
+        free_dofs = collect(Ti,state.free_dofs)
+        dirichlet_dofs = collect(Ti,state.dirichlet_dofs)
+        dirichlet_dof_location = state.dirichlet_dof_location
+    end
+    workspace = LagrangeFaceSpaceWorskspace(monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
 end
 
 function reference_spaces(fe::LagrangeFaceSpace)
@@ -976,19 +998,19 @@ function reference_spaces(fe::LagrangeFaceSpace)
 end
 
 function face_reference_id(fe::LagrangeFaceSpace)
-    [1]
+    Ti = reference_int_type(options(fe))
+    [Ti(1)]
 end
 
-function conformity(fe::LagrangeFaceSpace)
-    :default
+function continuous(fe::LagrangeFaceSpace)
+    true
 end
 
 
 function monomial_exponents(a::LagrangeFaceSpace)
-    a.workspace.monomial_exponents
-end
-
-function monomial_exponents(a::LagrangeFaceSpace{Nothing})
+    if a.workspace !== nothing
+        return a.workspace.monomial_exponents
+    end
     range_per_dir = map(k->0:k,order_per_dir(a))
     exponents_list = map(CartesianIndices(range_per_dir)) do ci
         exponent = Tuple(ci)
@@ -1008,10 +1030,6 @@ end
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
 function node_coordinates(a::LagrangeFaceSpace)
-    a.workspace.node_coordinates
-end
-
-function node_coordinates(a::LagrangeFaceSpace{Nothing})
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
         x  = node_coordinates(a_linear)
@@ -1039,11 +1057,8 @@ function node_coordinates(a::LagrangeFaceSpace{Nothing})
 end
 
 
-function tensor_basis(fe::LagrangeFaceSpace)
-    fe.workspace.tensor_basis
-end
 
-function tensor_basis(fe::LagrangeFaceSpace{Nothing})
+function tensor_basis(fe::LagrangeFaceSpace)
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
     if tensor_size(fe) === :scalar
@@ -1064,10 +1079,6 @@ end
 
 
 function primal_basis(fe::LagrangeFaceSpace)
-    fe.workspace.primal_basis
-end
-
-function primal_basis(fe::LagrangeFaceSpace{Nothing})
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
         return scalar_basis
@@ -1085,12 +1096,7 @@ function primal_basis(fe::LagrangeFaceSpace{Nothing})
     end
 end
 
-
 function dual_basis(fe::LagrangeFaceSpace)
-    fe.workspace.dual_basis
-end
-
-function dual_basis(fe::LagrangeFaceSpace{Nothing})
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
     ts = tensor_size(fe) 
@@ -1142,7 +1148,7 @@ function node_dofs(fe::LagrangeFaceSpace)
             init_tensor(t)
         end
     end
-    if fe.contents.dirichlet_boundary === nothing
+    if dirichlet_boundary(fe) === nothing
         node_to_ldofs
     else
         ldof_to_dof = first(face_dofs(fe))
@@ -1565,7 +1571,7 @@ function simplexify(ref_face::LagrangeFaceSpace)
 end
 
 function lagrange_space(domain::AbstractDomain,order;
-    conformity = Val(:default),
+    continuous = Val(true),
     dirichlet_boundary=nothing,
     space_type = Val(:default),
     major = Val(:component),
@@ -1574,12 +1580,10 @@ function lagrange_space(domain::AbstractDomain,order;
     setup = Val(true),
     )
 
-    @assert val_parameter(conformity) in (:default,:L2)
-
     space = lagrange_mesh_space(;
                         domain,
                         order,
-                        conformity,
+                        continuous,
                         dirichlet_boundary,
                         space_type,
                         major,
@@ -1596,88 +1600,92 @@ end
 function lagrange_mesh_space(;
         domain,
         order,
-        conformity,
+        continuous,
         dirichlet_boundary,
         space_type,
         major,
         tensor_size,
         workspace,
     )
-    contents = (;
+    LagrangeMeshSpace(
         domain,
-        order=Val(val_parameter(order)),
-        conformity,
+        order,
+        Val(val_parameter(continuous)),
         dirichlet_boundary,
-        space_type=Val(val_parameter(space_type)),
-        major=Val(val_parameter(major)),
-        tensor_size=Val(val_parameter(tensor_size)),
+        Val(val_parameter(space_type)),
+        Val(val_parameter(major)),
+        Val(val_parameter(tensor_size)),
         workspace,
        )
-    LagrangeMeshSpace(mesh(domain),contents)
 end
 
-struct LagrangeMeshSpace{A,B} <: AbstractSpace{A}
-    mesh::A
-    contents::B
+struct LagrangeMeshSpace{A,B,C,D,E,F,G,W} <: AbstractSpace
+    domain::A
+    order::B
+    continuous::Val{C}
+    dirichlet_boundary::D
+    space_type::Val{E}
+    major::Val{F}
+    tensor_size::Val{G}
+    workspace::W
 end
 
-function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
-    if GT.workspace(pspace) !== nothing
-        return GT.workspace(pspace).space_partition
-    end
-    p_domain = partition(GT.domain(pspace))
-    pdirichlet_boundary = GT.dirichlet_boundary(pspace)
-    if pdirichlet_boundary isa AbstractDomain
-        p_dirichlet_boundary = partition(GT.dirichlet_boundary(pspace))
-        map(p_domain,p_dirichlet_boundary) do domain, dirichlet_boundary
-            lagrange_space(
-                           domain,
-                           order(pspace);
-                           conformity = Val(conformity(pspace)),
-                           dirichlet_boundary,
-                           space_type = Val(space_type(pspace)),
-                           major = Val(major(pspace)),
-                           tensor_size = Val(tensor_size(pspace)),
-                           setup = Val(false),
-                          )
-        end
+#function PartitionedArrays.partition(pspace::LagrangeMeshSpace)
+#    if GT.workspace(pspace) !== nothing
+#        return GT.workspace(pspace).space_partition
+#    end
+#    p_domain = partition(GT.domain(pspace))
+#    pdirichlet_boundary = GT.dirichlet_boundary(pspace)
+#    if pdirichlet_boundary isa AbstractDomain
+#        p_dirichlet_boundary = partition(GT.dirichlet_boundary(pspace))
+#        map(p_domain,p_dirichlet_boundary) do domain, dirichlet_boundary
+#            lagrange_space(
+#                           domain,
+#                           order(pspace);
+#                           continuous = Val(continuous(pspace)),
+#                           dirichlet_boundary,
+#                           space_type = Val(space_type(pspace)),
+#                           major = Val(major(pspace)),
+#                           tensor_size = Val(tensor_size(pspace)),
+#                           setup = Val(false),
+#                          )
+#        end
+#
+#    else
+#        map(p_domain) do domain
+#            lagrange_space(
+#                           domain,
+#                           order(pspace);
+#                           continuous = Val(continuous(pspace)),
+#                           dirichlet_boundary = pdirichlet_boundary,
+#                           space_type = Val(space_type(pspace)),
+#                           major = Val(major(pspace)),
+#                           tensor_size = Val(tensor_size(pspace)),
+#                           setup = Val(false),
+#                          )
+#        end
+#    end
+#end
 
-    else
-        map(p_domain) do domain
-            lagrange_space(
-                           domain,
-                           order(pspace);
-                           conformity = Val(conformity(pspace)),
-                           dirichlet_boundary = pdirichlet_boundary,
-                           space_type = Val(space_type(pspace)),
-                           major = Val(major(pspace)),
-                           tensor_size = Val(tensor_size(pspace)),
-                           setup = Val(false),
-                          )
-        end
-    end
-end
-
-conformity(space::LagrangeMeshSpace) = val_parameter(space.contents.conformity)
-dirichlet_boundary(space::LagrangeMeshSpace) = space.contents.dirichlet_boundary
-domain(space::LagrangeMeshSpace) = space.contents.domain
-order(space::LagrangeMeshSpace) = space.contents.order
-space_type(space::LagrangeMeshSpace) = val_parameter(space.contents.space_type)
-major(space::LagrangeMeshSpace) = val_parameter(space.contents.major)
-tensor_size(space::LagrangeMeshSpace) = val_parameter(space.contents.tensor_size)
-workspace(space::LagrangeMeshSpace) = space.contents.workspace
+continuous(space::LagrangeMeshSpace) = val_parameter(space.continuous)
+dirichlet_boundary(space::LagrangeMeshSpace) = space.dirichlet_boundary
+domain(space::LagrangeMeshSpace) = space.domain
+order(space::LagrangeMeshSpace) = space.order
+space_type(space::LagrangeMeshSpace) = val_parameter(space.space_type)
+major(space::LagrangeMeshSpace) = val_parameter(space.major)
+tensor_size(space::LagrangeMeshSpace) = val_parameter(space.tensor_size)
+workspace(space::LagrangeMeshSpace) = space.workspace
 
 function replace_workspace(space::LagrangeMeshSpace,workspace)
-    contents = (;
-        domain = space.contents.domain,
-        order = space.contents.order,
-        conformity = space.contents.conformity,
-        space_type = space.contents.space_type,
-        major = space.contents.major,
-        tensor_size = space.contents.tensor_size,
-        workspace,
-       )
-    LagrangeMeshSpace(space.mesh,contents)
+    LagrangeMeshSpace(
+                      space.domain,
+                      space.order,
+                      space.continuous,
+                      space.dirichlet_boundary,
+                      space.space_type,
+                      space.major,
+                      space.tensor_size,
+                      workspace)
 end
 
 function face_reference_id(space::LagrangeMeshSpace)
@@ -1721,7 +1729,7 @@ function face_nodes(a::LagrangeMeshSpace)
     V = lagrange_space(
                        domain(a),
                        order(a);
-                       conformity = conformity(a),
+                       continuous = GT.continuous(a),
                        space_type = space_type(a))
 
     face_dofs(V)
@@ -1755,7 +1763,7 @@ function node_coordinates(a::LagrangeMeshSpace)
     V = lagrange_space(
                        GT.domain(a),
                        GT.order(a);
-                       conformity = Val(GT.conformity(a)),
+                       continuous = Val(GT.continuous(a)),
                        space_type = Val(GT.space_type(a)))
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
@@ -1820,7 +1828,7 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
     V = lagrange_space(
                        GT.domain(space),
                        GT.order(space);
-                       conformity = GT.conformity(space),
+                       continuous = GT.continuous(space),
                        space_type = GT.space_type(space))
     face_to_nodes = GT.face_dofs(V)
     face_to_dofs = GT.face_dofs(space)
@@ -2156,7 +2164,7 @@ function face_own_dof_permutations(fe::RaviartThomasFaceSpace,d)
     end
 end
 
-function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformity=:default,dirichlet_boundary=nothing)
+function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;continuous=true,dirichlet_boundary=nothing)
     mesh = domain |> GT.mesh
     cell_to_Dface = domain |> GT.faces
     D = domain |> GT.num_dims
@@ -2172,18 +2180,18 @@ function raviart_thomas_space(domain::AbstractMeshDomain,order::Integer;conformi
         mesh,
         domain,
         order,
-        conformity,
+        continuous,
         dirichlet_boundary,
         cell_to_ctype,
         ctype_to_reffe,
         workspace) |> setup_space
 end
 
-struct RaviartThomasMeshSpace{M,A,B,C,D,E,F} <: AbstractSpace{M}
+struct RaviartThomasMeshSpace{M,A,B,C,D,E,F} <: AbstractSpace
     mesh::M
     domain::A
     order::B
-    conformity::Symbol
+    continuous::Bool
     dirichlet_boundary::C
     face_reference_id::D
     reference_spaces::E
@@ -2192,7 +2200,7 @@ end
 
 domain(a::RaviartThomasMeshSpace) = a.domain
 order(a::RaviartThomasMeshSpace) = a.order
-conformity(a::RaviartThomasMeshSpace) = a.conformity
+continuous(a::RaviartThomasMeshSpace) = a.continuous
 dirichlet_boundary(a::RaviartThomasMeshSpace) = a.dirichlet_boundary
 face_reference_id(a::RaviartThomasMeshSpace) = a.face_reference_id
 reference_spaces(a::RaviartThomasMeshSpace) = a.reference_spaces
@@ -2203,7 +2211,7 @@ function replace_workspace(space::RaviartThomasMeshSpace,workspace)
         space.mesh,
         space.domain,
         space.order,
-        space.conformity,
+        space.continuous,
         space.dirichlet_boundary,
         space.face_reference_id,
         space.reference_spaces,
@@ -2298,12 +2306,10 @@ function sign_flip_accessor(space::RaviartThomasMeshSpace)
 end
 
 function cartesian_product(spaces::AbstractSpace...)
-    mesh = GT.mesh(first(spaces))
-    CartesianProductSpace(mesh,spaces)
+    CartesianProductSpace(spaces)
 end
 
-struct CartesianProductSpace{M,A} <: GT.AbstractSpace{M}
-    mesh::M
+struct CartesianProductSpace{A} <: GT.AbstractSpace
     spaces::A
 end
 
@@ -2393,6 +2399,13 @@ function form_argument_quantity(a::CartesianProductSpace,axis)
     end
 end
 
+#The following functions and the previous ones are a hack
+# Should the CartesianProductSpace really have a different behavior?
+Base.iterate(m::DiscreteField{A,<:CartesianProductSpace} where A) = iterate(fields(m))
+Base.iterate(m::DiscreteField{A,<:CartesianProductSpace} where A,state) = iterate(fields(m),state)
+Base.getindex(m::DiscreteField{A,<:CartesianProductSpace} where A,field::Integer) = field(m,field)
+Base.length(m::DiscreteField{A,<:CartesianProductSpace} where A) = num_fields(m)
+
 function discrete_field_quantity(a::CartesianProductSpace,free_vals,diri_vals)
     nothing
 end
@@ -2409,56 +2422,56 @@ function dual_basis_quantity(a::CartesianProductSpace,field)
     error("Not implemented yet. Not needed in practice.")
 end
 
-function generate_workspace(space::AbstractSpace{<:PMesh})
-    D = num_dims(domain(space))
-    mesh = GT.mesh(space)
-    spaces = partition(space)
-    p_state_1 = map(setup_space_local_step_1,spaces)
-    p_d_n_oddofs = map(state->state.d_n_oddofs,p_state_1)
-    d_p_n_oddofs = tuple_of_arrays(p_d_n_oddofs)
-    d_n_gddofs = map(d->sum(d_p_n_oddofs[d+1]),0:D)
-    d_first_gdof = zeros(Int,D+1)
-    d_first_gdof[1] = 1
-    for d in 1:D
-        d_first_gdof[d+1]=d_first_gdof[d]+d_n_gddofs[d]
-    end
-    d_p_doffset = map(0:D) do d
-        p_n_oddofs = d_p_n_oddofs[d+1]
-        scan(+,p_n_oddofs,type=:exclusive,init=d_first_gdof[d+1])
-    end
-    p_d_doffset = array_of_tuples(d_p_doffset)
-    p_state_2 = map(setup_space_local_step_2,p_state_1,p_d_doffset)
-    p_d_dface_dof_goffset = map(state->state.d_dface_dof_goffset,p_state_2)
-    d_p_dface_dof_goffset = tuple_of_arrays(p_d_dface_dof_goffset)
-    d_p_dface_ids = map(d->face_partition(mesh,d),0:D)
-    for d in 0:D
-        p_dface_dof_goffset = d_p_dface_dof_goffset[d+1]
-        p_dface_ids = d_p_dface_ids[d+1]
-        v = PVector(p_dface_dof_goffset,p_dface_ids)
-        wait(consistent!(v))
-    end
-    ngdofs = d_first_gdof[end]+d_n_gddofs[end]-1
-    p_ngdofs = map(s->ngdofs,spaces)
-    p_state_3 = map(setup_space_local_step_3,p_state_2,p_ngdofs)
-    p_dof_partition = map(state->state.dof_local_indices,p_state_3)
-    p_dof_isfree = map(state->state.dof_isfree,p_state_3)
-    gdof_isfree = PVector(p_dof_isfree,p_dof_partition)
-    wait(consistent!(gdof_isfree))
-    gdof_isdiri = .!(gdof_isfree)
-    free_gdof_dof, gdof_free_dof = find_local_indices(gdof_isfree)
-    diri_gdof_dof, gdof_diri_dof = find_local_indices(gdof_isdiri)
-    p_dof_free_dof = partition(gdof_free_dof)
-    p_dof_diri_dof = partition(gdof_diri_dof)
-    free_dofs = axes(free_gdof_dof,1)
-    diri_dofs = axes(diri_gdof_dof,1)
-    p_free_dofs_ids = partition(free_dofs)
-    p_diri_dofs_ids = partition(diri_dofs)
-    p_state_4 = map(setup_space_local_step_4,p_state_3,p_dof_free_dof,p_dof_diri_dof,p_free_dofs_ids,p_diri_dofs_ids)
-    space_partition = map(state->state.space_with_setup,p_state_4)
-    p_diri_dof_location = map(state->state.dirichlet_dof_location,p_state_4)
-    dirichlet_dof_location = PVector(p_diri_dof_location,p_diri_dofs_ids)
-    workspace = (;space_partition,free_dofs,dirichlet_dofs=diri_dofs,dirichlet_dof_location)
-end
+#function generate_workspace(space::AbstractSpace{<:PMesh})
+#    D = num_dims(domain(space))
+#    mesh = GT.mesh(space)
+#    spaces = partition(space)
+#    p_state_1 = map(setup_space_local_step_1,spaces)
+#    p_d_n_oddofs = map(state->state.d_n_oddofs,p_state_1)
+#    d_p_n_oddofs = tuple_of_arrays(p_d_n_oddofs)
+#    d_n_gddofs = map(d->sum(d_p_n_oddofs[d+1]),0:D)
+#    d_first_gdof = zeros(Int,D+1)
+#    d_first_gdof[1] = 1
+#    for d in 1:D
+#        d_first_gdof[d+1]=d_first_gdof[d]+d_n_gddofs[d]
+#    end
+#    d_p_doffset = map(0:D) do d
+#        p_n_oddofs = d_p_n_oddofs[d+1]
+#        scan(+,p_n_oddofs,type=:exclusive,init=d_first_gdof[d+1])
+#    end
+#    p_d_doffset = array_of_tuples(d_p_doffset)
+#    p_state_2 = map(setup_space_local_step_2,p_state_1,p_d_doffset)
+#    p_d_dface_dof_goffset = map(state->state.d_dface_dof_goffset,p_state_2)
+#    d_p_dface_dof_goffset = tuple_of_arrays(p_d_dface_dof_goffset)
+#    d_p_dface_ids = map(d->face_partition(mesh,d),0:D)
+#    for d in 0:D
+#        p_dface_dof_goffset = d_p_dface_dof_goffset[d+1]
+#        p_dface_ids = d_p_dface_ids[d+1]
+#        v = PVector(p_dface_dof_goffset,p_dface_ids)
+#        wait(consistent!(v))
+#    end
+#    ngdofs = d_first_gdof[end]+d_n_gddofs[end]-1
+#    p_ngdofs = map(s->ngdofs,spaces)
+#    p_state_3 = map(setup_space_local_step_3,p_state_2,p_ngdofs)
+#    p_dof_partition = map(state->state.dof_local_indices,p_state_3)
+#    p_dof_isfree = map(state->state.dof_isfree,p_state_3)
+#    gdof_isfree = PVector(p_dof_isfree,p_dof_partition)
+#    wait(consistent!(gdof_isfree))
+#    gdof_isdiri = .!(gdof_isfree)
+#    free_gdof_dof, gdof_free_dof = find_local_indices(gdof_isfree)
+#    diri_gdof_dof, gdof_diri_dof = find_local_indices(gdof_isdiri)
+#    p_dof_free_dof = partition(gdof_free_dof)
+#    p_dof_diri_dof = partition(gdof_diri_dof)
+#    free_dofs = axes(free_gdof_dof,1)
+#    diri_dofs = axes(diri_gdof_dof,1)
+#    p_free_dofs_ids = partition(free_dofs)
+#    p_diri_dofs_ids = partition(diri_dofs)
+#    p_state_4 = map(setup_space_local_step_4,p_state_3,p_dof_free_dof,p_dof_diri_dof,p_free_dofs_ids,p_diri_dofs_ids)
+#    space_partition = map(state->state.space_with_setup,p_state_4)
+#    p_diri_dof_location = map(state->state.dirichlet_dof_location,p_state_4)
+#    dirichlet_dof_location = PVector(p_diri_dof_location,p_diri_dofs_ids)
+#    workspace = (;space_partition,free_dofs,dirichlet_dofs=diri_dofs,dirichlet_dof_location)
+#end
 
 function setup_space_local_step_1(space)
     domain = space |> GT.domain

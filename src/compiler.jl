@@ -629,6 +629,12 @@ function replace_dependencies(term::DiscreteFieldTerm,dependencies)
     DiscreteFieldTerm(dependencies)
 end
 
+function replace_the_face_around(term::DiscreteFieldTerm,the_face_around)
+    (f,uh,domain,face,_) = term.dependencies
+    dependencies = (f,uh,domain,face,the_face_around)
+    DiscreteFieldTerm(dependencies)
+end
+
 function optimize_CallTerm(callee::DiscreteFieldTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
     TabulatedTerm(callee,quadrature,point)
