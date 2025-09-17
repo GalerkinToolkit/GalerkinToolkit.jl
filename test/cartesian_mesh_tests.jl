@@ -48,6 +48,8 @@ end
 
 @test GT.is_partitioned(mesh)
 
+Ω = GT.interior(mesh)
+@test GT.is_partitioned(Ω)
 
 
 

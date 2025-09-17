@@ -53,8 +53,15 @@ function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
     if haskey(groups,group_name)
         return group_name
     end
-    Ti = int_type(options(m))
-    faces = collect(Ti,1:num_faces(m,d))
+    if is_partitioned(m)
+        faces = map(partition(GT.face_ids(m,d))) do ids
+            Ti = int_type(options(m))
+            collect(Ti,own_to_global(ids))
+        end |> Partitioned
+    else
+        Ti = int_type(options(m))
+        faces = collect(Ti,1:num_faces(m,d))
+    end
     groups[group_name] = faces
     group_name
 end
@@ -1138,7 +1145,8 @@ function scatter_group_faces(mesh_main)
     end
     map(dims,d_groups) do d,groups
         map(groups) do group
-            dfaces_main = map_main(mesh_main) do mesh
+            otherwise = mesh -> [Int32[]]
+            dfaces_main = map_main(mesh_main;otherwise) do mesh
                 group_dfaces = GT.group_faces(mesh,d)
                 dfaces = group_dfaces[group]
                 partition(dfaces)
@@ -1207,3 +1215,14 @@ end
 function PartitionedArrays.partition(a::Partitioned)
     a.partition
 end
+
+# TODO move to PartitionedArrays
+
+function foreach_part(f,args...)
+    foreach(f,map(partition,args)...)
+end
+
+function map_parts(f,args...)
+    map(f,map(partition,args)...)
+end
+
