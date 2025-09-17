@@ -487,7 +487,7 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         domain = GT.domain(opts)
         D = num_dims(space_domain)
         d = num_dims(domain)
-        face_around = GT.face_around(domain)
+        faces_around = GT.faces_around(domain)
         index = GT.index(opts)
         face = domain_face_index(index)
         field = field_index(index,arg)
@@ -507,13 +507,13 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
             face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies, D, is_reference, :interior)
-        elseif D==d+1 && face_around !== nothing
-            # the_face_around_term = leaf_term(face_around, is_compile_constant=true)
-            # face_around_term = leaf_term(face_around)
-            the_face_around = 1
-            the_face_around_term = leaf_term(the_face_around;is_compile_constant=true)
-            # face_around_term = leaf_term(nothing)
-            face_around_term = leaf_term(face_around_index(index,arg))
+        elseif D==d+1 && faces_around !== nothing
+            #NB this is not constant anymore
+            #the_face_around_term = leaf_term(face_around, is_compile_constant=true)
+            #face_around_term = leaf_term(face_around)
+            the_face_around_term = RefTerm(leaf_term(GT.faces_around(domain)),leaf_term(face))
+            face_around_term = the_face_around_term
+            # face_around_term = leaf_term(face_around_index(index,arg))
             dependencies = (f,space_term,domain_term,face_term,the_field_term,field_term,dof_term,the_face_around_term,face_around_term)
             FormArgumentTerm(dependencies, D, is_reference, :boundary)
         else
@@ -598,7 +598,7 @@ function term(uh::DiscreteField,opts)
     domain = GT.domain(opts)
     D = num_dims(space_domain)
     d = num_dims(domain)
-    the_face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     index = GT.index(opts)
     face = domain_face_index(index)
     f = value
@@ -606,9 +606,10 @@ function term(uh::DiscreteField,opts)
         face_around = nothing
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         DiscreteFieldTerm(dependencies)
-    elseif D==d+1 && the_face_around !== nothing
-        dependencies = map(leaf_term,(f,uh,domain,face,the_face_around))
-        DiscreteFieldTerm(dependencies)
+    elseif D==d+1 && faces_around !== nothing
+        dependencies = map(leaf_term,(f,uh,domain,face,))
+        the_face_around_term = face_around_term(index,d,D)
+        DiscreteFieldTerm((dependencies...,the_face_around_term))
     else
         face_around = :the_face_around
         n_faces_around = leaf_term(2) # Hard coded! But OK in practice.
@@ -938,7 +939,7 @@ function unit_normal(mesh::AbstractMesh,vd)
         D = num_dims(mesh)
         face = domain_face_index(opts.index)
         @assert d == num_dims(domain(opts))
-        if GT.face_around(domain(opts)) === nothing
+        if GT.faces_around(domain(opts)) === nothing
             the_face_around = :the_face_around
             dependencies = map(leaf_term,(face,the_face_around))
             parent = UnitNormalTerm(dependencies)

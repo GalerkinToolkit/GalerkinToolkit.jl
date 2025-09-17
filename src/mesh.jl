@@ -53,8 +53,15 @@ function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
     if haskey(groups,group_name)
         return group_name
     end
-    Ti = int_type(options(m))
-    faces = collect(Ti,1:num_faces(m,d))
+    if is_partitioned(m)
+        faces = map(partition(GT.face_ids(m,d))) do ids
+            Ti = int_type(options(m))
+            collect(Ti,own_to_global(ids))
+        end |> Partitioned
+    else
+        Ti = int_type(options(m))
+        faces = collect(Ti,1:num_faces(m,d))
+    end
     groups[group_name] = faces
     group_name
 end
@@ -138,7 +145,7 @@ end
 
 function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(objectid(domain))__")
     mesh = GT.mesh(domain)
-    D = num_dims(mesh)
+    D = num_dims(domain)
     d = D-1
     groups = group_faces(mesh,d)
     if haskey(groups,group_name)
@@ -148,7 +155,8 @@ function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(o
     cell_to_faces = face_incidence(topo,D,d)
     nfaces = num_faces(mesh,d)
     face_count = zeros(Int32,nfaces)
-    for faces in cell_to_faces
+    for cell in GT.faces(domain)
+        faces = cell_to_faces[cell]
         for face in faces
             face_count[face] += 1
         end
@@ -195,7 +203,7 @@ end
 """
 function domain(mesh::AbstractMesh,d;
     mesh_id = objectid(mesh),
-    face_around=nothing,
+    faces_around=nothing,
     is_reference_domain=Val(false),
     group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
@@ -236,31 +244,55 @@ function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
     group_names=[group_boundary_faces!(mesh)],
     is_reference_domain=Val(false),
-    face_around = 1,
+    faces_around = nothing,
     )
     d = num_dims(mesh) - 1
-    mesh_domain(mesh;
+    domain = mesh_domain(mesh;
         mesh_id,
         group_names,
-        face_around,
+        faces_around,
         num_dims=Val(val_parameter(d)),
         is_reference_domain)
+    if faces_around === nothing
+        nfaces = num_faces(domain)
+        new_faces_around = FillArrays.Fill(1,nfaces)
+        domain2 = replace_faces_around(domain,new_faces_around)
+    else
+        domain2 = domain
+    end
 end
 
 function boundary(domain::AbstractDomain;
-    mesh_id = objectid(GT.mesh(domain)),
     group_names=[group_boundary_faces!(domain)],
-    is_reference_domain=Val(false),
-    face_around = 1,
-    )
+    kwargs...)
     mesh = GT.mesh(domain)
-    d = num_dims(mesh) - 1
-    mesh_domain(mesh;
-        mesh_id,
-        group_names,
-        face_around,
-        num_dims=Val(val_parameter(d)),
-        is_reference_domain)
+    nfaces = num_faces(domain)
+    domain2 = boundary(mesh;group_names,kwargs...)
+    faces_around = boundary_faces_around(domain,domain2)
+    replace_faces_around(domain2,faces_around)
+end
+
+function boundary_faces_around(domain_D,domain_d)
+    mesh = GT.mesh(domain_D)
+    D = num_dims(domain_D)
+    d = num_dims(domain_d)
+    topo = topology(mesh)
+    dface_Dfaces = GT.face_incidence(topo,d,D)
+    Dface_mask = fill(false,num_faces(mesh,D))
+    Dface_mask[GT.faces(domain_D)] .= true
+    map(GT.faces(domain_d)) do dface
+        Dfaces = dface_Dfaces[dface]
+        i = -1
+        for (j,Dface) in enumerate(Dfaces)
+            mask = Dface_mask[Dface]
+            if mask
+                i = j
+                break
+            end
+        end
+        @boundscheck @assert i != -1
+        Int32(i)
+    end
 end
 
 function reference_domains(a::AbstractMesh,d)
@@ -855,4 +887,408 @@ num_dirichlet_dofs(space::MeshSpace) = 0
 function face_dofs(space::MeshSpace)
     D = num_dims(space)
     face_nodes(mesh(space),D)
+end
+
+# PartitionedRelated
+
+#TODO eventually rename to faces
+# faces to mesh_faces
+# and inverse_faces to domain_faces
+function face_ids(mesh::AbstractMesh,D)
+    axes(face_reference_id(mesh,D),1)
+end
+
+function nodes(mesh::AbstractMesh)
+    axes(node_coordinates(mesh),1)
+end
+
+@inline function is_partitioned(mesh::AbstractMesh)
+    isa(node_coordinates(mesh),PVector)
+end
+
+# Constructors
+
+"""
+    with_mesh_partitioner(mesher[,partitioner];[parts])
+
+Generate a mesh calling `mesher()` partition it, and distribute it
+over the part ids in `parts`.
+
+### Arguments
+
+* Function `mesher()` should have no arguments and returns a sequential mesh object. This function is called only on one process.
+* `partitioner ` [optional]: A function that takes a graph encoded as a sparse matrix, and returns a vector containing the part id of each node in the graph. Defaults to `Metis.partition`.
+
+### Keyword arguments
+
+* `parts` [optional]: A vector containing the part indices `1:P` where `P` is the number of parts in the data distribution. By default, `P` is the number of MPI ranks and `1:P` is distributed one item per rank.
+"""
+function with_mesh_partitioner(mesher,
+    partitioner = Metis.partition;
+    parts=default_parts()
+    )
+    np = length(parts)
+    mesh_main = map_main(parts) do part
+        mesh = mesher()
+        g = node_graph(mesh)
+        node_part = partitioner(g,np)
+        parts_seq = LinearIndices((np,))
+        node_partition = PA.partition_from_color(parts_seq,node_part)
+        partitioned_mesh(mesh,node_partition)
+    end
+    scatter_mesh(mesh_main)
+end
+
+function partitioned_mesh(mesh,node_partition)
+    parts = PA.linear_indices(node_partition)
+    node_coordinates = partitioned_vector(GT.node_coordinates(mesh),node_partition)
+    node_part = PA.getany(map(PA.global_to_owner,node_partition))
+    face_part = map(GT.face_nodes(mesh)) do dface_nodes
+        map(dface_nodes) do nodes
+            maximum(node->node_part[node],nodes)
+        end
+    end
+    face_partition = map(face_part) do dface_part
+        PA.partition_from_color(parts,dface_part)
+    end
+    face_nodes = partitioned_faces(GT.face_nodes(mesh),face_partition)
+    face_reference_id = partitioned_faces(GT.face_reference_id(mesh),face_partition)
+    group_faces = partitioned_groups(GT.group_faces(mesh),face_part,parts)
+    reference_spaces = GT.reference_spaces(mesh)
+    is_cell_complex = GT.is_cell_complex(mesh)
+    if GT.workspace(mesh) !== nothing
+        topology = partitioned_topology(GT.topology(mesh),face_partition)
+        workspace = mesh_workspace(;topology)
+    else
+        workspace = nothing
+    end
+    create_mesh(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        group_faces,
+        is_cell_complex,
+        workspace
+       )
+end
+
+function partitioned_vector(x,row_partition)
+    pvector(row_partition) do ids
+        convert(typeof(x),x[ids])
+    end
+end
+
+function partitioned_faces(d_dface_x,d_dface_partition)
+    map(d_dface_x,d_dface_partition) do dface_x,dface_partition
+        partitioned_vector(dface_x,dface_partition)
+    end
+end
+
+function partitioned_groups(group_faces,face_part,parts)
+    map(group_faces,face_part) do group_dfaces, dface_part
+        map(collect(keys(group_dfaces))) do group
+            f_dface = group_dfaces[group]
+            dfaces = map(parts) do part
+                f_part = dface_part[f_dface]
+                fs = findall(p->p==part,f_part)
+                f_dface[fs]
+            end
+            group => Partitioned(dfaces)
+        end |> Dict
+    end
+end
+
+function partitioned_topology(topo,face_partition)
+    d_dface_partition = face_partition
+    D = num_dims(topo)
+    ijs = CartesianIndices((D+1,D+1))
+    face_incidence = map(ijs) do ij
+        i,j = Tuple(ij)
+        iface_jfaces = GT.face_incidence(topo)[i,j]
+        iface_partition = d_dface_partition[i]
+        partitioned_vector(iface_jfaces,iface_partition)
+    end
+    face_permutation_ids = map(ijs) do ij
+        i,j = Tuple(ij)
+        if i>=j
+            iface_perms = GT.face_permutation_ids(topo)[i,j]
+            iface_partition = d_dface_partition[i]
+            partitioned_vector(iface_perms,iface_partition)
+        else
+            nothing
+        end
+    end
+    face_reference_id = partitioned_faces(GT.face_reference_id(topo),face_partition)
+    reference_topologies = GT.reference_topologies(topo)
+    mesh_topology(;
+                  face_incidence,
+                  face_reference_id,
+                  face_permutation_ids,
+                  reference_topologies,)
+end
+
+function node_graph(mesh)
+    d_to_cell_to_nodes = GT.face_nodes(mesh)
+    nnodes = GT.num_nodes(mesh)
+    node_graph_impl(nnodes,d_to_cell_to_nodes)
+end
+
+function node_graph(mesh,d)
+    d_to_cell_to_nodes = [GT.face_nodes(mesh,d)]
+    nnodes = GT.num_nodes(mesh)
+    node_graph_impl(nnodes,d_to_cell_to_nodes)
+end
+
+function node_graph_impl(nnodes,d_to_cell_to_nodes)
+    ndata = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            ndata += nlnodes*nlnodes
+        end
+    end
+    I = zeros(Int32,ndata)
+    J = zeros(Int32,ndata)
+    p = 0
+    for cell_to_nodes in d_to_cell_to_nodes
+        ncells = length(cell_to_nodes)
+        for cell in 1:ncells
+            nodes = cell_to_nodes[cell]
+            nlnodes = length(nodes)
+            for j in 1:nlnodes
+                for i in 1:nlnodes
+                    p += 1
+                    I[p] = nodes[i]
+                    J[p] = nodes[j]
+                end
+            end
+        end
+    end
+    V = ones(Int8,ndata)
+    g = sparse(I,J,V,nnodes,nnodes)
+    fill!(g.nzval,Int8(1))
+    g
+end
+
+function scatter_mesh(mesh_main)
+    node_coordinates = scatter_node_coordinates(mesh_main)
+    face_partition = scatter_face_partition(mesh_main)
+    face_nodes = scatter_faces(GT.face_nodes,mesh_main,face_partition)
+    face_reference_id = scatter_faces(GT.face_reference_id,mesh_main,face_partition)
+    group_faces = scatter_group_faces(mesh_main)
+    reference_spaces = PA.getany(multicast(map_main(GT.reference_spaces,mesh_main)))
+    is_cell_complex = PA.getany(multicast(map_main(GT.is_cell_complex,mesh_main)))
+    workspace = scatter_mesh_workspace(mesh_main,face_partition)
+    create_mesh(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        group_faces,
+        is_cell_complex,
+        workspace
+       )
+end
+
+function scatter_mesh_workspace(mesh_main,face_partition)
+    compute_workspace = PA.getany(multicast(map_main(mesh->GT.workspace(mesh)!==nothing,mesh_main)))
+    if compute_workspace
+        topology = scatter_topology(mesh_main,face_partition)
+        workspace = mesh_workspace(;topology)
+    else
+        workspace = nothing
+    end
+end
+
+function scatter_node_coordinates(mesh_main)
+    x = PA.getany(multicast(map_main(mesh->similar(GT.node_coordinates(mesh),0),mesh_main)))
+    parts = linear_indices(mesh_main)
+    node_part_main = map_main(mesh_main) do mesh
+        PA.getany(map(PA.global_to_owner,partition(GT.nodes(mesh))))
+    end
+    node_part = PA.getany(multicast(node_part_main))
+    node_partition = PA.partition_from_color(parts,node_part)
+    otherwise = mesh -> [x]
+    node_coordinates_partition = map_main(mesh_main;otherwise) do mesh
+        partition(GT.node_coordinates(mesh))
+    end |> scatter
+    @assert eltype(node_coordinates_partition) != Any
+    PVector(node_coordinates_partition,node_partition)
+end
+
+function scatter_face_partition(mesh_main)
+    parts = linear_indices(mesh_main)
+    D = PA.getany(multicast(map_main(num_dims,mesh_main)))
+    dims = ntuple(d->d-1,Val(D+1))
+    map(dims) do d
+        dface_part_main = map_main(mesh_main) do mesh
+            dfaces = GT.face_ids(mesh,d)
+            PA.getany(map(PA.global_to_owner,partition(dfaces)))
+        end
+        dface_part = PA.getany(multicast(dface_part_main))
+        PA.partition_from_color(parts,dface_part)
+    end
+end
+
+function scatter_faces(f,mesh_main,face_partition)
+    D = PA.getany(multicast(map_main(num_dims,mesh_main)))
+    dims = ntuple(identity,Val(D+1))
+    map(dims) do d
+        a = PA.getany(multicast(map_main(mesh->PA.getany(partition(f(mesh)[d])),mesh_main)))
+        otherwise = mesh -> [a]
+        part_dface_nodes_main = map_main(mesh_main;otherwise) do mesh
+            partition(f(mesh)[d])
+        end
+        part_dface_nodes = scatter(part_dface_nodes_main)
+        part_dface_nodes_2 = map(v->convert(typeof(a),v),part_dface_nodes)
+        PVector(part_dface_nodes_2,face_partition[d])
+    end
+end
+
+function scatter_group_faces(mesh_main)
+    D = PA.getany(multicast(map_main(num_dims,mesh_main)))
+    dims = ntuple(i->i-1,Val(D+1))
+    d_groups = map(dims) do d
+        groups_main = map_main(mesh_main) do mesh
+            group_dfaces = GT.group_faces(mesh,d)
+            collect(keys(group_dfaces))
+        end
+        PA.getany(multicast(groups_main))
+    end
+    map(dims,d_groups) do d,groups
+        map(groups) do group
+            otherwise = mesh -> [Int32[]]
+            dfaces_main = map_main(mesh_main;otherwise) do mesh
+                group_dfaces = GT.group_faces(mesh,d)
+                dfaces = group_dfaces[group]
+                partition(dfaces)
+            end
+            part_dfaces = scatter(dfaces_main)
+            group => Partitioned(part_dfaces)
+        end |> Dict
+    end
+end
+
+function scatter_topology(mesh_main,face_partition)
+    topo_main = map_main(topology,mesh_main)
+    face_reference_id = scatter_faces(GT.face_reference_id,topo_main,face_partition)
+    reference_topologies = PA.getany(multicast(map_main(GT.reference_topologies,topo_main)))
+    face_incidence = scatter_face_incidence(topo_main,face_partition)
+    face_permutation_ids = scatter_face_permutation_ids(topo_main,face_partition)
+    mesh_topology(;
+                  face_incidence,
+                  face_reference_id,
+                  face_permutation_ids,
+                  reference_topologies,)
+end
+
+function scatter_face_incidence(topo_main,face_partition)
+    D = PA.getany(multicast(map_main(num_dims,topo_main)))
+    ijs = CartesianIndices((D+1,D+1))
+    map(ijs) do ij
+        i,j = Tuple(ij)
+        a = PA.getany(multicast(map_main(topo->PA.getany(partition(GT.face_incidence(topo)[i,j])),topo_main)))
+        otherwise = mesh -> [a]
+        part_iface_jfaces_main = map_main(topo_main;otherwise) do topo
+            iface_jfaces = GT.face_incidence(topo)[i,j]
+            partition(iface_jfaces)
+        end
+        part_iface_jfaces = scatter(part_iface_jfaces_main)
+        part_iface_jfaces_2 = map(v->convert(typeof(a),v),part_iface_jfaces)
+        PVector(part_iface_jfaces_2,face_partition[i])
+    end
+end
+
+function scatter_face_permutation_ids(topo_main,face_partition)
+    D = PA.getany(multicast(map_main(num_dims,topo_main)))
+    ijs = CartesianIndices((D+1,D+1))
+    map(ijs) do ij
+        i,j = Tuple(ij)
+        if i>=j
+            a = PA.getany(multicast(map_main(topo->PA.getany(partition(GT.face_permutation_ids(topo)[i,j])),topo_main)))
+            otherwise = mesh -> [a]
+            part_iface_jfaces_main = map_main(topo_main;otherwise) do topo
+                iface_jfaces = GT.face_permutation_ids(topo)[i,j]
+                partition(iface_jfaces)
+            end
+            part_iface_jfaces = scatter(part_iface_jfaces_main)
+            part_iface_jfaces_2 = map(v->convert(typeof(a),v),part_iface_jfaces)
+            PVector(part_iface_jfaces_2,face_partition[i])
+        else
+            nothing
+        end
+    end
+end
+
+function PartitionedArrays.centralize(mesh::AbstractMesh)
+    if ! is_partitioned(mesh)
+        return mesh
+    end
+    node_coordinates = collect(GT.node_coordinates(mesh))
+    face_nodes = map(collect,GT.face_nodes(mesh))
+    face_reference_id = map(collect,GT.face_reference_id(mesh))
+    group_faces = map(GT.group_faces(mesh)) do group_dfaces
+        map(collect(keys(group_dfaces))) do group
+            group => collect(group_dfaces[group])
+        end |> Dict
+    end
+    reference_spaces = GT.reference_spaces(mesh)
+    is_cell_complex = GT.is_cell_complex(mesh)
+    workspace = GT.centralize(GT.workspace(mesh))
+    create_mesh(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        group_faces,
+        is_cell_complex,
+        workspace
+       )
+end
+
+function PartitionedArrays.centralize(w::MeshWorkspace)
+    MeshWorkspace(centralize(w.topology))
+end
+
+function PartitionedArrays.centralize(topo::AbstractTopology)
+    face_reference_id = map(collect,GT.face_reference_id(topo))
+    reference_topologies = GT.reference_topologies(topo)
+    face_incidence = map(collect,GT.face_incidence(topo))
+    face_permutation_ids = map(GT.face_permutation_ids(topo)) do v
+        if v !== nothing
+            collect(v)
+        else
+            nothing
+        end
+    end
+    mesh_topology(;
+                  face_incidence,
+                  face_reference_id,
+                  face_permutation_ids,
+                  reference_topologies,)
+end
+
+struct Partitioned{A} <: AbstractType
+    partition::A
+end
+
+function PartitionedArrays.partition(a::Partitioned)
+    a.partition
+end
+
+function Base.collect(a::Partitioned)
+    reduce(vcat,collect(partition(a)))
+end
+
+# TODO move to PartitionedArrays
+
+function foreach_part(f,args...)
+    foreach(f,map(partition,args)...)
+end
+
+function map_parts(f,args...)
+    map(f,map(partition,args)...)
 end

@@ -117,13 +117,13 @@ counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure()
 domain = (0,1,0,1,0,1)
 n = 10
 cells = (n,n,n)
-mesh = GT.cartesian_mesh(domain,cells)
 np = 5
 parts = DebugArray(LinearIndices((np,)))
-#pmesh = GT.partition_mesh(mesh,np;parts,renumber=true)
-#
-#pplt = GT.plot(pmesh)
-#plt = GT.centralize(pplt)
+mesh = GT.with_mesh_partitioner(;parts) do
+    GT.cartesian_mesh(domain,cells)
+end
+
+plt = GT.plot(mesh)
 
 fig = Figure()
 ax = Axis3(fig[1,1],aspect=:data)
@@ -132,6 +132,7 @@ hidedecorations!(ax)
 GT.makie_surfaces!(plt;color=GT.FaceColor("__OWNER__"))
 GT.makie_edges!(plt;color=:black)
 counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure())
+display(Makie.current_figure())
 
 #fig = Figure()
 #ax = Axis3(fig[1,1],aspect=:data)

@@ -361,8 +361,9 @@ function at_face(a::ReferenceSpaceAccessor{AtSkeleton},face)
     face_dface = GT.faces(domain)
     dface = face_dface[face]
     a2 = replace_face_dface(a,face,dface)
-    face_around = GT.face_around(domain)
-    if face_around !== nothing
+    faces_around = GT.faces_around(domain)
+    if faces_around !== nothing
+        face_around = faces_around[face]
         a3 = at_face_around(a2,face_around)
     else
         a3 = a2
@@ -401,12 +402,19 @@ function num_faces_around(a::ReferenceSpaceAccessor)
     length(Dfaces)
 end
 
-function at_face_around(a::ReferenceSpaceAccessor,face_around)
-    (;space) = a
+function at_face_around(a::ReferenceSpaceAccessor,face_around_0)
+    (;space,quadrature) = a
     (;d,D,dface_ldfaces) = a.workspace
-    (;dface) = a.location
+    (;face,dface) = a.location
+    domain = GT.domain(quadrature)
     mesh = GT.mesh(space)
     topo = topology(mesh)
+    faces_around_permutation = GT.faces_around_permutation(domain)
+    if faces_around_permutation !== nothing
+        face_around = faces_around_permutation[face][face_around_0]
+    else
+        face_around = face_around_0
+    end
     dface_Dfaces = face_incidence(topo,d,D)
     Dface = dface_Dfaces[dface][face_around]
     ldface = dface_ldfaces[dface][face_around]
@@ -1472,10 +1480,10 @@ function shape_function_accessor_reference(f,space::AbstractSpace,measure::Abstr
     domain_space = domain(space)
     d = num_dims(domain_measure)
     D = num_dims(domain_space)
-    face_around = GT.face_around(domain_measure)
+    faces_around = GT.faces_around(domain_measure)
     if d == D
         shape_function_accessor_reference_interior(f,space,measure)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         shape_function_accessor_reference_boundary(f,space,measure)
     else
         shape_function_accessor_reference_skeleton(f,space,measure)
@@ -1572,10 +1580,11 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
 end
 
 function shape_function_accessor_reference_boundary(f,space::AbstractSpace,measure::AbstractQuadrature)
-    face_around = GT.face_around(domain(measure))
+    faces_around = GT.faces_around(domain(measure))
     face_point_dof_s = shape_function_accessor_reference_skeleton(f,space,measure)
     prototype = GT.prototype(face_point_dof_s)
     function face_point_dof_b(face,dummy=nothing)
+        face_around=faces_around[face]
         face_point_dof_s(face,face_around)
     end
     accessor(face_point_dof_b,prototype)
@@ -1641,10 +1650,10 @@ end
 function nodes_accessor(mesh::AbstractMesh,vD,domain::AbstractDomain)
     D = val_parameter(vD)
     d = num_dims(domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     if d == D
         nodes_accessor_interior(mesh,vD,domain)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         nodes_accessor_boundary(mesh,vD,domain)
     else
         nodes_accessor_skeleton(mesh,vD,domain)
@@ -1682,9 +1691,10 @@ end
 
 function nodes_accessor_boundary(mesh::AbstractMesh,vD,domain::AbstractDomain)
     face_to_nodes = nodes_accessor_skeleton(mesh,vD,domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     prototype = GT.prototype(face_to_nodes)
     function face_to_nodes_2(face,dummy=nothing)
+        face_around=faces_around[face]
         face_to_nodes(face,face_around)
     end
     accessor(face_to_nodes_2,prototype)
@@ -1901,10 +1911,10 @@ end
 function shape_function_accessor_modifier(f,space::AbstractSpace,domain::AbstractDomain)
     D = num_dims(space)
     d = num_dims(domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     if d == D
         shape_function_accessor_modifier_interior(f,space,domain)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         shape_function_accessor_modifier_boundary(f,space,domain)
     else
         shape_function_accessor_modifier_skeleton(f,space,domain)
@@ -1939,8 +1949,9 @@ end
 
 function shape_function_accessor_modifier_boundary(f,space::AbstractSpace,domain::AbstractDomain)
     face_modif = shape_function_accessor_modifier_skeleton(f,space,domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     function face_to_modif(face,dummy=nothing)
+        face_around=faces_around[face]
         face_modif(face,face_around)
     end
     accessor(face_to_modif,GT.prototype(face_modif))
@@ -2084,10 +2095,10 @@ end # for
 function dofs_accessor(space::AbstractSpace,domain::AbstractDomain)
     D = num_dims(space)
     d = num_dims(domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     if d == D
         dofs_accessor_interior(space,domain)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         dofs_accessor_boundary(space,domain)
     else
         dofs_accessor_skeleton(space,domain)
@@ -2126,9 +2137,10 @@ end
 
 function dofs_accessor_boundary(space::AbstractSpace,domain::AbstractDomain)
     face_to_dofs = dofs_accessor_skeleton(space,domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     prototype = GT.prototype(face_to_dofs)
     function face_to_dofs_2(face,dummy=nothing)
+        face_around=faces_around[face]
         face_to_dofs(face,face_around)
     end
     accessor(face_to_dofs_2,prototype)
@@ -2137,10 +2149,10 @@ end
 function num_dofs_accessor(space::AbstractSpace,domain::AbstractDomain)
     D = num_dims(space)
     d = num_dims(domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     if d == D
         num_dofs_accessor_interior(space,domain)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         num_dofs_accessor_boundary(space,domain)
     else
         num_dofs_accessor_skeleton(space,domain)
@@ -2180,8 +2192,9 @@ end
 
 function num_dofs_accessor_boundary(space::AbstractSpace,domain::AbstractDomain)
     a = num_dofs_accessor_skeleton(space,domain)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     function face_to_n(face,dummy=nothing)
+        face_around=faces_around[face]
         a(face,face_around)
     end
     accessor(face_to_n,GT.prototype(a))
@@ -2330,7 +2343,7 @@ function unit_normal_accessor_reference(measure::AbstractQuadrature)
     D = num_dims(mesh(measure))
     d = num_dims(domain(measure))
     @assert D == d+1
-    if GT.face_around(domain(measure)) === nothing
+    if GT.faces_around(domain(measure)) === nothing
         unit_normal_accessor_reference_skeleton(measure)
     else
         unit_normal_accessor_reference_boundary(measure)
@@ -2365,8 +2378,9 @@ end
 
 function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
     face_n = unit_normal_accessor_reference_skeleton(measure)
-    face_around = GT.face_around(domain(measure))
+    faces_around = GT.faces_around(domain(measure))
     function face_n_2(face,dummy=nothing)
+        face_around=faces_around[face]
         face_n(face,face_around)
     end
     accessor(face_n_2,GT.prototype(face_n))
@@ -2485,10 +2499,10 @@ end
 function num_faces_around_accesor(domain_space,domain)
     d = num_dims(domain)
     D = num_dims(domain_space)
-    face_around = GT.face_around(domain)
+    faces_around = GT.faces_around(domain)
     if d == D
         num_faces_around_accesor_interior(domain_space,space)
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         num_faces_around_accesor_interior(domain_space,space)
     else
         num_faces_around_accesor_skeleton(domain_space,space)

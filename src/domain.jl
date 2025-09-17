@@ -20,16 +20,16 @@ function is_unit_simplex(geo::AbstractDomain)
 end
 
 function is_boundary(dom::AbstractDomain)
-    face_around(dom) !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
+    faces_around(dom) !== nothing && (num_dims(dom) + 1) == num_dims(mesh(dom))
 end
 
 function max_num_faces_around(interpolation_domain::AbstractDomain,integration_domain::AbstractDomain)
     D = num_dims(interpolation_domain)
     d = num_dims(integration_domain)
-    face_around = GT.face_around(integration_domain)
+    faces_around = GT.faces_around(integration_domain)
     if d == D
         1
-    elseif d+1==D && face_around !== nothing
+    elseif d+1==D && faces_around !== nothing
         1
     else
         2
@@ -39,7 +39,7 @@ end
 num_faces(geo::AbstractFaceDomain) = 1
 faces(geo::AbstractFaceDomain) = [1]
 inverse_faces(geo::AbstractFaceDomain) = [1]
-face_around(geo::AbstractFaceDomain) = nothing
+faces_around(geo::AbstractFaceDomain) = nothing
 geometries(geo::AbstractFaceDomain,d) = 1:num_faces(mesh(geo),d)
 num_geometries(geo::AbstractFaceDomain,d) = length(geometries(geo,d))
 
@@ -468,14 +468,29 @@ function Base.:(==)(a::AbstractMeshDomain,b::AbstractMeshDomain)
 end
 
 
-struct MeshDomain{A,B,C,D,E,F,G} <: AbstractMeshDomain
+
+struct MeshDomain{A,B,C,D,E,F,G,W} <: AbstractMeshDomain
     mesh::A
     mesh_id::B
     num_dims::Val{C}
     group_names::D
     is_reference_domain::Val{E}
-    face_around::F
-    workspace::G
+    faces_around::F
+    faces_around_permutation::G
+    workspace::W
+end
+
+function replace_faces_around(domain::MeshDomain,faces_around)
+    MeshDomain(
+               domain.mesh,
+               domain.mesh_id,
+               domain.num_dims,
+               domain.group_names,
+               domain.is_reference_domain,
+               faces_around,
+               domain.faces_around_permutation,
+               domain.workspace
+              )
 end
 
 function mesh_domain(mesh;
@@ -483,7 +498,8 @@ function mesh_domain(mesh;
     num_dims = Val(GT.num_dims(mesh)),
     group_names=GT.group_names(mesh,num_dims),
     is_reference_domain = Val(false),
-    face_around=nothing,
+    faces_around=nothing,
+    faces_around_permutation=nothing,
     workspace=nothing,
     setup = Val(true),
     )
@@ -494,7 +510,8 @@ function mesh_domain(mesh;
                         Val(val_parameter(num_dims)),
                         group_names,
                         Val(val_parameter(is_reference_domain)),
-                        face_around,
+                        faces_around,
+                        faces_around_permutation,
                         workspace,
                        )
     if val_parameter(setup)
@@ -512,7 +529,8 @@ function reference_domain(domain::MeshDomain)
                domain.num_dims,
                domain.group_names,
                Val(true),
-               domain.face_around,
+               domain.faces_around,
+               domain.faces_around_permutation,
                domain.workspace
               )
 end
@@ -524,7 +542,8 @@ function physical_domain(domain::MeshDomain)
                domain.num_dims,
                domain.group_names,
                Val(false),
-               domain.face_around,
+               domain.faces_around,
+               domain.faces_around_permutation,
                domain.workspace
               )
 end
@@ -532,7 +551,8 @@ end
 mesh(a::MeshDomain) = a.mesh
 mesh_id(a::MeshDomain) = a.mesh_id
 group_names(a::MeshDomain) = a.group_names
-face_around(a::MeshDomain) = a.face_around
+faces_around(a::MeshDomain) = a.faces_around
+faces_around_permutation(a::MeshDomain) = a.faces_around_permutation
 num_dims(a::MeshDomain) = GT.val_parameter(a.num_dims)
 workspace(a::MeshDomain) = a.workspace
 is_reference_domain(a::MeshDomain) = val_parameter(a.is_reference_domain)
@@ -563,7 +583,7 @@ end
 #                    num_dims = Val(GT.num_dims(pdomain)),
 #                    group_names=GT.group_names(pdomain),
 #                    is_reference_domain = Val(is_reference_domain(pdomain)),
-#                    face_around=face_around(pdomain),
+#                    faces_around=faces_around(pdomain),
 #                    setup = Val(false))
 #    end
 #end
@@ -578,7 +598,6 @@ end
 #    replace_workspace(pdomain,workspace)
 #end
 
-
 function replace_workspace(domain::MeshDomain,workspace)
     MeshDomain(
                domain.mesh,
@@ -586,7 +605,8 @@ function replace_workspace(domain::MeshDomain,workspace)
                domain.num_dims,
                domain.group_names,
                domain.is_reference_domain,
-               domain.face_around,
+               domain.faces_around,
+               domain.faces_around_permutation,
                workspace
               )
 end
@@ -599,20 +619,42 @@ function faces(domain::MeshDomain)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
     D = GT.num_dims(domain)
-    Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
+    Dfaces = GT.face_ids(mesh,D)
+    if is_partitioned(mesh)
+        Dface_to_tag = pzeros(Ti,Dfaces)
+    else
+        Dface_to_tag = zeros(Ti,Dfaces)
+    end
     tag_to_name = GT.group_names(domain)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
     group_faces = GT.group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
-        for (name2,faces) in group_faces
+        for (name2,faces2) in group_faces
             if name != name2
                 continue
             end
-            Dface_to_tag[faces] .= tag
+            if is_partitioned(domain)
+                foreach_part(Dface_to_tag,Dfaces,faces2) do pface_tag, ids, faces2
+                    face_pface = global_to_local(ids)
+                    for face in faces2
+                        pface = face_pface[face]
+                        pface_tag[pface] = tag
+                    end
+                end
+            else
+                Dface_to_tag[faces2] .= tag
+            end
         end
     end
-    physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-    Ti.(physical_Dfaces)
+    if is_partitioned(mesh)
+        map_parts(Dface_to_tag,Dfaces) do pDface_tag, pDfaces
+            pDface_Dface = local_to_global(pDfaces)
+            pDface_Dface[findall(i->i!=0,pDface_tag)]
+        end |> Partitioned
+    else
+        physical_Dfaces = findall(i->i!=0,Dface_to_tag)
+        Ti.(physical_Dfaces)
+    end
 end
 
 function inverse_faces(domain::MeshDomain)
@@ -621,10 +663,24 @@ function inverse_faces(domain::MeshDomain)
     end
     Ti = int_type(options(domain))
     d = num_dims(domain)
-    ndfaces = num_faces(mesh(domain),d)
-    dface_to_face = zeros(Ti,ndfaces)
+    dfaces = GT.face_ids(mesh(domain),d)
     face_to_dface = faces(domain)
-    dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    if is_partitioned(domain)
+        dface_to_face = pzeros(Ti,dfaces)
+        foreach_part(dface_to_face,face_to_dface,dfaces) do pdface_face, face_dface, dfaces
+            dface_pdface = global_to_local(dfaces)
+            for (face,dface) in enumerate(face_dface)
+                pdface = dface_pdface[dface]
+                pdface_face[pdface] = face
+            end
+        end
+    else
+        dface_to_face = zeros(Ti,dfaces)
+        dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    end
     dface_to_face
 end
+
+is_partitioned(a::AbstractDomain) = is_partitioned(mesh(a))
+
 

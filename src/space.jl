@@ -932,8 +932,6 @@ end
     workspace::W
 end
 
-
-
 @auto_hash_equals struct LagrangeFaceSpaceWorskspace{D,Ti} <: AbstractType
     monomial_exponents::Vector{StaticArrays.SVector{D,Ti}}
     face_dofs::PartitionedArrays.JaggedArray{Ti,Ti}
