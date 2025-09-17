@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758115923444,
+  "lastUpdate": 1758128549380,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2564,6 +2564,36 @@ window.BENCHMARK_DATA = {
             "value": 742422390,
             "unit": "ns",
             "extra": "gctime=18826825\nmemory=342393348\nallocs=8609788\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7c41ebfba1cf9e1cc58ee1e3cd8c4fe8476ef8fc",
+          "message": "Merge pull request #247 from GalerkinToolkit/partitioned_mesh",
+          "timestamp": "2025-09-17T18:58:23+02:00",
+          "tree_id": "d9fa56cba96044fb17d14f0edd8dfd50ee22102c",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/7c41ebfba1cf9e1cc58ee1e3cd8c4fe8476ef8fc"
+        },
+        "date": 1758128548968,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 735369103,
+            "unit": "ns",
+            "extra": "gctime=19201989\nmemory=341035652\nallocs=8610260\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
