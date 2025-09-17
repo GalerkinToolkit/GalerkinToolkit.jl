@@ -7,6 +7,7 @@ using LinearAlgebra
 import LinearAlgebra
 import ForwardDiff
 using Gmsh
+import PartitionedArrays as PA
 using PartitionedArrays
 using BlockArrays
 using FillArrays
