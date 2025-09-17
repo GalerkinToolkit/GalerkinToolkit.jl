@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758044971017,
+  "lastUpdate": 1758115923444,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2534,6 +2534,36 @@ window.BENCHMARK_DATA = {
             "value": 743572379,
             "unit": "ns",
             "extra": "gctime=18770193\nmemory=342392900\nallocs=8609788\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a79c08923afc87d1c469ecc4fed41702715c9696",
+          "message": "Merge pull request #246 from GalerkinToolkit/domain\n\nAdding faces_around and faces_around_permutation to AbstractDomain",
+          "timestamp": "2025-09-17T15:27:55+02:00",
+          "tree_id": "def5ff4f7bad375e5f545ccfa67cd7748f847ff7",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/a79c08923afc87d1c469ecc4fed41702715c9696"
+        },
+        "date": 1758115922994,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 742422390,
+            "unit": "ns",
+            "extra": "gctime=18826825\nmemory=342393348\nallocs=8609788\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
