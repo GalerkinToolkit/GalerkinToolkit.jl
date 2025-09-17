@@ -125,8 +125,6 @@ end
 
 plt = GT.plot(mesh)
 
-plt = GT.centralize(plt)
-
 fig = Figure()
 ax = Axis3(fig[1,1],aspect=:data)
 hidespines!(ax)

@@ -908,6 +908,21 @@ end
 
 # Constructors
 
+"""
+    with_mesh_partitioner(mesher[,partitioner];[parts])
+
+Generate a mesh calling `mesher()` partition it, and distribute it
+over the part ids in `parts`.
+
+### Arguments
+
+* Function `mesher()` should have no arguments and returns a sequential mesh object. This function is called only on one process.
+* `partitioner ` [optional]: A function that takes a graph encoded as a sparse matrix, and returns a vector containing the part id of each node in the graph. Defaults to `Metis.partition`.
+
+### Keyword arguments
+
+* `parts` [optional]: A vector containing the part indices `1:P` where `P` is the number of parts in the data distribution. By default, `P` is the number of MPI ranks and `1:P` is distributed one item per rank.
+"""
 function with_mesh_partitioner(mesher,
     partitioner = Metis.partition;
     parts=default_parts()
