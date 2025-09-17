@@ -468,14 +468,15 @@ function Base.:(==)(a::AbstractMeshDomain,b::AbstractMeshDomain)
 end
 
 
-struct MeshDomain{A,B,C,D,E,F,G} <: AbstractMeshDomain
+struct MeshDomain{A,B,C,D,E,F,G,W} <: AbstractMeshDomain
     mesh::A
     mesh_id::B
     num_dims::Val{C}
     group_names::D
     is_reference_domain::Val{E}
     faces_around::F
-    workspace::G
+    faces_around_permutation::G
+    workspace::W
 end
 
 function replace_faces_around(domain::MeshDomain,faces_around)
@@ -486,6 +487,7 @@ function replace_faces_around(domain::MeshDomain,faces_around)
                domain.group_names,
                domain.is_reference_domain,
                faces_around,
+               domain.faces_around_permutation,
                domain.workspace
               )
 end
@@ -496,6 +498,7 @@ function mesh_domain(mesh;
     group_names=GT.group_names(mesh,num_dims),
     is_reference_domain = Val(false),
     faces_around=nothing,
+    faces_around_permutation=nothing,
     workspace=nothing,
     setup = Val(true),
     )
@@ -507,6 +510,7 @@ function mesh_domain(mesh;
                         group_names,
                         Val(val_parameter(is_reference_domain)),
                         faces_around,
+                        faces_around_permutation,
                         workspace,
                        )
     if val_parameter(setup)
@@ -525,6 +529,7 @@ function reference_domain(domain::MeshDomain)
                domain.group_names,
                Val(true),
                domain.faces_around,
+               domain.faces_around_permutation,
                domain.workspace
               )
 end
@@ -537,6 +542,7 @@ function physical_domain(domain::MeshDomain)
                domain.group_names,
                Val(false),
                domain.faces_around,
+               domain.faces_around_permutation,
                domain.workspace
               )
 end
@@ -545,6 +551,7 @@ mesh(a::MeshDomain) = a.mesh
 mesh_id(a::MeshDomain) = a.mesh_id
 group_names(a::MeshDomain) = a.group_names
 faces_around(a::MeshDomain) = a.faces_around
+faces_around_permutation(a::MeshDomain) = a.faces_around_permutation
 num_dims(a::MeshDomain) = GT.val_parameter(a.num_dims)
 workspace(a::MeshDomain) = a.workspace
 is_reference_domain(a::MeshDomain) = val_parameter(a.is_reference_domain)
@@ -598,6 +605,7 @@ function replace_workspace(domain::MeshDomain,workspace)
                domain.group_names,
                domain.is_reference_domain,
                domain.faces_around,
+               domain.faces_around_permutation,
                workspace
               )
 end

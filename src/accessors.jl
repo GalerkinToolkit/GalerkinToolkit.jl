@@ -402,12 +402,19 @@ function num_faces_around(a::ReferenceSpaceAccessor)
     length(Dfaces)
 end
 
-function at_face_around(a::ReferenceSpaceAccessor,face_around)
-    (;space) = a
+function at_face_around(a::ReferenceSpaceAccessor,face_around_0)
+    (;space,quadrature) = a
     (;d,D,dface_ldfaces) = a.workspace
-    (;dface) = a.location
+    (;face,dface) = a.location
+    domain = GT.domain(quadrature)
     mesh = GT.mesh(space)
     topo = topology(mesh)
+    faces_around_permutation = GT.faces_around_permutation(domain)
+    if faces_around_permutation !== nothing
+        face_around = faces_around_permutation[face][face_around_0]
+    else
+        face_around = face_around_0
+    end
     dface_Dfaces = face_incidence(topo,d,D)
     Dface = dface_Dfaces[dface][face_around]
     ldface = dface_ldfaces[dface][face_around]

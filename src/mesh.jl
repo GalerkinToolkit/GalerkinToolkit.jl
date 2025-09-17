@@ -138,7 +138,7 @@ end
 
 function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(objectid(domain))__")
     mesh = GT.mesh(domain)
-    D = num_dims(mesh)
+    D = num_dims(domain)
     d = D-1
     groups = group_faces(mesh,d)
     if haskey(groups,group_name)
@@ -148,7 +148,8 @@ function group_boundary_faces!(domain::AbstractDomain;group_name="__BOUNDARY_$(o
     cell_to_faces = face_incidence(topo,D,d)
     nfaces = num_faces(mesh,d)
     face_count = zeros(Int32,nfaces)
-    for faces in cell_to_faces
+    for cell in GT.faces(domain)
+        faces = cell_to_faces[cell]
         for face in faces
             face_count[face] += 1
         end
@@ -258,7 +259,33 @@ function boundary(domain::AbstractDomain;
     group_names=[group_boundary_faces!(domain)],
     kwargs...)
     mesh = GT.mesh(domain)
-    boundary(mesh;group_names,kwargs...)
+    nfaces = num_faces(domain)
+    domain2 = boundary(mesh;group_names,kwargs...)
+    faces_around = boundary_faces_around(domain,domain2)
+    replace_faces_around(domain2,faces_around)
+end
+
+function boundary_faces_around(domain_D,domain_d)
+    mesh = GT.mesh(domain_D)
+    D = num_dims(domain_D)
+    d = num_dims(domain_d)
+    topo = topology(mesh)
+    dface_Dfaces = GT.face_incidence(topo,d,D)
+    Dface_mask = fill(false,num_faces(mesh,D))
+    Dface_mask[GT.faces(domain_D)] .= true
+    map(GT.faces(domain_d)) do dface
+        Dfaces = dface_Dfaces[dface]
+        i = -1
+        for (j,Dface) in enumerate(Dfaces)
+            mask = Dface_mask[Dface]
+            if mask
+                i = j
+                break
+            end
+        end
+        @boundscheck @assert i != -1
+        Int32(i)
+    end
 end
 
 function reference_domains(a::AbstractMesh,d)
