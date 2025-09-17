@@ -477,7 +477,7 @@ end
 
 function plot(mesh::AbstractMesh)
     fd = face_data(mesh)
-    if num_dims(mesh) == 3 && is_cell_complex(mesh)
+    if num_dims(mesh) == 3 && is_cell_complex(mesh) && ! is_partitioned(mesh)
         Γ = GT.domain(mesh,Val(2))
         dΓ = GT.measure(Γ,0)
         dface_point_n = GT.unit_normal_accessor(dΓ)
@@ -490,10 +490,12 @@ function plot(mesh::AbstractMesh)
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
         dface_to_n = normals(mesh)
-        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+        if dface_to_n !== nothing
+            fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+        end
     end
-    #phys_names = group_boundary_faces!(mesh)
-    Plot(mesh,fd,node_data(mesh))
+    nd = node_data(mesh)
+    Plot(mesh,fd,nd)
 end
 
 const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
@@ -501,42 +503,75 @@ const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
     dict = Dict{String,Any}()
+    dfaces = GT.face_ids(mesh,d)
     for group in group_faces(mesh,d)
         name,faces = group
-        face_mask = zeros(Int32,ndfaces)
-        face_mask[faces] .= 1
+        face_mask = similar(face_reference_id(mesh,d))
+        face_mask .= 0
+        if is_partitioned(mesh)
+            foreach_part(face_mask,faces,dfaces) do pface_mask,faces,dfaces
+                face_pface = global_to_local(dfaces)
+                for face in faces
+                    pface = face_pface[face]
+                    pface_mask[pface] = 1
+                end
+            end
+        else
+            face_mask[faces] .= 1
+        end
         dict[name] = face_mask
     end
-    #dict["__LOCAL_DFACE__"] = collect(1:ndfaces)
-    faceids = face_local_indices(mesh,d)
-    part = part_id(faceids)
-    dict["__OWNER__"] = local_to_owner(faceids)
-    dict["__IS_LOCAL__"] = Int32.(local_to_owner(faceids) .== part)
-    dict["__PART__"] = fill(part,ndfaces)
+    face_owner = similar(face_reference_id(mesh,d),Int32)
+    if is_partitioned(mesh)
+        foreach_part(face_owner,dfaces) do pface_owner,dfaces
+            pface_owner[:] = local_to_owner(dfaces)
+        end
+    else
+        face_owner .= 1
+    end
+    dict["__OWNER__"] = face_owner
     dict
 end
 
 function node_data(mesh::AbstractMesh)
     nnodes = num_nodes(mesh)
     dict = Dict{String,Any}()
-    #for group in physical_nodes(mesh;merge_dims=Val(true))
-    #    name,nodes = group
-    #    node_mask = zeros(Int32,nnodes)
-    #    node_mask[nodes] .= 1
-    #    dict[name] = node_mask
-    #end
-    #dict["__LOCAL_NODE__"] = collect(1:nnodes)
-    nodeids = node_local_indices(mesh)
-    part = part_id(nodeids)
-    dict["__OWNER__"] = local_to_owner(nodeids)
-    dict["__IS_LOCAL__"] = Int32.(local_to_owner(nodeids) .== part)
-    dict["__PART__"] = fill(part,nnodes)
+    node_owner = similar(node_coordinates(mesh),Int32)
+    nodes = GT.nodes(mesh)
+    if is_partitioned(mesh)
+        foreach_part(node_owner,nodes) do pnode_owner, nodes
+            pnode_owner[:] = local_to_owner(nodes)
+        end
+    else
+        node_owner .= 1
+    end
+    dict["__OWNER__"] = node_owner
     dict
 end
 
 function face_data(mesh::AbstractMesh)
     D = num_dims(mesh)
     map(d->face_data(mesh,d),0:D)
+end
+
+function PartitionedArrays.centralize(plt::Plot)
+    fd = map(plt.face_data) do dict
+        fd_d = Dict{String,Any}()
+        for (group,data) in dict
+            fd_d[group] = collect(data)
+        end
+        fd_d
+    end
+    nd = Dict{String,Any}()
+    for (group,data) in plt.node_data
+        nd[group] = collect(data)
+    end
+    mesh = centralize(plt.mesh)
+    Plot(mesh,fd,nd)
+end
+
+function is_partitioned(plt::Plot)
+    is_partitioned(plt.mesh)
 end
 
 #function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)

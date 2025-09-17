@@ -1,6 +1,9 @@
 module CartesianMeshTests
 
+using Test
+
 import GalerkinToolkit as GT
+import PartitionedArrays as PA
 
 #using InteractiveUtils
 
@@ -36,7 +39,19 @@ GT.group_faces(mesh,D)["1"] = group_faces1
 Ω1 = GT.interior(mesh;group_names=["1"])
 ∂Ω1 = GT.boundary(Ω1)
 
+parts = PA.DebugArray(LinearIndices((2,)))
+mesh = GT.with_mesh_partitioner(;parts) do
+    domain = (0,1,0,1)
+    cells = (2,2)
+    GT.cartesian_mesh(domain,cells)
+end
 
+@test GT.is_partitioned(mesh)
+
+Ω = GT.interior(mesh)
+@test GT.is_partitioned(Ω)
+
+mesh2 = GT.centralize(mesh)
 
 
 end #module

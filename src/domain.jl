@@ -617,20 +617,42 @@ function faces(domain::MeshDomain)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
     D = GT.num_dims(domain)
-    Dface_to_tag = zeros(Ti,GT.num_faces(mesh,D))
+    Dfaces = GT.face_ids(mesh,D)
+    if is_partitioned(mesh)
+        Dface_to_tag = pzeros(Ti,Dfaces)
+    else
+        Dface_to_tag = zeros(Ti,Dfaces)
+    end
     tag_to_name = GT.group_names(domain)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
     group_faces = GT.group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
-        for (name2,faces) in group_faces
+        for (name2,faces2) in group_faces
             if name != name2
                 continue
             end
-            Dface_to_tag[faces] .= tag
+            if is_partitioned(domain)
+                foreach_part(Dface_to_tag,Dfaces,faces2) do pface_tag, ids, faces2
+                    face_pface = global_to_local(ids)
+                    for face in faces2
+                        pface = face_pface[face]
+                        pface_tag[pface] = tag
+                    end
+                end
+            else
+                Dface_to_tag[faces2] .= tag
+            end
         end
     end
-    physical_Dfaces = findall(i->i!=0,Dface_to_tag)
-    Ti.(physical_Dfaces)
+    if is_partitioned(mesh)
+        map_parts(Dface_to_tag,Dfaces) do pDface_tag, pDfaces
+            pDface_Dface = local_to_global(pDfaces)
+            pDface_Dface[findall(i->i!=0,pDface_tag)]
+        end |> Partitioned
+    else
+        physical_Dfaces = findall(i->i!=0,Dface_to_tag)
+        Ti.(physical_Dfaces)
+    end
 end
 
 function inverse_faces(domain::MeshDomain)
@@ -639,10 +661,24 @@ function inverse_faces(domain::MeshDomain)
     end
     Ti = int_type(options(domain))
     d = num_dims(domain)
-    ndfaces = num_faces(mesh(domain),d)
-    dface_to_face = zeros(Ti,ndfaces)
+    dfaces = GT.face_ids(mesh(domain),d)
     face_to_dface = faces(domain)
-    dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    if is_partitioned(domain)
+        dface_to_face = pzeros(Ti,dfaces)
+        foreach_part(dface_to_face,face_to_dface,dfaces) do pdface_face, face_dface, dfaces
+            dface_pdface = global_to_local(dfaces)
+            for (face,dface) in enumerate(face_dface)
+                pdface = dface_pdface[dface]
+                pdface_face[pdface] = face
+            end
+        end
+    else
+        dface_to_face = zeros(Ti,dfaces)
+        dface_to_face[face_to_dface] = 1:length(face_to_dface)
+    end
     dface_to_face
 end
+
+is_partitioned(a::AbstractDomain) = is_partitioned(mesh(a))
+
 
