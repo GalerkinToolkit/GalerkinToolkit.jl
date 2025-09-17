@@ -52,5 +52,4 @@ end
 @test GT.is_partitioned(Ω)
 
 
-
 end #module
