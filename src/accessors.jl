@@ -1490,7 +1490,8 @@ function shape_function_accessor_reference_interior(f,space::AbstractSpace,measu
     # NB the TODOs below can be solved by introducing an extra nesting level
     # TODO assumes same reference elems for integration and for interpolation
     rid_to_tab = map(rid_to_point_to_x,reference_spaces(space)) do point_to_x, refface
-        tabulator(refface)(f,point_to_x)
+        # tabulator(refface)(f,point_to_x)
+        collect(permutedims(tabulator(refface)(f,point_to_x), (2, 1)))
     end
     prototype = first(first(rid_to_tab))
     face_to_rid = face_reference_id(mesh,d)
@@ -1501,7 +1502,8 @@ function shape_function_accessor_reference_interior(f,space::AbstractSpace,measu
         tab = rid_to_tab[rid]
         function point_dof_s(point,J=nothing)
             function dof_s(dof)
-                tab[point,dof]
+                tab[dof, point]
+                # tab[point, dof]
             end
         end
     end
@@ -1542,7 +1544,8 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
             map(ldface_perm_varphi) do perm_varphi
                 map(perm_varphi) do varphi
                     point_to_q = varphi.(point_to_x)
-                    elem::typeof(prototype_tab) = tabulator(reffe)(f,point_to_q)
+                    # elem::typeof(prototype_tab) = tabulator(reffe)(f,point_to_q)
+                    elem::typeof(prototype_tab) = collect(permutedims(tabulator(reffe)(f,point_to_q), (2, 1)))
                 end
             end
         end
@@ -1560,7 +1563,8 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
         tab = drid_Drid_ldface_perm_to_tab[drid][Drid][ldface][perm]
         function point_dof_s(point)
             function dof_s(dof)
-                tab[point,dof]
+                # tab[point,dof]
+                tab[dof, point]
             end
         end
     end
