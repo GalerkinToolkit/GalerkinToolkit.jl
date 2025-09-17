@@ -2549,108 +2549,92 @@ end
 # end
 
 
-
+# currently we do 1 step lowering
 # shape_function_accessor_modifier_term: always tabulated
-function shape_function_accessor_modifier_term(f, v, J)
-    if f == value
-        v
-    elseif f == ForwardDiff.jacobian 
-        :($v/$J)
-    elseif f == ForwardDiff.gradient
-        :(transpose($J)\$v)
-    else
-        error("shape function accessor modifier not supported for this function f: $f")
-    end
-end
+# function shape_function_accessor_modifier_term(f, v, J)
+#     if f == value
+#         v
+#     elseif f == ForwardDiff.jacobian 
+#         :($v/$J)
+#     elseif f == ForwardDiff.gradient
+#         :(transpose($J)\$v)
+#     else
+#         error("shape function accessor modifier not supported for this function f: $f")
+#     end
+# end
 
 
-function shape_function_accessor_modifier_interior_term(f, v, J)
-    # Dface_to_modif = :(shape_function_accessor_modifier($f,$space))
-    # face_to_Dface = :($(GT.faces)($dom))
-    # Dface = :($face_to_Dface[$face])
-    shape_function_accessor_modifier_term(f, v, J)
-end
+# function shape_function_accessor_modifier_interior_term(f, v, J)
+#     shape_function_accessor_modifier_term(f, v, J)
+# end
 
-function shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
-    # TODO: is it correct?
-    # D = :(num_dims($(GT.domain)($space)))
-    # d = :(num_dims($dom))
-    # face_to_dface = :(faces($dom))
-    # topo = :(topology($(GT.mesh)($space)))
-    # dface_to_Dfaces = :(face_incidence($topo,$d,$D))
+# function shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+#     # is it correct?
+#     shape_function_accessor_modifier_term(f, v, J)
+# end
 
-    # dface = :($face_to_dface[$face])
-    # Dfaces = :($dface_to_Dfaces[$dface])
-    # Dface = :($Dfaces[$the_face_around])
-
-    shape_function_accessor_modifier_term(f, v, J)
-end
-
-function shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
-    face_around = :($(GT.face_around)(dom))
-    shape_function_accessor_modifier_skeleton_term(f, space, dom, face, face_around, dof, v, J)
-end
+# function shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+#     face_around = :($(GT.face_around)(dom))
+#     shape_function_accessor_modifier_skeleton_term(f, space, dom, face, face_around, dof, v, J)
+# end
 
 
-function shape_function_accessor_modifier_term(f, space, dom, face, the_face_around, dof, v, J, integral_type)
-    # TODO: inline 1 step further
-    if integral_type == :interior 
-        shape_function_accessor_modifier_interior_term(f, v, J)
-    elseif integral_type == :boundary 
-        shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
-    else
-        shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
-    end
-end
+# function shape_function_accessor_modifier_term(f, space, dom, face, the_face_around, dof, v, J, integral_type)
+#     # TODO: inline 1 step further
+#     if integral_type == :interior 
+#         shape_function_accessor_modifier_interior_term(f, v, J)
+#     elseif integral_type == :boundary 
+#         shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+#     else
+#         shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+#     end
+# end
 
 
 
-function shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
-    face_point_dof_v = :(shape_function_accessor_reference($f,$space,$measure)) # TODO: further expand it
+# function shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+#     face_point_dof_v = :(shape_function_accessor_reference($f,$space,$measure)) # TODO: further expand it
 
-    # dface_to_modif = :(shape_function_accessor_modifier($f,$space, $(GT.domain)($measure)))
-    D = :(num_dims($(GT.domain)($space)))
-    face_point_Dphi = :(jacobian_accessor($measure,Val($D)))
+#     # dface_to_modif = :(shape_function_accessor_modifier($f,$space, $(GT.domain)($measure)))
+#     D = :(num_dims($(GT.domain)($space)))
+#     face_point_Dphi = :(jacobian_accessor($measure,Val($D)))
 
-    point_dof_v = :($face_point_dof_v($face,$the_face_around))
-    # dof_modif = :($dface_to_modif($face, $the_face_around))
-    point_Dphi = :($face_point_Dphi($face,$the_face_around))
+#     point_dof_v = :($face_point_dof_v($face,$the_face_around))
+#     # dof_modif = :($dface_to_modif($face, $the_face_around))
+#     point_Dphi = :($face_point_Dphi($face,$the_face_around))
     
-    # J2 = :(ifelse($J == nothing, point_Dphi($point), $J))
-    # TODO: can we assume that the jacobian is always passed from outside?
-    J2 = if J === nothing
-        :($point_Dphi($point))
-    else
-        J
-    end
-    dof_v = :($point_dof_v($point))
-    v = :($dof_v($dof))
-    # modif = :($dof_modif($dof))
+#     # J2 = :(ifelse($J == nothing, point_Dphi($point), $J))
+#     # TODO: can we assume that the jacobian is always passed from outside?
+#     J2 = if J === nothing
+#         :($point_Dphi($point))
+#     else
+#         J
+#     end
+#     dof_v = :($point_dof_v($point))
+#     v = :($dof_v($dof))
+#     # modif = :($dof_modif($dof))
 
-    shape_function = shape_function_accessor_modifier_term(f, space, :($(GT.domain)($measure)), face, the_face_around, dof, v, J2, integral_type)
+#     shape_function = shape_function_accessor_modifier_term(f, space, :($(GT.domain)($measure)), face, the_face_around, dof, v, J2, integral_type)
 
-    shape_function
-    # z, z
-end # function
-
-
-function shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
-    tabulated_functions = Set([value, ForwardDiff.jacobian, ForwardDiff.gradient])
-    if is_reference
-        # TODO: inline the accessor 1 step further
-        # z = :( zero($(GT.prototype)(shape_function_accessor_reference($f,$space,$measure))) )
-        shape_function = :(shape_function_accessor_reference($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
-    elseif f in tabulated_functions
-        shape_function = shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
-        # z = shape_function_accessor_physical_term(f, space, measure, 1, 1, 1, nothing, 1, integral_type) # TODO: find a better way to get prototype. However, this will probably be removed in the final code.
-    else # Untabulated, keep using accessors
-        # z = :( zero($(GT.prototype)(shape_function_accessor_physical($f,$space,$measure))) )
-        shape_function = :(shape_function_accessor_physical($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
-    end
+#     shape_function
+#     # z, z
+# end # function
 
 
-    return shape_function
-end
+# function shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
+#     tabulated_functions = Set([value, ForwardDiff.jacobian, ForwardDiff.gradient])
+#     if is_reference
+#         # z = :( zero($(GT.prototype)(shape_function_accessor_reference($f,$space,$measure))) )
+#         shape_function = :(shape_function_accessor_reference($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+#     elseif f in tabulated_functions
+#         shape_function = shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+#         # z = shape_function_accessor_physical_term(f, space, measure, 1, 1, 1, nothing, 1, integral_type) # TODO: find a better way to get prototype. However, this will probably be removed in the final code.
+#     else # Untabulated, keep using accessors
+#         # z = :( zero($(GT.prototype)(shape_function_accessor_physical($f,$space,$measure))) )
+#         shape_function = :(shape_function_accessor_physical($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+#     end
+#     return shape_function
+# end
 
 
 function form_argument_accessor_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)

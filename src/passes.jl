@@ -1468,52 +1468,52 @@ function ast_array_unroll(ast)
 end
 
 
-# TODO: loop fusion, check correctness
-function ast_loop_fusion(ast)
-    function ast_loop_fusion_impl(node)
-        if ast_is_block(node)
-            children = ast_children(node)
-            signature_count = Dict()
-            signature_block = Dict()
-            for child in children
-                if ast_is_loop(child)
-                    signature = ast_loop_signature(child)
-                    signature_count[signature] =  get!(signature_count, signature, 0) + 1
-                end
-            end
-            children = map(children) do child
-                if ast_is_loop(child)
-                    signature = ast_loop_signature(child)
-                    signature_count[signature] -= 1
-                    if !haskey(signature_block, signature)
-                        signature_block[signature] = ast_block()
-                    end
-                    block = signature_block[signature]
-                    ast_block_append_statements!(block, ast_children(ast_loop_body(child)))
-                    if signature_count[signature] == 0
-                        ast_for(sigature, signature_block[signature])
-                    else
-                        nothing
-                    end
-                else
-                    child
-                end
-            end 
-            children = filter(x -> x !== nothing, children)
-            children = map(ast_loop_fusion_impl, children)
-            ast_block(children)
-        elseif ast_is_loop(node)
-            signature = ast_loop_signature(node)
-            body = ast_loop_fusion_impl(ast_loop_body(node))
-            ast_for(signature, body)
-        else
-            node
-        end
+# TODO: loop fusion, check whether this is useful and check correctness
+# function ast_loop_fusion(ast)
+#     function ast_loop_fusion_impl(node)
+#         if ast_is_block(node)
+#             children = ast_children(node)
+#             signature_count = Dict()
+#             signature_block = Dict()
+#             for child in children
+#                 if ast_is_loop(child)
+#                     signature = ast_loop_signature(child)
+#                     signature_count[signature] =  get!(signature_count, signature, 0) + 1
+#                 end
+#             end
+#             children = map(children) do child
+#                 if ast_is_loop(child)
+#                     signature = ast_loop_signature(child)
+#                     signature_count[signature] -= 1
+#                     if !haskey(signature_block, signature)
+#                         signature_block[signature] = ast_block()
+#                     end
+#                     block = signature_block[signature]
+#                     ast_block_append_statements!(block, ast_children(ast_loop_body(child)))
+#                     if signature_count[signature] == 0
+#                         ast_for(sigature, signature_block[signature])
+#                     else
+#                         nothing
+#                     end
+#                 else
+#                     child
+#                 end
+#             end 
+#             children = filter(x -> x !== nothing, children)
+#             children = map(ast_loop_fusion_impl, children)
+#             ast_block(children)
+#         elseif ast_is_loop(node)
+#             signature = ast_loop_signature(node)
+#             body = ast_loop_fusion_impl(ast_loop_body(node))
+#             ast_for(signature, body)
+#         else
+#             node
+#         end
     
-    end
+#     end
 
-    ast_loop_fusion_impl(ast)
-end
+#     ast_loop_fusion_impl(ast)
+# end
 
 # remove dead code
 function ast_remove_dead_code(ast)
@@ -1634,12 +1634,6 @@ function ast_topological_sort(ast)
 end
 
 
-# expr0: perfect loop 
-# expr1: flatten + topo sort +
-# expr2: hoist/tabulate +
-# expr3: loop unroll  +
-# expr4: constant folding + 
-# expr : dead code elimination +
 
 # TODO: is it possible to add information in comments?
 # pass orders 1:   loop unroll  -> loop fusion -> lambdas to loops -> constant folding -> flatten -> tabulate -> topo sort (with array aliasing) -> cleanup
@@ -1653,7 +1647,5 @@ end
 # array aliasing.  (a[i] = f(i), b = f(j) -> b = a[j]) +
 # auto unroll detection +
 # array unroll: treat this as an expression (we cannot do this. a[i, j] = f(i, j) -> b = a[i, j], b = f(i, j). we need to identify constant array indexing)
-# TODO: check whether flatten includes topo sort
 
-# TODO: Find more issues and solve them
 # TODO: other aliasing optimizations (a[i] = f(i), b[j] = f(j) -> b === a) (a[i] = f1(i) / f2, b = f1(j) / f2 -> b = a[j])
