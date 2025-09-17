@@ -86,11 +86,19 @@ function point_index(index)
 end
 
 function face_around_term(index,d,D)
-    if face_around(index.data.domain) === nothing
+    domain = index.data.domain
+    if GT.faces_around(domain) === nothing
         return nothing
     end
     if d == num_dims(index) && (d+1 == D)
-        constant_term(face_around(index.data.domain),index;compile_constant=true)
+        #NB this is not constant anymore
+        #constant_term(first(GT.faces_around(domain)),index;compile_constant=true)
+        faces_around = get_symbol!(index,GT.faces_around(domain),"faces_around")
+        face_to_sface = inverse_faces(dom)
+        face_to_sface_sym = get_symbol!(index,face_to_sface,"face_to_sface")
+        expr = @term $faces_around[$face_to_sface_sym[$face]]
+        p=one(eltype(faces_around))
+        expr_term([d],expr,p,index)
     else
         nothing
     end
@@ -247,11 +255,11 @@ function call(g,a::AbstractQuantity,b::AbstractQuantity)
         #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2),"face_to_cells")
         #    axis_to_face_around = face_around_index(index)
         #    #dom = target_domain(index)
-        #    #gluable = face_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
+        #    #gluable = faces_around(dom) !== nothing && num_dims(dom) == dim && dim2 == dim+1
         #    #if gluable
         #    #    face = face(index,dim)
         #    #    face_to_sface = get_symbol!(index,inverse_faces(dom))
-        #    #    sface_to_cell_around = get_symbol!(index,face_around(dom))
+        #    #    sface_to_cell_around = get_symbol!(index,faces_around(dom))
         #    #    topo = topology(mesh(dom))
         #    #    face_to_cells = get_symbol!(index,face_incidence(topo,dim,dim2))
         #    #    expr = @term begin
