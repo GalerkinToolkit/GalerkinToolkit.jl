@@ -128,7 +128,7 @@ function WriteVTK.close(plt::GalerkinToolkit.PVTKPlot)
     map(WriteVTK.close,plt.vtks)
 end
 
-function WriteVTK.vtk_grid(filename,mesh::Union{GalerkinToolkit.AbstractMesh,GalerkinToolkit.PMesh};plot_params=(;),vtk_grid_params...)
+function WriteVTK.vtk_grid(filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
@@ -138,7 +138,7 @@ function WriteVTK.vtk_grid(filename,dom::GalerkinToolkit.AbstractDomain;plot_par
     WriteVTK.vtk_grid(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.vtk_grid(f::Function,filename,mesh::Union{GalerkinToolkit.AbstractMesh,GalerkinToolkit.PMesh};plot_params=(;),vtk_grid_params...)
+function WriteVTK.vtk_grid(f::Function,filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
     plt = plot(mesh;plot_params...)
     WriteVTK.vtk_grid(f,filename,plt;vtk_grid_params...)
 end
@@ -215,7 +215,7 @@ function WriteVTK.paraview_collection(f::Function,filename,plt::Union{GalerkinTo
     files
 end
 
-function WriteVTK.paraview_collection(filename,mesh::Union{GalerkinToolkit.AbstractMesh,GalerkinToolkit.PMesh};plot_params=(;),vtk_grid_params...)
+function WriteVTK.paraview_collection(filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
     plt = GalerkinToolkit.plot(mesh;plot_params...)
     WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
 end
@@ -225,7 +225,7 @@ function WriteVTK.paraview_collection(filename,dom::GalerkinToolkit.AbstractDoma
     WriteVTK.paraview_collection(filename,plt;vtk_grid_params...)
 end
 
-function WriteVTK.paraview_collection(f::Function,filename,mesh::Union{GalerkinToolkit.AbstractMesh,GalerkinToolkit.PMesh};plot_params=(;),vtk_grid_params...)
+function WriteVTK.paraview_collection(f::Function,filename,mesh::GalerkinToolkit.AbstractMesh;plot_params=(;),vtk_grid_params...)
     plt = GalerkinToolkit.plot(mesh;plot_params...)
     WriteVTK.paraview_collection(f,filename,plt;vtk_grid_params...)
 end

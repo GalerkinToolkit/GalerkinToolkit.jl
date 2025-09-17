@@ -6,7 +6,7 @@
 # - How to solve a simple partial differential equation (PDE) with it.
 # - How to express the key concepts in code using GalerkinToolkit.
 #
-# This lecture is useful even if you are a FEM expert if you want to learn GalerkinToolkit. 
+# This lecture is useful even if you are a FEM expert and you want to learn GalerkinToolkit. 
 # It will walk you through the key parts of the library.
 #
 # This lecture is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
@@ -34,7 +34,7 @@
 # where $\Delta u = \sum_{i=1}^d \partial^2 u / \partial x_i^2$ is the Laplace operator
 # and $\partial\Omega$ is the boundary of $\Omega$.
 # We define $\Omega$ as a disk of radius one. This is a simple geometry, but yet more complex than a 
-# simple two-dimensional box. We this, we illustrate that FEM can be used to solve PDEs on complex
+# simple two-dimensional box. With this, we illustrate that FEM can be used to solve PDEs on complex
 # geometries beyond simple "boxes".
 #
 # ## The method of manufactured solutions
@@ -49,11 +49,11 @@
 # the solution of the PDE above. The scalar $p$ is a given integer $p>0$. It will be useful to see how
 # the numerical solution will behave for different values of $p$.
 #
-# To manufacture function $f$ and $g$, we applying the PDE operators to the expression for $u$.
+# To manufacture functions $f$ and $g$, we apply the PDE operators to the expression for $u$.
 # Function $f$ is to be computed as
-# $f= -\Delta ((\sum_{i=1}^d x_i)^p)$ and $g$ is simply $g(x)=(\sum_{i=1}^d x_i)^p$. Applying the Laplace operator
+# $f(x)= -\Delta ((\sum_{i=1}^d x_i)^p)$ and $g$ is simply $g(x)=(\sum_{i=1}^d x_i)^p$. Applying the Laplace operator
 # to $(\sum_{i=1}^d x_i)^p$,
-# we get the closed-form expression for $f$, namely $f(x)= -d*p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
+# we get the closed-form expression for $f$, namely $f(x)= -d \cdot p(p-1)(\sum_{i=1}^d x_i)^{(p-2)}$.
 
 # ## Numerical approximation
 #
@@ -243,7 +243,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_rand_field.png"),Makie.current
 # The operators $\sigma_i$ are linear, there
 # is one operator $\sigma_i$
 # for each shape function $s_i$, and they  are related with this formula
-# $\sigma(s_j)=\delta_{ij}$, where $\delta_{ij}$ is Kroneker's delta.
+# $\sigma_i(s_j)=\delta_{ij}$, where $\delta_{ij}$ is Kroneker's delta.
 # Operator $\sigma_i$ maps the shape function $s_i$ to one, $\sigma_i(s_i)=1$,
 # and maps the other shape functions to zero, $\sigma_i(s_j)=0$ for $i\neq j$.
 # This property allows us to compute $\alpha_i$ as the application of operator
@@ -357,7 +357,7 @@ N_d = GT.num_dirichlet_dofs(V)
 # In other words, $u^\mathrm{d}$ is built as the interpolation of the Dirichlet
 # function $g$ onto the space $V^\mathrm{d}$, $u^\mathrm{d}=\Pi^\mathrm{d} g$.
 # The interpolation to the spaces
-# $V^\mathrm{f}$ and $V^\mathrm{d}$ of a given funciton $f$ is defined as we did for $V$, but only taking the corresponding shape functions:
+# $V^\mathrm{f}$ and $V^\mathrm{d}$ of a given function $f$ is defined as we did for $V$, but only taking the corresponding shape functions:
 # ```math
 # (\Pi^\star f)(x) = \sum_{j=1}^{N^\star} \sigma^\star_j(f) s^\star_j(x) \text{ for } \star\in(\mathrm{f},\mathrm{d}).
 # ```
@@ -506,7 +506,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 # is designed for a type of numerical approximation and PDE. This one is for the Poisson equation and
 # continuous approximations with discontinuous gradients. Other weak forms exist for this PDE. For instance, 
 # "discontinuous Galerkin" methods build the numerical approximation such as it is discontinuous across cell boundaries. One needs to
-# to consider other another weak form for this case, since we cannot even compute the gradient on cell boundaries.
+# consider another weak form for this case, since we cannot even compute the gradient on cell boundaries.
 #
 # ## System of linear algebraic equations
 #
@@ -527,7 +527,7 @@ FileIO.save(joinpath(@__DIR__,"fig_tutorial_intro_grad.png"),Makie.current_figur
 # ```math
 # \sum_{j=1}^{N^\mathrm{f}}a(s^\mathrm{f}_j,s^\mathrm{f}_i)\alpha^\mathrm{f}_j = \ell(s^\mathrm{f}_i) - \sum_{i=1}^{N^\mathrm{d}}a(s^\mathrm{d}_j,s^\mathrm{f}_i)\alpha^\mathrm{d}_j \text{ for } i=1,\ldots,N^\mathrm{f}.
 # ```
-# We have used the face that $a$ is linear in each one of its arguments to move it inside the sums. If we look
+# We have used the fact that $a$ is linear in each one of its arguments to move it inside the sums. If we look
 # closer, this can be written in matrix form as
 # ```math
 # A^\mathrm{f}\alpha^\mathrm{f} = b - A^\mathrm{d}\alpha^\mathrm{d}

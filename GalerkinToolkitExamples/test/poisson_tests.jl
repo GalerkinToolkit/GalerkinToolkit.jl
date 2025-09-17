@@ -13,16 +13,18 @@ mesh = GT.cartesian_mesh((0,2,0,2),(n,n))
 
 for discretization_method in (:continuous_galerkin,)
     for dirichlet_method in (:strong,)
-        params = Dict{Symbol,Any}()
-        params[:implementation] = :hand_written
-        params[:mesh] = mesh
-        params[:dirichlet_tags] = ["1-face-1","1-face-2","1-face-3","1-face-4"]
-        params[:discretization_method] = discretization_method
-        params[:dirichlet_method] = dirichlet_method
-        params[:interpolation_degree] = 2
-        results = Poisson.main(params)
-        @test results[:error_l2_norm] < tol
-        @test results[:error_h1_norm] < tol
+        for implementation in (:hand_written,:hand_written_arrays_API)
+            params = Dict{Symbol,Any}()
+            params[:implementation] = implementation
+            params[:mesh] = mesh
+            params[:dirichlet_tags] = ["1-face-1","1-face-2","1-face-3","1-face-4"]
+            params[:discretization_method] = discretization_method
+            params[:dirichlet_method] = dirichlet_method
+            params[:interpolation_degree] = 2
+            results = Poisson.main(params)
+            @test results[:error_l2_norm] < tol
+            @test results[:error_h1_norm] < tol
+        end
     end
 end
 

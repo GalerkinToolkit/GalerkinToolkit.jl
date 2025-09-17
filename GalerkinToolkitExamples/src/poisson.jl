@@ -23,6 +23,8 @@ function main(params_in)
         main_automatic(params)
     elseif params[:implementation] === :hand_written
         main_hand_written(params)
+    elseif params[:implementation] === :hand_written_arrays_API
+        main_hand_written(params)
     else
         error(" implementation should be either :automatic or :hand_written")
     end
@@ -62,29 +64,29 @@ function main_automatic(params)
     @assert params[:discretization_method] in (:continuous_galerkin,:interior_penalty)
 
     if params[:discretization_method] !== :continuous_galerkin
-        conformity = :L2
+        continuous = false
         GT.group_interior_faces!(mesh;group_name="__INTERIOR_FACES__")
         Λ = GT.skeleton(mesh;group_names=["__INTERIOR_FACES__"])
         dΛ = GT.measure(Λ,integration_degree)
         n_Λ = GT.unit_normal(mesh,D-1)
         h_Λ = GT.face_diameter_field(Λ)
     else
-        conformity = :default
+        continuous = true
     end
 
     if params[:dirichlet_method] === :strong
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity,dirichlet_boundary=Γd)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous,dirichlet_boundary=Γd)
         uhd = GT.zero_dirichlet_field(Float64,V)
         GT.interpolate_dirichlet!(u,uhd)
     else
         n_Γd = GT.unit_normal(mesh,D-1)
         h_Γd = GT.face_diameter_field(Γd)
         dΓd = GT.measure(Γd,integration_degree)
-        V = GT.lagrange_space(Ω,interpolation_degree;conformity)
+        V = GT.lagrange_space(Ω,interpolation_degree;continuous)
     end
 
     if params[:dirichlet_method] === :multipliers
-        Q = GT.lagrange_space(Γd,interpolation_degree-1;conformity=:L2)
+        Q = GT.lagrange_space(Γd,interpolation_degree-1;continuous=false)
         VxQ = V × Q
     end
 
@@ -181,422 +183,290 @@ end
 function main_hand_written(params)
     timer = params[:timer]
     results = Dict{Symbol,Any}()
-    state0 = (;results,params)
-    @timeit timer "setup" state1 = setup(state0)
-    @timeit timer "assemble_system" state2 = assemble_system(state1)
-    @timeit timer "solve_system" state3 = solve_system(state2)
-    @timeit timer "integrate_error_norms" integrate_error_norms(state3)
-    @timeit timer "export_results" export_results(state3)
+
+    mesh = params[:mesh]
+    D = GT.num_dims(mesh)
+    Ω = GT.interior(mesh,group_names=params[:domain_tags])
+    Γd = GT.boundary(mesh;group_names=params[:dirichlet_tags])
+    Γn = GT.boundary(mesh;group_names=params[:neumann_tags])
+    integration_degree = params[:integration_degree]
+    dΩ = GT.measure(Ω,integration_degree)
+    dΓn = GT.measure(Γn,integration_degree)
+
+    u = GT.analytical_field(params[:u],Ω)
+    f(x) = -Δ(u,x)
+    n_Γn = GT.unit_normal(mesh,D-1)
+    g(x) = n_Γn(x)⋅∇(u,x)
+
+    interpolation_degree = params[:interpolation_degree]
+    V = GT.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
+    uhd = GT.zero_dirichlet_field(Float64,V)
+    GT.interpolate_dirichlet!(u,uhd)
+    T = Float64
+
+    @timeit timer "assembly" begin
+        A_alloc = GT.allocate_matrix(T,V,V,Ω)
+        free_or_dirichlet=(GT.FREE,GT.DIRICHLET)
+        Ad_alloc = GT.allocate_matrix(T,V,V,Ω;free_or_dirichlet)
+        if params[:implementation] === :hand_written
+            assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
+        elseif params[:implementation] === :hand_written_arrays_API
+            assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+        else
+            error()
+        end
+        A = GT.compress(A_alloc)
+        Ad = GT.compress(Ad_alloc)
+        xd = GT.dirichlet_values(uhd)
+        b = -Ad*xd
+        x = similar(b)
+        fill!(x,0) # set initial guess
+        p = PS.linear_problem(x,A,b)
+    end
+
+    @timeit timer "solver" begin
+        s = params[:solver](p)
+        s = PS.solve(s)
+        uh = GT.solution_field(uhd,x)
+    end
+
+    @timeit timer "error_norms" begin
+        el2,eh1 = integrate_error(u,uh,dΩ)
+        results[:error_h1_norm] = eh1
+        results[:error_l2_norm] = el2
+    end
+
+    @timeit timer "vtk" if params[:export_vtu]
+        vtk_grid(params[:example_path]*"_Ω",Ω;plot_params=(;refinement=4)) do plt
+            GT.plot!(plt,u;label="u")
+            GT.plot!(plt,f;label="f")
+            GT.plot!(plt,uh;label="uh")
+        end
+    end
+
     if params[:verbose]
         display(timer)
     end
     results
 end
 
-function setup(state0)
-    state1 = setup_domains(state0)
-    state2 = setup_integration(state1)
-    state3 = setup_interpolation(state2)
-    state4 = setup_dirichlet(state3)
-    return state4
-end
 
-function assemble_system(state0)
-    state1 = assemble_allocate(state0)
-    state2 = assemble_fill(state1)
-    state3 = assemble_compress(state2)
-    return state3
-end
+function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
-function export_results(state)
-    (;params,domains,interpolation) = state
-    (;x_diri,x_free,face_to_rid_V,face_to_dofs_V) = interpolation.workspace
-    (;Ω) = domains
-    (;V) = interpolation.spaces
+    ∇ = ForwardDiff.gradient
 
+    #Accessors to the quantities on the
+    #integration points
+    V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
+
+    #Temporaries
+    n = GT.max_num_reference_dofs(V)
     T = Float64
-    z = zero(T)
+    Auu = zeros(T,n,n)
 
-    rid_to_reffe = GT.reference_spaces(V)
-    plt = GT.plot(Ω;refinement=4)
-    vis_mesh, vis_glue = GT.visualization_mesh(plt,glue=Val(true))
-    n_vis_nodes = GT.num_nodes(vis_mesh)
-    vis_node_to_uh = zeros(T,n_vis_nodes)
-    rid_to_ref_vis_xs = vis_glue.reference_coordinates
-    rid_to_vis_cache = map(rid_to_ref_vis_xs,rid_to_reffe) do vis_xs,reffe
-        ref_vals = GT.tabulator(reffe)(GT.value,vis_xs)
-        npoints,ndofs = size(ref_vals)
-        ue = zeros(T,ndofs)
-        (;ref_vals,ndofs,ue,npoints)
-    end
+    #Numerical integration loop
+    for V_face in V_faces
 
-    face_to_cell = GT.faces(Ω)
-    nfaces = length(face_to_cell)
+        #Get quantities at current face
+        dofs = GT.dofs(V_face)
+        ndofs = length(dofs)
 
-    vis_node = 0
-    for face in 1:nfaces
-        rid = face_to_rid_V[face]
-        cache = rid_to_vis_cache[rid]
-        dofs = face_to_dofs_V[face]
-        ndofs = cache.ndofs
-        # Fill values
-        for i in 1:ndofs
-            dof = dofs[i]
-            if dof < 0
-                cache.ue[i] = x_diri[-dof]
-            else
-                cache.ue[i] = x_free[dof]
-            end
-        end
-        # Compute FE solution for each visualization point
-        for point in 1:cache.npoints
-            uhx = z
-            for i in 1:ndofs
-                ui = cache.ue[i]
-                uhx += cache.ref_vals[point,i]*ui
-            end
-            vis_node += 1
-            vis_node_to_uh[vis_node] = uhx
-        end
-    end
-    # Set visualization data
-    GT.node_data(plt)["uh"] = vis_node_to_uh
-    # Write it to vtk
-    vtk_grid(params[:example_path]*"_Ω",plt) |> WriteVTK.close
-end
+        #Reset face matrix
+        fill!(Auu,zero(T))
 
-function integrate_error_norms(state)
-    (;results,params,domains,interpolation,integration) = state
-    (;x_diri,x_free,rid_to_cache_V,face_to_rid_V,face_to_dofs_V) = interpolation.workspace
-    (;rid_to_cache_dΩ,nodes_to_coords) = integration.workspace
-    (;Ω) = domains
-    mesh = params[:mesh]
-    u = params[:u]
+        #Loop over integration points
+        for V_point in GT.each_point(V_face)
 
-    T = Float64
-    el2 = zero(T)
-    eh1 = zero(T)
-    z = zero(T)
+            #Get quantities at current integration point
+            dV = GT.weight(V_point)
+            dof_∇s = GT.shape_functions(∇,V_point)
 
-    face_to_cell = GT.faces(Ω)
-    nfaces = length(face_to_cell)
-
-    D = GT.num_dims(mesh)
-    cell_to_nodes = GT.face_nodes(mesh,D)
-
-    Tgrad = SVector{D,T}
-    Tx = Tgrad
-    TJ = typeof(zero(Tx)*transpose(zero(Tx)))
-
-    for face in 1:nfaces
-        rid = face_to_rid_V[face]
-        cache_V = rid_to_cache_V[rid]
-        cache_dΩ = rid_to_cache_dΩ[rid]
-        dofs = face_to_dofs_V[face]
-        cell = face_to_cell[face]
-        nodes = cell_to_nodes[cell]
-        ndofs = cache_V.ndofs
-        # Fill values
-        for i in 1:ndofs
-            dof = dofs[i]
-            if dof < 0
-                cache_V.u[i] = x_diri[-dof]
-            else
-                cache_V.u[i] = x_free[dof]
-            end
-        end
-        # Integration loop
-        for point in 1:cache_dΩ.npoints
-            # Compute integration coordinate and Jacobian transpose
-            x = zero(Tx)
-            Jt = zero(TJ)
-            for (inode,node) in enumerate(nodes)
-                coords = nodes_to_coords[node]
-                x += cache_dΩ.ref_vals[point,inode]*coords
-                Jt += coords*transpose(cache_dΩ.ref_grads[point,inode])
-            end
-            # Integration weight
-            dV = abs(det(Jt))*cache_dΩ.weights[point]
-            # Compute physical gradients
-            invJt = inv(Jt)
-            for i in 1:ndofs
-                cache_V.phys_grads[i] = invJt*cache_V.ref_grads[point,i]
-            end
-            # Compute FE solution and its gradients
-            uhx = z
-            ∇uhx = zero(Tx)
-            for i in 1:ndofs
-                ui = cache_V.u[i]
-                uhx += cache_V.ref_vals[point,i]*ui
-                ∇uhx += cache_V.phys_grads[i]*ui
-            end
-            # Compute and integrate the error
-            ex = u(x)-uhx
-            ∇ex = ForwardDiff.gradient(u,x)-∇uhx
-            el2 += ex*ex*dV
-            eh1 += ∇ex⋅∇ex*dV
-        end
-    end
-
-    el2 = sqrt(el2)
-    eh1 = sqrt(eh1)
-
-    results[:error_h1_norm] = eh1
-    results[:error_l2_norm] = el2
-end
-
-function solve_system(state)
-    (;params,linear_system,interpolation) = state
-    (;matrix,rhs) = linear_system
-    (;uh) = interpolation
-    (;x_free) = interpolation.workspace
-    p = PS.linear_problem(x_free,matrix,rhs)
-    s = params[:solver](p)
-    s = PS.solve(s)
-    x_free = PS.solution(s)
-    uh = GT.solution_field(uh,x_free)
-    (;interpolation,linear_system,state...)
-end
-
-function assemble_compress(state)
-    (;assemble_strategy) = state
-    (;matrix_strategy,matrix_strategy_init,matrix_strategy_alloc) = assemble_strategy.matrix
-    (;vector_strategy,vector_strategy_init,vector_strategy_alloc) = assemble_strategy.vector
-    rhs, rhs_cache = vector_strategy.compress(vector_strategy_alloc,vector_strategy_init)
-    matrix, matrix_cache = matrix_strategy.compress(matrix_strategy_alloc,matrix_strategy_init)
-    linear_system = (;matrix,rhs,matrix_cache,rhs_cache)
-    (;linear_system,state...)
-end
-
-function assemble_fill(state)
-    (;params,domains,interpolation,integration,assemble_strategy) = state
-    (;matrix_strategy,matrix_strategy_init,matrix_strategy_counter,matrix_strategy_alloc) = assemble_strategy.matrix
-    (;vector_strategy,vector_strategy_init,vector_strategy_counter,vector_strategy_alloc) = assemble_strategy.vector
-    (;Ω) = domains
-    (;x_diri,rid_to_cache_V,face_to_rid_V,face_to_dofs_V) = interpolation.workspace
-    (;rid_to_cache_dΩ,nodes_to_coords) = integration.workspace
-    mesh = params[:mesh]
-    u = params[:u]
-    f(x) = -laplacian(u,x)
-    T = Float64
-
-    matrix_strategy_counter = matrix_strategy.counter(matrix_strategy_init)
-    vector_strategy_counter = vector_strategy.counter(vector_strategy_init)
-    z = zero(T)
-    field_i = field_j = 1
-
-    face_to_cell = GT.faces(Ω)
-    nfaces = length(face_to_cell)
-
-    D = GT.num_dims(mesh)
-    cell_to_nodes = GT.face_nodes(mesh,D)
-
-    Tgrad = SVector{D,T}
-    Tx = Tgrad
-    TJ = typeof(zero(Tx)*transpose(zero(Tx)))
-
-    for face in 1:nfaces
-        rid = face_to_rid_V[face]
-        cache_V = rid_to_cache_V[rid]
-        cache_dΩ = rid_to_cache_dΩ[rid]
-        
-        # Face degrees of freedom
-        dofs = face_to_dofs_V[face]
-
-        # Set face index
-        cell = face_to_cell[face]
-        
-        # Definition of the face in terms of node ids
-        nodes = cell_to_nodes[cell]
-
-        fill!(cache_V.A,z)
-        fill!(cache_V.b,z)
-        fill!(cache_V.u,z)
-
-        ndofs = cache_V.ndofs
-        
-        # Fill in Dirichlet values
-        # Use face dofs to assign the initial values of uh at the boundary
-        for i in 1:ndofs
-            dof = dofs[i]
-            if dof < 0
-                cache_V.u[i] = x_diri[-dof]
-            end
-        end
-
-        # Integration loop
-        for point in 1:cache_dΩ.npoints  #-> loop over quadrature points
-            # Compute integration coordinate and Jacobian transpose
-            x = zero(Tx)
-            Jt = zero(TJ)
-            for (inode,node) in enumerate(nodes)
-                coords = nodes_to_coords[node]
-                x += cache_dΩ.ref_vals[point,inode]*coords
-                Jt += coords*transpose(cache_dΩ.ref_grads[point,inode])
-            end
-            # Integration weight
-            dV = abs(det(Jt))*cache_dΩ.weights[point]
-            # Compute physical gradients
-            invJt = inv(Jt)
-            for i in 1:ndofs
-                cache_V.phys_grads[i] = invJt*cache_V.ref_grads[point,i]
-            end
-            # Integrate matrix and vector
-            fx = f(x)
-            for i in 1:ndofs
-                cache_V.b[i] += cache_V.ref_vals[i]*fx*dV
-                for j in 1:ndofs
-                    Aij = cache_V.phys_grads[i]⋅cache_V.phys_grads[j]*dV
-                    cache_V.A[i,j] += Aij
-                    cache_V.b[i] -= Aij*cache_V.u[j]
+            #Fill in face matrix
+            #Preferable to use while instead of for
+            #for the innermost loops.
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    Auu[i,j] += Aij
                 end
             end
         end
-        # Assemble the matrix and vector
-        for (i,dof_i) in enumerate(dofs)
-            vector_strategy_counter =
-            vector_strategy.set!(vector_strategy_alloc,
-                                 vector_strategy_counter,
-                                 vector_strategy_init,
-                                 cache_V.b[i],
-                                 dof_i,field_i,GT.FREE)
-            for (j,dof_j) in enumerate(dofs)
-                matrix_strategy_counter =
-                matrix_strategy.set!(matrix_strategy_alloc,
-                                     matrix_strategy_counter,
-                                     matrix_strategy_init,
-                                     cache_V.A[i,j],
-                                     dof_i,dof_j,field_i,field_j,GT.FREE,GT.FREE)
-            end
-        end
+
+        #Add face contribution to the
+        #global allocations
+        GT.contribute!(A_alloc,Auu,dofs,dofs)
+        GT.contribute!(Ad_alloc,Auu,dofs,dofs)
     end
-    (;assemble_strategy,state...)
 end
 
-function assemble_allocate(state)
-    (;domains,interpolation) = state
-    (;V) = interpolation.spaces
-    (;face_to_dofs_V) = interpolation.workspace
-    (;Ω) = domains
-    free_dofs = GT.free_dofs(V)
+function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
+
+    ∇ = ForwardDiff.gradient
+
+    #Accessors to the quantities on the
+    #integration points
+    V_dΩ = GT.space_accessor(V,dΩ;tabulate=(∇,))
+    mesh = GT.mesh(V_dΩ.reference_space_accessor.space)
+    J0 = V_dΩ.mesh_accessor.workspace.jacobian
+    D = GT.num_dims(mesh)
+
+    #Important arrays
+    face_rid = GT.face_reference_id(V)
+    rid_dof_point_ref∇s = V_dΩ.reference_space_accessor.workspace.gradients
+    rid_node_point_ref∇m = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
+    gnode_x = GT.node_coordinates(mesh)
+    rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
+    face_node_gnode = GT.face_nodes(mesh,D)
+    face_dof_gdof = GT.face_dofs(V)
+    nzindex_I = A_alloc.allocation.I
+    nzindex_J = A_alloc.allocation.J
+    nzindex_V = A_alloc.allocation.V
+    nzindex_Id = Ad_alloc.allocation.I
+    nzindex_Jd = Ad_alloc.allocation.J
+    nzindex_Vd = Ad_alloc.allocation.V
+
+    #Temporaries
+    ndofs_max = GT.max_num_reference_dofs(V)
     T = Float64
+    local_A = zeros(T,ndofs_max,ndofs_max)
+    nfaces = GT.num_faces(V_dΩ)
+    rid_dof_∇s = map(rid_dof_point_ref∇s) do dof_point_ref∇s
+        G = eltype(dof_point_ref∇s)
+        ndofs = size(dof_point_ref∇s,1)
+        zeros(G,ndofs)
+    end
 
-    matrix_strategy =  GT.monolithic_matrix_assembly_strategy()
-    vector_strategy = GT.monolithic_vector_assembly_strategy()
-
-    matrix_strategy_init = matrix_strategy.init(free_dofs,free_dofs,T)
-    vector_strategy_init = vector_strategy.init(free_dofs,T)
-    field_i = field_j = 1
-
-    matrix_strategy_counter = matrix_strategy.counter(matrix_strategy_init)
-    vector_strategy_counter = vector_strategy.counter(vector_strategy_init)
-
-    face_to_cell = GT.faces(Ω)
-    nfaces = length(face_to_cell)
-
+    #Numerical integration loop
+    nzindex = 0
+    nzindex_d = 0
     for face in 1:nfaces
-        dofs = face_to_dofs_V[face]
-        for dof_i in dofs
-            vector_strategy_counter =
-            vector_strategy.count(vector_strategy_counter,
-                                  vector_strategy_init,
-                                  dof_i,field_i,GT.FREE)
-            for dof_j in dofs
-                matrix_strategy_counter =
-                matrix_strategy.count(
-                                      matrix_strategy_counter,
-                                      matrix_strategy_init,
-                                      dof_i,dof_j,field_i,field_j,GT.FREE,GT.FREE)
+
+        #Quantities at this face
+        dof_gdof = face_dof_gdof[face]
+        node_gnode = face_node_gnode[face]
+        ndofs = length(dof_gdof)
+        rid = face_rid[face]
+        dof_point_ref∇s = rid_dof_point_ref∇s[rid]
+        node_point_ref∇m = rid_node_point_ref∇m[rid]
+        nnodes = length(node_gnode)
+        point_w = rid_point_w[rid]
+        npoints = length(point_w)
+        dof_∇s = rid_dof_∇s[rid]
+
+        #Integrate local matrix
+        fill!(local_A,zero(T))
+        for point in 1:npoints
+            J = sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+            detJ = GT.change_of_measure(J) 
+            w = point_w[point]
+            dV = detJ*w
+            for dof in 1:ndofs
+                ref∇s = dof_point_ref∇s[dof,point]
+                ∇s = J\ref∇s
+                dof_∇s[dof] = ∇s
             end
+            j = 0
+            while j < ndofs
+                j += 1
+                ∇u = dof_∇s[j]
+                i = 0
+                while i < ndofs
+                    i += 1
+                    ∇v = dof_∇s[i]
+                    Aij = ∇v⋅∇u*dV
+                    local_A[i,j] += Aij
+                end
+            end
+        end
+
+        #Add face contribution to the
+        #global allocations
+        for j in 1:ndofs
+            gdof_j = dof_gdof[j]
+            for i in 1:ndofs
+                gdof_i = dof_gdof[i]
+                if gdof_i < 0
+                    continue
+                end
+                Aij = local_A[i,j]
+                if gdof_j > 0
+                    nzindex += 1
+                    nzindex_I[nzindex] = gdof_i
+                    nzindex_J[nzindex] = gdof_j
+                    nzindex_V[nzindex] = Aij
+                else
+                    nzindex_d += 1
+                    nzindex_Id[nzindex_d] = gdof_i
+                    nzindex_Jd[nzindex_d] = -gdof_j
+                    nzindex_Vd[nzindex_d] = Aij
+                end
+            end
+        end
+
+    end # for face
+
+end
+
+# Do not remove the @noinline
+# it seems to be performance relevant
+# Also, do not merge into function above for the same reason.
+@noinline function sum_jacobian(node_gnode,gnode_x,node_point_ref∇m,J0,point)
+    J = zero(J0)
+    node = 0
+    nnodes = length(node_gnode)
+    while node < nnodes
+        node += 1
+        gnode = node_gnode[node]
+        x = gnode_x[gnode]
+        ref∇m = node_point_ref∇m[node,point]
+        J += GT.outer(x,ref∇m)
+    end
+    return J
+end
+
+function norm2(a)
+    a⋅a
+end
+
+function integrate_error(g,uh,dΩ)
+
+    ∇ = ForwardDiff.gradient
+
+    #Accessors to the quantities on the
+    #integration points
+    tabulate = (∇,GT.value)
+    compute = (GT.coordinate,)
+    uh_faces = GT.each_face(uh,dΩ;tabulate,compute)
+
+    #Numerical integration loop
+    s = 0.0
+    s1 = 0.0
+    for uh_face in uh_faces
+        for uh_point in GT.each_point(uh_face)
+
+            #Get quantities at current integration point
+            x = GT.coordinate(uh_point)
+            dV = GT.weight(uh_point)
+            uhx = GT.field(GT.value,uh_point)
+            ∇uhx = GT.field(∇,uh_point)
+
+            #Add contribution
+            s += abs2(uhx-g.definition(x))*dV
+            s1 += norm2(∇uhx-ForwardDiff.gradient(g.definition,x))
         end
     end
 
-    matrix_strategy_alloc = matrix_strategy.allocate(matrix_strategy_counter,matrix_strategy_init)
-    vector_strategy_alloc = vector_strategy.allocate(vector_strategy_counter,vector_strategy_init)
+    #Compute the final norms
+    el2 = sqrt(s)
+    eh1 = sqrt(s1)
 
-    matrix = (;matrix_strategy,matrix_strategy_init,matrix_strategy_counter,matrix_strategy_alloc)
-    vector = (;vector_strategy,vector_strategy_init,vector_strategy_counter,vector_strategy_alloc)
-
-    assemble_strategy = (;matrix,vector)
-    (;assemble_strategy,state...)
-end
-
-function setup_domains(state)
-    (;params,) = state
-    mesh = params[:mesh]
-    Ω = GT.interior(mesh,group_names=params[:domain_tags])
-    Γd = GT.boundary(mesh;group_names=params[:dirichlet_tags])
-    domains = (;Ω,Γd)
-    (;domains,state...)
-end
-
-function setup_integration(state)
-    (;params,domains) = state
-    (;Ω) = domains
-    integration_degree = params[:integration_degree]
-    mesh = params[:mesh]
-    dΩ = GT.measure(Ω,integration_degree)
-    D = GT.num_dims(mesh)
-    rid_to_refface = GT.reference_spaces(mesh,D)
-    rid_to_refquad = GT.reference_quadratures(dΩ)
-    rid_to_cache_dΩ = map(rid_to_refface,rid_to_refquad) do refface,refquad
-            x = GT.coordinates(refquad)
-            npoints = length(x)
-            weights = GT.weights(refquad)
-            ref_vals = GT.tabulator(refface)(GT.value,x)
-            ref_grads = GT.tabulator(refface)(ForwardDiff.gradient,x)
-            (;x,weights,ref_vals,ref_grads,npoints)
-    end
-    face_to_rid_dΩ = nothing #face_reference_id(dΩ)
-    Dface_to_nodes = GT.face_nodes(mesh,D)
-    nodes_to_coords = GT.node_coordinates(mesh)
-    workspace = (;rid_to_cache_dΩ,face_to_rid_dΩ,Dface_to_nodes,nodes_to_coords)
-    measures = (;dΩ,)
-    integration = (;measures,workspace)
-    (;integration,state...)
-end
-
-function setup_interpolation(state)
-    (;params,domains,integration) = state
-    (;dΩ) = integration.measures
-    (;Ω,Γd) = domains
-    interpolation_degree = params[:interpolation_degree]
-    mesh = params[:mesh]
-    V = GT.lagrange_space(Ω,interpolation_degree;dirichlet_boundary=Γd)
-    rid_to_reffe = GT.reference_spaces(V)
-    rid_to_refquad = GT.reference_quadratures(dΩ)
-    T = Float64
-    D = GT.num_dims(mesh)
-    Tgrad = SVector{D,T}
-    rid_to_cache_V = map(rid_to_reffe,rid_to_refquad) do reffe,refquad
-            x = GT.coordinates(refquad)
-            ndofs = GT.num_dofs(reffe)
-            A = zeros(T,ndofs,ndofs)
-            b = zeros(T,ndofs)
-            u = zeros(T,ndofs)
-            ref_vals = GT.tabulator(reffe)(GT.value,x)
-            ref_grads = GT.tabulator(reffe)(ForwardDiff.gradient,x)
-            phys_grads = zeros(Tgrad,ndofs)
-            (;A,b,u,ref_vals,ref_grads,ndofs,phys_grads)
-    end
-    face_to_rid_V = GT.face_reference_id(V)
-    uh = GT.zero_field(Float64,V)
-    x_free = GT.free_values(uh)
-    x_diri = GT.dirichlet_values(uh)
-    face_to_dofs_V = GT.face_dofs(V)
-    interpolation = (;uh,spaces=(;V),workspace=(;rid_to_cache_V,face_to_rid_V,face_to_dofs_V,x_free,x_diri))
-    (;interpolation,state...)
-end
-
-function setup_dirichlet(state)
-    (;params,interpolation) = state
-    (;V) = interpolation.spaces
-    (;x_diri) = interpolation.workspace
-    u = params[:u]
-    vnode_to_coord = GT.node_coordinates(V)
-    diri_dof_to_vnode = GT.dirichlet_dof_node(V)
-    x_diri .= u.(vnode_to_coord[diri_dof_to_vnode])
-    (;interpolation,state...)
+    (el2,eh1)
 end
 
 function add_default_params(params_in,params_default)

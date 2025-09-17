@@ -21,13 +21,15 @@ import PartitionedSolvers: update
 import AutoHashEquals
 import AbstractTrees
 
+import ForwardDiff: gradient, jacobian
+
 include("helpers.jl")
 include("abstract_types.jl")
 include("domain.jl")
 include("mesh.jl")
 include("cartesian_mesh.jl")
 include("gmsh.jl")
-include("p_mesh.jl")
+#include("p_mesh.jl")
 include("topology.jl")
 #include("symbolics.jl")
 include("field.jl")
