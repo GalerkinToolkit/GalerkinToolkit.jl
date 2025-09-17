@@ -51,5 +51,7 @@ end
 Ω = GT.interior(mesh)
 @test GT.is_partitioned(Ω)
 
+mesh2 = GT.centralize(mesh)
+
 
 end #module

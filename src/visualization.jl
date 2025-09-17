@@ -554,6 +554,26 @@ function face_data(mesh::AbstractMesh)
     map(d->face_data(mesh,d),0:D)
 end
 
+function PartitionedArrays.centralize(plt::Plot)
+    fd = map(plt.face_data) do dict
+        fd_d = Dict{String,Any}()
+        for (group,data) in dict
+            fd_d[group] = collect(data)
+        end
+        fd_d
+    end
+    nd = Dict{String,Any}()
+    for (group,data) in plt.node_data
+        nd[group] = collect(data)
+    end
+    mesh = centralize(plt.mesh)
+    Plot(mesh,fd,nd)
+end
+
+function is_partitioned(plt::Plot)
+    is_partitioned(plt.mesh)
+end
+
 #function face_data(mesh::AbstractMesh,ids::PMeshLocalIds,d)
 #    facedata = face_data(mesh,d)
 #    faceids = face_indices(ids,d)

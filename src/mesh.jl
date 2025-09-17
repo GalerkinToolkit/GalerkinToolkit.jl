@@ -1208,12 +1208,64 @@ function scatter_face_permutation_ids(topo_main,face_partition)
     end
 end
 
+function PartitionedArrays.centralize(mesh::AbstractMesh)
+    if ! is_partitioned(mesh)
+        return mesh
+    end
+    node_coordinates = collect(GT.node_coordinates(mesh))
+    face_nodes = map(collect,GT.face_nodes(mesh))
+    face_reference_id = map(collect,GT.face_reference_id(mesh))
+    group_faces = map(GT.group_faces(mesh)) do group_dfaces
+        map(collect(keys(group_dfaces))) do group
+            group => collect(group_dfaces[group])
+        end |> Dict
+    end
+    reference_spaces = GT.reference_spaces(mesh)
+    is_cell_complex = GT.is_cell_complex(mesh)
+    workspace = GT.centralize(GT.workspace(mesh))
+    create_mesh(;
+        node_coordinates,
+        face_nodes,
+        face_reference_id,
+        reference_spaces,
+        group_faces,
+        is_cell_complex,
+        workspace
+       )
+end
+
+function PartitionedArrays.centralize(w::MeshWorkspace)
+    MeshWorkspace(centralize(w.topology))
+end
+
+function PartitionedArrays.centralize(topo::AbstractTopology)
+    face_reference_id = map(collect,GT.face_reference_id(topo))
+    reference_topologies = GT.reference_topologies(topo)
+    face_incidence = map(collect,GT.face_incidence(topo))
+    face_permutation_ids = map(GT.face_permutation_ids(topo)) do v
+        if v !== nothing
+            collect(v)
+        else
+            nothing
+        end
+    end
+    mesh_topology(;
+                  face_incidence,
+                  face_reference_id,
+                  face_permutation_ids,
+                  reference_topologies,)
+end
+
 struct Partitioned{A} <: AbstractType
     partition::A
 end
 
 function PartitionedArrays.partition(a::Partitioned)
     a.partition
+end
+
+function Base.collect(a::Partitioned)
+    reduce(vcat,collect(partition(a)))
 end
 
 # TODO move to PartitionedArrays
