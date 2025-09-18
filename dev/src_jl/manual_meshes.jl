@@ -661,7 +661,7 @@ nothing # hide
 #
 # ### Creating partitioned meshes
 #
-# The most flexible way of creating a partitioned mesh is with function [`with_mesh_partitioner`](@ref).
+# A partitioned mesh can be created with function [`with_mesh_partitioner`](@ref).
 #
 # ```@docs; canonical=false
 # with_mesh_partitioner
