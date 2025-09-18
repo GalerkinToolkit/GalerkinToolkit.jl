@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758128549380,
+  "lastUpdate": 1758199140731,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2594,6 +2594,36 @@ window.BENCHMARK_DATA = {
             "value": 735369103,
             "unit": "ns",
             "extra": "gctime=19201989\nmemory=341035652\nallocs=8610260\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "356032b3aef95eba44a19847a5f318c28a14fe69",
+          "message": "Merge pull request #249 from GalerkinToolkit/field\n\nAdded piecewise analytical fields",
+          "timestamp": "2025-09-18T14:34:26+02:00",
+          "tree_id": "d9aa5c42ef036eb880059dbab00c4cdd90251a4a",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/356032b3aef95eba44a19847a5f318c28a14fe69"
+        },
+        "date": 1758199140180,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 741943228,
+            "unit": "ns",
+            "extra": "gctime=18515932\nmemory=341036308\nallocs=8610260\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
