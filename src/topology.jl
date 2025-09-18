@@ -117,6 +117,10 @@ function mesh_topology(;
                  reference_topologies,)
 end
 
+function num_faces(topo::MeshTopology)
+    map(length,topo.face_reference_id)
+end
+
 function face_incidence(a::MeshTopology)
     D = num_dims(a)
     # This is just to make sure we return
@@ -369,13 +373,13 @@ function fill_face_boundary_mesh_topology!(topo,D,d)
             for (ldface,lvertices) in enumerate(ldface_to_lvertices)
                 # Find the global d-face for this local d-face
                 dface2 = Int32(INVALID_ID)
-                vertices = view(lvertex_to_vertex,lvertices)
+                #vertices = view(lvertex_to_vertex,lvertices)
                 for (i,lvertex) in enumerate(lvertices)
                     vertex = lvertex_to_vertex[lvertex]
                     dfaces = vertex_to_dfaces[vertex]
                     for dface1 in dfaces
                         vertices1 = dface_to_vertices[dface1]
-                        if same_valid_ids(vertices,vertices1)
+                        if same_valid_ids(lvertex_to_vertex,vertices1,lvertices,1:length(vertices1))
                             dface2 = dface1
                             break
                         end
@@ -509,8 +513,9 @@ function intersection!(a,b,na,nb)
   end
 end
 
-function find_eq(v,b)
-    for vs in b
+function find_eq(v,b,idsb)
+    for i in idsb
+        vs = b[i]
         if v == vs
             return true
         end
@@ -518,24 +523,24 @@ function find_eq(v,b)
     return false
 end
 
-function is_subset(a,b)
-    for i in 1:length(a)
-        v = a[i]
+function is_subset(a,b,idsa,idsb)
+    for i in 1:length(idsa)
+        v = a[idsa[i]]
         if v == INVALID_ID
             continue
         end
-        if !find_eq(v,b)
+        if !find_eq(v,b,idsb)
             return false
         end
     end
     return true
 end
 
-function same_valid_ids(a,b)
-    if !is_subset(a,b)
+function same_valid_ids(a,b,idsa,idsb)
+    if !is_subset(a,b,idsa,idsb)
         return false
     end
-    if !is_subset(b,a)
+    if !is_subset(b,a,idsb,idsa)
         return false
     end
     return true
@@ -846,13 +851,13 @@ function generate_face_boundary(
             dface2 = Int32(INVALID_ID)
             fill!(Dfaces1,Int32(INVALID_ID))
             fill!(Dfaces2,Int32(INVALID_ID))
-            vertices = view(lvertex_to_vertex,lvertices)
+            #vertices = view(lvertex_to_vertex,lvertices)
             for (i,lvertex) in enumerate(lvertices)
                 vertex = lvertex_to_vertex[lvertex]
                 dfaces = vertex_to_dfaces[vertex]
                 for dface1 in dfaces
                     vertices1 = dface_to_vertices[dface1]
-                    if same_valid_ids(vertices,vertices1)
+                    if same_valid_ids(lvertex_to_vertex,vertices1,lvertices,1:length(vertices1))
                         dface2 = dface1
                         break
                     end
@@ -886,8 +891,8 @@ function generate_face_boundary(
                     ldface1_to_lvertices1 = Drefid_to_ldface_to_lvertices[Drefid1]
                     ldface2 = Int32(INVALID_ID)
                     for (ldface1,lvertices1) in enumerate(ldface1_to_lvertices1)
-                        vertices1 = view(lvertex1_to_vertex1,lvertices1)
-                        if same_valid_ids(vertices,vertices1)
+                        #vertices1 = view(lvertex1_to_vertex1,lvertices1)
+                        if same_valid_ids(lvertex_to_vertex,lvertex1_to_vertex1,lvertices,lvertices1)
                             ldface2 = ldface1
                             break
                         end
