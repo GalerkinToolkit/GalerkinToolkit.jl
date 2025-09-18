@@ -1326,6 +1326,81 @@ function coordinate(a::NewDiscreteFieldAccessor)
     coordinate(space_accessor)
 end
 
+struct AnalyticalFieldAccessor{L,A,B} <: NewAbstractAccessor
+    loop_case::L
+    field::A
+    mesh_accessor::B
+end
+
+function field_accessor(field::AnalyticalField,quadrature;kwargs...)
+    domain = GT.domain(field)
+    mesh = GT.mesh(domain)
+    D = num_dims(domain)
+    mesh_accessor = GT.mesh_accessor(mesh,Val(D),quadrature;kwargs...)
+    loop_case = mesh_accessor.loop_case
+    AnalyticalFieldAccessor(loop_case,field,mesh_accessor)
+end
+
+function num_faces(a::AnalyticalFieldAccessor)
+    (;mesh_accessor) = a
+    num_faces(mesh_accessor)
+end
+
+function at_face(a::AnalyticalFieldAccessor,face)
+    mesh_accessor = at_face(a.mesh_accessor,face)
+    replace_mesh_accessor(a,mesh_accessor)
+end
+
+function at_any_index(a::AnalyticalFieldAccessor)
+    mesh_accessor = at_any_index(a.mesh_accessor)
+    replace_mesh_accessor(a,mesh_accessor)
+end
+
+function num_faces_around(a::AnalyticalFieldAccessor)
+    (;mesh_accessor) = a
+    num_faces_around(mesh_accessor)
+end
+
+function at_face_around(a::AnalyticalFieldAccessor,face_around)
+    mesh_accessor = at_face_around(a.mesh_accessor,face_around)
+    replace_mesh_accessor(a,mesh_accessor)
+end
+
+function at_point(a::AnalyticalFieldAccessor,point)
+    mesh_accessor = at_point(a.mesh_accessor,point)
+    replace_mesh_accessor(a,mesh_accessor)
+end
+
+function field(a::AnalyticalFieldAccessor)
+    location = a.field.location
+    def = f.field.definition
+    if location == nothing
+        def
+    else
+        group_names = GT.group_names(a.field.domain)
+        Dface = a.mesh_accessor.space_accessor.location
+        loc = location[Dface]
+        name = group_names
+        y->def(y,name)
+    end
+end
+
+function field(f,a::AnalyticalFieldAccessor)
+    x = coordinate(a.mesh_accessor)
+    g = field(a)
+    f(g,x)
+end
+
+function weight(a::AnalyticalFieldAccessor)
+    (;mesh_accessor) = a
+    weight(mesh_accessor)
+end
+
+function coordinate(a::AnalyticalFieldAccessor)
+    (;mesh_accessor) = a
+    coordinate(mesh_accessor)
+end
+
 # Old stuff
 
 function accessor(a,b)

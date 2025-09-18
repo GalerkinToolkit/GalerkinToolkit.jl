@@ -33,12 +33,14 @@ mesh = GT.cartesian_mesh(domain,cells)
 
 #Domains
 Ω = GT.interior(mesh)
-Γ1 = GT.boundary(mesh;group_names=["1-face-2"])
-Γ2 = GT.boundary(mesh;group_names=["1-face-1","1-face-3","1-face-4"])
-g1 = GT.analytical_field(x->StaticArrays.SVector(1,0),Ω)
-g2 = GT.analytical_field(x->StaticArrays.SVector(0,0),Ω)
-g = GT.piecewise_field(g1,g2)
-Γ = GT.piecewise_domain(Γ1,Γ2)
+Γ = GT.boundary(mesh;group_names=["1-face-1","1-face-2","1-face-3","1-face-4"])
+g = GT.analytical_field(Γ;piecewise=true) do x,name
+    if name == "1-face-2"
+        StaticArrays.SVector(1,0)
+    else
+        StaticArrays.SVector(0,0)
+    end
+end
 
 #Velocity interpolation
 order = 2
