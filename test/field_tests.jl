@@ -39,6 +39,18 @@ end
 
 gx = GT.sample(g,dΩ)
 
+GT.interpolate(g,V)
+GT.interpolate_free(g,V)
+GT.interpolate_dirichlet(g,V)
+
+g = GT.analytical_field(Γ;piecewise=true) do x,name
+    sum(x)
+end
+
+GT.interpolate(g,V)
+GT.interpolate_free(g,V)
+GT.interpolate_dirichlet(g,V)
+
 g = GT.analytical_field(sum,Ω)
 GT.interpolate(g,V)
 GT.interpolate_free(g,V)

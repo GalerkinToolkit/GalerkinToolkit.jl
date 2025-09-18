@@ -52,9 +52,7 @@ end
 
 #Domains
 Ω = GT.interior(mesh;group_names=["domain"])
-Γ1 = GT.boundary(mesh;group_names=["outer"])
-Γ2 = GT.boundary(mesh;group_names=["inner"])
-Γ = GT.piecewise_domain(Γ1,Γ2)
+Γ = GT.boundary(mesh;group_names=["outer","inner"])
 
 #Interpolation
 k = 1
@@ -72,15 +70,24 @@ GT.interpolate_free!(u0,uh)
 #Time-dependent Dirichlet function
 α = t -> sin(3*pi*t)
 function dirichlet_dynamics!(t,uh,duh=nothing)
-    g1 = GT.analytical_field(x->0.0,Ω)
     if uh !== nothing
-        g2 = GT.analytical_field(x->α(t),Ω)
-        g = GT.piecewise_field(g1,g2)
+        g = GT.analytical_field(Γ;piecewise=true) do x,name
+            if name == "inner"
+                α(t)
+            else
+                0.0
+            end
+        end
         GT.interpolate_dirichlet!(g,uh)
     end
-    if duh !== nothing
-        g2 = GT.analytical_field(x->ForwardDiff.derivative(α,t),Ω)
-        g = GT.piecewise_field(g1,g2)
+    if vh !== nothing
+        g = GT.analytical_field(Γ;piecewise=true) do x,name
+            if name == "inner"
+                ForwardDiff.derivative(α,t)
+            else
+                0.0
+            end
+        end
         GT.interpolate_dirichlet!(g,duh)
     end
 end

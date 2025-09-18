@@ -1366,19 +1366,29 @@ function at_face_around(a::AnalyticalFieldAccessor,face_around)
     replace_mesh_accessor(a,mesh_accessor)
 end
 
-function field(f,a::AnalyticalFieldAccessor)
-    x = coordinate(a.mesh_accessor)
+function at_point(a::AnalyticalFieldAccessor,point)
+    mesh_accessor = at_point(a.mesh_accessor,point)
+    replace_mesh_accessor(a,mesh_accessor)
+end
+
+function field(a::AnalyticalFieldAccessor)
     location = a.field.location
     def = f.field.definition
     if location == nothing
-        def(x)
+        def
     else
         group_names = GT.group_names(a.field.domain)
         Dface = a.mesh_accessor.space_accessor.location
         loc = location[Dface]
         name = group_names
-        def(x,name)
+        y->def(y,name)
     end
+end
+
+function field(f,a::AnalyticalFieldAccessor)
+    x = coordinate(a.mesh_accessor)
+    g = field(a)
+    f(g,x)
 end
 
 function weight(a::AnalyticalFieldAccessor)

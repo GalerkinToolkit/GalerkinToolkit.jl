@@ -233,17 +233,18 @@ V = GT.lagrange_space(Γdiri,order)
 
 @test V.cache.face_dofs == GT.face_dofs(V)
 
-Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
-Γ2 = GT.boundary(mesh;group_names=["1-face-3"])
-Γ3 = GT.boundary(mesh;group_names=["0-face-1"])
-
-u1 = GT.analytical_field(x->1.0,Ω)
-u2 = GT.analytical_field(x->2.0,Ω)
-u3 = GT.analytical_field(x->3.0,Ω)
-
-# TODO better names than piecewise_field and piecewise_domain?
-udiri = GT.piecewise_field(u1,u2,u3)
-Γdiri = GT.piecewise_domain(Γ1,Γ2,Γ3)
+Γdiri = GT.boundary(mesh;group_names=["1-face-1","1-face-3","0-face-1"])
+udiri = analytical_field(Γdiri;piecewise=true) do x,name
+    if name === "1-face-1"
+        1.0
+    elseif name == "1-face-2"
+        2.0
+    elseif name == "1-face-2"
+        3.0
+    else
+        0.0
+    end
+end
 
 order = 1
 V = GT.lagrange_space(Ωref,order;dirichlet_boundary=Γdiri)

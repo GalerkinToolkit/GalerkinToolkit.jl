@@ -32,7 +32,6 @@ function analytical_field(f,dom::AbstractDomain;piecewise=Val(false))
             index = GT.index(opts)
             domain_face = leaf_term(domain_face_index(index))
             location_term = leaf_term(location)
-            @assert num_dims(domain) == d
             domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
             face = RefTerm(domain_face_to_face,domain_face)
             loc = RefTerm(location_term,face)
@@ -41,13 +40,12 @@ function analytical_field(f,dom::AbstractDomain;piecewise=Val(false))
             call_term(leaf_term(f2),name)
         end
     else
-        f2 = f
         q = quantity() do opts
             leaf_term(f)
         end
         location = nothing
     end
-    AnalyticalField(f2,q,dom,location)
+    AnalyticalField(f,q,dom,location)
 end
 
 struct AnalyticalField{A,B,C,D} <: AbstractField
@@ -56,6 +54,8 @@ struct AnalyticalField{A,B,C,D} <: AbstractField
     domain::C
     location::D
 end
+
+@inline is_piecewise(a::AnalyticalField) = a.location !== nothing
 
 function face_constant_field(data,dom::AbstractDomain)
     mesh = GT.mesh(dom)
