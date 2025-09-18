@@ -947,6 +947,7 @@ space_type(fe::LagrangeFaceSpace) = val_parameter(fe.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.tensor_size)
 dirichlet_boundary(fe::LagrangeFaceSpace) = fe.dirichlet_boundary
+
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
     if val_parameter(fe.lib_to_user_nodes) === :default
         nnodes = num_nodes(fe)
@@ -1003,6 +1004,7 @@ function continuous(fe::LagrangeFaceSpace)
     true
 end
 
+
 function monomial_exponents(a::LagrangeFaceSpace)
     if a.workspace !== nothing
         return a.workspace.monomial_exponents
@@ -1025,7 +1027,6 @@ end
 
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
-# TODO cache it
 function node_coordinates(a::LagrangeFaceSpace)
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
@@ -1053,7 +1054,8 @@ function node_coordinates(a::LagrangeFaceSpace)
     user_node_to_coords
 end
 
-# TODO cache it
+
+
 function tensor_basis(fe::LagrangeFaceSpace)
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
@@ -1062,30 +1064,36 @@ function tensor_basis(fe::LagrangeFaceSpace)
     else
         cis = CartesianIndices(s)
         l = prod(s)
-        init_tensor = SArray{Tuple{s...},Tv}
+        vl = Val(l)
+        init_tensor = SArray{Tuple{s...},Tv, length(s), l}
         cis_flat = cis[:]
-        return map(cis_flat) do ci
-            init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,Val(l)))
+        result::Vector{init_tensor} = map(cis_flat) do ci
+            tensor = init_tensor(ntuple(j->cis[j]==ci ? 1 : 0 ,vl))
+            tensor 
         end
+        return result
     end
 end
 
-# TODO cache it
+
 function primal_basis(fe::LagrangeFaceSpace)
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
         return scalar_basis
     else
-        primal_nested = map(scalar_basis) do monomial
-            map(tensor_basis(fe))  do e
-                x -> monomial(x)*e
+        # TODO: ugly
+        tb = tensor_basis(fe)
+        func_template = (e, monomial) -> x -> monomial(x)*e
+        proto = func_template(tb[1], scalar_basis[1])
+        primal_nested::Vector{Vector{typeof(proto)}} = map(scalar_basis) do monomial
+            map(tb) do e
+                func_template(e, monomial)
             end
         end
         return reduce(vcat,primal_nested)
     end
 end
 
-# TODO cache it
 function dual_basis(fe::LagrangeFaceSpace)
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
@@ -1093,16 +1101,15 @@ function dual_basis(fe::LagrangeFaceSpace)
     if ts === :scalar
         return scalar_basis
     else
-        if major(fe) === :component
-            dual_nested = map(node_coordinates_reffe) do x
-                map(tensor_basis(fe)) do e
-                    f->contraction(e,f(x))
-                end
-            end
-        elseif major(fe) === :node
-            dual_nested = map(tensor_basis(fe)) do e
-                map(node_coordinates_reffe) do x
-                    f->contraction(e,f(x))
+        tb = tensor_basis(fe)
+        # TODO: ugly
+        if major(fe) === :component || major(fe) === :node
+            func_template = (a, b) -> f -> contraction(a, f(b))
+            proto = func_template(tb[1], node_coordinates_reffe[1])
+            dual_nested::Vector{Vector{typeof(proto)}} = map(node_coordinates_reffe) do x
+                temp::Vector{typeof(proto)} = map(tb) do e
+                    temp2::typeof(proto) = func_template(e, x)
+                    # f->contraction(e,f(x))
                 end
             end
         else
@@ -1147,6 +1154,7 @@ function node_dofs(fe::LagrangeFaceSpace)
     end
 end
 
+
 function dof_node(fe::LagrangeFaceSpace)
     Tv = int_type(options(fe))
     ndofs = num_dofs(fe)
@@ -1174,6 +1182,7 @@ function conforming(fe::LagrangeFaceSpace)
     nonconforming = (is_n_cube(domain(fe)) && space_type(fe) === :P)
     ! nonconforming
 end
+
 
 function interior_nodes(fe::LagrangeFaceSpace)
     if !conforming(fe)
@@ -1434,6 +1443,7 @@ function face_own_dof_permutations(fe::LagrangeFaceSpace,d)
     end
 end
 
+
 function num_dofs(a::LagrangeFaceSpace)
     nnodes = num_nodes(a)
     if tensor_size(a) === :scalar
@@ -1443,6 +1453,7 @@ function num_dofs(a::LagrangeFaceSpace)
         Int(nnodes*ndofs_per_node)
     end
 end
+
 
 function node_quadrature(fe::LagrangeFaceSpace)
     coordinates = node_coordinates(fe)

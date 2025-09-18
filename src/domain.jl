@@ -468,6 +468,7 @@ function Base.:(==)(a::AbstractMeshDomain,b::AbstractMeshDomain)
 end
 
 
+
 struct MeshDomain{A,B,C,D,E,F,G,W} <: AbstractMeshDomain
     mesh::A
     mesh_id::B
@@ -609,6 +610,7 @@ function replace_workspace(domain::MeshDomain,workspace)
                workspace
               )
 end
+
 
 function faces(domain::MeshDomain)
     if workspace(domain) !== nothing

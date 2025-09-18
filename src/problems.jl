@@ -246,8 +246,13 @@ function assemble_vector(f,::Type{T},space;
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
     alloc = allocate_vector(T,space,domains...;kwargs...)
+    optimize_options = if haskey(kwargs, :optimize_options)
+        kwargs[:optimize_options]
+    else
+        nothing
+    end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_vector(contribution,space;parameters)
+        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
         Base.invokelatest(loop!,alloc)
         params_loop
@@ -317,8 +322,13 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
     alloc = allocate_matrix(T,test_space,trial_space,domains...;kwargs...)
+    optimize_options = if haskey(kwargs, :optimize_options)
+        kwargs[:optimize_options]
+    else
+        nothing
+    end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters)
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters, optimize_options)
         loop! = Base.invokelatest(params_loop,parameters...)
         Base.invokelatest(loop!,alloc)
         params_loop
@@ -335,7 +345,7 @@ end
 function update_matrix!(A,cache;parameters=())
     (;loops,alloc,matrix_cache) = cache # TODO: names
     reset!(alloc)
-    map(loops) do params_loop
+    for params_loop in loops 
         loop! = Base.invokelatest(params_loop, parameters...)
         Base.invokelatest(loop!, alloc)
     end

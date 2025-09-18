@@ -1522,11 +1522,12 @@ function shape_function_accessor(f,space::AbstractSpace)
 end
 
 # Tabulated
-function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature)
+function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation=Val(false))
     if is_reference_domain(domain(space))
+        # TODO: do we need to remove the tabulation or inline this?
         shape_function_accessor_reference(f,space,measure)
     else
-        shape_function_accessor_physical(f,space,measure)
+        shape_function_accessor_physical(f,space,measure,disable_tabulation)
     end
 end
 
@@ -1572,7 +1573,8 @@ function shape_function_accessor_reference_interior(f,space::AbstractSpace,measu
     # NB the TODOs below can be solved by introducing an extra nesting level
     # TODO assumes same reference elems for integration and for interpolation
     rid_to_tab = map(rid_to_point_to_x,reference_spaces(space)) do point_to_x, refface
-        tabulator(refface)(f,point_to_x)
+        # tabulator(refface)(f,point_to_x)
+        collect(permutedims(tabulator(refface)(f,point_to_x), (2, 1)))
     end
     prototype = first(first(rid_to_tab))
     face_to_rid = face_reference_id(mesh,d)
@@ -1583,7 +1585,8 @@ function shape_function_accessor_reference_interior(f,space::AbstractSpace,measu
         tab = rid_to_tab[rid]
         function point_dof_s(point,J=nothing)
             function dof_s(dof)
-                tab[point,dof]
+                tab[dof, point]
+                # tab[point, dof]
             end
         end
     end
@@ -1606,19 +1609,31 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
     dface_to_drid = face_reference_id(mesh,d)
     # NB the TODOs below can be solved by introducing two extra nesting levels
     # TODO this assumes the same reffes for mesh and quadrature
-    drid_Drid_ldface_perm_to_tab = map(drid_to_point_to_x,drid_to_refdface) do point_to_x,refdface
+
+    point_to_x = drid_to_point_to_x[1]
+    refdface = drid_to_refdface[1]
+    reffe,refDface = Drid_to_reffe[1], Drid_to_refDface[1]
+    lpv = reference_map(refdface,refDface)[1][1]
+    p2q = lpv.(point_to_x)
+    prototype_tab = tabulator(reffe)(f,p2q)
+    prototype = first(prototype_tab)
+    prototype_inner = Vector{Vector{typeof(prototype_tab)}}
+    prototype_outer = Vector{Vector{prototype_inner}}
+
+    drid_Drid_ldface_perm_to_tab::prototype_outer = map(drid_to_point_to_x,drid_to_refdface,1:length(drid_to_point_to_x)) do point_to_x,refdface,_ # fix the type to vector by adding a loop range
         # TODO this assumes the same reffes for mesh and interpolation
-        map(Drid_to_reffe,Drid_to_refDface) do reffe,refDface
+        map(Drid_to_reffe,Drid_to_refDface,1:length(Drid_to_reffe)) do reffe,refDface,_
             ldface_perm_varphi = reference_map(refdface,refDface)
             map(ldface_perm_varphi) do perm_varphi
                 map(perm_varphi) do varphi
                     point_to_q = varphi.(point_to_x)
-                    tabulator(reffe)(f,point_to_q)
+                    # elem::typeof(prototype_tab) = tabulator(reffe)(f,point_to_q)
+                    elem::typeof(prototype_tab) = collect(permutedims(tabulator(reffe)(f,point_to_q), (2, 1)))
                 end
             end
         end
     end
-    prototype = first(first(first(first(first(drid_Drid_ldface_perm_to_tab)))))
+    
     function face_point_dof_s(face,face_around)
         dface = face_to_dface[face]
         Dfaces = dface_to_Dfaces[dface]
@@ -1631,7 +1646,8 @@ function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measu
         tab = drid_Drid_ldface_perm_to_tab[drid][Drid][ldface][perm]
         function point_dof_s(point)
             function dof_s(dof)
-                tab[point,dof]
+                # tab[point,dof]
+                tab[dof, point]
             end
         end
     end
@@ -1658,7 +1674,12 @@ function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
     lface_to_lrefid = GT.face_reference_id(boundary,d)
     lrefid_to_lrefface = GT.reference_spaces(boundary,d)
     lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-    map(1:GT.num_faces(boundary,d)) do lface
+    
+    func_template = (dof_to_coeff, dof_to_f, ndofs) -> (x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs))
+    d2c = node_to_coords[lface_to_nodes[1][ lrefid_to_perm_to_ids[lface_to_lrefid[1]][1] ]]
+    proto = func_template(d2c, dof_to_f, length(d2c))
+
+    result::Vector{Vector{typeof(proto)}} = map(1:GT.num_faces(boundary,d)) do lface
         lrefid = lface_to_lrefid[lface]
         nodes = lface_to_nodes[lface]
         perm_to_ids = lrefid_to_perm_to_ids[lrefid]
@@ -1667,9 +1688,10 @@ function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
             dof_to_coeff = similar(node_to_coords[nodes])
             dof_to_coeff[ids] = node_to_coords[nodes]
             ndofs = length(dof_to_coeff)
-            x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs)
+            result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
         end
     end
+    return result
 end
 
 function inv_map(f,x0)
@@ -1818,18 +1840,41 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
     node_to_x = node_coordinates(mesh)
     z = zero(eltype(node_to_x))
     prototype = outer(z,GT.prototype(face_point_lnode_s))
+
+    D = val_parameter(vD)
+    P = typeof(prototype)
+
+    max_n_faces_around = 2
+    jacobian_cache = zeros(P, max_n_faces_around)
     function face_point_phi(face,face_around=nothing)
         point_lnode_s = face_point_lnode_s(face,face_around)
         lnode_to_node = face_to_nodes(face,face_around)
-        function point_s(point)
+        index = face_around === nothing ? 1 : face_around
+        nlnodes = length(lnode_to_node)
+        is_simplex = (nlnodes == D + 1) # TODO: find a better way to check whether it is a simplex
+        if is_simplex
+            lnode_s_1 = point_lnode_s(1)
+
+            jacobian_cache[index] = sum(1:nlnodes) do lnode
+                node = lnode_to_node[lnode]
+                x = node_to_x[node]
+                s = lnode_s_1(lnode)
+                outer(x,s)
+            end
+        end
+        function point_s(point) 
+            if is_simplex
+                return jacobian_cache[index]
+            end
             lnode_s = point_lnode_s(point)
-            nlnodes = length(lnode_to_node)
-            sum(1:nlnodes) do lnode
+            # nlnodes = length(lnode_to_node)
+            jacobian_cache[index] = sum(1:nlnodes) do lnode
                 node = lnode_to_node[lnode]
                 x = node_to_x[node]
                 s = lnode_s(lnode)
                 outer(x,s)
             end
+            return jacobian_cache[index]
         end
     end
     accessor(face_point_phi,prototype)
@@ -1876,7 +1921,7 @@ function weight_accessor_reference(measure::AbstractQuadrature)
         dface = face_to_dface[face]
         rid = dface_to_rid[dface]
         point_to_w = rid_to_point_to_w[rid]
-        function point_v(point)
+        function point_v(point, J=nothing)
             point_to_w[point]
         end
     end
@@ -1890,12 +1935,7 @@ function weight_accessor_physical(measure::AbstractQuadrature)
     function face_point_w(face,face_around=nothing)
         point_v = face_point_v(face)
         point_J = face_point_J(face)
-        function point_w(point)
-            v = point_v(point)
-            J = point_J(point)
-            change_of_measure(J)*v
-        end
-        function point_w(point,J)
+        function point_w(point,J = point_J(point))
             v = point_v(point)
             change_of_measure(J)*v
         end
@@ -1920,7 +1960,7 @@ end
 
 function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
     function modifier(v,J)
-        transpose(J)\v
+        transpose(J)\v 
     end
     function face_dof_modifier(face,face_around=nothing)
         function dof_modifier(dof)
@@ -2024,7 +2064,7 @@ function shape_function_accessor_physical(f,space::AbstractSpace)
 end
 
 # This gets tabulated only for particular instances of f.
-function shape_function_accessor_physical(f,space::AbstractSpace,measure::AbstractQuadrature)
+function shape_function_accessor_physical(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation)
     if num_dims(domain(space)) != num_dims(domain(measure))
         error("case not implemented")
     end
@@ -2049,7 +2089,7 @@ end
 # Tabulated
 for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
     @eval begin
-        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature)
+        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{false})
             face_point_dof_v = shape_function_accessor_reference(f,space,measure)
             face_ndofs = num_dofs_accessor(space,GT.domain(measure))
             dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
@@ -2058,35 +2098,67 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
             P = typeof(prototype)
             max_n_faces_around = 2
-            face_around_dof_s = [zeros(P,max_num_reference_dofs(space)) for _ in 1:max_n_faces_around]
+
+            # face_around_dof_s = fill(zeros(P,max_num_reference_dofs(space)),max_n_faces_around) # incorrect, all elements have the same objectid
+            face_around_dof_s::Vector{Vector{P}} = [zeros(P,max_num_reference_dofs(space)) for _ in 1:max_n_faces_around]
+
             function face_point_dof_s(face,face_around=nothing)
                 point_dof_v = face_point_dof_v(face,face_around)
                 dof_modif = dface_to_modif(face,face_around)
                 ndofs = face_ndofs(face,face_around)
                 point_Dphi = face_point_Dphi(face,face_around)
-                if face_around === nothing
-                    dof_s = face_around_dof_s[1]
+
+                dof_s = if face_around === nothing # define dof_s outside the branches, so that the compiler can inference the type easier
+                    face_around_dof_s[1] 
                 else
-                    dof_s = face_around_dof_s[face_around]
+                    face_around_dof_s[face_around]
                 end
-                function point_dof_s(point,J)
+                
+                function point_J_dof_s(point,J)
                     dof_v = point_dof_v(point)
                     for dof in 1:ndofs
-                        v = dof_v(dof)
-                        modif = dof_modif(dof)
-                        dof_s[dof] = modif(v,J)
+                       v = dof_v(dof)
+                       modif = dof_modif(dof)
+                       dof_s[dof] = modif(v,J)
                     end
                     function dof_f(dof)
                         dof_s[dof]
                     end
                 end
-                function point_dof_s(point,::Nothing)
-                    J = point_Dphi(point)
-                    point_dof_s(point,J)
+                function point_dof_s(point,J = nothing)
+                    J2 = J === nothing ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
                 end
-                function point_dof_s(point)
-                    J = point_Dphi(point)
-                    point_dof_s(point,J)
+                return point_dof_s
+            end
+            accessor(face_point_dof_s,prototype)
+        end # function
+
+
+        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{true})
+            face_point_dof_v = shape_function_accessor_reference(f,space,measure)
+            face_ndofs = num_dofs_accessor(space,GT.domain(measure))
+            dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
+            D = num_dims(domain(space))
+            face_point_Dphi = jacobian_accessor(measure,Val(D))
+            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
+            
+            function face_point_dof_s(face,face_around=nothing)
+                point_dof_v = face_point_dof_v(face,face_around)
+                dof_modif = dface_to_modif(face,face_around)
+                point_Dphi = face_point_Dphi(face,face_around)
+                
+                function point_J_dof_s(point,J)
+                    dof_v = point_dof_v(point)
+                    function dof_f(dof)
+                        v = dof_v(dof)
+                        modif = dof_modif(dof)
+                        modif(v,J)
+                    end
+                end
+                function point_dof_s(point,J = nothing)
+                    J2 = J === nothing ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
                 end
                 return point_dof_s
             end
@@ -2332,15 +2404,9 @@ function unit_normal_accessor_physical(measure::AbstractQuadrature)
     function face_point_n(face,face_around=nothing)
         point_J = face_point_J(face,face_around)
         n_ref = face_n_ref(face,face_around)
-        function n_phys(point,J)
-            map_unit_normal(J,n_ref)
-        end
-        function n_phys(point,::Nothing)
-            n_phys(point)
-        end
-        function n_phys(point)
-            J = point_J(point)
-            map_unit_normal(J,n_ref)
+        function n_phys(point, J=nothing)
+            J2 = J === nothing ? point_J(point) : J
+            map_unit_normal(J2,n_ref)
         end
         return n_phys
     end
@@ -2395,6 +2461,7 @@ function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
     accessor(face_n_2,GT.prototype(face_n))
 end
 
+
 function face_diameter(domain::AbstractDomain)
     d = num_dims(domain)
     dinv = 1/d
@@ -2417,10 +2484,12 @@ function face_diameter(domain::AbstractDomain)
     diams
 end
 
+
 #function form_argument_accessor(f,space::AbstractSpace)
 #    shape_function_accessor(f,space)
 #end
 #
+# TODO: type instability when using accessor for customized functions
 function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,field=1)
     face_point_dof_s = shape_function_accessor(f,space,measure)
     prototype = GT.prototype(face_point_dof_s)
@@ -2429,8 +2498,8 @@ function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadratu
     function face_point_dof_a(face,face_around=nothing)
         the_face_around = face_around
         point_dof_s = face_point_dof_s(face,face_around)
-        function point_dof_a(point)
-            dof_s = point_dof_s(point)
+        function point_dof_a(point, J=nothing)
+            dof_s = point_dof_s(point, J)
             function dof_a(dof,field=1,face_around=nothing)
                 mask = face_around == the_face_around && field == the_field
                 if mask
@@ -2472,6 +2541,12 @@ function num_faces_around_accesor_skeleton(space_domain,domain)
     accessor(n_faces_around,1)
 end
 
+
+function max_num_points(measure::AbstractQuadrature)
+    lengths = map(x -> length(weights(x)), reference_quadratures(measure))
+    return reduce(max, lengths)
+end
+
 # remove it as we use quadrature directly
 # function num_points_accessor(measure::Measure)
 #     num_points_accessor(quadrature(measure))
@@ -2508,4 +2583,104 @@ end
 # function unit_normal_accessor(measure::Measure)
 #     unit_normal_accessor(quadrature(measure))
 # end
+
+
+# currently we do 1 step lowering
+# shape_function_accessor_modifier_term: always tabulated
+# function shape_function_accessor_modifier_term(f, v, J)
+#     if f == value
+#         v
+#     elseif f == ForwardDiff.jacobian 
+#         :($v/$J)
+#     elseif f == ForwardDiff.gradient
+#         :(transpose($J)\$v)
+#     else
+#         error("shape function accessor modifier not supported for this function f: $f")
+#     end
+# end
+
+
+# function shape_function_accessor_modifier_interior_term(f, v, J)
+#     shape_function_accessor_modifier_term(f, v, J)
+# end
+
+# function shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+#     # is it correct?
+#     shape_function_accessor_modifier_term(f, v, J)
+# end
+
+# function shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+#     face_around = :($(GT.face_around)(dom))
+#     shape_function_accessor_modifier_skeleton_term(f, space, dom, face, face_around, dof, v, J)
+# end
+
+
+# function shape_function_accessor_modifier_term(f, space, dom, face, the_face_around, dof, v, J, integral_type)
+#     # TODO: inline 1 step further
+#     if integral_type == :interior 
+#         shape_function_accessor_modifier_interior_term(f, v, J)
+#     elseif integral_type == :boundary 
+#         shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+#     else
+#         shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+#     end
+# end
+
+
+
+# function shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+#     face_point_dof_v = :(shape_function_accessor_reference($f,$space,$measure)) # TODO: further expand it
+
+#     # dface_to_modif = :(shape_function_accessor_modifier($f,$space, $(GT.domain)($measure)))
+#     D = :(num_dims($(GT.domain)($space)))
+#     face_point_Dphi = :(jacobian_accessor($measure,Val($D)))
+
+#     point_dof_v = :($face_point_dof_v($face,$the_face_around))
+#     # dof_modif = :($dface_to_modif($face, $the_face_around))
+#     point_Dphi = :($face_point_Dphi($face,$the_face_around))
+    
+#     # J2 = :(ifelse($J == nothing, point_Dphi($point), $J))
+#     # TODO: can we assume that the jacobian is always passed from outside?
+#     J2 = if J === nothing
+#         :($point_Dphi($point))
+#     else
+#         J
+#     end
+#     dof_v = :($point_dof_v($point))
+#     v = :($dof_v($dof))
+#     # modif = :($dof_modif($dof))
+
+#     shape_function = shape_function_accessor_modifier_term(f, space, :($(GT.domain)($measure)), face, the_face_around, dof, v, J2, integral_type)
+
+#     shape_function
+#     # z, z
+# end # function
+
+
+# function shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
+#     tabulated_functions = Set([value, ForwardDiff.jacobian, ForwardDiff.gradient])
+#     if is_reference
+#         # z = :( zero($(GT.prototype)(shape_function_accessor_reference($f,$space,$measure))) )
+#         shape_function = :(shape_function_accessor_reference($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+#     elseif f in tabulated_functions
+#         shape_function = shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+#         # z = shape_function_accessor_physical_term(f, space, measure, 1, 1, 1, nothing, 1, integral_type) # TODO: find a better way to get prototype. However, this will probably be removed in the final code.
+#     else # Untabulated, keep using accessors
+#         # z = :( zero($(GT.prototype)(shape_function_accessor_physical($f,$space,$measure))) )
+#         shape_function = :(shape_function_accessor_physical($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+#     end
+#     return shape_function
+# end
+
+
+function form_argument_accessor_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)
+
+    mask = :(($face_around == $the_face_around && $field == $the_field))
+    disable_tabulation = :(Val(true))
+    # shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
+    z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure,$disable_tabulation))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
+    shape_function = :(shape_function_accessor($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, $J)($dof))
+    :(ifelse($mask, $shape_function, $z))
+
+end
 

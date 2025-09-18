@@ -28,6 +28,7 @@ function allocate_vector(::Type{T},space_i::AbstractSpace,domains::AbstractDomai
         free_or_dirichlet = FREE,
         assembly_method = (;),
         assembly_options = (;),
+        kwargs... # hide other unused args
     ) where T
     free_or_diri_i = free_or_dirichlet
     dofs_i = GT.dofs(space_i,free_or_diri_i)
@@ -70,7 +71,8 @@ end
 function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
         free_or_dirichlet = (FREE,FREE),
         assembly_method = (;),
-        assembly_options = (;)
+        assembly_options = (;),
+        kwargs... # hide other unused args
         ) where T
     free_or_diri_i, free_or_diri_j = free_or_dirichlet
     method = matrix_assembly_method(;assembly_method...)
