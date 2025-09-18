@@ -1096,9 +1096,7 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
     alloc_arg = :alloc
     alloc = leaf_term(alloc_arg)
 
-    field_n_faces_around = map(fields(space)) do field_space
-        max_num_faces_around(GT.domain(field_space),domain)
-    end
+    field_n_faces_around = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space)]
 
     VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around, optimize_options)
 end
@@ -1128,13 +1126,9 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     alloc_arg = :alloc
     alloc = leaf_term(alloc_arg)
 
-    field_n_faces_around_trial = map(fields(space_trial)) do field_space
-        max_num_faces_around(GT.domain(field_space),domain)
-    end
-
-    field_n_faces_around_test = map(fields(space_test)) do field_space
-        max_num_faces_around(GT.domain(field_space),domain)
-    end
+    field_n_faces_around_trial = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space_trial)]
+    field_n_faces_around_test = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space_test)]
+    
 
     MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options)
 end
@@ -1302,7 +1296,7 @@ struct VectorAssemblyTerm <: AbstractTerm
     alloc::AbstractTerm
     alloc_arg::Symbol
     index::Index{1}
-    field_n_faces_around::Tuple
+    field_n_faces_around::Vector{Int}
     optimize_options
 end
 
@@ -1314,8 +1308,8 @@ struct MatrixAssemblyTerm <: AbstractTerm
     alloc::AbstractTerm
     alloc_arg::Symbol # gets reduced
     index::Index{2} # gets reduced
-    field_n_faces_around_trial::Tuple
-    field_n_faces_around_test::Tuple
+    field_n_faces_around_trial::Vector{Int}
+    field_n_faces_around_test::Vector{Int}
     optimize_options
 end
 
