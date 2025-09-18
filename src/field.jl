@@ -14,18 +14,47 @@ function term(f::AbstractField)
     term(f.quantity)
 end
 
-function analytical_field(f,dom::AbstractDomain)
+function analytical_field(f,dom::AbstractDomain;piecewise=Val(false))
     D = num_dims(dom)
-    q = quantity() do index
-        leaf_term(f)
+    if val_parameter(piecewise)
+        mesh = GT.mesh(dom)
+        d = num_dims(dom)
+        nfaces = num_faces(mesh,d)
+        location = zeros(Int32,nfaces)
+        group_faces = GT.group_faces(mesh,d)
+        for (i,name) in enumerate(group_names(dom))
+            faces = group_faces[name]
+            location[faces] .= i
+        end
+        f2(name) = x->f(x,name)
+        q = quantity() do opts
+            domain = GT.domain(opts)
+            index = GT.index(opts)
+            domain_face = leaf_term(domain_face_index(index))
+            location_term = leaf_term(location)
+            @assert num_dims(domain) == d
+            domain_face_to_face = call_term(map(leaf_term,(GT.faces,domain))...)
+            face = RefTerm(domain_face_to_face,domain_face)
+            loc = RefTerm(location_term,face)
+            names_term = call_term(map(leaf_term,(GT.group_names,dom))...)
+            name = RefTerm(names_term,loc)
+            call_term(leaf_term(f2),name)
+        end
+    else
+        f2 = f
+        q = quantity() do opts
+            leaf_term(f)
+        end
+        location = nothing
     end
-    AnalyticalField(f,q,dom)
+    AnalyticalField(f2,q,dom,location)
 end
 
-struct AnalyticalField{A,B,C} <: AbstractField
+struct AnalyticalField{A,B,C,D} <: AbstractField
     definition::A
     quantity::B
     domain::C
+    location::D
 end
 
 function face_constant_field(data,dom::AbstractDomain)
