@@ -108,4 +108,92 @@ topo2 = GT.topology(mesh2)
 @test topo === topo2
 
 
+
+@show isassigned(topo.face_incidence,0+1,0+1)
+@show isassigned(topo.face_incidence,1+1,0+1)
+@show isassigned(topo.face_incidence,2+1,0+1)
+
+@show isassigned(topo.face_incidence,0+1,1+1)
+@show isassigned(topo.face_incidence,1+1,1+1)
+@show isassigned(topo.face_incidence,2+1,1+1)
+
+@show isassigned(topo.face_incidence,0+1,2+1)
+@show isassigned(topo.face_incidence,1+1,2+1)
+@show isassigned(topo.face_incidence,2+1,2+1)
+
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = GT.cartesian_mesh(domain,cells)
+topo = GT.topology(mesh)
+
+
+GT.face_incidence(topo,0,0)
+GT.face_incidence(topo,1,0)
+GT.face_incidence(topo,2,0)
+
+GT.face_incidence(topo,0,1)
+GT.face_incidence(topo,1,1)
+GT.face_incidence(topo,2,1)
+
+GT.face_incidence(topo,0,2)
+GT.face_incidence(topo,1,2)
+GT.face_incidence(topo,2,2)
+
+GT.face_permutation_ids(topo,2,0)
+GT.face_permutation_ids(topo,2,1)
+GT.face_permutation_ids(topo,1,0)
+
+
+
+domain = (0,1,0,1,0,1)
+cells = (10,10,10)
+mesh = GT.cartesian_mesh(domain,cells)
+topo = GT.topology(mesh)
+
+
+@show "column 0"
+@show isassigned(topo.face_incidence,0+1,0+1)
+@show isassigned(topo.face_incidence,1+1,0+1)
+@show isassigned(topo.face_incidence,2+1,0+1)
+@show isassigned(topo.face_incidence,3+1,0+1)
+
+@show "column 1"
+@show isassigned(topo.face_incidence,0+1,1+1)
+@show isassigned(topo.face_incidence,1+1,1+1)
+@show isassigned(topo.face_incidence,2+1,1+1)
+@show isassigned(topo.face_incidence,3+1,1+1)
+
+@show "column 2"
+@show isassigned(topo.face_incidence,0+1,2+1)
+@show isassigned(topo.face_incidence,1+1,2+1)
+@show isassigned(topo.face_incidence,2+1,2+1)
+@show isassigned(topo.face_incidence,3+1,2+1)
+
+@show "column 3"
+@show isassigned(topo.face_incidence,0+1,3+1)
+@show isassigned(topo.face_incidence,1+1,3+1)
+@show isassigned(topo.face_incidence,2+1,3+1)
+@show isassigned(topo.face_incidence,3+1,3+1)
+
+
+GT.face_incidence(topo,0,0)
+GT.face_incidence(topo,1,0)
+GT.face_incidence(topo,2,0)
+GT.face_incidence(topo,3,0)
+
+GT.face_incidence(topo,0,1)
+GT.face_incidence(topo,1,1)
+GT.face_incidence(topo,2,1)
+GT.face_incidence(topo,3,1)
+
+GT.face_incidence(topo,0,2)
+GT.face_incidence(topo,1,2)
+GT.face_incidence(topo,2,2)
+GT.face_incidence(topo,3,2)
+
+GT.face_incidence(topo,0,3)
+GT.face_incidence(topo,1,3)
+GT.face_incidence(topo,2,3)
+GT.face_incidence(topo,3,3)
+
 end # module

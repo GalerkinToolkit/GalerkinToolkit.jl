@@ -653,11 +653,11 @@ nothing # hide
 # * `GT.node_coordinates(mesh)` is a `PVector` distributed over nodes containing node coordinates.
 # * `GT.face_nodes(mesh,d)` is a `PVector` distributed over `d`-faces of containing *global* node ids.
 # * `GT.reference_spaces(mesh,d)` is typically a small tuple which is replicated across all processes.
-# * `GT.face_permutation_ids(mesh,d)` is a `PVector` distributed over `d`-faces  containing *global* reference indices.
+# * `GT.face_reference_id(mesh,d)` is a `PVector` distributed over `d`-faces  containing *global* reference indices.
 # * `GT.group_faces(mesh,d)` is a `Dict{String,PVector}` object whose keys are replicated on all processes. `GT.group_faces(mesh,d)[key]` is a `PVector` distributed over the faces in this group containing *global* face ids.
 # * Other vectors like `normals(mesh)` are distributed following the same principle.
 #
-# All these `PVector` objects only include own indices and point to global indices.  This allows us to distribute node and face data in an arbitrary way at the cost of storing global indices.
+# All these `PVector` objects only include own indices and point to global indices.  This allows us to distribute node and face data in an arbitrary way.
 #
 # ### Creating partitioned meshes
 #
