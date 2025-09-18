@@ -80,7 +80,7 @@ function dirichlet_dynamics!(t,uh,duh=nothing)
         end
         GT.interpolate_dirichlet!(g,uh)
     end
-    if vh !== nothing
+    if duh !== nothing
         g = GT.analytical_field(Γ;piecewise=true) do x,name
             if name == "inner"
                 ForwardDiff.derivative(α,t)
