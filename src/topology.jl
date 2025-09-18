@@ -117,12 +117,55 @@ function mesh_topology(;
                  reference_topologies,)
 end
 
-face_incidence(a::MeshTopology) = a.face_incidence
-face_incidence(a::MeshTopology,d,D) = a.face_incidence[val_parameter(d)+1,val_parameter(D)+1]
+function face_incidence(a::MeshTopology)
+    D = num_dims(a)
+    # This is just to make sure we return
+    # an array fully filled
+    for m in 0:D
+        for n in 0:D
+            face_incidence(a,m,n)
+        end
+    end
+    a.face_incidence
+end
+
+function face_incidence(topo::MeshTopology,vd,vD)
+    d = val_parameter(vd)
+    D = val_parameter(vD)
+    if ! isassigned(topo.face_incidence,d+1,D+1)
+        if D == d
+            fill_face_interior_mesh_topology!(topo,d)
+        elseif D < d
+            fill_face_boundary_mesh_topology!(topo,d,D)
+        else
+            fill_face_boundary_mesh_topology!(topo,D,d)
+            fill_face_coboundary_mesh_topology!(topo,D,d)
+        end
+    end
+    topo.face_incidence[d+1,D+1]
+end
+
 face_reference_id(a::MeshTopology) = a.face_reference_id
 face_reference_id(a::MeshTopology,d) = a.face_reference_id[val_parameter(d)+1]
-face_permutation_ids(a::MeshTopology) = a.face_permutation_ids
-face_permutation_ids(a::MeshTopology,d,D) = a.face_permutation_ids[val_parameter(d)+1,val_parameter(D)+1]
+function face_permutation_ids(a::MeshTopology)
+    D = num_dims(a)
+    # This is just to make sure we return
+    # an array fully filled
+    for d in 0:D
+        for n in 0:d
+            face_permutation_ids(a,d,n)
+        end
+    end
+    a.face_permutation_ids
+end
+function face_permutation_ids(topo::MeshTopology,vd,vD)
+    d = val_parameter(vd)
+    D = val_parameter(vD)
+    if ! isassigned(topo.face_permutation_ids,d+1,D+1)
+        fill_face_permutation_ids!(topo,d,D)
+    end
+    topo.face_permutation_ids[d+1,D+1]
+end
 reference_topologies(a::MeshTopology) = a.reference_topologies
 reference_topologies(a::MeshTopology,d) = a.reference_topologies[val_parameter(d)+1]
 
@@ -193,17 +236,17 @@ function topology(mesh::AbstractMesh)
         reference_topologies = my_reference_faces,
        )
     for d in 0:D
-        fill_face_interior_mesh_topology!(topo,mesh,d)
+        fill_face_interior_mesh_topology!(topo,d)
     end
     for d in 1:D
         fill_face_vertices_mesh_topology!(topo,mesh,d)
-        fill_face_coboundary_mesh_topology!(topo,mesh,d,0)
+        fill_face_coboundary_mesh_topology!(topo,d,0)
     end
     for d in 1:(D-1)
         for n in (D-d):-1:1
             m = n+d
-            fill_face_boundary_mesh_topology!(topo,mesh,m,n)
-            fill_face_coboundary_mesh_topology!(topo,mesh,m,n)
+            fill_face_boundary_mesh_topology!(topo,m,n)
+            fill_face_coboundary_mesh_topology!(topo,m,n)
         end
     end
     for d in 0:D
@@ -214,11 +257,11 @@ function topology(mesh::AbstractMesh)
     topo
 end
 
-function fill_face_interior_mesh_topology!(mesh_topology,mesh,d)
-    n = num_faces(mesh,d)
+function fill_face_interior_mesh_topology!(mesh_topology,d)
+    n = num_faces(mesh_topology,d)
     ptrs = collect(Int32,1:(n+1))
     data = collect(Int32,1:n)
-    face_incidence(mesh_topology)[d+1,d+1] = JaggedArray(data,ptrs)
+    mesh_topology.face_incidence[d+1,d+1] = JaggedArray(data,ptrs)
 end
 
 function generate_face_coboundary(nface_to_mfaces,nmfaces)
@@ -246,10 +289,10 @@ function generate_face_coboundary(nface_to_mfaces,nmfaces)
     mface_to_nfaces
 end
 
-function fill_face_coboundary_mesh_topology!(topology,mesh,n,m)
-    nmfaces = num_faces(mesh,m)
+function fill_face_coboundary_mesh_topology!(topology,n,m)
+    nmfaces = num_faces(topology,m)
     nface_to_mfaces = face_incidence(topology,n,m)
-    face_incidence(topology)[m+1,n+1] = generate_face_coboundary(nface_to_mfaces,nmfaces)
+    topology.face_incidence[m+1,n+1] = generate_face_coboundary(nface_to_mfaces,nmfaces)
 end
 
 function fill_face_vertices_mesh_topology!(topo,mesh,d)
@@ -292,10 +335,10 @@ function fill_face_vertices_mesh_topology!(topo,mesh,d)
     dface_to_refid = face_reference_id(mesh,d)
     refid_refface = reference_spaces(mesh,d)
     refid_to_lvertex_to_lnodes = map(refface->face_nodes(remove_interior(complexify(refface)),0),refid_refface)
-    face_incidence(topo)[d+1,0+1] = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
+    topo.face_incidence[d+1,0+1] = barrier(nnodes,vertex_to_nodes,dface_to_nodes,dface_to_refid,refid_to_lvertex_to_lnodes)
 end
 
-function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
+function fill_face_boundary_mesh_topology!(topo,D,d)
     function barrier(
             Dface_to_vertices,
             vertex_to_Dfaces,
@@ -370,7 +413,7 @@ function fill_face_boundary_mesh_topology!(topo,mesh,D,d)
             vertex_to_dfaces,
             Dface_to_refid,
             Drefid_to_ldface_to_lvertices)
-    face_incidence(topo)[D+1,d+1] = Dface_to_dfaces
+    topo.face_incidence[D+1,d+1] = Dface_to_dfaces
 end
 
 function fill_face_permutation_ids!(top,D,d)
@@ -424,7 +467,7 @@ function fill_face_permutation_ids!(top,D,d)
     cell_to_lface_to_pindex = JaggedArray(data,ptrs)
     if d == D || d == 0
         fill!(cell_to_lface_to_pindex.data,Int8(1))
-        face_permutation_ids(top)[D+1,d+1] = cell_to_lface_to_pindex
+        top.face_permutation_ids[D+1,d+1] = cell_to_lface_to_pindex
         return top
     end
     face_to_fvertex_to_vertex = JaggedArray(face_incidence(top,d,0))
@@ -444,7 +487,7 @@ function fill_face_permutation_ids!(top,D,d)
              face_to_fvertex_to_vertex,
              face_to_ftype,
              ftype_to_pindex_to_cfvertex_to_fvertex)
-    face_permutation_ids(top)[D+1,d+1] = cell_to_lface_to_pindex
+    top.face_permutation_ids[D+1,d+1] = cell_to_lface_to_pindex
     top
 end
 
@@ -571,9 +614,11 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             new_nface_to_nrefid,
             nrefid_to_ldface_to_drefrefid,
             nrefid_to_drefrefid_to_ref_dface)
-        newface_incidence[n+1,d+1] = new_nface_to_new_dfaces
-        newface_incidence[d+1,0+1] = new_dface_to_new_vertices
-        newface_incidence[0+1,d+1] = new_vertex_to_new_dfaces
+        if d > 0
+            newface_incidence[n+1,d+1] = new_nface_to_new_dfaces
+            newface_incidence[d+1,0+1] = new_dface_to_new_vertices
+            newface_incidence[0+1,d+1] = new_vertex_to_new_dfaces
+        end
         newface_refid[d+1] = new_dface_to_new_drefid
         newreffaces[d+1] = new_refid_to_ref_dface
         nnewfaces[d+1] = n_new_dfaces
@@ -601,7 +646,12 @@ function complexify(mesh::AbstractMesh;glue=Val(false))
             geometry_names = geometry_names(mesh),
             is_cell_complex = Val(true),
            )
-    mtopology = GT.topology(new_mesh)
+    mtopology = mesh_topology(;
+                          face_incidence = newface_incidence, #m_face_incidence,
+                          face_reference_id = newface_refid,
+                          face_permutation_ids = Matrix{JaggedArray{Int32,Int32}}(undef,D+1,D+1),
+                          reference_topologies = map(reffaces->map(refface->GT.topology(GT.domain(refface)),reffaces),Tuple(newreffaces)),
+                         )
     workspace = mesh_workspace(;topology=mtopology)
     new_mesh2 = replace_workspace(new_mesh,workspace)
     if val_parameter(glue)
@@ -895,7 +945,7 @@ end
 
 function find_node_to_vertex(mesh)
     function barrier!(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
-        valid_id = one(eltype(node_to_vertex))
+        valid_id = -one(eltype(node_to_vertex))
         for face in eachindex(face_to_nodes)
             nodes = face_to_nodes[face]
             refid = face_to_refid[face]
@@ -910,7 +960,7 @@ function find_node_to_vertex(mesh)
     Ti = Int32
     nnodes = num_nodes(mesh)
     node_to_vertex = zeros(Ti,nnodes)
-    fill!(node_to_vertex,Ti(INVALID_ID))
+    fill!(node_to_vertex,Ti(0))
     D = num_dims(mesh)
     for d in 0:D
         face_to_nodes = face_nodes(mesh,d)
@@ -927,9 +977,18 @@ function find_node_to_vertex(mesh)
         end
         barrier!(node_to_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
     end
+    valid_id = -one(eltype(node_to_vertex))
     vertex = Ti(0)
+    # Loop needed to get the already existing vertices
+    for nodes in GT.face_nodes(mesh,0)
+        node = nodes[1]
+        if node_to_vertex[node] == -1
+            vertex += Ti(1)
+            node_to_vertex[node] = vertex
+        end
+    end
     for node in eachindex(node_to_vertex)
-        if node_to_vertex[node] != Ti(INVALID_ID)
+        if node_to_vertex[node] == -1
             vertex += Ti(1)
             node_to_vertex[node] = vertex
         end
