@@ -463,17 +463,18 @@ V = GT.lagrange_space(Γdiri,order)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
-Γ2 = GT.boundary(mesh;group_names=["1-face-3"])
-Γ3 = GT.boundary(mesh;group_names=["0-face-1"])
-
-u1 = GT.analytical_field(x->1.0,Ω)
-u2 = GT.analytical_field(x->2.0,Ω)
-u3 = GT.analytical_field(x->3.0,Ω)
-
-# TODO better names than piecewise_field and piecewise_domain?
-udiri = GT.piecewise_field(u1,u2,u3)
-Γdiri = GT.piecewise_domain(Γ1,Γ2,Γ3)
+Γdiri = GT.boundary(mesh;group_names=["1-face-1","1-face-2","1-face-3"])
+udiri = GT.analytical_field(Γdiri;piecewise=true) do x,name
+    if name === "1-face-1"
+        1.0
+    elseif name == "1-face-2"
+        2.0
+    elseif name == "1-face-2"
+        3.0
+    else
+        0.0
+    end
+end
 
 order = 1
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
@@ -535,21 +536,6 @@ GT.reference_spaces(V) # TODO why 2 reference fes?
 
 Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
 Γ2 = GT.boundary(mesh;group_names=["1-face-3"])
-#
-#order = 3
-#m1 = GT.analytical_field(x->SVector(false,true),Γ1)
-#m2 = GT.analytical_field(x->SVector(true,false),Γ2)
-#m = GT.piecewise_field(m1,m2)
-#V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
-#
-#@test GT.workspace(V).face_dofs == GT.face_dofs(V)
-#
-#uh = GT.rand_field(Float64,V)
-#vtk_grid(joinpath(outdir,"Vvec2"),Ω;plot_params=(;refinement=10)) do plt
-#    GT.plot!(plt,uh;label="uh")
-#    GT.plot!(plt,x->uh(x)[1];label="uh1")
-#    GT.plot!(plt,x->uh(x)[2];label="uh2")
-#end
 
 order = 0
 V = GT.lagrange_space(Ω,order,space_type=:P,dirichlet_boundary=GT.last_dof())

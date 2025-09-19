@@ -1892,24 +1892,96 @@ function interpolate_impl!(
     node_x = node_coordinates(space)
     node_dofs = GT.node_dofs(space)
     nnodes = num_nodes(space)
-    for node in 1:nnodes
-        x = node_x[node]
-        comp_v = fun(x)
-        comp_dof = node_dofs[node]
-        ncomps = length(comp_v)
-        for comp in 1:ncomps
-            dof = comp_dof[comp]
-            v = comp_v[comp]
-            if dof > 0
-                if free_or_diri != DIRICHLET
-                    free_vals[dof] = v
-                end
-            else
-                diri_dof = -dof
-                if free_or_diri != FREE && dirichlet_dof_location[diri_dof] == location
-                    diri_vals[diri_dof] = v
+    #TODO better handling of cases
+    if ! is_piecewise(f)
+        for node in 1:nnodes
+            x = node_x[node]
+            comp_v = fun(x)
+            comp_dof = node_dofs[node]
+            ncomps = length(comp_v)
+            for comp in 1:ncomps
+                dof = comp_dof[comp]
+                v = comp_v[comp]
+                if dof > 0
+                    if free_or_diri != DIRICHLET
+                        free_vals[dof] = v
+                    end
+                else
+                    diri_dof = -dof
+                    if free_or_diri != FREE
+                        diri_vals[diri_dof] = v
+                    end
                 end
             end
+        end
+    else
+        if num_dims(f.domain) == num_dims(space.domain)
+            cell_nodes = GT.face_nodes(space)
+            names = GT.group_names(f.domain)
+            for cell in GT.faces(f.domain)
+                nodes = cell_nodes[cell]
+                loc = f.location[cell]
+                name = names[loc]
+                for node in nodes
+                    x = node_x[node]
+                    comp_v = fun(x,name)
+                    comp_dof = node_dofs[node]
+                    ncomps = length(comp_v)
+                    for comp in 1:ncomps
+                        dof = comp_dof[comp]
+                        v = comp_v[comp]
+                        if dof > 0
+                            if free_or_diri != DIRICHLET
+                                free_vals[dof] = v
+                            end
+                        else
+                            diri_dof = -dof
+                            if free_or_diri != FREE
+                                diri_vals[diri_dof] = v
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            Dface_nodes = GT.face_nodes(space)
+            names = GT.group_names(f.domain)
+            domain_D = space.domain
+            D = num_dims(domain_D)
+            domain_d = f.domain
+            d = num_dims(domain_d)
+            mesh = GT.mesh(domain_D)
+            topo = GT.topology(mesh)
+            dface_Dfaces = face_incidence(topo,d,D)
+            for dface in GT.faces(domain_d)
+                loc = f.location[dface]
+                name = names[loc]
+                Dfaces = dface_Dfaces[dface]
+                for Dface in Dfaces
+                    nodes = Dface_nodes[Dface]
+                    for node in nodes
+                        x = node_x[node]
+                        comp_v = fun(x,name)
+                        comp_dof = node_dofs[node]
+                        ncomps = length(comp_v)
+                        for comp in 1:ncomps
+                            dof = comp_dof[comp]
+                            v = comp_v[comp]
+                            if dof > 0
+                                if free_or_diri != DIRICHLET
+                                    free_vals[dof] = v
+                                end
+                            else
+                                diri_dof = -dof
+                                if free_or_diri != FREE
+                                    diri_vals[diri_dof] = v
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
         end
     end
     u
