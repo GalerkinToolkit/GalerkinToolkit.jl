@@ -97,24 +97,32 @@ function face_permutation_ids(a::AbstractFaceTopology,d,D)
     face_permutation_ids(a)[d+1,D+1]
 end
 
-struct MeshTopology{A,B,C,D} <: AbstractTopology
+struct MeshTopology{A,B,C,D,E,F} <: AbstractTopology
     face_incidence::A
     face_reference_id::B
     face_permutation_ids::C
     reference_topologies::D
+    periodic_faces::E
+    periodic_faces_permutation_id::F
 end
 
 function mesh_topology(;
         face_incidence,
         face_reference_id,
         face_permutation_ids,
-        reference_topologies,)
+        reference_topologies,
+        periodic_faces = map(_->Int32[]=>Int32[],face_reference_id),
+        periodic_faces_permutation_id = map(_->Int32[]=>Int32[],face_reference_id),
+    )
 
     MeshTopology(
                  face_incidence,
                  face_reference_id,
                  face_permutation_ids,
-                 reference_topologies,)
+                 reference_topologies,
+                 periodic_faces,
+                 periodic_faces_permutation_id,
+                )
 end
 
 function num_faces(topo::MeshTopology)
@@ -233,11 +241,15 @@ function topology(mesh::AbstractMesh)
     dims = ntuple(d->d-1,Val(D+1))
     my_reference_faces = map(d->map(topology,reference_domains(mesh,d)),dims)
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
+    periodic_faces = Vector{Pair{Vector{Int32},Vector{Int32}}}(undef,D+1)
+    periodic_faces_permutation_id = Vector{Vector{Int32}}(undef,D+1)
     topo = mesh_topology(;
         face_incidence = my_face_incidence,
         face_reference_id = my_face_reference_id,
         face_permutation_ids = my_face_permutation_ids,
         reference_topologies = my_reference_faces,
+        periodic_faces,
+        periodic_faces_permutation_id,
        )
     for d in 0:D
         fill_face_interior_mesh_topology!(topo,d)
@@ -257,6 +269,10 @@ function topology(mesh::AbstractMesh)
         for n in 0:d
             fill_face_permutation_ids!(topo,d,n)
         end
+    end
+    for d in 0:D
+        fill_periodic_faces!(topo,mesh,d)
+        fill_periodic_faces_permutation_id!(topo,n)
     end
     topo
 end
@@ -544,6 +560,33 @@ function same_valid_ids(a,b,idsa,idsb)
         return false
     end
     return true
+end
+
+function fill_periodic_vertices!(topo,mesh)
+    d = 0
+    node_owner
+    node_vertex
+    vertex_owner
+    face_nodes
+    node = face_nodes[vertex][1]
+    node2 = node_owner[node]
+    vertex2 = node_vertex[node2]
+    vertex_owner[vertex] = vertex2
+end
+
+function fill_periodic_faces!(topo,d)
+    @assert d != 0
+    face_owner
+    vertex_owner
+    face_vertices
+    vertices = face_vertices[face]
+    all(vertex->vertex_owner[vertex]!=0,vertices)
+    vertices2 = view(vertex_owner,vertices)
+    face3 = vertex_faces[vertex2]
+    vertices3 = face_vertices[face3]
+    same_ids(vertices2,vertices3)
+    face2 = face3
+    face_owner[face] = face2
 end
 
 function complexify(mesh::AbstractMesh;glue=Val(false))

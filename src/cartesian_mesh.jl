@@ -15,28 +15,36 @@ by the mesh is given by `domain[2*i-1,2*i]`.
 """
 function cartesian_mesh(
     domain,cells_per_dir;
-    boundary=true,
-    complexify=true,
-    simplexify=false,
+    boundary=Val(true),
+    complexify=Val(true),
+    simplexify=Val(false),
+    periodic=nothing,
     )
-    mesh = if boundary
-        if simplexify
+    mesh0 = if val_parameter(boundary)
+        if val_parameter(simplexify)
             structured_simplex_mesh_with_boundary(domain,cells_per_dir)
         else
             cartesian_mesh_with_boundary(domain,cells_per_dir)
         end
     else
-        if simplexify
+        if val_parameter(simplexify)
             chain = structured_simplex_chain(domain,cells_per_dir)
         else
             chain = cartesian_chain(domain,cells_per_dir)
         end
         GT.mesh(chain)
     end
-    if complexify
-        mesh = GT.complexify(mesh)
+    if periodic !== nothing
+        periodic_nodes = cartesian_periodic_nodes(domain,cells_per_dir,periodic)
+        mesh = replace_periodic_nodes(mesh0,periodic_nodes)
+    else
+        mesh = mesh0
     end
-    mesh
+    if val_parameter(complexify)
+        GT.complexify(mesh)
+    else
+        mesh
+    end
 end
 
 #function cartesian_pmesh(domain,cells_per_dir,parts,parts_per_dir;
@@ -445,3 +453,41 @@ function structured_simplex_mesh_with_boundary(domain,cells_per_dir)
      group_faces=mesh_groups,
     )
 end
+
+function cartesian_periodic_nodes(domain,cells,periodic)
+    nodes = cells .+ 1
+    nnodes = prod(nodes)
+    node_owner = zeros(Int32,nnodes)
+    lis = LinearIndices(nodes)
+    D = length(cells)
+    for (d,flag) in enumerate(periodic)
+        if ! flag
+            continue
+        end
+        t = ntuple(Val(D)) do n
+            if n != d
+                Int(nodes[n])
+            else
+                1
+            end
+        end
+        cis = CartesianIndices(t)
+        for ci in cis
+            owner = lis[ci]
+            t2 = ntuple(Val(D)) do n
+                if n != d
+                    Int(Tuple(ci)[n])
+                else
+                    Int(nodes[d])
+                end
+            end
+            ci2 = CartesianIndex(t2)
+            node = lis[ci2]
+            node_owner[node] = owner
+        end
+    end
+    pnode_node = findall(owner -> owner != 0,node_owner)
+    pnode_owner = node_owner[pnode_node]
+    pnode_node => pnode_owner
+end
+

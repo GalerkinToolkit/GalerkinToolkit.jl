@@ -653,6 +653,24 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
         )
 end
 
+function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
+    @assert mesh.workspace === nothing
+    Mesh(
+         mesh.node_coordinates,
+         mesh.face_nodes,
+         mesh.face_reference_id,
+         mesh.reference_spaces,
+         periodic_nodes,
+         mesh.group_faces,
+         mesh.normals,
+         mesh.geometry_names,
+         mesh.is_cell_complex,
+         mesh.node_local_indices,
+         mesh.face_local_indices,
+         mesh.workspace,
+        )
+end
+
 node_coordinates(m::Mesh) = m.node_coordinates
 face_nodes(m::Mesh) = m.face_nodes
 face_nodes(m::Mesh,d) = m.face_nodes[val_parameter(d)+1]
