@@ -932,8 +932,12 @@ end
     workspace::W
 end
 
-@auto_hash_equals struct LagrangeFaceSpaceWorskspace{D,Ti} <: AbstractType
+@auto_hash_equals struct LagrangeFaceSpaceWorskspace{D,Ti,Tx,A,F1,F2} <: AbstractType
     monomial_exponents::Vector{StaticArrays.SVector{D,Ti}}
+    node_coordinates::Vector{StaticArrays.SVector{D,Tx}} # Tx is real_type(options(domain)) (the type or coordinates).
+    tensor_basis::A # can be a scalar or a vector
+    primal_basis::Vector{F1} # F1 and F2 are lambda functions in lambda
+    dual_basis::Vector{F2}
     face_dofs::PartitionedArrays.JaggedArray{Ti,Ti}
     free_dofs::Vector{Ti}
     dirichlet_dofs::Vector{Ti}
@@ -974,6 +978,10 @@ end
 
 function generate_workspace(fe::LagrangeFaceSpace)
     monomial_exponents = GT.monomial_exponents(fe)
+    node_coordinates = GT.node_coordinates(fe)
+    tensor_basis = GT.tensor_basis(fe)
+    primal_basis = GT.primal_basis(fe)
+    dual_basis = GT.dual_basis(fe)
     Ti = int_type(options(fe))
     if dirichlet_boundary(fe) === nothing
         ndofs = num_dofs(fe)
@@ -988,7 +996,8 @@ function generate_workspace(fe::LagrangeFaceSpace)
         dirichlet_dofs = collect(Ti,state.dirichlet_dofs)
         dirichlet_dof_location = state.dirichlet_dof_location
     end
-    workspace = LagrangeFaceSpaceWorskspace(monomial_exponents,face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
+    workspace = LagrangeFaceSpaceWorskspace(monomial_exponents,node_coordinates,tensor_basis,primal_basis,dual_basis,
+                face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
 end
 
 function reference_spaces(fe::LagrangeFaceSpace)
@@ -1028,6 +1037,9 @@ end
 num_nodes(fe::LagrangeFaceSpace) = length(monomial_exponents(fe))
 
 function node_coordinates(a::LagrangeFaceSpace)
+    if a.workspace !== nothing
+        return a.workspace.node_coordinates
+    end
     if order(a) == 0 && num_dims(a) != 0
         a_linear = lagrange_space(domain(a),1)
         x  = node_coordinates(a_linear)
@@ -1057,6 +1069,9 @@ end
 
 
 function tensor_basis(fe::LagrangeFaceSpace)
+    if fe.workspace !== nothing
+        return fe.workspace.tensor_basis
+    end
     s = tensor_size(fe)
     Tv = fe |> options |> real_type
     if tensor_size(fe) === :scalar
@@ -1077,6 +1092,9 @@ end
 
 
 function primal_basis(fe::LagrangeFaceSpace)
+    if fe.workspace !== nothing
+        return fe.workspace.primal_basis
+    end
     scalar_basis = map(e->(x-> prod(x.^e)),monomial_exponents(fe))
     if tensor_size(fe) === :scalar
         return scalar_basis
@@ -1095,6 +1113,9 @@ function primal_basis(fe::LagrangeFaceSpace)
 end
 
 function dual_basis(fe::LagrangeFaceSpace)
+    if fe.workspace !== nothing
+        return fe.workspace.dual_basis
+    end
     node_coordinates_reffe = node_coordinates(fe)
     scalar_basis = map(x->(f->f(x)),node_coordinates_reffe)
     ts = tensor_size(fe) 
