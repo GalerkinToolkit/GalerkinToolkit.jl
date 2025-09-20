@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758215071054,
+  "lastUpdate": 1758346267963,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2684,6 +2684,36 @@ window.BENCHMARK_DATA = {
             "value": 390863795,
             "unit": "ns",
             "extra": "gctime=4779015\nmemory=133727116\nallocs=583136\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2a3ef56e7f10e5cc273a0ff20ca2d9c5f5c1a2cd",
+          "message": "Merge pull request #251 from GalerkinToolkit/binomial_tree",
+          "timestamp": "2025-09-20T07:26:52+02:00",
+          "tree_id": "7ee7fbe16c701e4970cc9bea043856f86e102e02",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/2a3ef56e7f10e5cc273a0ff20ca2d9c5f5c1a2cd"
+        },
+        "date": 1758346267562,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 400281905,
+            "unit": "ns",
+            "extra": "gctime=5519267\nmemory=147302012\nallocs=651362\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
