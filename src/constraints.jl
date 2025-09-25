@@ -61,7 +61,7 @@ function interpolate_impl!(
     u_parent = discrete_field(parent_space,xp,xd)
     interpolate_impl!(f,u_parent,parent_space,free_or_diri)
     C = constrains(space)
-    restrict_values!(xf,C,xp)
+    free_values!(xf,C,xp)
     u
 end
 
@@ -88,21 +88,21 @@ end
 Base.size(a::IdentityConstraints) = map(length,axes(a))
 Base.axes(a::IdentityConstraints) = (a.rows,a.cols)
 
-function Base.mul!(b,C::IdentityConstraints,a)
+function LinearAlgebra.mul!(b,C::IdentityConstraints,a)
     if b !== a
         copyto!(b,a)
     end
     b
 end
 
-function Base.mul!(
+function LinearAlgebra.mul!(
     b,
     C::LinearAlgebra.Transpose{T,<:IdentityConstraints} where T,
     a)
     mul!(b,C.parent,a)
 end
 
-function restrict_values!(b,C::IdentityConstraints,a)
+function free_values!(b,C::IdentityConstraints,a)
     mul!(b,C,a)
 end
 
@@ -168,11 +168,11 @@ function Base.size(a::PeriodicConstraints)
     (nparent,nfree)
 end
 
-function Base.mul!(parent_dof_value,C::PeriodicConstraints,free_dof_value)
+function LinearAlgebra.mul!(parent_dof_value,C::PeriodicConstraints,free_dof_value)
     error("not implemented")
 end
 
-function restrict_values!(free_dof_value,C::PeriodicConstraints,parent_dof_value)
+function free_values!(free_dof_value,C::PeriodicConstraints,parent_dof_value)
     free_dof_parent_dof = C.free_dof_parent_dof
     for free_dof in 1:length(free_dof_parent_dof)
         parent_dof = free_dof_parent_dof[free_dof]
@@ -207,7 +207,7 @@ function setup_constraints_workspace(parent_space,C::PeriodicConstraints)
     PeriodicConstraintsWorkspace(face_parent_dofs,face_dofs)
 end
 
-function PeriodicConstraintsWorkspace{A,B} <: AbstractType
+struct PeriodicConstraintsWorkspace{A,B} <: AbstractType
     face_dofs::A
     face_parent_dofs::B
 end
@@ -238,7 +238,7 @@ function Base.size(C::PeriodicConstraintsAtFace)
     (length(parent_dofs),length(dofs))
 end
 
-function Base.mul!(
+function LinearAlgebra.mul!(
     ldof_s,
     at::LinearAlgebra.Transpose{T,<:PeriodicConstraintsAtFace} where T,
     parent_ldof_s)
