@@ -3,26 +3,41 @@
 # Constrained Space
 
 function constrain(a::AbstractSpace,constraints)
-    constraints_accessor = setup_constraints_accessor(a,constraints)
-    ConstrainedSpace(a,constraints,constraints_accessor)
+    workspace = setup_constraints_workspace(a,constraints)
+    ConstrainedSpace(a,constraints,workspace)
 end
 
 struct ConstrainedSpace{A,B,C} <: AbstractSpace
     parent::A
     constraints::B
-    constraints_accessor::C
+    workspace::C
 end
 
 function face_dofs(a::ConstrainedSpace)
-    face_dofs(a.constraints_accessor)
+    face_dofs(a.workspace)
 end
 
 function face_constraints(a::ConstrainedSpace)
-    each_face(a.constraints_accessor)
+    each_face(FaceConstraintsAccessor(a.constraints,a.workspace))
+end
+
+struct FaceConstraintsAccessor{A,B} <: NewAbstractAccessor
+    constraints::A
+    workspace::B
+end
+
+function num_faces(a::FaceConstraintsAccessor)
+    num_faces(a.workspace)
+end
+
+function at_face(a::FaceConstraintsAccessor,face)
+    constraints_at_face(a.constraints,a.workspace,face)
 end
 
 function face_constraints(a::AbstractSpace)
-    each_face(identity_constraints_accessor(face_dofs(a)))
+    C = constraints(a)
+    workspace = setup_constraints_workspace(a,C)
+    each_face(FaceConstraintsAccessor(C,workspace))
 end
 
 function constraints(a::ConstrainedSpace)
@@ -38,8 +53,8 @@ function interpolate_impl!(
     u::DiscreteField,
     space::ConstrainedSpace,
     free_or_diri::FreeOrDirichlet)
-    parent_space = u.parent
 
+    parent_space = u.parent
     xf = free_values(u)
     xd = dirichlet_values(u)
     xp = u.workspace
@@ -60,69 +75,102 @@ end
 
 # Identity (do nothing)
 
-struct IdentityConstraints{A,B} <: AbstractType
+function identity_constraints(rows,cols)
+    IdentityConstraints(Int,rows,cols)
+end
+
+struct IdentityConstraints{T,A,B} <: AbstractMatrix{T}
+    eltype::Type{T}
     rows::A
     cols::B
 end
 
-function prolongate_values!(b,C::IdentityConstraints,a)
+Base.size(a::IdentityConstraints) = map(length,axes(a))
+Base.axes(a::IdentityConstraints) = (a.rows,a.cols)
+
+function Base.mul!(b,C::IdentityConstraints,a)
     if b !== a
         copyto!(b,a)
     end
     b
+end
+
+function Base.mul!(
+    b,
+    C::LinearAlgebra.Transpose{T,<:IdentityConstraints} where T,
+    a)
+    mul!(b,C.parent,a)
 end
 
 function restrict_values!(b,C::IdentityConstraints,a)
-    if b !== a
-        copyto!(b,a)
-    end
-    b
+    mul!(b,C,a)
 end
 
-function identity_constraints_accessor(face_dofs)
-    face = nothing
-    IdentityConstraintsAccessor(face_dofs,face)
+function setup_constraints_workspace(a,constraints::IdentityConstraints)
+    IdentityConstraintsWorkspace(face_dofs(a))
 end
 
-struct IdentityConstraintsAccessor{A,B} <: NewAbstractAccessor
+struct IdentityConstraintsWorkspace{A} <: AbstractType
     face_dofs::A
-    face::B
 end
 
-num_faces(a::IdentityConstraintsAccessor) = length(a.face_dofs)
-
-function at_face(a::IdentityConstraintsAccessor,face)
-    IdentityConstraintsAccessor(a.face_dofs,face)
+function face_dofs(a::IdentityConstraintsWorkspace)
+    a.face_dofs
 end
 
-function num_dofs(a::IdentityConstraintsAccessor)
-    face = a.face
-    dofs = a.face_dofs[face]
-    length(dofs)
+function num_faces(a::IdentityConstraintsWorkspace)
+    length(a.face_dofs)
 end
 
-function num_parent_dofs(a::IdentityConstraintsAccessor)
-    num_dofs(a)
-end
-
-function constrain_shape_functions!(b,C::IdentityConstraintsAccessor,a)
-    if b !== a
-        copyto!(b,a)
-    end
-    b
+function constraints_at_face(constraints::IdentityConstraints,workspace,face)
+    face_dofs = workspace
+    dofs = workspace.face_dofs[face]
+    n = length(dofs)
+    rows = Base.OneTo(n)
+    cols = rows
+    identity_constraints(rows,cols)
 end
 
 # Periodic
 
-struct PeriodicConstraints{A,B,C,D} <: AbstractType
+function create_periodic_constraints(
+        parent_dof_free_or_periodic_dof,
+        free_dof_parent_dof,
+        periodic_dof_parent_dof,
+        periodic_dof_scaling,
+    )
+
+    if periodic_dof_scaling === nothing
+        T = Int
+    else
+        T = eltype(periodic_dof_scaling)
+    end
+    PeriodicConstraints(
+                        T,
+                        parent_dof_free_or_periodic_dof,
+                        free_dof_parent_dof,
+                        periodic_dof_parent_dof,
+                        periodic_dof_scaling,
+                       )
+end
+
+struct PeriodicConstraints{T,A,B,C,D} <: AbstractMatrix{T}
+    eltype::Type{T}
     parent_dof_free_or_periodic_dof::A
     free_dof_parent_dof::B
     periodic_dof_parent_dof::C
     periodic_dof_scaling::D
 end
 
-#function prolongate_values!(parent_dof_value,C::PeriodicConstraints,free_dof_value)
-#end
+function Base.size(a::PeriodicConstraints)
+    nparent = length(a.parent_dof_free_or_periodic_dof)
+    nfree = length(a.free_dof_parent_dof)
+    (nparent,nfree)
+end
+
+function Base.mul!(parent_dof_value,C::PeriodicConstraints,free_dof_value)
+    error("not implemented")
+end
 
 function restrict_values!(free_dof_value,C::PeriodicConstraints,parent_dof_value)
     free_dof_parent_dof = C.free_dof_parent_dof
@@ -133,7 +181,7 @@ function restrict_values!(free_dof_value,C::PeriodicConstraints,parent_dof_value
     free_dof_value
 end
 
-function setup_constraints_accessor(parent_space,C::PeriodicConstraints)
+function setup_constraints_workspace(parent_space,C::PeriodicConstraints)
     face_parent_dofs = GT.face_dofs(parent_space)
     parent_dof_free_or_periodic_dof = C.parent_dof_free_or_periodic_dof
     periodic_dof_parent_dof = C.periodic_dof_parent_dof
@@ -154,55 +202,49 @@ function setup_constraints_accessor(parent_space,C::PeriodicConstraints)
     end
     face_dofs_data = map(dof_map,face_parent_dofs.data)
     face_dofs = jagged_array(face_dofs_data,face_parent_dofs.ptrs)
-    if C.periodic_dof_scaling === nothing
-        identity_constraints_accessor(face_dofs)
-    else
-        PeriodicConstraintsAccessor(C,face_parent_dofs,face_dofs)
-    end
+    face = nothing
+    T = eltype(C)
+    PeriodicConstraintsWorkspace(face_parent_dofs,face_dofs)
 end
 
-struct PeriodicConstraintsAccessor{A,B,C,D} <: NewAbstractAccessor
-    constraints::A
-    face_dofs::B
-    face_parent_dofs::C
-    face::D
+function PeriodicConstraintsWorkspace{A,B} <: AbstractType
+    face_dofs::A
+    face_parent_dofs::B
 end
 
-function num_faces(a::PeriodicConstraintsAccessor)
-    length(a.face_dofs)
-end
-
-function at_face(a::PeriodicConstraintsAccessor,face)
-    PeriodicConstraintsAccessor(
-                                a.constraints,
-                                a.face_dofs,
-                                a.face_parent_dofs,
-                                face
-                               )
-end
-
-function face_dofs(C::PeriodicConstraintsAccessor)
+function face_dofs(C::PeriodicConstraintsWorkspace)
     C.face_dofs
 end
 
-function num_dofs(W::PeriodicConstraintsAccessor)
+function num_faces(C::PeriodicConstraintsWorkspace)
+    length(C.face_dofs)
+end
+
+function constraints_at_face(C::PeriodicConstraints,workspace,face)
+    PeriodicConstraintsAtFace(eltype(C),C,workspace,face)
+end
+
+struct PeriodicConstraintsAtFace{T,A,B} <: AbstractMatrix{T}
+    eltype::Type{T}
+    constraints::A
+    workspace::B
+    face::Int
+end
+
+function Base.size(C::PeriodicConstraintsAtFace)
     face = W.face
     dofs = W.face_dofs[face]
-    length(dofs)
-end
-
-function num_parent_dofs(W::PeriodicConstraintsAccessor)
-    face = W.face
     parent_dofs = W.face_parent_dofs[face]
-    length(parent_dofs)
+    (length(parent_dofs),length(dofs))
 end
 
-#function prolongate_values!(b,W::PeriodicConstraintsAccessor,a)
-#end
-
-# This is like multiplying with the transpose of W
-function constrain_shape_functions!(ldof_s,W::PeriodicConstraintsAccessor,parent_ldof_s)
-    C = W.C
+function Base.mul!(
+    ldof_s,
+    at::LinearAlgebra.Transpose{T,<:PeriodicConstraintsAtFace} where T,
+    parent_ldof_s)
+    a = at.parent
+    C = a.constraints
+    W = a.workspace
     periodic_dof_scaling = C.periodic_dof_scaling
     face = W.face
     parent_ldof_parent_dof = W.face_parent_dofs[face]
