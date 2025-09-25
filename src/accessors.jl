@@ -1121,9 +1121,10 @@ end
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
-    s = view(dof_sphys,1:ndofs)
     C = GT.constraints(a)
-    constrain_shape_functions!(C,dof_sphys2,s)
+    s = view(dof_sphys,1:ndofs)
+    s2 = view(dof_sphys2,1:num_dofs(C))
+    constrain_shape_functions!(s2,C,s)
 end
 
 function shape_functions(f,a::SpaceAccessor{AtSkeleton})
@@ -1137,9 +1138,10 @@ function shape_functions(f,a::SpaceAccessor{AtSkeleton})
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
-    s = view(dof_sphys,1:ndofs)
     C = GT.constraints(a)
-    constrain_shape_functions!(C,dof_sphys2,s)
+    s = view(dof_sphys,1:ndofs)
+    s2 = view(dof_sphys2,1:num_dofs(C))
+    constrain_shape_functions!(s2,C,s)
 end
 
 function map_shape_function(::typeof(GT.value),space,dof,mesh_accessor,sref)
