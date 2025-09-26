@@ -134,6 +134,8 @@ V_face = V_faces[1]
 V_points = GT.each_point(V_face)
 V_point = V_points[1]
 @show GT.shape_functions(GT.value,V_point)
+V_point = GT.at_point(V_dΩ,dΩ_point)
+@show GT.shape_functions(GT.value,V_point)
 
 uh = GT.zero_field(Float64,V)
 uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,))
