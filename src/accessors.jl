@@ -1097,6 +1097,14 @@ function at_point(a::SpaceAccessor,point)
     replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
+function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
+    point = mesh_accessor.space_accesor.location.point
+    reference_space_accessor = at_point(a.reference_space_accessor,point)
+    a2 = replace_mesh_accessor(a,mesh_accessor)
+    replace_reference_space_accessor(a2,reference_space_accessor)
+end
+
+
 @inline function shape_functions(f,a::SpaceAccessor{AtInterior})
     (;space,mesh_accessor,reference_space_accessor) = a
     dof_sref = GT.shape_functions(f,reference_space_accessor)
