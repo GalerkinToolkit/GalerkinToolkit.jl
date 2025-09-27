@@ -126,7 +126,8 @@ dΛ_point = dΛ_points[2]
 @show GT.coordinate(dΛ_point)
 @show GT.weight(dΛ_point)
 
-V_dΩ = GT.space_accessor(V,dΩ)
+dΩ_faces = GT.each_face(dΩ)
+V_dΩ = GT.space_accessor(V,dΩ_faces)
 V_dΩ = GT.tabulate(GT.value,V_dΩ)
 V_dΩ = GT.tabulate(ForwardDiff.gradient,V_dΩ)
 V_faces = GT.each_face(V_dΩ)
