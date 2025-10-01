@@ -55,6 +55,8 @@ import FileIO # hide
 
 parts = 1:5
 mesh = GT.with_mesh_partitioner(;parts) do 
+    assets_dir = normpath(joinpath(@__DIR__,"..","..","..","assets"))
+    msh_file = joinpath(assets_dir,"model.msh")
     GT.mesh_from_msh(msh_file)
 end
 
