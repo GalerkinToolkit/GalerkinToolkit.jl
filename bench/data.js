@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758437802729,
+  "lastUpdate": 1759331385470,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2744,6 +2744,36 @@ window.BENCHMARK_DATA = {
             "value": 406945739,
             "unit": "ns",
             "extra": "gctime=6769589\nmemory=147301996\nallocs=651361\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "28680e259929ecd13ced02944fabd71295a8fcdb",
+          "message": "Merge pull request #254 from GalerkinToolkit/docs\n\nSplitting Meshes manual page into two pages.",
+          "timestamp": "2025-10-01T17:05:18+02:00",
+          "tree_id": "12a4ca0b2c9b54b40df0d5478921311cdb12d9a5",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/28680e259929ecd13ced02944fabd71295a8fcdb"
+        },
+        "date": 1759331384371,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 375141342.5,
+            "unit": "ns",
+            "extra": "gctime=6082855.5\nmemory=147301996\nallocs=651361\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
