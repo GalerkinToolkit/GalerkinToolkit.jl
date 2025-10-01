@@ -425,7 +425,7 @@ end
 
 function prototype(term::CoordinateTerm)
     (quadrature,face,point) = map(prototype,dependencies(term))
-    prototype(coordinate_accessor(quadrature))
+    coordinate(at_any_index(quadrature_accessor(quadrature)))
 end
 
 # dependencies are always terms
@@ -443,7 +443,7 @@ end
 # Not clear if this is even needed for DLS terms
 function expression(term::CoordinateTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    :( coordinate_accessor($quadrature)($face)($point) )
+    :( coordinate(at_point(at_face(quadrature_accessor($quadrature),$face),$point)) )
 end
 
 function weight_quantity(quadrature)
@@ -463,7 +463,7 @@ end
 
 function prototype(term::WeightTerm)
     (quadrature,face,point) = map(prototype,dependencies(term))
-    prototype(weight_accessor(quadrature))
+    weight(at_any_index(quadrature_accessor(quadrature)))
 end
 
 function dependencies(term::WeightTerm)
@@ -477,8 +477,7 @@ end
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
     D = term.D
-    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, 1)($point))
-    :(weight_accessor($quadrature)($face)($point, $J) )
+    :(weight(at_point(at_face(quadrature_accessor($quadrature),$face),$point)) )
 end
 
 function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
@@ -536,8 +535,7 @@ struct FormArgumentTerm <: AbstractTerm
 end
 
 function prototype(term::FormArgumentTerm)
-    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(term))
-    prototype(form_argument_accessor(space,domain,1))
+    @error "We dont want untabulated shape functions"
 end
 
 function dependencies(term::FormArgumentTerm)
@@ -555,9 +553,11 @@ function replace_the_face_around(term::FormArgumentTerm,the_face_around)
 end
 
 function expression(term::FormArgumentTerm)
+    @error "We dont want untabulated shape functions"
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,term.dependencies)
     # TODO: not tabulated. we need another solution to tabulate it or this cannot be tabulated anyway
-    :(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
+    #:(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
+    :(ifelse($face_around == $the_face_around && $field == $the_field,shape_functions($f,at_point(at_face_around(at_face(space_accessor($space,$domain),$face),$the_face_around),$point))[$dof],zero(eltype(shape_functions($f,at_any_index(space_accessor($space,$domain)))))))
 end
 
 #function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
@@ -721,10 +721,9 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
-    # TODO: inline form Accessor. How can we know whether it is physical or reference?
-    form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around, parent.is_reference, parent.integral_type)
-    # :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
+    mesh_acc = :(quadrature_accessor($quadrature, $(Val(D))))
+    mesh_ready = :(at_point(at_face_around(at_face($mesh_acc,$face),$the_face_around),$point))
+    :(ifelse($face_around == $the_face_around && $field == $the_field,shape_functions($f,at_point(at_face_around(at_face(space_accessor($space,$mesh_acc),$face),$the_face_around),$mesh_ready))[$dof],zero(eltype(shape_functions($f,at_any_index(space_accessor($space,$domain)))))))
 end
 
 #function expression(term::TabulatedTerm{<:FormArgumentTerm})
