@@ -964,6 +964,10 @@ function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwar
     space_accessor(space,mesh_accessor_2;kwargs...)
 end
 
+function space_accessor(space::AbstractSpace,faces::EachFace;kwargs...)
+    space_accessor(space,faces.accessor;kwargs...)
+end
+
 function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor;
         tabulate=(), compute = ())
     quadrature = mesh_accessor.space_accessor.quadrature
@@ -1097,8 +1101,17 @@ function at_point(a::SpaceAccessor,point)
     replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
+function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
+    location = mesh_accessor.space_accessor.location
+    reference_space_accessor = replace_location(a.reference_space_accessor,location)
+    a2 = replace_mesh_accessor(a,mesh_accessor)
+    replace_reference_space_accessor(a2,reference_space_accessor)
+end
+
+
 @inline function shape_functions(f,a::SpaceAccessor{AtInterior})
     (;space,mesh_accessor,reference_space_accessor) = a
+    @show reference_space_accessor.location.point
     dof_sref = GT.shape_functions(f,reference_space_accessor)
     dof_sphys = workspace(f,a)
     ndofs = length(dof_sref)
