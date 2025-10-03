@@ -1111,7 +1111,6 @@ end
 
 @inline function shape_functions(f,a::SpaceAccessor{AtInterior})
     (;space,mesh_accessor,reference_space_accessor) = a
-    @show reference_space_accessor.location.point
     dof_sref = GT.shape_functions(f,reference_space_accessor)
     dof_sphys = workspace(f,a)
     ndofs = length(dof_sref)
