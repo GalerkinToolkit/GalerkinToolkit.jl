@@ -6,10 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [main branch]
+## [0.5.0] - 2025-10-03
+
+### Changed
+
+- Major refactor of GTFC.
+
+### Added
+
+- Iterator interface for explicit integration/assembly loops.
 
 ### Fixed
 
+- Diverse performance improvements.
 - Support for Gmsh meshes of squares and cubes.
 
 ## [0.4.0] - 2025-07-04
