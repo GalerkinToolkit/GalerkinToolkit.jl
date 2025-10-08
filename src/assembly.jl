@@ -114,15 +114,15 @@ function allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_fa
     if ! do_loop(counter)
         return counter
     end
-    for face in 1:nfaces
-        for field_i in fields_i
-            nfaces_around_i = field_face_nfaces_around_i[field_i](face)
-            for field_j in fields_j
-                nfaces_around_j = field_face_nfaces_around_j[field_j](face)
-                for face_around_i in 1:nfaces_around_i
-                    dofs_i = field_face_dofs_i[field_i](face,face_around_i)
-                    for face_around_j in 1:nfaces_around_j
-                        dofs_j = field_face_dofs_j[field_j](face,face_around_j)
+    for face in 1:nfaces 
+        for field_j in fields_j 
+            nfaces_around_j = field_face_nfaces_around_j[field_j](face)
+            for field_i in fields_i 
+                nfaces_around_i = field_face_nfaces_around_i[field_i](face)
+                for face_around_j in 1:nfaces_around_j 
+                    dofs_j = field_face_dofs_j[field_j](face,face_around_j)
+                    for face_around_i in 1:nfaces_around_i 
+                        dofs_i = field_face_dofs_i[field_i](face,face_around_i)
                         for dof_j in dofs_j
                             if skip_dof(dof_j,free_or_diri_j)
                                 continue

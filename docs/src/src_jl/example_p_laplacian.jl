@@ -51,17 +51,18 @@ msh_file = joinpath(assets_dir,"model.msh")
 mesh = GT.mesh_from_msh(msh_file)
 
 #Define domains
-dirichlet_0_names = ["sides"]
-dirichlet_1_names = ["circle", "triangle", "square"]
+dirichlet_names = ["sides","circle", "triangle", "square"]
 Ω = GT.interior(mesh)
-Γ0 = GT.boundary(mesh;group_names=dirichlet_0_names)
-Γ1 = GT.boundary(mesh;group_names=dirichlet_1_names)
-Γd = GT.piecewise_domain(Γ0,Γ1)
+Γd = GT.boundary(mesh;group_names=dirichlet_names)
 
 #Define forcing data
-g0 = GT.analytical_field(x->-1.0,Ω)
-g1 = GT.analytical_field(x->1.0,Ω)
-g = GT.piecewise_field(g0,g1)
+g = GT.analytical_field(Γd;piecewise=true) do x,name
+    if name == "sides"
+        -1
+    else
+        1
+    end
+end
 
 #Define the interpolation space
 k = 1

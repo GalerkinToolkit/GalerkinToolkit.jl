@@ -1,3 +1,0 @@
-module SymbolicsTests
-
-end # module
