@@ -270,7 +270,8 @@ function topology(mesh::AbstractMesh)
             fill_face_permutation_ids!(topo,d,n)
         end
     end
-    for d in 0:D
+    fill_periodic_vertices!(topo,mesh)
+    for d in 1:D
         fill_periodic_faces!(topo,mesh,d)
         fill_periodic_faces_permutation_id!(topo,n)
     end
@@ -564,29 +565,54 @@ end
 
 function fill_periodic_vertices!(topo,mesh)
     d = 0
-    node_owner
-    node_vertex
-    vertex_owner
-    face_nodes
-    node = face_nodes[vertex][1]
-    node2 = node_owner[node]
-    vertex2 = node_vertex[node2]
-    vertex_owner[vertex] = vertex2
+    pnode_node, pnode_owner = periodic_nodes(mesh)
+    nnodes = num_nodes(mesh)
+    nvertices = num_faces(mesh,d)
+    vertex_nodes = JaggedArray(face_nodes(mesh,d))
+    vertex_node = vertex_nodes.data
+    node_vertex = zeros(Int32,nnodes)
+    node_vertex[vertex_node] = 1:nvertices
+    vertex_owner = zeros(Int32,nvertices)
+    npnodes = length(pnode_node)
+    for pnode in 1:npnodes
+        node = pnode_node[pnode]
+        vertex = node_vertex[node]
+        if vertex == 0
+            continue
+        end
+        node2 = pnode_owner[pnode]
+        vertex2 = node_vertex[node2]
+        @boundscheck @assert vertex2 != 0
+        vertex_owner[vertex] = vertex2
+    end
+    topo.periodic_faces[d+1] = vertex_owner
 end
 
-function fill_periodic_faces!(topo,d)
+function fill_periodic_faces!(topo,mesh,d)
     @assert d != 0
-    face_owner
-    vertex_owner
-    face_vertices
-    vertices = face_vertices[face]
-    all(vertex->vertex_owner[vertex]!=0,vertices)
-    vertices2 = view(vertex_owner,vertices)
-    face3 = vertex_faces[vertex2]
-    vertices3 = face_vertices[face3]
-    same_ids(vertices2,vertices3)
-    face2 = face3
-    face_owner[face] = face2
+    nfaces = num_faces(mesh,d)
+    face_owner = zeros(Int32,nfaces)
+    face_vertices = face_incidence(topo,d,0)
+    vertex_faces = face_incidence(topo,0,d)
+    vertex_owner = periodic_faces(topo,0)
+    for face in 1:nfaces
+        vertices = face_vertices[face]
+        if all(vertex->vertex_owner[vertex]!=0,vertices)
+            vertices2 = view(vertex_owner,vertices)
+            face2 = 0
+            for vertex2 in vertices2
+                face3 = vertex_faces[vertex2]
+                vertices3 = face_vertices[face3]
+                if same_valid_ids(vertices2,vertices3,1:length(vertices2),1:length(vertices3))
+                    face2 = face3
+                    break
+                end
+            end
+            @boundscheck @assert face2 != 0
+            face_owner[face] = face2
+        end
+    end
+    topo.periodic_faces[d+1] = face_owner
 end
 
 function complexify(mesh::AbstractMesh;glue=Val(false))
