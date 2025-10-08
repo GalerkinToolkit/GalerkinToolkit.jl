@@ -458,6 +458,7 @@ function cartesian_periodic_nodes(domain,cells,periodic)
     nodes = cells .+ 1
     nnodes = prod(nodes)
     node_owner = zeros(Int32,nnodes)
+    node_owner .= 1:nnodes
     lis = LinearIndices(nodes)
     D = length(cells)
     for (d,flag) in enumerate(periodic)
@@ -486,8 +487,6 @@ function cartesian_periodic_nodes(domain,cells,periodic)
             node_owner[node] = owner
         end
     end
-    pnode_node = findall(owner -> owner != 0,node_owner)
-    pnode_owner = node_owner[pnode_node]
-    pnode_node => pnode_owner
+    node_owner
 end
 

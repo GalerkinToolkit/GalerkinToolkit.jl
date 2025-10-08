@@ -510,9 +510,12 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         end
         lgroups
     end
-    pnode_to_node,pnode_to_master = periodic_nodes(mesh)
-    plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
-    plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
+    node_owner = periodic_nodes(mesh)
+    if isa(node_owner,AbstractRange)
+        lnode_lowner = 1:nlnodes
+    else
+        lnode_lowner = node_to_lnode[node_owner[lnode_to_node]]
+    end
     if normals(mesh) !== nothing
         lnormals = normals(mesh)[lface_to_face_mesh[end]]
     else
@@ -525,7 +528,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         face_reference_id = lface_to_refid_mesh,
         reference_spaces = reference_spaces(mesh),
         group_faces = lgroups_mesh,
-        periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
+        periodic_nodes = lnode_lowner,
         normals = lnormals,
         kwargs...
         )
@@ -586,7 +589,7 @@ function mesh(;
         face_nodes,
         face_reference_id = default_face_reference_id(face_nodes),
         reference_spaces,
-        periodic_nodes = default_periodic_nodes(reference_spaces),
+        periodic_nodes = default_periodic_nodes(node_coordinates),
         group_faces = default_group_faces(reference_spaces),
         normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
@@ -692,9 +695,9 @@ function default_group_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
 end
 
-function default_periodic_nodes(reference_spaces)
-    Ti = int_type(options(first(last(reference_spaces))))
-    Ti[] => Ti[]
+function default_periodic_nodes(node_coordinates)
+    nnodes = length(node_coordinates)
+    1:nnodes
 end
 
 function normals(m::Mesh)
@@ -753,7 +756,7 @@ function chain(;
         face_nodes,
         face_reference_id = default_face_reference_id([face_nodes])[1],
         reference_spaces,
-        periodic_nodes = default_periodic_nodes((reference_spaces,)),
+        periodic_nodes = default_periodic_nodes(node_coordinates),
         group_faces = default_group_faces((reference_spaces,))[end],
         normals = nothing,
     )

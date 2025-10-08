@@ -565,7 +565,7 @@ end
 
 function fill_periodic_vertices!(topo,mesh)
     d = 0
-    pnode_node, pnode_owner = periodic_nodes(mesh)
+    node_owner = periodic_nodes(mesh)
     nnodes = num_nodes(mesh)
     nvertices = num_faces(mesh,d)
     vertex_nodes = JaggedArray(face_nodes(mesh,d))
@@ -574,13 +574,12 @@ function fill_periodic_vertices!(topo,mesh)
     node_vertex[vertex_node] = 1:nvertices
     vertex_owner = zeros(Int32,nvertices)
     npnodes = length(pnode_node)
-    for pnode in 1:npnodes
-        node = pnode_node[pnode]
+    for node in 1:nnodes
         vertex = node_vertex[node]
         if vertex == 0
             continue
         end
-        node2 = pnode_owner[pnode]
+        node2 = node_owner[node]
         vertex2 = node_vertex[node2]
         @boundscheck @assert vertex2 != 0
         vertex_owner[vertex] = vertex2
