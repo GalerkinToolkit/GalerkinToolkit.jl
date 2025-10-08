@@ -964,6 +964,10 @@ function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwar
     space_accessor(space,mesh_accessor_2;kwargs...)
 end
 
+function space_accessor(space::AbstractSpace,faces::EachFace;kwargs...)
+    space_accessor(space,faces.accessor;kwargs...)
+end
+
 function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor;
         tabulate=(), compute = ())
     quadrature = mesh_accessor.space_accessor.quadrature
@@ -1107,6 +1111,13 @@ function constraints(a::SpaceAccessor)
     (;space,mesh_accessor) = a
     Dface = mesh_accessor.space_accessor.location.Dface
     C = face_constraints(space)[Dface]
+end
+
+function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
+    location = mesh_accessor.space_accessor.location
+    reference_space_accessor = replace_location(a.reference_space_accessor,location)
+    a2 = replace_mesh_accessor(a,mesh_accessor)
+    replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
 @inline function shape_functions(f,a::SpaceAccessor{AtInterior})
