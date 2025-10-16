@@ -107,6 +107,13 @@ topo2 = GT.topology(mesh2)
 
 @test topo === topo2
 
+glue = GT.complexify_glue(mesh2)
+
+@show GT.vertex_node(glue)
+@show GT.node_vertex(glue)
+
+xxx
+
 
 
 @show isassigned(topo.face_incidence,0+1,0+1)

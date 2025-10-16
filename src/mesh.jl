@@ -594,8 +594,8 @@ function mesh(;
         normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
-        node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
-        face_local_indices = [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
+        node_local_indices = nothing, #PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
+        face_local_indices = nothing, # [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
     )
     mesh = Mesh(
@@ -631,12 +631,13 @@ function replace_workspace(mesh::Mesh,workspace)
         )
 end
 
-function mesh_workspace(;topology)
-    MeshWorkspace(topology)
+function mesh_workspace(;topology=nothing,complexify_glue=nothing)
+    MeshWorkspace(topology,complexify_glue)
 end
 
-struct MeshWorkspace{A} <: AbstractType
+struct MeshWorkspace{A,B} <: AbstractType
     topology::A
+    complexify_glue::B
 end
 
 function replace_node_coordinates(mesh::Mesh,node_coordinates)
@@ -1271,7 +1272,8 @@ function PartitionedArrays.centralize(mesh::AbstractMesh)
 end
 
 function PartitionedArrays.centralize(w::MeshWorkspace)
-    MeshWorkspace(centralize(w.topology))
+    topology = centralize(w.topology)
+    mesh_workspace(;topology)
 end
 
 function PartitionedArrays.centralize(topo::AbstractTopology)
