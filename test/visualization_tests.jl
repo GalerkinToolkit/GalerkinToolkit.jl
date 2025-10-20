@@ -101,6 +101,11 @@ counter += 1; Makie.save(joinpath(dir,"fig_$counter.png"),Makie.current_figure()
 
 # Single-face domain
 cube = GT.unit_n_cube(3)
+plt = GT.plot(cube)
+plt = GT.skin(plt)
+plt = GT.complexify(plt)
+
+
 axis = (;aspect=:data)
 GT.makie_surfaces(cube;axis)
 GT.makie_edges!(cube;color=:black)

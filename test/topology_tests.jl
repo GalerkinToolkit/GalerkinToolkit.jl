@@ -103,6 +103,8 @@ mesh2 = GT.complexify(mesh)
 
 @test GT.node_coordinates(mesh2) === GT.node_coordinates(mesh)
 
+@show GT.num_faces(mesh2)
+
 @test length(GT.reference_spaces(mesh2,2)) == 1
 @test length(GT.reference_spaces(mesh2,1)) == 1
 @test length(GT.reference_spaces(mesh2,0)) == 1

@@ -1001,7 +1001,7 @@ function tabulate(f,a::SpaceAccessor{AtInterior})
     sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
     ndofsr = max_num_reference_dofs(space)
     ndofs2 = max_num_face_dofs(space)
-    dof_sphys = zeros(typeof(sphys),ndofs)
+    dof_sphys = zeros(typeof(sphys),ndofsr)
     dof_sphys2 = zeros(typeof(sphys),ndofs2)
     workspace = [dof_sphys,dof_sphys2]
     a2 = replace_reference_space_accessor(a,reference_space_accessor)
@@ -1017,11 +1017,11 @@ function tabulate(f,a::SpaceAccessor{AtSkeleton})
     sref = zero(eltype(dof_sref))
     dof = AnyIndex()
     sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
-    ndofs = max_num_reference_dofs(space)
-    ndofs2 = max_num_face_dofs_dofs(space)
+    ndofsr = max_num_reference_dofs(space)
+    ndofs2 = max_num_face_dofs(space)
     max_num_faces_around = 2 # TODO
     nfa = max_num_faces_around
-    face_around_dof_sphys = [ zeros(typeof(sphys),ndofs) for _ in 1:nfa]
+    face_around_dof_sphys = [ zeros(typeof(sphys),ndofsr) for _ in 1:nfa]
     face_around_dof_sphys2 = [ zeros(typeof(sphys),ndofs2) for _ in 1:nfa]
     workspace = [face_around_dof_sphys,face_around_dof_sphys2]
     a2 = replace_reference_space_accessor(a,reference_space_accessor)

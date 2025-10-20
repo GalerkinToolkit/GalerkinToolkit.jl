@@ -512,6 +512,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     end
     node_owner = periodic_nodes(mesh)
     if isa(node_owner,AbstractRange)
+        nlnodes = length(lnode_to_node)
         lnode_lowner = 1:nlnodes
     else
         lnode_lowner = node_to_lnode[node_owner[lnode_to_node]]

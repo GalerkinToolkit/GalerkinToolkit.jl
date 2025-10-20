@@ -13,6 +13,14 @@ struct ConstrainedSpace{A,B,C} <: AbstractSpace
     workspace::C
 end
 
+function max_num_face_dofs(space)
+    max_num_reference_dofs(space)
+end
+
+function max_num_face_dofs(space::ConstrainedSpace)
+    maximum(length,face_dofs(space))
+end
+
 function face_dofs(a::ConstrainedSpace)
     face_dofs(a.workspace)
 end
@@ -45,7 +53,7 @@ function constraints(a::ConstrainedSpace)
 end
 
 function constraints(a::AbstractSpace)
-    identity_constraints(dofs(a),dofs(a))
+    identity_constraints(dofs(a,FREE),dofs(a,FREE))
 end
 
 function interpolate_impl!(

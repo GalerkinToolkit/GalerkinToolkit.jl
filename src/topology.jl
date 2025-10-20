@@ -911,7 +911,7 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
                          )
 
     if val_parameter(glue)
-        mesh, complexify_glue
+        mesh, GT.parent_face_face(topology)
     else
         mesh
     end
@@ -974,6 +974,14 @@ function num_dims(a::ComplexifyGlue)
     num_dims(a.parent_mesh)
 end
 
+function parent_face_face(topo::MeshTopology)
+    D = num_dims(topo)
+    for d in 0:D
+        parent_face_face(topo,d)
+    end
+    complexify_glue(topo).parent_face_face
+end
+
 function parent_face_face(topo::MeshTopology,vd)
     a = complexify_glue(workspace(topo))
     d = val_parameter(vd)
@@ -982,7 +990,7 @@ function parent_face_face(topo::MeshTopology,vd)
         if d == 0
             create_vertices!(a)
         elseif d == D
-            nDfaces = num_faces(topo,D)
+            nDfaces = num_faces(a.parent_mesh,D)
             a.parent_face_face[D+1] = collect(1:nDfaces)
         else
             create_face_boundary!(topo,d)
@@ -1052,7 +1060,7 @@ function create_vertices!(a::ComplexifyGlue)
     node_vertex_ref[] = node_vertex
     vertex_node_ref[] = vertex_node
     num_faces[0+1] = nvertices
-    parent_face_face[0+1] = collect(1:nvertices)
+    parent_face_face[0+1] = collect(1:GT.num_faces(parent_mesh,0))
     nothing
 end
 
