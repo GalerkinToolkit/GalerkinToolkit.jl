@@ -3,7 +3,7 @@ topology(a::AbstractTopology) = a
 num_dims(t::AbstractTopology) = length(reference_topologies(t))-1
 num_faces(t::AbstractTopology,d) = length(face_reference_id(t,d))
 
-struct FaceTopology{A,B} <: AbstractFaceTopology
+@auto_hash_equals struct FaceTopology{A,B} <: AbstractFaceTopology
     boundary::A
     vertex_permutations::B
 end
@@ -97,17 +97,17 @@ function face_permutation_ids(a::AbstractFaceTopology,d,D)
     face_permutation_ids(a)[d+1,D+1]
 end
 
-struct MeshTopologyWorkspace{A} <: AbstractType
+@auto_hash_equals struct MeshTopologyWorkspace{A} <: AbstractType
     complexify_glue::A
 end
 
 complexify_glue(a::MeshTopologyWorkspace) = a.complexify_glue
 
-function replace_complexify_glue(a::MeshTopologyWorkspace,complexify_glue)
-    MeshTopologyWorkspace(complexify_glue)
-end
+#function replace_complexify_glue(a::MeshTopologyWorkspace,complexify_glue)
+#    MeshTopologyWorkspace(complexify_glue)
+#end
 
-struct MeshTopology{A,B,C,D,E,F,G} <: AbstractTopology
+@auto_hash_equals struct MeshTopology{A,B,C,D,E,F,G} <: AbstractTopology
     face_incidence::A
     face_reference_id::B
     face_permutation_ids::C
@@ -116,6 +116,9 @@ struct MeshTopology{A,B,C,D,E,F,G} <: AbstractTopology
     periodic_faces_permutation_id::F
     workspace::G
 end
+
+workspace(topo::MeshTopology) = topo.workspace
+complexify_glue(topo::MeshTopology) = complexify_glue(workspace(topo))
 
 function mesh_topology(;
         face_incidence,
@@ -138,24 +141,44 @@ function mesh_topology(;
                 )
 end
 
-function replace_workspace(topo::MeshTopology,workspace)
-    MeshTopology(
-                 topo.face_incidence,
-                 topo.face_reference_id,
-                 topo.face_permutation_ids,
-                 topo.reference_topologies,
-                 topo.periodic_faces,
-                 topo.periodic_faces_permutation_id,
-                 workspace)
-end
+#function replace_workspace(topo::MeshTopology,workspace)
+#    MeshTopology(
+#                 topo.face_incidence,
+#                 topo.face_reference_id,
+#                 topo.face_permutation_ids,
+#                 topo.reference_topologies,
+#                 topo.periodic_faces,
+#                 topo.periodic_faces_permutation_id,
+#                 workspace)
+#end
 
-function replace_complexify_glue(topo::MeshTopology,complexify_glue)
-    ws = replace_complexify_glue(workspace(topo),complexify_glue)
-    replace_workspace(topo,ws)
-end
+#function replace_complexify_glue(topo::MeshTopology,complexify_glue)
+#    ws = replace_complexify_glue(workspace(topo),complexify_glue)
+#    replace_workspace(topo,ws)
+#end
 
 function num_faces(topo::MeshTopology)
-    map(length,topo.face_reference_id)
+    D = num_dims(topo)
+    map(d->num_faces(topo,d),ntuple(i->i-1,Val(D+1)))
+end
+
+function num_faces(topo::MeshTopology,vd)
+    d = val_parameter(vd)
+    if GT.workspace(topo) === nothing
+        return length(GT.face_reference_id(topo,d))
+    end
+    glue = GT.complexify_glue(GT.workspace(topo))
+    D = num_dims(glue)
+    if glue.num_faces[d+1] < 0
+        if d == 0
+            create_vertices!(glue)
+        elseif d == D
+            glue.num_faces[D+1] = num_faces(glue.parent_mesh,D)
+        else
+            create_face_boundary!(topo,d)
+        end
+    end
+    glue.num_faces[d+1]
 end
 
 function face_incidence(a::MeshTopology)
@@ -176,18 +199,46 @@ function face_incidence(topo::MeshTopology,vd,vD)
     if ! isassigned(topo.face_incidence,d+1,D+1)
         if D == d
             fill_face_interior_mesh_topology!(topo,d)
+        elseif d == num_dims(topo) && D == 0
+            glue = GT.complexify_glue(GT.workspace(topo))
+            topo.face_incidence[d+1,D+1] = GT.parent_face_vertices(glue,d)
+        elseif d == 0 && D == num_dims(topo)
+            glue = GT.complexify_glue(GT.workspace(topo))
+            topo.face_incidence[d+1,D+1] = GT.vertex_parent_faces(glue,D)
+        elseif D == 0
+            create_face_vertices!(topo,d)
+        elseif d == D+1
+            create_face_boundary!(topo,D)
         elseif D < d
             fill_face_boundary_mesh_topology!(topo,d,D)
         else
-            fill_face_boundary_mesh_topology!(topo,D,d)
+            GT.face_incidence(topo,D,d)
+            #fill_face_boundary_mesh_topology!(topo,D,d)
             fill_face_coboundary_mesh_topology!(topo,D,d)
         end
     end
     topo.face_incidence[d+1,D+1]
 end
 
-face_reference_id(a::MeshTopology) = a.face_reference_id
-face_reference_id(a::MeshTopology,d) = a.face_reference_id[val_parameter(d)+1]
+function face_reference_id(a::MeshTopology)
+    D = num_dims(a)
+    # This is just to make sure we return
+    # an array fully filled
+    for d in 0:D
+        face_reference_id(a,d)
+    end
+    a.face_reference_id
+end
+
+function face_reference_id(topo::MeshTopology,vd)
+    d = val_parameter(vd)
+    if ! isassigned(topo.face_reference_id, d+1)
+        create_face_reference_id!(topo,d)
+    end
+    topo.face_reference_id[d+1]
+end
+
+
 function face_permutation_ids(a::MeshTopology)
     D = num_dims(a)
     # This is just to make sure we return
@@ -211,15 +262,40 @@ reference_topologies(a::MeshTopology) = a.reference_topologies
 reference_topologies(a::MeshTopology,d) = a.reference_topologies[val_parameter(d)+1]
 
 function periodic_faces(topo::MeshTopology,d)
-    if ! isassigned(topo.periodic_faces,d+1)
-        fill_periodic_faces!(topo,d)
+    if eltype(topo.periodic_faces) <: AbstractRange
+        if first(topo.periodic_faces[d+1]) < 0
+            fill_periodic_faces!(topo,d)
+        end
+    else
+        if ! isassigned(topo.periodic_faces,d+1)
+            fill_periodic_faces!(topo,d)
+        end
     end
     topo.periodic_faces[d+1]
 end
 
-function periodic_faces_permutation_id!(topo::MeshTopology,d)
-    if ! isassigned(topo.periodic_faces_permutation_id,d+1)
-        fill_periodic_faces_permutation_id!(topo,d)
+function periodic_faces_per(topo::MeshTopology,d)
+    if eltype(topo.periodic_faces) <: AbstractRange
+        if first(topo.periodic_faces[d+1]) < 0
+            fill_periodic_faces!(topo,d)
+        end
+    else
+        if ! isassigned(topo.periodic_faces,d+1)
+            fill_periodic_faces!(topo,d)
+        end
+    end
+    topo.periodic_faces[d+1]
+end
+
+function periodic_faces_permutation_id(topo::MeshTopology,d)
+    if eltype(topo.periodic_faces) <: AbstractRange
+        if topo.periodic_faces_permutation_id[d+1].value < 0
+            fill_periodic_faces_permutation_id!(topo,d)
+        end
+    else
+        if ! isassigned(topo.periodic_faces_permutation_id,d+1)
+            fill_periodic_faces_permutation_id!(topo,d)
+        end
     end
     topo.periodic_faces_permutation_id[d+1]
 end
@@ -270,28 +346,30 @@ function face_incidence_ext(topo,d,D)
     dface_to_Dface_around_to_Dface,dface_to_Dface_around_to_ldface
 end
 
-function topology(mesh::Mesh)
-    @assert workspace(mesh) !== nothing
-    mesh_workspace = GT.workspace(mesh)
-    complexify_glue = GT.complexify_glue(mesh_workspace)
-    topology = GT.topology(mesh_workspace)
-    topology_workspace = GT.workspace(topology)
-    replace_complexify_glue(topology,complexify_glue)
-end
+#function topology(mesh::Mesh)
+#    @assert workspace(mesh) !== nothing
+#    mesh_workspace = GT.workspace(mesh)
+#    complexify_glue = GT.complexify_glue(mesh_workspace)
+#    topology = GT.topology(mesh_workspace)
+#    topology_workspace = GT.workspace(topology)
+#    replace_complexify_glue(topology,complexify_glue)
+#end
 
 """
 """
 function topology(mesh::AbstractMesh)
     if workspace(mesh) !== nothing
-        return workspace(mesh).topology
+        return GT.topology(workspace(mesh))
     end
     # Assumes that the input is a cell complex
+    # We end up here when computing face topologies
+    # The result is fully initialized in this case.
     T = JaggedArray{Int32,Int32}
     D = num_dims(mesh)
     my_face_incidence = Matrix{T}(undef,D+1,D+1)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
     dims = ntuple(d->d-1,Val(D+1))
-    my_reference_faces = map(d->map(topology,reference_domains(mesh,d)),dims)
+    my_reference_faces = map(d->map(GT.topology,reference_domains(mesh,d)),dims)
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
     periodic_faces = Vector{Vector{Int32}}(undef,D+1)
     periodic_faces_permutation_id = Vector{Vector{Int32}}(undef,D+1)
@@ -320,6 +398,11 @@ function topology(mesh::AbstractMesh)
     for d in 0:D
         for n in 0:d
             fill_face_permutation_ids!(topo,d,n)
+        end
+        # This loop is to make sure that we 
+        # fully initialize all entries in face_permutation_ids
+        for n in (d+1):D
+            topo.face_permutation_ids[d+1,n+1] = JaggedArray([Int32[]])
         end
     end
     fill_periodic_vertices!(topo,mesh)
@@ -648,7 +731,19 @@ function fill_periodic_vertices_permutation_id!(topo)
 end
 
 function fill_periodic_faces!(topo,d)
-    @assert d != 0
+    if eltype(topo.periodic_faces) <: AbstractRange
+        topo.periodic_faces[d+1] = 1:num_faces(topo,d)
+        return
+    end
+    if d == 0
+        glue = complexify_glue(topo)
+        parent_mesh = glue.parent_mesh
+        periodic_nodes = GT.periodic_nodes(parent_mesh)
+        vertex_node = GT.vertex_node(glue)
+        node_vertex = GT.node_vertex(glue)
+        topo.periodic_faces[d+1] = node_vertex[periodic_nodes[vertex_node]]
+        return
+    end
     nfaces = num_faces(topo,d)
     face_owner = zeros(Int32,nfaces)
     face_owner .= 1:nfaces
@@ -686,9 +781,18 @@ function fill_periodic_faces!(topo,d)
         end
     end
     topo.periodic_faces[d+1] = face_owner
+    nothing
 end
 
 function fill_periodic_faces_permutation_id!(topo,d)
+    if eltype(topo.periodic_faces) <: AbstractRange
+        topo.periodic_faces_permutation_id[d+1] = Fill(1,num_faces(topo,d))
+        return
+    end
+    if d == 0
+        topo.periodic_faces_permutation_id[d+1] = fill(1,num_faces(topo,d))
+        return
+    end
     rid_pindex_lvert1_lvert2 = map(vertex_permutations,reference_topologies(topo,d))
     face_rid = face_reference_id(topo,d)
     face_owner = periodic_faces(topo,d)
@@ -725,6 +829,7 @@ function fill_periodic_faces_permutation_id!(topo,d)
         @assert pindexfound "Valid pindex not found"
     end
     topo.periodic_faces_permutation_id[d+1]  = face_perm_id
+    nothing
 end
 
 # mesh contains a workspace with topopolgy (with no workspace), glue and parent_mesh
@@ -741,36 +846,14 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
 
     reference_spaces = unique_reference_spaces(parent_mesh)
 
-    # Allocate mesh topology
-    face_incidence = Matrix{T}(undef,D+1,D+1)
-    reference_topologies = map(spaces->map(space->GT.topology(GT.complexify(space)),spaces),reference_spaces)
-    face_permutation_ids = Matrix{T}(undef,D+1,D+1)
-    face_reference_id = Vector{Vector{Ti}}(undef,D+1)
-    periodic_faces = Vector{Vector{Ti}}(undef,D+1)
-    periodic_faces_permutation_id = Vector{Vector{Ti}}(undef,D+1)
-    topology = GT.mesh_topology(;
-                                face_incidence,
-                                face_reference_id,
-                                face_permutation_ids,
-                                reference_topologies,
-                                periodic_faces,
-                                periodic_faces_permutation_id,
-                                workspace = false
-                               )
-
-
-    # Allocate mesh
-    node_coordinates = GT.node_coordinates(parent_mesh)
-    face_nodes = Vector{T}(undef,D+1)
-    normals = GT.normals(parent_mesh)
-    periodic_nodes = GT.periodic_nodes(parent_mesh)
+    # Allocate complexify_glue
     vertex_node_ref = Base.RefValue{Vector{Ti}}()
     node_vertex_ref = Base.RefValue{Vector{Ti}}()
     parent_face_vertices = Vector{T}(undef,D+1)
     vertex_parent_faces = Vector{T}(undef,D+1)
     num_faces = fill(-1,D+1)
     parent_face_face = Vector{Vector{Ti}}(undef,D+1)
-    complexify_glue = ComplexifyGlue((;
+    complexify_glue = ComplexifyGlue(
                                       num_faces,
                                       parent_mesh,
                                       vertex_node_ref,
@@ -778,9 +861,37 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
                                       parent_face_vertices,
                                       vertex_parent_faces,
                                       parent_face_face,
-                                     ))
+                                     )
 
-    workspace = mesh_workspace(;topology,complexify_glue)
+    # Allocate mesh topology
+    face_incidence = Matrix{T}(undef,D+1,D+1)
+    reference_topologies = map(spaces->Tuple(unique(map(space->GT.topology(GT.domain(space)),spaces))),reference_spaces)
+    face_permutation_ids = Matrix{T}(undef,D+1,D+1)
+    face_reference_id = Vector{Vector{Ti}}(undef,D+1)
+    periodic_nodes = GT.periodic_nodes(parent_mesh)
+    if periodic_nodes isa AbstractRange
+        periodic_faces = map(t->(-1:0),0:D)
+        periodic_faces_permutation_id = map(t->Fill(-Ti(1),1),0:D)
+    else
+        periodic_faces = Vector{Vector{Ti}}(undef,D+1)
+        periodic_faces_permutation_id = Vector{Vector{Ti}}(undef,D+1)
+    end
+    topology = GT.mesh_topology(;
+                                face_incidence,
+                                face_reference_id,
+                                face_permutation_ids,
+                                reference_topologies,
+                                periodic_faces,
+                                periodic_faces_permutation_id,
+                                workspace = MeshTopologyWorkspace(complexify_glue)
+                               )
+
+
+    # Allocate mesh
+    node_coordinates = GT.node_coordinates(parent_mesh)
+    face_nodes = Vector{T}(undef,D+1)
+    normals = GT.normals(parent_mesh)
+    group_faces = Vector{Dict{String,Vector{Ti}}}(undef,D+1)
     mesh = GT.create_mesh(;
                           node_coordinates,
                           face_nodes,
@@ -788,7 +899,8 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
                           reference_spaces,
                           normals,
                           periodic_nodes,
-                          workspace
+                          group_faces,
+                          workspace = MeshWorkspace(topology)
                          )
 
     if val_parameter(glue)
@@ -798,20 +910,26 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
     end
 end
 
-struct ComplexifyGlue{A} <: AbstractType
-    contents::A
+struct ComplexifyGlue{A,B,C,D,E,F,G} <: AbstractType
+    num_faces::A
+    parent_mesh::B
+    vertex_node_ref::C
+    node_vertex_ref::D
+    parent_face_vertices::E
+    vertex_parent_faces::F
+    parent_face_face::G
 end
 
-function complexify_glue(workspace::MeshWorkspace)
-    workspace.complexify_glue
-end
-
-function complexify_glue(mesh::AbstractMesh)
-    complexify_glue(workspace(mesh))
-end
+#function complexify_glue(workspace::MeshWorkspace)
+#    workspace.complexify_glue
+#end
+#
+#function complexify_glue(mesh::AbstractMesh)
+#    complexify_glue(workspace(mesh))
+#end
 
 function node_vertex(a::ComplexifyGlue)
-    (;node_vertex_ref) = a.contents
+    (;node_vertex_ref) = a
     if ! isassigned(node_vertex_ref)
         create_vertices!(a)
     end
@@ -819,11 +937,51 @@ function node_vertex(a::ComplexifyGlue)
 end
 
 function vertex_node(a::ComplexifyGlue)
-    (;vertex_node_ref) = a.contents
+    (;vertex_node_ref) = a
     if ! isassigned(vertex_node_ref)
         create_vertices!(a)
     end
     vertex_node_ref[]
+end
+
+function parent_face_vertices(a::ComplexifyGlue,d)
+    (;parent_face_vertices,parent_mesh) = a
+    if ! isassigned(parent_face_vertices,d+1)
+        node_vertex = GT.node_vertex(a)
+        parent_face_vertices[d+1] = fill_face_vertices(parent_mesh,d,node_vertex)
+    end
+    parent_face_vertices[d+1]
+end
+
+function vertex_parent_faces(a::ComplexifyGlue,d)
+    (;vertex_parent_faces,) = a
+    if ! isassigned(vertex_parent_faces,d+1)
+        n_vertices = length(GT.vertex_node(a))
+        parent_dface_vertices = GT.parent_face_vertices(a,d)
+        vertex_parent_faces[d+1] = generate_face_coboundary(parent_dface_vertices,n_vertices)
+    end
+    vertex_parent_faces[d+1]
+end
+
+function num_dims(a::ComplexifyGlue)
+    num_dims(a.parent_mesh)
+end
+
+function parent_face_face(topo::MeshTopology,vd)
+    a = complexify_glue(workspace(topo))
+    d = val_parameter(vd)
+    D = num_dims(a)
+    if ! isassigned(a.parent_face_face,d+1)
+        if d == 0
+            create_vertices!(a)
+        elseif d == D
+            nDfaces = num_faces(topo,D)
+            a.parent_face_face[D+1] = collect(1:nDfaces)
+        else
+            create_face_boundary!(topo,d)
+        end
+    end
+    a.parent_face_face[d+1]
 end
 
 function create_vertices!(a::ComplexifyGlue)
@@ -841,7 +999,7 @@ function create_vertices!(a::ComplexifyGlue)
             end
         end
     end
-    (;node_vertex_ref,vertex_node_ref,parent_mesh,num_faces,parent_face_face) = a.contents
+    (;node_vertex_ref,vertex_node_ref,parent_mesh,num_faces,parent_face_face) = a
     Ti = Int32
     nnodes = num_nodes(parent_mesh)
     node_vertex = zeros(Ti,nnodes)
@@ -891,28 +1049,9 @@ function create_vertices!(a::ComplexifyGlue)
     nothing
 end
 
-function parent_face_vertices(a::ComplexifyGlue,d)
-    (;parent_face_vertices,parent_mesh) = a.contents
-    if ! isassigned(parent_face_vertices,d+1)
-        node_vertex = GT.node_vertex(a)
-        parent_face_vertices[d+1] = fill_face_vertices(parent_mesh,d,node_vertex)
-    end
-    parent_face_vertices[d+1]
-end
-
-function vertex_parent_faces(a::ComplexifyGlue,d)
-    (;vertex_parent_faces,) = a.contents
-    if ! isassigned(vertex_parent_faces,d+1)
-        n_vertices = length(GT.vertex_node(a))
-        parent_dface_vertices = GT.parent_face_vertices(a,d)
-        vertex_parent_faces[d+1] = generate_face_coboundary(parent_dface_vertices,n_vertices)
-    end
-    vertex_parent_faces[d+1]
-end
-
 function create_face_boundary!(topo::MeshTopology,d)
     glue = complexify_glue(workspace(topo))
-    (;num_faces,parent_face_face) = glue.contents
+    (;num_faces,parent_face_face) = glue
     n = val_parameter(d)+1
     if val_parameter(d) == 0
         num_faces[0+1] = nvertices
@@ -934,7 +1073,7 @@ function create_face_boundary!(topo::MeshTopology,d)
                                                                         nrefid_ldface_lvertices)
     topo.face_incidence[n+1,d+1] = nface_dfaces
     num_faces[d+1] = n_dfaces
-    parent_face_face[d+1] parent_dface_dface
+    parent_face_face[d+1] = parent_dface_dface
     nothing
 end
 
@@ -950,13 +1089,14 @@ function create_face_vertices!(topo,d)
         topo.face_incidence[D+1,0+1] = GT.parent_face_vertices(glue,D)
         return
     end
-    parent_dface_dface = GT.parent_face_face(glue,d)
+    parent_dface_dface = GT.parent_face_face(topo,d)
     parent_dface_vertices = GT.parent_face_vertices(glue,d)
-    n_dfaces = GT.num_faces(glue,d)
+    n_dfaces = GT.num_faces(topo,d)
     nface_vertices = face_incidence(topo,n,0)
     nface_dfaces = face_incidence(topo,n,d)
     nrefid_refntopo = GT.reference_topologies(topo,Val(n))
     nrefid_ldface_lvertices = map(a->face_incidence(a,d,0),nrefid_refntopo)
+    nface_nrefid = GT.face_reference_id(topo,n)
     dface_vertices = generate_face_vertices(
                                             n_dfaces,
                                             parent_dface_dface,
@@ -970,14 +1110,15 @@ function create_face_vertices!(topo,d)
 end
 
 function create_face_nodes!(mesh,d)
-    glue = complexify_glue(workspace(workspace))
-    (;parent_mesh,) = glue.contents
+    topo = GT.topology(GT.workspace(mesh))
+    glue = complexify_glue(GT.workspace(topo))
+    (;parent_mesh,) = glue
     n = val_parameter(d)+1
     if val_parameter(d) == 0
         vertex_node = GT.vertex_node(glue)
         nvertices = length(vertex_node)
         ptrs = collect(Int32,1:(nvertices+1))
-        mesh.face_nodes[0+1] = JaggedArray(vertex_node,prts)
+        mesh.face_nodes[0+1] = JaggedArray(vertex_node,ptrs)
         return
     end
     D = num_dims(topo)
@@ -985,15 +1126,15 @@ function create_face_nodes!(mesh,d)
         mesh.face_nodes[D+1] = GT.face_nodes(parent_mesh,D)
         return
     end
-    parent_dface_dface = GT.parent_face_face(glue,d)
+    parent_dface_dface = GT.parent_face_face(topo,d)
     parent_dface_nodes = GT.face_nodes(parent_mesh,d)
-    n_dfaces = GT.num_faces(glue,d)
-    topo = GT.topology(mesh)
+    n_dfaces = GT.num_faces(topo,d)
     nface_vertices = face_nodes(mesh,n)
     nface_dfaces = face_incidence(topo,n,d)
     nrefid_refnspace = GT.reference_spaces(mesh,Val(n))
     nrefid_ldface_lnodes = map(a->face_nodes(complexify(a),d),nrefid_refnspace)
-    dface_vertices = generate_face_vertices(
+    nface_nrefid = GT.face_reference_id(mesh,n)
+    dface_nodes = generate_face_vertices(
                                             n_dfaces,
                                             parent_dface_dface,
                                             parent_dface_nodes,
@@ -1001,24 +1142,101 @@ function create_face_nodes!(mesh,d)
                                             nface_dfaces,
                                             nface_nrefid,
                                             nrefid_ldface_lnodes)
-    topo.face_incidence[d+1,0+1] = dface_vertices
+    mesh.face_nodes[d+1] = dface_nodes
     nothing
 end
 
-function create_face_reference_id!(mesh,d)
+function create_face_reference_id!(mesh::Mesh,d)
     D = num_dims(mesh)
-    glue = GT.complexify_glue(mesh)
-    (;parent_mesh) = glue.contents
+    topo = GT.topology(mesh)
+    glue = GT.complexify_glue(topo)
+    (;parent_mesh) = glue
     if D == val_parameter(d)
         mesh.face_reference_id[D+1] = GT.face_reference_id(parent_mesh,D)
         return
     end
-    drid_refdspace = GT.reference_spaces(mesh,d)
-    if length(drid_refdspace) == 1
-        ndfaces = num_faces(glue,d)
+    drefid_refdspace = GT.reference_spaces(mesh,d)
+    if length(drefid_refdspace) == 1
+        ndfaces = num_faces(topo,d)
         mesh.face_reference_id[d+1] = fill(Int32(1),ndfaces)
     else
-        error("case not implemented yet")
+        n = val_parameter(d) + 1
+        nrefid_refnspace = GT.reference_spaces(mesh,Val(n))
+        drefid_refdspace = GT.reference_spaces(mesh,d)
+        nface_nrefid = GT.face_reference_id(mesh,Val(n))
+        nface_dfaces = GT.face_incidence(topo,n,val_parameter(d))
+        nrefid_ldrefid_refdspace = map(refnspace->GT.reference_spaces(complexify(refnspace),d),nrefid_refnspace)
+        nredid_ldrefid_drefid = map(ldrefid_refdspace->indexin(ldrefid_refdspace,[drefid_refdspace...]),nrefid_ldrefid_refdspace)
+        nrefid_ldface_ldrefid = map(refnspace->GT.face_reference_id(complexify(refnspace),d),nrefid_refnspace)
+        ndfaces = num_faces(topo,d)
+        nnfaces = num_faces(topo,n)
+        dface_drefid = zeros(Int32,ndfaces)
+        for nface in 1:nnfaces
+            ldface_dface = nface_dfaces[nface]
+            nrefid = nface_nrefid[nface]
+            ldrefid_drefid = nredid_ldrefid_drefid[nrefid]
+            ldface_ldrefid = nrefid_ldface_ldrefid[nrefid]
+            nldfaces = length(ldface_dface)
+            for ldface in 1:nldfaces
+                ldrefid = ldface_ldrefid[ldface]
+                drefid = ldrefid_drefid[ldrefid]
+                dface = ldface_dface[ldface]
+                dface_drefid[dface] = drefid
+            end
+        end
+        mesh.face_reference_id[d+1] = dface_drefid
+    end
+    nothing
+end
+
+function create_face_reference_id!(topo::MeshTopology,d)
+    D = num_dims(topo)
+    glue = GT.complexify_glue(topo)
+    (;parent_mesh) = glue
+    if D == val_parameter(d)
+        Dface_rid = GT.face_reference_id(parent_mesh,D)
+        Drefid_refDtopo = GT.reference_topologies(topo,Val(D))
+        if length(Drefid_refDtopo) == 1
+            nDfaces = length(Dface_rid)
+            Dface_Drefid = fill(Int32(1),nDfaces)
+        else
+            rid_rtopo = map(space->GT.topology(GT.domain(space)),GT.reference_spaces(parent_mesh,Val(D)))
+            rid_Drefid = indexin(rid_rtopo,[Drefid_refDtopo...])
+            Dface_Drefid = rid_Drefid[Dface_rid]
+        end
+        topo.face_reference_id[D+1] = Dface_Drefid
+        return
+    end
+    drefid_refdtopo = GT.reference_topologies(topo,d)
+    if length(drefid_refdtopo) == 1
+        ndfaces = num_faces(topo,d)
+        topo.face_reference_id[d+1] = fill(Int32(1),ndfaces)
+    else
+        n = val_parameter(d) + 1
+        nrefid_refntopo = GT.reference_topologies(topo,Val(n))
+        drefid_refdtopo = GT.reference_topologies(topo,d)
+        nface_nrefid = GT.face_reference_id(topo,Val(n))
+        nface_dfaces = GT.face_incidence(topo,n,val_parameter(d))
+        nrefid_ldrefid_refdtopo = map(refntopo->GT.reference_topologies(refntopo,d),nrefid_refntopo)
+        nredid_ldrefid_drefid = map(ldrefid_refdtopo->indexin(ldrefid_refdtopo,[drefid_refdtopo...]),nrefid_ldrefid_refdtopo)
+        nrefid_ldface_ldrefid = map(refntopo->GT.face_reference_id(refntopo,d),nrefid_refntopo)
+        ndfaces = num_faces(topo,d)
+        nnfaces = num_faces(topo,n)
+        dface_drefid = zeros(Int32,ndfaces)
+        for nface in 1:nnfaces
+            ldface_dface = nface_dfaces[nface]
+            nrefid = nface_nrefid[nface]
+            ldrefid_drefid = nredid_ldrefid_drefid[nrefid]
+            ldface_ldrefid = nrefid_ldface_ldrefid[nrefid]
+            nldfaces = length(ldface_dface)
+            for ldface in 1:nldfaces
+                ldrefid = ldface_ldrefid[ldface]
+                drefid = ldrefid_drefid[ldrefid]
+                dface = ldface_dface[ldface]
+                dface_drefid[dface] = drefid
+            end
+        end
+        topo.face_reference_id[d+1] = dface_drefid
     end
     nothing
 end
@@ -1049,7 +1267,22 @@ function unique_reference_spaces(mesh,d)
         end
     end
     u_to_ref_dface = unique(i_to_ref_dface)
-    u_to_ref_dface
+    Tuple(u_to_ref_dface)
+end
+
+function create_group_faces!(mesh,d)
+    topo = topology(mesh)
+    glue = complexify_glue(topo)
+    (;parent_mesh) = glue
+    parent_groups = GT.group_faces(parent_mesh,d)
+    @show parent_groups
+    parent_dface_dface = GT.parent_face_face(topo,d)
+    group_faces = Dict{String,Vector{Int32}}()
+    for (group_name,parent_group_faces) in parent_groups
+        group_faces[group_name] = parent_dface_dface[parent_group_faces]
+    end
+    mesh.group_faces[d+1] = group_faces
+    nothing
 end
 
 
@@ -1525,7 +1758,7 @@ function face_topology(boundary::Nothing,vertex_permutations)
     VertexTopology(vertex_permutations)
 end
 
-struct VertexTopology{Ti} <: AbstractFaceTopology
+@auto_hash_equals struct VertexTopology{Ti} <: AbstractFaceTopology
     vertex_permutations::Vector{Vector{Ti}}
 end
 boundary(a::VertexTopology) = nothing
@@ -1544,21 +1777,21 @@ function face_topology(boundary::MeshTopology,vertex_permutations)
     end
 end
 
-struct EdgeTopology{Ti,Tr} <: AbstractFaceTopology
+@auto_hash_equals struct EdgeTopology{Ti,Tr} <: AbstractFaceTopology
     boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}},Tuple{Tuple{VertexTopology{Ti}}}}
     vertex_permutations::Vector{Vector{Ti}}
 end
 boundary(a::EdgeTopology) = a.boundary
 vertex_permutations(a::EdgeTopology) = a.vertex_permutations
 
-struct SurfaceTopology{Ti,Tr} <: AbstractFaceTopology
+@auto_hash_equals struct SurfaceTopology{Ti,Tr} <: AbstractFaceTopology
     boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}}, Tuple{Tuple{VertexTopology{Ti}},Tuple{EdgeTopology{Ti,Tr}}}}
     vertex_permutations::Vector{Vector{Ti}}
 end
 boundary(a::SurfaceTopology) = a.boundary
 vertex_permutations(a::SurfaceTopology) = a.vertex_permutations
 
-struct VolumeTopology{Ti,Tr} <: AbstractFaceTopology
+@auto_hash_equals struct VolumeTopology{Ti,Tr} <: AbstractFaceTopology
     boundary::MeshTopology{Matrix{JaggedArray{Ti,Ti}},Vector{Vector{Tr}},Matrix{JaggedArray{Ti,Ti}}, Tuple{Tuple{VertexTopology{Ti}},Tuple{EdgeTopology{Ti,Tr}},Tuple{SurfaceTopology{Ti,Tr}}}}
     vertex_permutations::Vector{Vector{Ti}}
 end

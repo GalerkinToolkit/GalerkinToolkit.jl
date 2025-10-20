@@ -631,14 +631,15 @@ function replace_workspace(mesh::Mesh,workspace)
         )
 end
 
-function mesh_workspace(;topology=nothing,complexify_glue=nothing)
-    MeshWorkspace(topology,complexify_glue)
+function mesh_workspace(;topology)
+    MeshWorkspace(topology)
 end
 
-struct MeshWorkspace{A,B} <: AbstractType
+struct MeshWorkspace{A} <: AbstractType
     topology::A
-    complexify_glue::B
 end
+
+topology(mw::MeshWorkspace) = mw.topology
 
 function replace_node_coordinates(mesh::Mesh,node_coordinates)
     Mesh(
@@ -676,14 +677,55 @@ function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
 end
 
 node_coordinates(m::Mesh) = m.node_coordinates
-face_nodes(m::Mesh) = m.face_nodes
-face_nodes(m::Mesh,d) = m.face_nodes[val_parameter(d)+1]
-face_reference_id(m::Mesh) = m.face_reference_id
-face_reference_id(m::Mesh,d) = m.face_reference_id[val_parameter(d)+1]
+function face_nodes(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        face_nodes(m,d)
+    end
+    m.face_nodes
+end
+function face_nodes(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.face_nodes,d+1)
+        create_face_nodes!(m,d)
+    end
+    m.face_nodes[d+1]
+end
+
+function face_reference_id(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        face_reference_id(m,d)
+    end
+    m.face_reference_id
+end
+function face_reference_id(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.face_reference_id,d+1)
+        create_face_reference_id!(m,d)
+    end
+    m.face_reference_id[d+1]
+end
+
 reference_spaces(m::Mesh) = m.reference_spaces
 reference_spaces(m::Mesh,d) = m.reference_spaces[val_parameter(d)+1]
-group_faces(m::Mesh) = m.group_faces
-group_faces(m::Mesh,d) = m.group_faces[val_parameter(d)+1]
+function group_faces(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        group_faces(m,d)
+    end
+    m.group_faces
+end
+function group_faces(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.group_faces,d+1)
+        create_group_faces!(m,d)
+    end
+    m.group_faces[d+1]
+end
 periodic_nodes(m::Mesh) = m.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.is_cell_complex)
 workspace(m::Mesh) = m.workspace
