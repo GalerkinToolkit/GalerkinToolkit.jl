@@ -207,11 +207,18 @@ function domain(mesh::AbstractMesh,d;
     is_reference_domain=Val(false),
     group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
+    nfaces = num_faces(mesh,d)
+    faces = 1:nfaces
+    inverse_faces = faces
+    workspace = MeshDomainWorkspace(faces,inverse_faces)
     mesh_domain(mesh;
         mesh_id,
         num_dims=Val(val_parameter(d)),
         group_names,
-        is_reference_domain)
+        is_reference_domain,
+        workspace,
+        setup = Val(false)
+       )
 end
 
 function interior(mesh::AbstractMesh;
@@ -916,7 +923,7 @@ end
 
 function mesh_space(mesh::AbstractMesh,D)
     num_dims = Val(val_parameter(D))
-    domain = GT.mesh_domain(mesh;num_dims)
+    domain = GT.domain(mesh,num_dims)
     MeshSpace(num_dims,domain)
 end
 

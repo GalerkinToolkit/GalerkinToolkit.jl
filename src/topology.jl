@@ -1034,7 +1034,7 @@ function create_vertices!(a::ComplexifyGlue)
         end
         barrier!(node_vertex,face_to_nodes,face_to_refid,refid_to_lvertex_to_lnodes)
     end
-    valid_id = -one(eltype(node_vertex))
+    #valid_id = -one(eltype(node_vertex))
     vertex = Ti(0)
     # Loop needed to get the already existing vertices
     for nodes in GT.face_nodes(parent_mesh,0)
