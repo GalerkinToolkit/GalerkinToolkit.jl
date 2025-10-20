@@ -907,6 +907,7 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
                           normals,
                           periodic_nodes,
                           group_faces,
+                          is_cell_complex = Val(true),
                           workspace = MeshWorkspace(topology)
                          )
 
