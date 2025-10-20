@@ -1209,7 +1209,7 @@ function scatter_faces(f,mesh_main,face_partition)
         part_dface_nodes = scatter(part_dface_nodes_main)
         part_dface_nodes_2 = map(v->convert(typeof(a),v),part_dface_nodes)
         PVector(part_dface_nodes_2,face_partition[d])
-    end
+    end |> collect
 end
 
 function scatter_group_faces(mesh_main)
@@ -1233,7 +1233,7 @@ function scatter_group_faces(mesh_main)
             part_dfaces = scatter(dfaces_main)
             group => Partitioned(part_dfaces)
         end |> Dict
-    end
+    end |> collect
 end
 
 function scatter_topology(mesh_main,face_partition)

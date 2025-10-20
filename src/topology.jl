@@ -364,15 +364,22 @@ function topology(mesh::AbstractMesh)
     # Assumes that the input is a cell complex
     # We end up here when computing face topologies
     # The result is fully initialized in this case.
-    T = JaggedArray{Int32,Int32}
+    Ti = Int32
+    T = JaggedArray{Ti,Ti}
     D = num_dims(mesh)
     my_face_incidence = Matrix{T}(undef,D+1,D+1)
     my_face_reference_id  = [ face_reference_id(mesh,d) for d in 0:D ]
     dims = ntuple(d->d-1,Val(D+1))
     my_reference_faces = map(d->map(GT.topology,reference_domains(mesh,d)),dims)
     my_face_permutation_ids = Matrix{T}(undef,D+1,D+1)
-    periodic_faces = Vector{Vector{Int32}}(undef,D+1)
-    periodic_faces_permutation_id = Vector{Vector{Int32}}(undef,D+1)
+    periodic_nodes = GT.periodic_nodes(mesh)
+    if periodic_nodes isa AbstractRange
+        periodic_faces = map(t->(-1:0),0:D)
+        periodic_faces_permutation_id = map(t->Fill(-Ti(1),1),0:D)
+    else
+        periodic_faces = Vector{Vector{Ti}}(undef,D+1)
+        periodic_faces_permutation_id = Vector{Vector{Ti}}(undef,D+1)
+    end
     topo = mesh_topology(;
         face_incidence = my_face_incidence,
         face_reference_id = my_face_reference_id,
@@ -405,9 +412,9 @@ function topology(mesh::AbstractMesh)
             topo.face_permutation_ids[d+1,n+1] = JaggedArray([Int32[]])
         end
     end
-    fill_periodic_vertices!(topo,mesh)
-    fill_periodic_vertices_permutation_id!(topo)
-    for d in 1:D
+    #fill_periodic_vertices!(topo,mesh)
+    #fill_periodic_vertices_permutation_id!(topo)
+    for d in 0:D
         fill_periodic_faces!(topo,d)
         fill_periodic_faces_permutation_id!(topo,d)
     end
@@ -699,36 +706,36 @@ function same_valid_ids(a,b,idsa,idsb)
     return true
 end
 
-function fill_periodic_vertices!(topo,mesh)
-    d = 0
-    node_owner = periodic_nodes(mesh)
-    nnodes = num_nodes(mesh)
-    nvertices = num_faces(mesh,d)
-    vertex_nodes = JaggedArray(face_nodes(mesh,d))
-    vertex_node = vertex_nodes.data
-    node_vertex = zeros(Int32,nnodes)
-    node_vertex[vertex_node] = 1:nvertices
-    vertex_owner = zeros(Int32,nvertices)
-    vertex_owner .= 1:nvertices
-    for node in 1:nnodes
-        vertex = node_vertex[node]
-        if vertex == 0
-            continue
-        end
-        node2 = node_owner[node]
-        vertex2 = node_vertex[node2]
-        @boundscheck @assert vertex2 != 0
-        vertex_owner[vertex] = vertex2
-    end
-    topo.periodic_faces[d+1] = vertex_owner
-end
-
-function fill_periodic_vertices_permutation_id!(topo)
-    d = 0
-    nvertices = num_faces(topo,d)
-    topo.periodic_faces_permutation_id[d+1] = ones(Int32,nvertices)
-    topo
-end
+#function fill_periodic_vertices!(topo,mesh)
+#    d = 0
+#    node_owner = periodic_nodes(mesh)
+#    nnodes = num_nodes(mesh)
+#    nvertices = num_faces(mesh,d)
+#    vertex_nodes = JaggedArray(face_nodes(mesh,d))
+#    vertex_node = vertex_nodes.data
+#    node_vertex = zeros(Int32,nnodes)
+#    node_vertex[vertex_node] = 1:nvertices
+#    vertex_owner = zeros(Int32,nvertices)
+#    vertex_owner .= 1:nvertices
+#    for node in 1:nnodes
+#        vertex = node_vertex[node]
+#        if vertex == 0
+#            continue
+#        end
+#        node2 = node_owner[node]
+#        vertex2 = node_vertex[node2]
+#        @boundscheck @assert vertex2 != 0
+#        vertex_owner[vertex] = vertex2
+#    end
+#    topo.periodic_faces[d+1] = vertex_owner
+#end
+#
+#function fill_periodic_vertices_permutation_id!(topo)
+#    d = 0
+#    nvertices = num_faces(topo,d)
+#    topo.periodic_faces_permutation_id[d+1] = ones(Int32,nvertices)
+#    topo
+#end
 
 function fill_periodic_faces!(topo,d)
     if eltype(topo.periodic_faces) <: AbstractRange
@@ -745,14 +752,15 @@ function fill_periodic_faces!(topo,d)
         return
     end
     nfaces = num_faces(topo,d)
-    face_owner = zeros(Int32,nfaces)
-    face_owner .= 1:nfaces
+    face_owner = collect(Int32,1:nfaces)
     face_vertices = face_incidence(topo,d,0)
     vertex_faces = face_incidence(topo,0,d)
     vertex_owner = periodic_faces(topo,0)
     maxfaces = maximum(faces->length(faces),vertex_faces)
     faces1 = fill(Int32(INVALID_ID),maxfaces)
     faces2 = fill(Int32(INVALID_ID),maxfaces)
+    nfaces1 = 0
+    nfaces2 = 0
     for face in 1:nfaces
         vertices = face_vertices[face]
         if all(vertex->vertex_owner[vertex]!=vertex,vertices)
@@ -761,8 +769,6 @@ function fill_periodic_faces!(topo,d)
             for (i,v) in enumerate(vertices)
                 vertex = vertex_owner[v]
                 faces = vertex_faces[vertex]
-                nfaces1 = 0
-                nfaces2 = 0
                 if i == 1
                     copyto!(faces1,faces)
                     nfaces1 = length(faces)
@@ -799,12 +805,13 @@ function fill_periodic_faces_permutation_id!(topo,d)
     face_vertices = face_incidence(topo,d,0)
     nfaces = length(face_owner)
     face_perm_id = ones(Int32,nfaces)
+    periodic_vertices = GT.periodic_faces(topo,0)
     for face in 1:nfaces
         owner = face_owner[face]
         if face == owner
             continue
         end
-        rid = face_rid[rid]
+        rid = face_rid[face]
         pindex_lvert1_lvert2 = rid_pindex_lvert1_lvert2[rid]
         vertices1 = face_vertices[face]
         vertices2 = face_vertices[owner]
@@ -813,7 +820,7 @@ function fill_periodic_faces_permutation_id!(topo,d)
             lvert1_lvert2 = pindex_lvert1_lvert2[pindex]
             found = true
             for (lvert1,lvert2) in enumerate(lvert1_lvert2)
-                vert1 = vertices1[lvert1]
+                vert1 = periodic_vertices[vertices1[lvert1]]
                 vert2 = vertices2[lvert2]
                 if vert1 != vert2
                     found = false
@@ -1275,7 +1282,6 @@ function create_group_faces!(mesh,d)
     glue = complexify_glue(topo)
     (;parent_mesh) = glue
     parent_groups = GT.group_faces(parent_mesh,d)
-    @show parent_groups
     parent_dface_dface = GT.parent_face_face(topo,d)
     group_faces = Dict{String,Vector{Int32}}()
     for (group_name,parent_group_faces) in parent_groups
