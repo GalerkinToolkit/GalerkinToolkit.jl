@@ -54,14 +54,16 @@ function generate_workspace(space::AbstractSpace)
     free_dofs = state.free_dofs
     dirichlet_dofs = state.dirichlet_dofs
     dirichlet_dof_location = state.dirichlet_dof_location
-    SpaceWorkspace(face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location)
+    periodic_dofs = state.periodic_dofs
+    SpaceWorkspace(face_dofs,free_dofs,dirichlet_dofs,dirichlet_dof_location,periodic_dofs)
 end
 
-struct SpaceWorkspace{A,B,C,D} <: AbstractType
+struct SpaceWorkspace{A,B,C,D,E} <: AbstractType
     face_dofs::A
     free_dofs::B
     dirichlet_dofs::C
     dirichlet_dof_location::D
+    periodic_dofs::E
 end
 
 function setup_space(space::AbstractSpace)
@@ -94,6 +96,14 @@ function dirichlet_dof_local_indices(space::AbstractSpace)
     end
     state = generate_workspace(space)
     state.dirichlet_dof_local_indices
+end
+
+function periodic_dofs(space::AbstractSpace)
+    if workspace(space) !== nothing
+        return workspace(space).periodic_dofs
+    end
+    state = generate_workspace(space)
+    state.periodic_dofs
 end
 
 #function face_dofs(pspace::AbstractSpace{<:AbstractPMesh})
@@ -401,25 +411,69 @@ function generate_dof_ids_step_1(space,state0)
             end
         end
     end
+    if is_periodic(mesh)
+        periodic_dofs = collect(Int32,1:ndofs)
+        for d in 0:D
+            Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+            ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
+            ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
+            dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
+            Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
+            periodic_dfaces = GT.periodic_faces(topology,d)
+            periodic_dfaces_pindex = GT.periodic_faces_permutation_id(topology,d)
+            for cell in 1:ncells
+                Dface = cell_to_Dface[cell]
+                ctype = Dface_to_ctype[Dface]
+                ldof_to_dof = Dface_to_dofs[Dface]
+                ldface_to_dface = Dface_to_dfaces[Dface]
+                ldface_to_own_ldofs = ctype_to_ldface_to_own_ldofs[ctype]
+                ldface_to_pindex_to_perm = ctype_to_ldface_to_pindex_to_perm[ctype]
+                ldface_to_pindex = Dface_to_ldface_to_pindex[Dface]
+                nldfaces = length(ldface_to_dface)
+                for ldface in 1:nldfaces
+                    dface = ldface_to_dface[ldface]
+                    dface_owner = periodic_dfaces[dface]
+                    if dface == dface_owner
+                        continue
+                    end
+                    dof_offset = Int(dface_to_dof_offset[dface])
+                    dof_offset_owner = Int(dface_to_dof_offset[dface_owner])
+                    own_ldofs = ldface_to_own_ldofs[ldface]
+                    pindex_to_perm = ldface_to_pindex_to_perm[ldface]
+                    pindex = periodic_dfaces_pindex[dface]
+                    perm = pindex_to_perm[pindex]
+                    n_own_dofs = length(own_ldofs)
+                    for i in 1:n_own_dofs
+                        j = perm[i]
+                        dof_owner = j + dof_offset_owner
+                        dof = i + dof_offset
+                        periodic_dofs[dof] = dof_owner
+                    end
+                end
+            end
+        end
+    else
+        periodic_dofs = 1:ndofs
+    end
     dof_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(ndofs,))
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
-     Dface_to_ctype,cell_to_Dface,dof_local_indices)
+     Dface_to_ctype,cell_to_Dface,dof_local_indices,periodic_dofs)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
-    (;ndofs,Dface_to_dofs) = state
+    (;ndofs,Dface_to_dofs,periodic_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
     dirichlet_dof_location = zeros(Int32,0)
     free_dofs = Base.OneTo(ndofs)
     dirichlet_dofs = Base.OneTo(0)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location,periodic_dofs)
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface,periodic_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
     N = GT.num_dims(dirichlet_boundary)
     #group_names = dirichlet_boundary |> GT.group_names
@@ -468,7 +522,12 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     dirichlet_dof_location = ones(Int32,ndiri)
     free_dofs = Base.OneTo(n_free_dofs)
     dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location)
+    if is_periodic(mesh)
+        periodic_dofs2 = f.(periodic_dofs[first(free_and_dirichlet_dofs)])
+    else
+        periodic_dofs2 = 1:n_free_dofs
+    end
+    (;Dface_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location,periodic_dofs=periodic_dofs2)
 end
 
 #function generate_dof_ids_step_2(space,state,q::AbstractField)
@@ -563,7 +622,7 @@ end
 function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDomain)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,
-     d_to_ndfaces,Dface_to_ctype,cell_to_Dface) = state
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface,periodic_dofs) = state
     dof_to_location = zeros(Int32,ndofs)
     D = length(d_to_ndfaces)-1
     for d in D:-1:0
@@ -618,7 +677,12 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::PiecewiseDo
     free_dofs = Base.OneTo(n_free_dofs)
     ndiri = length(last(free_and_dirichlet_dofs))
     dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+    if is_periodic(mesh)
+        periodic_dofs2 = f.(periodic_dofs[first(free_and_dirichlet_dofs)])
+    else
+        periodic_dofs2 = 1:n_free_dofs
+    end
+    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location,periodic_dofs=periodic_dofs2)
 end
 
 #function generate_dof_ids_step_2(space,state,q_all::PiecewiseField)
@@ -725,7 +789,7 @@ function last_dof()
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::LastDof)
-    (;ndofs,Dface_to_dofs) = state
+    (;ndofs,Dface_to_dofs,periodic_dofs) = state
     dof_to_tag = zeros(Int32,ndofs)
     dof_to_tag[end] = 1
     free_and_dirichlet_dofs = GT.partition_from_mask(i->i==0,dof_to_tag)
@@ -745,7 +809,13 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary_all::LastDof)
     dirichlet_dof_location = ones(Int32,ndiri)
     free_dofs = Base.OneTo(n_free_dofs)
     dirichlet_dofs = Base.OneTo(ndiri)
-    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location)
+    mesh = GT.mesh(GT.domain(space))
+    if is_periodic(mesh)
+        periodic_dofs2 = f.(periodic_dofs[first(free_and_dirichlet_dofs)])
+    else
+        periodic_dofs2 = 1:n_free_dofs
+    end
+    (;Dface_to_dofs, free_dofs, dirichlet_dofs, dirichlet_dof_location,periodic_dofs=periodic_dofs2)
 end
 
 function reference_face_own_dofs(space::AbstractSpace,d)

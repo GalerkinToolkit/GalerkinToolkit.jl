@@ -324,6 +324,10 @@ function remove_interior(mesh::AbstractMesh)
         )
 end
 
+function is_periodic(a::AbstractMesh)
+    ! isa(periodic_nodes(a),AbstractRange)
+end
+
 function simplexify(mesh::AbstractMesh;glue=Val(false))
 
     # TODO add attributes to mesh to figure out if we really
