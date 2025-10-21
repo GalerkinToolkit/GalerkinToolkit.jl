@@ -141,13 +141,34 @@ end
 
 # Periodic
 
-function create_periodic_constraints(
-        parent_dof_free_or_periodic_dof,
-        free_dof_parent_dof,
-        periodic_dof_parent_dof,
-        periodic_dof_scaling,
-    )
 
+function periodic_constraints(parent_space::AbstractSpace;scaling=nothing)
+    periodic_dofs = GT.periodic_dofs(parent_space)
+    n_parent_dofs = GT.num_free_dofs(parent_space)
+    free_and_periodic_dofs = GT.partition_from_mask(i->periodic_dofs[i] == i,1:n_parent_dofs)
+    free_dof_parent_dof = first(free_and_periodic_dofs)
+    periodic_dof_parent_dof = periodic_dofs[last(free_and_periodic_dofs)]
+    msg0 = "Cyclic periodic constraints not allowed"
+    @boundscheck @assert all(i->periodic_dofs[i]==i,periodic_dof_parent_dof) msg0
+    dof_permutation = GT.permutation(free_and_periodic_dofs)
+    n_free_dofs = length(free_dof_parent_dof)
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    parent_dof_free_or_periodic_dof = f.(1:n_parent_dofs)
+    msg = "Not implemented. Periodic dof points to dirichlet dof. Do not define as Dirichlet the master boundary of a periodic coupling."
+    @boundscheck @assert all(dof->dof>0,periodic_dofs) msg
+    if scaling === nothing
+        periodic_dof_scaling = nothing
+    else
+        parent_dof_value = GT.free_values(scaling)
+        periodic_dof_scaling = parent_dof_value[periodic_dof_parent_dof]
+    end
     if periodic_dof_scaling === nothing
         T = Int
     else
@@ -174,6 +195,34 @@ function Base.size(a::PeriodicConstraints)
     nparent = length(a.parent_dof_free_or_periodic_dof)
     nfree = length(a.free_dof_parent_dof)
     (nparent,nfree)
+end
+
+function Base.getindex(C::PeriodicConstraints,parent_dof::Integer,j::Integer)
+    T = C.eltype
+    parent_dof_free_or_periodic_dof = C.parent_dof_free_or_periodic_dof
+    free_dof_parent_dof = C.free_dof_parent_dof
+    periodic_dof_parent_dof = C.periodic_dof_parent_dof
+    periodic_dof_scaling = C.periodic_dof_scaling
+    free_or_periodic_dof = parent_dof_free_or_periodic_dof[parent_dof]
+    if free_or_periodic_dof > 0
+        free_dof = free_or_periodic_dof
+        parent_dof_owner = free_dof_parent_dof[free_dof]
+        scaling = T(1)
+    else
+        periodic_dof = -free_or_periodic_dof
+        parent_dof_owner = periodic_dof_parent_dof[periodic_dof]
+        if periodic_dof_scaling !== nothing
+            scaling = periodic_dof_scaling[periodic_dof]
+        else
+            scaling = T(1)
+        end
+    end
+    free_dof_owner = parent_dof_free_or_periodic_dof[parent_dof_owner]
+    if free_dof_owner == j
+        scaling
+    else
+        zero(scaling)
+    end
 end
 
 function LinearAlgebra.mul!(parent_dof_value,C::PeriodicConstraints,free_dof_value)
@@ -206,7 +255,7 @@ function setup_constraints_workspace(parent_space,C::PeriodicConstraints)
         else
             parent_dof = free_or_periodic_dof
         end
-        return parent_dof
+        return parent_dof_free_or_periodic_dof[parent_dof]
     end
     face_dofs_data = map(dof_map,face_parent_dofs.data)
     face_dofs = jagged_array(face_dofs_data,face_parent_dofs.ptrs)

@@ -43,7 +43,6 @@ V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 @show GT.periodic_dofs(V)
 
-
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
 parts_per_dir = (2,2)
