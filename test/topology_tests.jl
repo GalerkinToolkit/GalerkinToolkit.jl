@@ -75,6 +75,7 @@ topo = GT.topology(spx0)
 topo = GT.topology(spx1)
 topo = GT.topology(spx2)
 topo = GT.topology(spx3)
+@test topo == deepcopy(topo)
 
 @show GT.reference_topologies(topo,0)
 @show GT.reference_topologies(topo,1)
@@ -99,6 +100,29 @@ chain = GT.chain(;
 mesh = GT.mesh(chain)
 
 mesh2 = GT.complexify(mesh)
+@test GT.is_cell_complex(mesh2)
+
+@test GT.node_coordinates(mesh2) === GT.node_coordinates(mesh)
+
+@show GT.num_faces(mesh2)
+
+@test length(GT.reference_spaces(mesh2,2)) == 1
+@test length(GT.reference_spaces(mesh2,1)) == 1
+@test length(GT.reference_spaces(mesh2,0)) == 1
+
+@show GT.face_reference_id(mesh2,0)
+@show GT.face_reference_id(mesh2,1)
+@show GT.face_reference_id(mesh2,2)
+@show GT.face_nodes(mesh2,1)
+@show GT.face_nodes(mesh2,0)
+@show GT.face_nodes(mesh2,2)
+
+@show GT.normals(mesh2)
+@show GT.periodic_nodes(mesh2)
+
+@show GT.group_faces(mesh2,2)
+@show GT.group_faces(mesh2,1)
+@show GT.group_faces(mesh2,0)
 
 @show GT.workspace(mesh2)
 
@@ -107,24 +131,78 @@ topo2 = GT.topology(mesh2)
 
 @test topo === topo2
 
+glue = GT.complexify_glue(GT.workspace(topo))
+
+@show GT.periodic_faces_permutation_id(topo,0)
+@show GT.periodic_faces_permutation_id(topo,1)
+@show GT.periodic_faces_permutation_id(topo,2)
+
+@show GT.periodic_faces(topo,0)
+@show GT.periodic_faces(topo,1)
+@show GT.periodic_faces(topo,2)
+
+@show GT.face_permutation_ids(topo,2,0)
+@show GT.face_permutation_ids(topo,2,1)
+@show GT.face_permutation_ids(topo,1,0)
+
+@show GT.face_reference_id(topo,0)
+@show GT.face_reference_id(topo,1)
+@show GT.face_reference_id(topo,2)
+
+@show GT.face_incidence(topo,0,1)
+@show GT.face_incidence(topo,1,2)
+@show GT.face_incidence(topo,1,0)
+@show GT.face_incidence(topo,2,1)
+@show GT.face_incidence(topo,0,0)
+@show GT.face_incidence(topo,2,2)
+@show GT.face_incidence(topo,0,2)
+@show GT.face_incidence(topo,2,0)
+
+@show GT.parent_face_face(topo,1)
+@show GT.parent_face_face(topo,2)
+@show GT.parent_face_face(topo,0)
+@show GT.face_nodes(mesh2,2)
+@show GT.vertex_parent_faces(glue,0)
+@show GT.vertex_parent_faces(glue,1)
+@show GT.vertex_parent_faces(glue,2)
+@show GT.parent_face_vertices(glue,0)
+@show GT.parent_face_vertices(glue,1)
+@show GT.parent_face_vertices(glue,2)
+@show GT.vertex_node(glue)
+@show GT.node_vertex(glue)
+@show GT.num_faces(topo,1)
+@show GT.num_faces(topo,0)
+@show GT.num_faces(topo,2)
 
 
-@show isassigned(topo.face_incidence,0+1,0+1)
-@show isassigned(topo.face_incidence,1+1,0+1)
-@show isassigned(topo.face_incidence,2+1,0+1)
-
-@show isassigned(topo.face_incidence,0+1,1+1)
-@show isassigned(topo.face_incidence,1+1,1+1)
-@show isassigned(topo.face_incidence,2+1,1+1)
-
-@show isassigned(topo.face_incidence,0+1,2+1)
-@show isassigned(topo.face_incidence,1+1,2+1)
-@show isassigned(topo.face_incidence,2+1,2+1)
+#@show isassigned(topo.face_incidence,0+1,0+1)
+#@show isassigned(topo.face_incidence,1+1,0+1)
+#@show isassigned(topo.face_incidence,2+1,0+1)
+#
+#@show isassigned(topo.face_incidence,0+1,1+1)
+#@show isassigned(topo.face_incidence,1+1,1+1)
+#@show isassigned(topo.face_incidence,2+1,1+1)
+#
+#@show isassigned(topo.face_incidence,0+1,2+1)
+#@show isassigned(topo.face_incidence,1+1,2+1)
+#@show isassigned(topo.face_incidence,2+1,2+1)
 
 domain = (0,1,0,1)
 cells = (2,2)
 mesh = GT.cartesian_mesh(domain,cells)
 topo = GT.topology(mesh)
+
+@show GT.face_reference_id(mesh,0)
+@show GT.face_reference_id(mesh,1)
+@show GT.face_reference_id(mesh,2)
+@show GT.face_nodes(mesh,1)
+@show GT.face_nodes(mesh,0)
+@show GT.face_nodes(mesh,2)
+@show GT.normals(mesh)
+@show GT.periodic_nodes(mesh)
+@show GT.group_faces(mesh,2)
+@show GT.group_faces(mesh,1)
+@show GT.group_faces(mesh,0)
 
 
 GT.face_incidence(topo,0,0)
@@ -143,37 +221,35 @@ GT.face_permutation_ids(topo,2,0)
 GT.face_permutation_ids(topo,2,1)
 GT.face_permutation_ids(topo,1,0)
 
-
-
 domain = (0,1,0,1,0,1)
 cells = (10,10,10)
 mesh = GT.cartesian_mesh(domain,cells)
 topo = GT.topology(mesh)
 
 
-@show "column 0"
-@show isassigned(topo.face_incidence,0+1,0+1)
-@show isassigned(topo.face_incidence,1+1,0+1)
-@show isassigned(topo.face_incidence,2+1,0+1)
-@show isassigned(topo.face_incidence,3+1,0+1)
-
-@show "column 1"
-@show isassigned(topo.face_incidence,0+1,1+1)
-@show isassigned(topo.face_incidence,1+1,1+1)
-@show isassigned(topo.face_incidence,2+1,1+1)
-@show isassigned(topo.face_incidence,3+1,1+1)
-
-@show "column 2"
-@show isassigned(topo.face_incidence,0+1,2+1)
-@show isassigned(topo.face_incidence,1+1,2+1)
-@show isassigned(topo.face_incidence,2+1,2+1)
-@show isassigned(topo.face_incidence,3+1,2+1)
-
-@show "column 3"
-@show isassigned(topo.face_incidence,0+1,3+1)
-@show isassigned(topo.face_incidence,1+1,3+1)
-@show isassigned(topo.face_incidence,2+1,3+1)
-@show isassigned(topo.face_incidence,3+1,3+1)
+#@show "column 0"
+#@show isassigned(topo.face_incidence,0+1,0+1)
+#@show isassigned(topo.face_incidence,1+1,0+1)
+#@show isassigned(topo.face_incidence,2+1,0+1)
+#@show isassigned(topo.face_incidence,3+1,0+1)
+#
+#@show "column 1"
+#@show isassigned(topo.face_incidence,0+1,1+1)
+#@show isassigned(topo.face_incidence,1+1,1+1)
+#@show isassigned(topo.face_incidence,2+1,1+1)
+#@show isassigned(topo.face_incidence,3+1,1+1)
+#
+#@show "column 2"
+#@show isassigned(topo.face_incidence,0+1,2+1)
+#@show isassigned(topo.face_incidence,1+1,2+1)
+#@show isassigned(topo.face_incidence,2+1,2+1)
+#@show isassigned(topo.face_incidence,3+1,2+1)
+#
+#@show "column 3"
+#@show isassigned(topo.face_incidence,0+1,3+1)
+#@show isassigned(topo.face_incidence,1+1,3+1)
+#@show isassigned(topo.face_incidence,2+1,3+1)
+#@show isassigned(topo.face_incidence,3+1,3+1)
 
 
 GT.face_incidence(topo,0,0)

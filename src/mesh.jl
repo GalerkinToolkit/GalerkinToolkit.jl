@@ -207,11 +207,18 @@ function domain(mesh::AbstractMesh,d;
     is_reference_domain=Val(false),
     group_names=[group_faces_in_dim!(mesh,val_parameter(d))],
     )
+    nfaces = num_faces(mesh,d)
+    faces = 1:nfaces
+    inverse_faces = faces
+    workspace = MeshDomainWorkspace(faces,inverse_faces)
     mesh_domain(mesh;
         mesh_id,
         num_dims=Val(val_parameter(d)),
         group_names,
-        is_reference_domain)
+        is_reference_domain,
+        workspace,
+        setup = Val(false)
+       )
 end
 
 function interior(mesh::AbstractMesh;
@@ -510,9 +517,13 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         end
         lgroups
     end
-    pnode_to_node,pnode_to_master = periodic_nodes(mesh)
-    plnode_to_lnode = filter(i->i!=0,node_to_lnode[pnode_to_node])
-    plnode_to_lmaster = filter(i->i!=0,node_to_lnode[pnode_to_master])
+    node_owner = periodic_nodes(mesh)
+    if isa(node_owner,AbstractRange)
+        nlnodes = length(lnode_to_node)
+        lnode_lowner = 1:nlnodes
+    else
+        lnode_lowner = node_to_lnode[node_owner[lnode_to_node]]
+    end
     if normals(mesh) !== nothing
         lnormals = normals(mesh)[lface_to_face_mesh[end]]
     else
@@ -525,7 +536,7 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
         face_reference_id = lface_to_refid_mesh,
         reference_spaces = reference_spaces(mesh),
         group_faces = lgroups_mesh,
-        periodic_nodes = (plnode_to_lnode=>plnode_to_lmaster),
+        periodic_nodes = lnode_lowner,
         normals = lnormals,
         kwargs...
         )
@@ -586,13 +597,13 @@ function mesh(;
         face_nodes,
         face_reference_id = default_face_reference_id(face_nodes),
         reference_spaces,
-        periodic_nodes = default_periodic_nodes(reference_spaces),
+        periodic_nodes = default_periodic_nodes(node_coordinates),
         group_faces = default_group_faces(reference_spaces),
         normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
         is_cell_complex = Val(false),
-        node_local_indices = PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
-        face_local_indices = [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
+        node_local_indices = nothing, #PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
+        face_local_indices = nothing, # [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
     )
     mesh = Mesh(
@@ -636,6 +647,8 @@ struct MeshWorkspace{A} <: AbstractType
     topology::A
 end
 
+topology(mw::MeshWorkspace) = mw.topology
+
 function replace_node_coordinates(mesh::Mesh,node_coordinates)
     Mesh(
          node_coordinates,
@@ -653,15 +666,74 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
         )
 end
 
+function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
+    @assert mesh.workspace === nothing
+    Mesh(
+         mesh.node_coordinates,
+         mesh.face_nodes,
+         mesh.face_reference_id,
+         mesh.reference_spaces,
+         periodic_nodes,
+         mesh.group_faces,
+         mesh.normals,
+         mesh.geometry_names,
+         mesh.is_cell_complex,
+         mesh.node_local_indices,
+         mesh.face_local_indices,
+         mesh.workspace,
+        )
+end
+
 node_coordinates(m::Mesh) = m.node_coordinates
-face_nodes(m::Mesh) = m.face_nodes
-face_nodes(m::Mesh,d) = m.face_nodes[val_parameter(d)+1]
-face_reference_id(m::Mesh) = m.face_reference_id
-face_reference_id(m::Mesh,d) = m.face_reference_id[val_parameter(d)+1]
+function face_nodes(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        face_nodes(m,d)
+    end
+    m.face_nodes
+end
+function face_nodes(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.face_nodes,d+1)
+        create_face_nodes!(m,d)
+    end
+    m.face_nodes[d+1]
+end
+
+function face_reference_id(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        face_reference_id(m,d)
+    end
+    m.face_reference_id
+end
+function face_reference_id(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.face_reference_id,d+1)
+        create_face_reference_id!(m,d)
+    end
+    m.face_reference_id[d+1]
+end
+
 reference_spaces(m::Mesh) = m.reference_spaces
 reference_spaces(m::Mesh,d) = m.reference_spaces[val_parameter(d)+1]
-group_faces(m::Mesh) = m.group_faces
-group_faces(m::Mesh,d) = m.group_faces[val_parameter(d)+1]
+function group_faces(m::Mesh)
+    D = num_dims(m)
+    # This loop is only needed to pre-compute things
+    for d in 0:D
+        group_faces(m,d)
+    end
+    m.group_faces
+end
+function group_faces(m::Mesh,vd)
+    d = val_parameter(vd)
+    if ! isassigned(m.group_faces,d+1)
+        create_group_faces!(m,d)
+    end
+    m.group_faces[d+1]
+end
 periodic_nodes(m::Mesh) = m.periodic_nodes
 is_cell_complex(m::Mesh) = val_parameter(m.is_cell_complex)
 workspace(m::Mesh) = m.workspace
@@ -674,9 +746,9 @@ function default_group_faces(reference_spaces)
     [ Dict{String,Vector{int_type(options(first(last(reference_spaces))))}}() for _ in 1:length(reference_spaces) ]
 end
 
-function default_periodic_nodes(reference_spaces)
-    Ti = int_type(options(first(last(reference_spaces))))
-    Ti[] => Ti[]
+function default_periodic_nodes(node_coordinates)
+    nnodes = length(node_coordinates)
+    1:nnodes
 end
 
 function normals(m::Mesh)
@@ -735,7 +807,7 @@ function chain(;
         face_nodes,
         face_reference_id = default_face_reference_id([face_nodes])[1],
         reference_spaces,
-        periodic_nodes = default_periodic_nodes((reference_spaces,)),
+        periodic_nodes = default_periodic_nodes(node_coordinates),
         group_faces = default_group_faces((reference_spaces,))[end],
         normals = nothing,
     )
@@ -851,7 +923,7 @@ end
 
 function mesh_space(mesh::AbstractMesh,D)
     num_dims = Val(val_parameter(D))
-    domain = GT.mesh_domain(mesh;num_dims)
+    domain = GT.domain(mesh,num_dims)
     MeshSpace(num_dims,domain)
 end
 
@@ -1145,7 +1217,7 @@ function scatter_faces(f,mesh_main,face_partition)
         part_dface_nodes = scatter(part_dface_nodes_main)
         part_dface_nodes_2 = map(v->convert(typeof(a),v),part_dface_nodes)
         PVector(part_dface_nodes_2,face_partition[d])
-    end
+    end |> collect
 end
 
 function scatter_group_faces(mesh_main)
@@ -1169,7 +1241,7 @@ function scatter_group_faces(mesh_main)
             part_dfaces = scatter(dfaces_main)
             group => Partitioned(part_dfaces)
         end |> Dict
-    end
+    end |> collect
 end
 
 function scatter_topology(mesh_main,face_partition)
@@ -1250,7 +1322,8 @@ function PartitionedArrays.centralize(mesh::AbstractMesh)
 end
 
 function PartitionedArrays.centralize(w::MeshWorkspace)
-    MeshWorkspace(centralize(w.topology))
+    topology = centralize(w.topology)
+    mesh_workspace(;topology)
 end
 
 function PartitionedArrays.centralize(topo::AbstractTopology)

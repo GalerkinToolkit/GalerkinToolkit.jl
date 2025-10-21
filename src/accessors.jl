@@ -999,10 +999,13 @@ function tabulate(f,a::SpaceAccessor{AtInterior})
     sref = zero(eltype(dof_sref))
     dof = AnyIndex()
     sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
-    ndofs = max_num_reference_dofs(space)
-    dof_sphys = zeros(typeof(sphys),ndofs)
+    ndofsr = max_num_reference_dofs(space)
+    ndofs2 = max_num_face_dofs(space)
+    dof_sphys = zeros(typeof(sphys),ndofsr)
+    dof_sphys2 = zeros(typeof(sphys),ndofs2)
+    workspace = [dof_sphys,dof_sphys2]
     a2 = replace_reference_space_accessor(a,reference_space_accessor)
-    replace_workspace(f,a2,dof_sphys)
+    replace_workspace(f,a2,workspace)
 end
 
 function tabulate(f,a::SpaceAccessor{AtSkeleton})
@@ -1014,12 +1017,15 @@ function tabulate(f,a::SpaceAccessor{AtSkeleton})
     sref = zero(eltype(dof_sref))
     dof = AnyIndex()
     sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
-    ndofs = max_num_reference_dofs(space)
+    ndofsr = max_num_reference_dofs(space)
+    ndofs2 = max_num_face_dofs(space)
     max_num_faces_around = 2 # TODO
     nfa = max_num_faces_around
-    face_around_dof_sphys = [ zeros(typeof(sphys),ndofs) for _ in 1:nfa]
+    face_around_dof_sphys = [ zeros(typeof(sphys),ndofsr) for _ in 1:nfa]
+    face_around_dof_sphys2 = [ zeros(typeof(sphys),ndofs2) for _ in 1:nfa]
+    workspace = [face_around_dof_sphys,face_around_dof_sphys2]
     a2 = replace_reference_space_accessor(a,reference_space_accessor)
-    replace_workspace(f,a2,face_around_dof_sphys)
+    replace_workspace(f,a2,workspace)
 end
 
 function compute(::typeof(coordinate),a::SpaceAccessor)
@@ -1101,6 +1107,12 @@ function at_point(a::SpaceAccessor,point)
     replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
+function constraints(a::SpaceAccessor)
+    (;space,mesh_accessor) = a
+    Dface = mesh_accessor.space_accessor.location.Dface
+    C = face_constraints(space)[Dface]
+end
+
 function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
     location = mesh_accessor.space_accessor.location
     reference_space_accessor = replace_location(a.reference_space_accessor,location)
@@ -1108,11 +1120,10 @@ function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
     replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
-
 @inline function shape_functions(f,a::SpaceAccessor{AtInterior})
     (;space,mesh_accessor,reference_space_accessor) = a
     dof_sref = GT.shape_functions(f,reference_space_accessor)
-    dof_sphys = workspace(f,a)
+    dof_sphys, dof_sphys2 = workspace(f,a)
     ndofs = length(dof_sref)
     dof = 0
     while dof < ndofs
@@ -1121,23 +1132,37 @@ end
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
-    dof_sphys
-    view(dof_sphys,1:ndofs)
+    C = GT.constraints(a)
+    s = view(dof_sphys,1:ndofs)
+    if ! isa(C,IdentityConstraints)
+        s2 = view(dof_sphys2,1:size(C,2))
+        mul!(s2,transpose(C),s)
+        s2
+    else
+        s
+    end
 end
 
 function shape_functions(f,a::SpaceAccessor{AtSkeleton})
     (;space,mesh_accessor,reference_space_accessor) = a
     face_around = mesh_accessor.space_accessor.location.face_around
     dof_sref = GT.shape_functions(f,reference_space_accessor)
-    dof_sphys = workspace(f,a)[face_around]
+    dof_sphys, dof_sphys2 = workspace(f,a)[face_around]
     ndofs = length(dof_sref)
     for dof in 1:ndofs
         sref = dof_sref[dof]
         sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
         dof_sphys[dof] = sphys
     end
-    dof_sphys
-    view(dof_sphys,1:ndofs)
+    C = GT.constraints(a)
+    s = view(dof_sphys,1:ndofs)
+    if ! isa(C,IdentityConstraints)
+        s2 = view(dof_sphys2,1:size(C,2))
+        mul!(s2,transpose(C),s)
+        s2
+    else
+        s
+    end
 end
 
 function map_shape_function(::typeof(GT.value),space,dof,mesh_accessor,sref)
