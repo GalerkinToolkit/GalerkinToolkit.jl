@@ -120,6 +120,29 @@ end
 workspace(topo::MeshTopology) = topo.workspace
 complexify_glue(topo::MeshTopology) = complexify_glue(workspace(topo))
 
+function replace_periodic_nodes(workspace::MeshTopologyWorkspace,periodic_nodes)
+    complexify_glue = replace_periodic_nodes(workspace.complexify_glue,periodic_nodes)
+    MeshTopologyWorkspace(complexify_glue)
+end
+
+function replace_periodic_nodes(topo::MeshTopology,periodic_nodes)
+    D = num_dims(topo)
+    Ti = eltype(eltype(eltype(topo.face_incidence)))
+    periodic_faces = Vector{Vector{Ti}}(undef,D+1)
+    periodic_faces_permutation_id = Vector{Vector{Ti}}(undef,D+1)
+    workspace = replace_periodic_nodes(GT.workspace(topo),periodic_nodes)
+    MeshTopology(
+                 topo.face_incidence,
+                 topo.face_reference_id,
+                 topo.face_permutation_ids,
+                 topo.reference_topologies,
+                 periodic_faces,
+                 periodic_faces_permutation_id,
+                 workspace,
+                )
+end
+
+
 function mesh_topology(;
         face_incidence,
         face_reference_id,
@@ -926,6 +949,19 @@ struct ComplexifyGlue{A,B,C,D,E,F,G} <: AbstractType
     parent_face_vertices::E
     vertex_parent_faces::F
     parent_face_face::G
+end
+
+function replace_periodic_nodes(glue::ComplexifyGlue,periodic_nodes)
+    parent_mesh = replace_periodic_nodes(glue.parent_mesh,periodic_nodes)
+    ComplexifyGlue(
+                   glue.num_faces,
+                   parent_mesh,
+                   glue.vertex_node_ref,
+                   glue.node_vertex_ref,
+                   glue.parent_face_vertices,
+                   glue.vertex_parent_faces,
+                   glue.parent_face_face,
+                  )
 end
 
 #function complexify_glue(workspace::MeshWorkspace)

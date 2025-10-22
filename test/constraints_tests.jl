@@ -5,7 +5,25 @@ using LinearAlgebra
 using Test
 using ForwardDiff
 import LinearSolve
+using StaticArrays
 
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = GT.cartesian_mesh(domain,cells)
+Γ_master = GT.boundary(mesh;group_names=["1-face-1"])
+u = GT.analytical_field(x->SVector(1-x[1],1.0),Γ_master)
+periodic_nodes = GT.find_periodic_nodes(u)
+
+mesh = GT.replace_periodic_nodes(mesh,periodic_nodes)
+Ω = GT.interior(mesh)
+
+order = 2
+g = GT.analytical_field(x->2*x[1]-1,Γ_master)
+V = GT.lagrange_space(Ω,order;periodic=true,periodic_scaling=g)
+
+C = GT.constraints(V)
+
+display(C)
 
 function laplace_solve(V)
     ∇ = ForwardDiff.gradient
@@ -29,7 +47,7 @@ mesh = GT.mesh_from_msh(msh;periodic=Val(true))
 
 order = 1
 Ω = GT.interior(mesh)
-V = GT.lagrange_space(Ω,order)
+V = GT.lagrange_space(Ω,order;periodic=true)
 @test isa(V,GT.ConstrainedSpace)
 C = GT.constraints(V)
 @test isa(C,GT.PeriodicConstraints)
@@ -50,7 +68,7 @@ mesh = GT.cartesian_mesh(domain,cells;periodic=(true,false))
 Γ = GT.boundary(mesh;group_names=["1-face-2"])
 
 order = 1
-V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ,periodic=true)
 @test isa(V,GT.ConstrainedSpace)
 C = GT.constraints(V)
 @test isa(C,GT.PeriodicConstraints)
@@ -83,7 +101,7 @@ mul!(a2,C,b2)
 
 laplace_solve(V)
 
-V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ,periodic_scaling=0.5)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ,periodic=true,periodic_scaling=0.5)
 
 @test isa(V,GT.ConstrainedSpace)
 C = GT.constraints(V)

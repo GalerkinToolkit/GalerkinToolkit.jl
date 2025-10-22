@@ -1667,7 +1667,7 @@ function lagrange_space(domain::AbstractDomain,order;
     tensor_size = Val(:scalar),
     workspace = nothing,
     setup = Val(true),
-    periodic = Val(is_periodic(GT.mesh(domain))),
+    periodic = Val(false),
     periodic_scaling = nothing,
     )
 
@@ -1861,7 +1861,8 @@ function node_coordinates(a::LagrangeMeshSpace)
                        GT.domain(a),
                        GT.order(a);
                        continuous = Val(GT.continuous(a)),
-                       space_type = Val(GT.space_type(a)))
+                       space_type = Val(GT.space_type(a)),
+                      )
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
     domain = GT.domain(a)
@@ -1959,12 +1960,12 @@ end
 function interpolate_impl!(
     f::AnalyticalField,
     u::DiscreteField,
-    space::Union{LagrangeFaceSpace,LagrangeMeshSpace},
-    free_or_diri::FreeOrDirichlet;location=1)
+    space::Union{LagrangeFaceSpace,LagrangeMeshSpace,MeshSpace},
+    free_or_diri::FreeOrDirichlet)#;location=1)
     fun = f.definition
     free_vals = GT.free_values(u)
     diri_vals = GT.dirichlet_values(u)
-    dirichlet_dof_location = GT.dirichlet_dof_location(space)
+    #dirichlet_dof_location = GT.dirichlet_dof_location(space)
     domain = GT.domain(space)
     @assert is_physical_domain(domain)
     node_x = node_coordinates(space)
@@ -1976,10 +1977,16 @@ function interpolate_impl!(
             x = node_x[node]
             comp_v = fun(x)
             comp_dof = node_dofs[node]
-            ncomps = length(comp_v)
+            ncomps = length(comp_dof)
             for comp in 1:ncomps
                 dof = comp_dof[comp]
-                v = comp_v[comp]
+                # hack to allow interpolation of vector-valued functions 
+                # to scalar spaces
+                if length(comp_dof) == 1
+                    v = comp_v
+                else
+                    v = comp_v[comp]
+                end
                 if dof > 0
                     if free_or_diri != DIRICHLET
                         free_vals[dof] = v
@@ -2007,7 +2014,11 @@ function interpolate_impl!(
                     ncomps = length(comp_v)
                     for comp in 1:ncomps
                         dof = comp_dof[comp]
-                        v = comp_v[comp]
+                        if length(comp_dof) == 1
+                            v = comp_v
+                        else
+                            v = comp_v[comp]
+                        end
                         if dof > 0
                             if free_or_diri != DIRICHLET
                                 free_vals[dof] = v
@@ -2044,7 +2055,11 @@ function interpolate_impl!(
                         ncomps = length(comp_v)
                         for comp in 1:ncomps
                             dof = comp_dof[comp]
-                            v = comp_v[comp]
+                            if length(comp_dof) == 1
+                                v = comp_v
+                            else
+                                v = comp_v[comp]
+                            end
                             if dof > 0
                                 if free_or_diri != DIRICHLET
                                     free_vals[dof] = v

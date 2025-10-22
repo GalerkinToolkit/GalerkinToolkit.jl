@@ -1,5 +1,4 @@
 
-
 num_dims(m::AbstractMesh) = length(reference_spaces(m))-1
 num_ambient_dims(m::AbstractMesh) = length(eltype(node_coordinates(m)))
 options(m::AbstractMesh) = options(first(last(reference_spaces(m))))
@@ -653,6 +652,26 @@ end
 
 topology(mw::MeshWorkspace) = mw.topology
 
+#function update(mesh::AbstractMesh;kwargs...)
+#    allowed_kwargs = (:node_coordinates,:periodic_nodes,:workspace)
+#    @assert issubset(keys(kwargs),allowed_kwargs)
+#    if :node_coordinates ∈ keys(kwargs)
+#        mesh1 = replace_node_coordinates(mesh,kwargs[:node_coordinates])
+#    else
+#        mesh1 = mesh
+#    end
+#    if :periodic_nodes ∈ keys(kwargs)
+#        mesh2 = replace_periodic_nodes(mesh1,kwargs[:periodic_nodes])
+#    else
+#        mesh2 = mesh1
+#    end
+#    if :workspace ∈ keys(kwargs)
+#        mesh3 = replace_workspace(mesh2,kwargs[:workspace])
+#    else
+#        mesh3 = mesh2
+#    end
+#end
+
 function replace_node_coordinates(mesh::Mesh,node_coordinates)
     Mesh(
          node_coordinates,
@@ -670,8 +689,16 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
         )
 end
 
+function replace_periodic_nodes(workspace::MeshWorkspace,periodic_nodes)
+    replace_periodic_nodes(workspace.topology,periodic_nodes)
+end
+
 function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
-    @assert mesh.workspace === nothing
+    if mesh.workspace === nothing
+        workspace = nothing
+    else
+        workspace = replace_periodic_nodes(mesh.workspace,periodic_nodes)
+    end
     Mesh(
          mesh.node_coordinates,
          mesh.face_nodes,
@@ -684,7 +711,7 @@ function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
          mesh.is_cell_complex,
          mesh.node_local_indices,
          mesh.face_local_indices,
-         mesh.workspace,
+         workspace,
         )
 end
 
@@ -964,6 +991,19 @@ function face_dofs(space::MeshSpace)
     D = num_dims(space)
     face_nodes(mesh(space),D)
 end
+
+function free_dofs(space::MeshSpace)
+    nodes(mesh(space))
+end
+
+function dirichlet_dofs(space::MeshSpace)
+    Base.OneTo(0)
+end
+
+node_coordinates(space::MeshSpace) = node_coordinates(mesh(space))
+node_dofs(space::MeshSpace) = nodes(mesh(space))
+nodes(space::MeshSpace) = nodes(mesh(space))
+num_nodes(space::MeshSpace) = num_nodes(mesh(space))
 
 # PartitionedRelated
 

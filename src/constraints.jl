@@ -404,3 +404,37 @@ function LinearAlgebra.mul!(
     ldof_s
 end
 
+# helper to create a mesh with periodic nodes
+# if it does not have already
+
+function find_periodic_nodes(f::AbstractField;tol=1e-9)
+    domain = GT.domain(f)
+    mesh = GT.mesh(domain)
+    d = num_dims(domain)
+    V = GT.mesh_space(mesh,Val(d))
+    uh = GT.interpolate(f,V)
+    node_x = node_coordinates(mesh)
+    node_x2 = GT.free_values(uh)
+    faces = GT.faces(domain)
+    face_nodes = GT.face_nodes(mesh,d)
+    nnodes = num_nodes(mesh)
+    periodic_nodes = collect(1:nnodes)
+    diam = minimum(face_diameter(domain))
+    atol = diam*tol
+    for face in faces
+        nodes = face_nodes[face]
+        for node in nodes
+            x = node_x2[node]
+            # TODO quadratic complexity
+            for node2 in 1:nnodes
+                x2 = node_x[node2]
+                if norm(x-x2) < atol
+                    periodic_nodes[node2] = node
+                    break
+                end
+            end
+        end
+    end
+    periodic_nodes
+end
+
