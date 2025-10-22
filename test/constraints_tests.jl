@@ -6,9 +6,9 @@ using Test
 using ForwardDiff
 import LinearSolve
 
-const ∇ = ForwardDiff.gradient
 
 function laplace_solve(V)
+    ∇ = ForwardDiff.gradient
     Ω = GT.domain(V)
     order = GT.order(V)
     dΩ = GT.quadrature(Ω,2*order)
@@ -21,6 +21,27 @@ function laplace_solve(V)
     int = GT.∫(x->uh(x),dΩ)
     sum(int)
 end
+
+
+msh =  joinpath(@__DIR__,"..","assets","periodic.msh")
+mesh = GT.mesh_from_msh(msh;periodic=Val(true))
+@show GT.periodic_nodes(mesh)
+
+order = 1
+Ω = GT.interior(mesh)
+V = GT.lagrange_space(Ω,order)
+@test isa(V,GT.ConstrainedSpace)
+C = GT.constraints(V)
+@test isa(C,GT.PeriodicConstraints)
+
+face_C = GT.face_constraints(V)
+
+face = 4
+C = face_C[face]
+display(C)
+
+laplace_solve(V)
+
 
 domain = (0,1,0,1)
 cells = (2,2)
@@ -92,5 +113,7 @@ mul!(a2,C,b2)
 @test a2 == b
 
 laplace_solve(V)
+
+
 
 end # module
