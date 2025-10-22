@@ -13,6 +13,18 @@ struct ConstrainedSpace{A,B,C} <: AbstractSpace
     workspace::C
 end
 
+workspace(space::ConstrainedSpace) = space.workspace
+
+domain(space::ConstrainedSpace) = domain(space.parent)
+order(space::ConstrainedSpace) = order(space.parent)
+reference_spaces(space::ConstrainedSpace) = reference_spaces(space.parent)
+face_reference_id(space::ConstrainedSpace) = face_reference_id(space.parent)
+continuous(space::ConstrainedSpace) = continuous(space.parent)
+dirichlet_boundary(space::ConstrainedSpace) = dirichlet_boundary(space.parent)
+
+free_dofs(space::ConstrainedSpace) = axes(space.constraints,2)
+dirichlet_dofs(space::ConstrainedSpace) = dirichlet_dofs(space.parent)
+
 function max_num_face_dofs(space)
     max_num_reference_dofs(space)
 end

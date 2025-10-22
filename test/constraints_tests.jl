@@ -3,6 +3,24 @@ module ConstraintsTests
 import GalerkinToolkit as GT
 using LinearAlgebra
 using Test
+using ForwardDiff
+import LinearSolve
+
+const ∇ = ForwardDiff.gradient
+
+function laplace_solve(V)
+    Ω = GT.domain(V)
+    order = GT.order(V)
+    dΩ = GT.quadrature(Ω,2*order)
+    a = (u,v)->GT.∫(x->∇(u,x)⋅∇(v,x),dΩ)
+    l = 0
+    uhd = GT.zero_dirichlet_field(Float64,V)
+    p = GT.SciMLBase_LinearProblem(uhd,a,l)
+    s = LinearSolve.solve(p)
+    uh = GT.solution_field(uhd,s)
+    int = GT.∫(x->uh(x),dΩ)
+    sum(int)
+end
 
 domain = (0,1,0,1)
 cells = (2,2)
@@ -12,6 +30,7 @@ mesh = GT.cartesian_mesh(domain,cells;periodic=(true,false))
 
 order = 1
 V0 = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+@show GT.periodic_dofs(V0)
 
 C = GT.periodic_constraints(V0)
 
@@ -43,9 +62,9 @@ a2 .= 0
 mul!(a2,C,b2)
 @test a2 == b
 
-@show GT.periodic_dofs(V0)
-C = GT.periodic_constraints(V0;scaling=0.5)
+laplace_solve(V)
 
+C = GT.periodic_constraints(V0;scaling=0.5)
 
 display(C)
 
@@ -77,6 +96,6 @@ a2 .= 0
 mul!(a2,C,b2)
 @test a2 == b
 
-
+laplace_solve(V)
 
 end # module
