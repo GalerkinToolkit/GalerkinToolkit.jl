@@ -448,6 +448,8 @@ GT.interpolate_dirichlet!(u,y1)
 order = 3
 V = GT.lagrange_space(Ω,order)
 
+@show GT.workspace(V)
+
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)

@@ -1690,7 +1690,7 @@ function lagrange_space(domain::AbstractDomain,order;
         C = periodic_constraints(space2;periodic_scaling)
         space3 = constrain(space2,C)
     else
-        space3 = space
+        space3 = space2
     end
 end
 
