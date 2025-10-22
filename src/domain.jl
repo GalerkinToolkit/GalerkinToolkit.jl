@@ -189,11 +189,7 @@ function mesh(geom::UnitNCube{1})
     Tv = real_type(options(geom))
     Ti = int_type(options(geom))
     Tr = reference_int_type(options(geom))
-    geom0 = if is_unit_n_cube(geom)
-        unit_n_cube(Val(0);options=options(geom))
-    else
-        unit_simplex(Val(0);options=options(geom))
-    end
+    geom0 = unit_n_cube(Val(0);options=options(geom))
     geom1 = geom
     space0 = lagrange_space(geom0,1)
     space1 = lagrange_space(geom1,1)
@@ -371,13 +367,44 @@ is_physical_domain(geo::UnitSimplex) = true
 reference_domain(geo::UnitSimplex) = geo
 
 function mesh(geom::UnitSimplex{0})
-    cube = unit_n_cube(Val(0);options=options(geom))
-    mesh(cube)
+    Tv = real_type(options(geom))
+    Ti = int_type(options(geom))
+    Tr = reference_int_type(options(geom))
+    node_coordinates = [SVector{0,Tv}()]
+    face_nodes = [Ti[1]]
+    face_reference_id = [Tr[1]]
+    space = lagrange_space(geom,1)
+    reference_spaces = ((space,),)
+    mesh(;
+         node_coordinates,
+         face_nodes,
+         face_reference_id,
+         reference_spaces,
+         is_cell_complex = Val(true),
+        )
 end
 
 function mesh(geom::UnitSimplex{1})
-    cube = unit_n_cube(Val(1);options=options(geom))
-    mesh(cube)
+    Tv = real_type(options(geom))
+    Ti = int_type(options(geom))
+    Tr = reference_int_type(options(geom))
+    geom0 = unit_simplex(Val(0);options=options(geom))
+    geom1 = geom
+    space0 = lagrange_space(geom0,1)
+    space1 = lagrange_space(geom1,1)
+    node_coordinates = SVector{1,Tv}[(0,),(1,)]
+    face_nodes = Vector{Vector{Ti}}[[[1],[2]],[[1,2]]]
+    face_reference_id = Vector{Tr}[[1,1],[1]]
+    reference_spaces = ((space0,),(space1,))
+    normals = SVector{1,Tv}[(-1,),(1,)]
+    mesh(;
+         node_coordinates,
+         face_nodes,
+         face_reference_id,
+         reference_spaces,
+         normals,
+         is_cell_complex = Val(true),
+        )
 end
 
 function mesh(geom::UnitSimplex{2})

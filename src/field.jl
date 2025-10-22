@@ -98,14 +98,20 @@ end
 
 function discrete_field(space::AbstractSpace,free_values,dirichlet_values)
     mesh = space |> GT.mesh
-    DiscreteField(mesh,space,free_values,dirichlet_values)
+    workspace = setup_discrete_field_workspace(space,free_values,dirichlet_values)
+    DiscreteField(mesh,space,free_values,dirichlet_values,workspace)
 end
 
-struct DiscreteField{A,B,C,D} <: GT.AbstractField
+function setup_discrete_field_workspace(space,fv,dv)
+    nothing
+end
+
+struct DiscreteField{A,B,C,D,W} <: GT.AbstractField
     mesh::A
     space::B
     free_values::C
     dirichlet_values::D
+    workspace::W
 end
 
 # term is defined in compiler.jl

@@ -229,6 +229,7 @@ function mesh_from_gmsh(gmsh::Module;complexify=true)
 
     ## Setup periodic nodes
     node_to_master_node = fill(Int32(INVALID_ID),nnodes)
+    node_to_master_node .= 1:nnodes
     for (dim,tag) in entities
         tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
         for i in 1:length(nodeTags)
@@ -237,9 +238,7 @@ function mesh_from_gmsh(gmsh::Module;complexify=true)
             node_to_master_node[node] = master_node
         end
     end
-    pnode_to_node = Int32.(findall(i->i!=INVALID_ID,node_to_master_node))
-    pnode_to_master = node_to_master_node[pnode_to_node]
-    periodic_nodes = pnode_to_node => pnode_to_master
+    periodic_nodes = node_to_master_node
 
     # Setup physical groups
     my_groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
