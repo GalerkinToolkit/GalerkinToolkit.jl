@@ -14,6 +14,37 @@ using PartitionedArrays
 
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
+mesh = GT.cartesian_mesh(domain,cells_per_dir)
+
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+
+order = 1
+
+V = GT.lagrange_space(Ω,order)
+@test last(GT.periodic_dofs(V)) == GT.num_free_dofs(V)
+
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+@test last(GT.periodic_dofs(V)) == GT.num_free_dofs(V)
+
+cells_per_dir = (2,2)
+mesh = GT.cartesian_mesh(domain,cells_per_dir;periodic=(true,false))
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+
+V = GT.lagrange_space(Ω,order)
+@test length(GT.periodic_dofs(V)) == GT.num_free_dofs(V)
+
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+@test length(GT.periodic_dofs(V)) == GT.num_free_dofs(V)
+
+Γ = GT.boundary(mesh;group_names=["1-face-1"])
+
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+@show GT.periodic_dofs(V)
+
+domain = (0,1,0,1)
+cells_per_dir = (4,4)
 parts_per_dir = (2,2)
 mesh = GT.cartesian_mesh(domain,cells_per_dir)
 
@@ -417,6 +448,8 @@ GT.interpolate_dirichlet!(u,y1)
 order = 3
 V = GT.lagrange_space(Ω,order)
 
+@show GT.workspace(V)
+
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γdiri)
@@ -547,4 +580,6 @@ uh = GT.rand_field(Float64,V)
 vtk_grid(joinpath(outdir,"Vpdisc"),Ω;plot_params=(;refinement=10)) do plt
     GT.plot!(plt,uh;label="uh")
 end
+
+
 end # module

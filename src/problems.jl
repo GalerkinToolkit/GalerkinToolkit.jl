@@ -234,6 +234,12 @@ end
 
 # 1-forms
 
+function assemble_vector(n::Number,::Type{T},space;kwargs...) where T
+    @assert n == 0
+    f = v -> integral()
+    assemble_vector(f,T,space;kwargs...)
+end 
+
 function assemble_vector(f,::Type{T},space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
