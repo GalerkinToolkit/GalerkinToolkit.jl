@@ -29,14 +29,12 @@ mesh = GT.cartesian_mesh(domain,cells;periodic=(true,false))
 Γ = GT.boundary(mesh;group_names=["1-face-2"])
 
 order = 1
-V0 = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
-@show GT.periodic_dofs(V0)
-
-C = GT.periodic_constraints(V0)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
+@test isa(V,GT.ConstrainedSpace)
+C = GT.constraints(V)
+@test isa(C,GT.PeriodicConstraints)
 
 display(C)
-
-V = GT.constrain(V0,C)
 
 face_C = GT.face_constraints(V)
 
@@ -64,14 +62,11 @@ mul!(a2,C,b2)
 
 laplace_solve(V)
 
-C = GT.periodic_constraints(V0;scaling=0.5)
+V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ,periodic_scaling=0.5)
 
-display(C)
-
-V = GT.constrain(V0,C)
-
-display(GT.face_dofs(V0))
-display(GT.face_dofs(V))
+@test isa(V,GT.ConstrainedSpace)
+C = GT.constraints(V)
+@test isa(C,GT.PeriodicConstraints)
 
 face_C = GT.face_constraints(V)
 

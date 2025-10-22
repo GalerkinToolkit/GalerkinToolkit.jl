@@ -1667,6 +1667,8 @@ function lagrange_space(domain::AbstractDomain,order;
     tensor_size = Val(:scalar),
     workspace = nothing,
     setup = Val(true),
+    periodic = Val(is_periodic(GT.mesh(domain))),
+    periodic_scaling = nothing,
     )
 
     space = lagrange_mesh_space(;
@@ -1680,9 +1682,15 @@ function lagrange_space(domain::AbstractDomain,order;
                         workspace,
                        )
     if val_parameter(setup)
-        setup_space(space)
+        space2 = setup_space(space)
     else
-        space
+        space2 = space
+    end
+    if val_parameter(periodic)
+        C = periodic_constraints(space2;periodic_scaling)
+        space3 = constrain(space2,C)
+    else
+        space3 = space
     end
 end
 

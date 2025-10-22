@@ -158,17 +158,17 @@ end
 
 # Periodic
 
-function periodic_constraints(parent_space::AbstractSpace;scaling=nothing)
-    periodic_constraints_impl(parent_space,scaling)
+function periodic_constraints(parent_space::AbstractSpace;periodic_scaling=nothing)
+    periodic_constraints_impl(parent_space,periodic_scaling)
 end
 
-function periodic_constraints_impl(parent_space,scaling::Nothing)
+function periodic_constraints_impl(parent_space,periodic_scaling::Nothing)
     periodic_constraints_impl(parent_space)
 end
 
-function periodic_constraints_impl(parent_space,scaling::DiscreteField)
+function periodic_constraints_impl(parent_space,periodic_scaling::DiscreteField)
     C = periodic_constraints_impl(parent_space)
-    parent_dof_value = GT.free_values(scaling)
+    parent_dof_value = GT.free_values(periodic_scaling)
     periodic_dof_scaling = parent_dof_value[C.periodic_dof_parent_dof]
     T = eltype(parent_dof_value)
     PeriodicConstraints(
@@ -180,14 +180,14 @@ function periodic_constraints_impl(parent_space,scaling::DiscreteField)
                        )
 end
 
-function periodic_constraints_impl(parent_space,scaling::AbstractField)
-    uh = interpolate(scaling,parent_space)
+function periodic_constraints_impl(parent_space,periodic_scaling::AbstractField)
+    uh = interpolate(periodic_scaling,parent_space)
     periodic_constraints_impl(parent_space,uh)
 end
 
-function periodic_constraints_impl(parent_space,scaling::Number)
+function periodic_constraints_impl(parent_space,periodic_scaling::Number)
     C = periodic_constraints_impl(parent_space)
-    periodic_dof_scaling = Fill(scaling,length(C.periodic_dof_parent_dof))
+    periodic_dof_scaling = Fill(periodic_scaling,length(C.periodic_dof_parent_dof))
     T = eltype(periodic_dof_scaling)
     PeriodicConstraints(
                         T,
@@ -254,21 +254,21 @@ function Base.getindex(C::PeriodicConstraints,parent_dof::Integer,j::Integer)
     if free_or_periodic_dof > 0
         free_dof = free_or_periodic_dof
         parent_dof_owner = free_dof_parent_dof[free_dof]
-        scaling = T(1)
+        periodic_scaling = T(1)
     else
         periodic_dof = -free_or_periodic_dof
         parent_dof_owner = periodic_dof_parent_dof[periodic_dof]
         if periodic_dof_scaling !== nothing
-            scaling = periodic_dof_scaling[periodic_dof]
+            periodic_scaling = periodic_dof_scaling[periodic_dof]
         else
-            scaling = T(1)
+            periodic_scaling = T(1)
         end
     end
     free_dof_owner = parent_dof_free_or_periodic_dof[parent_dof_owner]
     if free_dof_owner == j
-        scaling
+        periodic_scaling
     else
-        zero(scaling)
+        zero(periodic_scaling)
     end
 end
 
@@ -395,8 +395,8 @@ function LinearAlgebra.mul!(
         free_or_periodic_dof = parent_dof_free_or_periodic_dof[parent_dof]
         if free_or_periodic_dof < 0
             periodic_dof = - free_or_periodic_dof
-            scaling = periodic_dof_scaling[periodic_dof]
-            ldof_s[ldof] = scaling*parent_ldof_s[parent_ldof]
+            periodic_scaling = periodic_dof_scaling[periodic_dof]
+            ldof_s[ldof] = periodic_scaling*parent_ldof_s[parent_ldof]
         else
             ldof_s[ldof] = parent_ldof_s[parent_ldof]
         end
