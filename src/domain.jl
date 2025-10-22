@@ -42,6 +42,7 @@ inverse_faces(geo::AbstractFaceDomain) = [1]
 faces_around(geo::AbstractFaceDomain) = nothing
 geometries(geo::AbstractFaceDomain,d) = 1:num_faces(mesh(geo),d)
 num_geometries(geo::AbstractFaceDomain,d) = length(geometries(geo,d))
+faces_around_permutation(geo::AbstractFaceDomain) = nothing
 
 function geometries(geo::AbstractFaceDomain)
     m = mesh(geo)

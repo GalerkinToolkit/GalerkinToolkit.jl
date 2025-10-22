@@ -39,23 +39,27 @@ function allocate_vector(::Type{T},space_i::AbstractSpace,domains::AbstractDomai
     fields_i = ntuple(identity,num_fields(space_i))
     for domain in domains
         nfaces = num_faces(domain)
-        field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
-        field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
-        allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free_or_diri_i,dof_map_i,field_face_nfaces_around_i)
+        #field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
+        #field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
+        field_space_acc_i = map(field_i->space_accessor(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
+        allocate_vector_barrier!(counter,nfaces,fields_i,field_space_acc_i,free_or_diri_i,dof_map_i)
     end
     alloc = allocate(counter)
     VectorAllocation(alloc,free_or_dirichlet,dof_map_i)
 end
 
-function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free_or_diri_i,map_i,field_face_nfaces_around_i)
+function allocate_vector_barrier!(counter,nfaces,fields_i,field_space_acc_i,free_or_diri_i,map_i)
     if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces
         for field_i in fields_i
-            nfaces_around_i = field_face_nfaces_around_i[field_i](face)
+            space_acc_i = field_space_acc_i[field_i]
+            space_dface_i = at_face(space_acc_i,face)
+            nfaces_around_i = num_faces_around(space_dface_i)
             for face_around_i in 1:nfaces_around_i
-                dofs_i = field_face_dofs_i[field_i](face,face_around_i)
+                space_Dface_i = at_face_around(space_dface_i,face_around_i)
+                dofs_i = GT.dofs(space_Dface_i)
                 for dof_i in dofs_i
                     if skip_dof(dof_i,free_or_diri_i)
                         continue
@@ -102,27 +106,33 @@ end
 function allocate_matrix_barrier!(counter, domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
     for domain in domains
         nfaces = num_faces(domain)
-        field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
-        field_face_dofs_j = map(field_j->dofs_accessor(GT.field(space_j,field_j),domain),fields_j)
-        field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
-        field_face_nfaces_around_j = map(field_j->num_faces_around_accesor(GT.domain(GT.field(space_j,field_j)),domain),fields_j)
-        allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
+        #field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
+        #field_face_dofs_j = map(field_j->dofs_accessor(GT.field(space_j,field_j),domain),fields_j)
+        #field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
+        #field_face_nfaces_around_j = map(field_j->num_faces_around_accesor(GT.domain(GT.field(space_j,field_j)),domain),fields_j)
+        field_space_acc_i = map(field_i->space_accessor(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
+        field_space_acc_j = map(field_j->space_accessor(GT.field(space_j,field_j),GT.quadrature(domain,0)),fields_j)
+        allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_space_acc_i,field_space_acc_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j)
     end
 end
 
-function allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_face_dofs_i,field_face_dofs_j,free_or_diri_i,free_or_diri_j,map_i,map_j,field_face_nfaces_around_i,field_face_nfaces_around_j)
+function allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_space_acc_i,field_space_acc_j,free_or_diri_i,free_or_diri_j,map_i,map_j)
     if ! do_loop(counter)
         return counter
     end
     for face in 1:nfaces 
         for field_j in fields_j 
-            nfaces_around_j = field_face_nfaces_around_j[field_j](face)
+            space_dface_j = at_face(field_space_acc_j[field_j],face)
+            nfaces_around_j = num_faces_around(space_dface_j)
             for field_i in fields_i 
-                nfaces_around_i = field_face_nfaces_around_i[field_i](face)
+                space_dface_i = at_face(field_space_acc_i[field_i],face)
+                nfaces_around_i = num_faces_around(space_dface_i)
                 for face_around_j in 1:nfaces_around_j 
-                    dofs_j = field_face_dofs_j[field_j](face,face_around_j)
+                    space_Dface_j = at_face_around(space_dface_j,face_around_j)
+                    dofs_j = GT.dofs(space_Dface_j)
                     for face_around_i in 1:nfaces_around_i 
-                        dofs_i = field_face_dofs_i[field_i](face,face_around_i)
+                        space_Dface_i = at_face_around(space_dface_i,face_around_i)
+                        dofs_i = GT.dofs(space_Dface_i)
                         for dof_j in dofs_j
                             if skip_dof(dof_j,free_or_diri_j)
                                 continue

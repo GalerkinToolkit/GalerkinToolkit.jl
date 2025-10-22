@@ -402,7 +402,16 @@ function num_faces_around(a::ReferenceSpaceAccessor)
     length(Dfaces)
 end
 
-function at_face_around(a::ReferenceSpaceAccessor,face_around_0)
+function at_face_around(a::ReferenceSpaceAccessor{AtInterior},::Nothing)
+    a
+end
+
+function at_face_around(a::ReferenceSpaceAccessor{AtInterior},face_around_0)
+    @boundscheck @assert face_around_0 == 1
+    a
+end
+
+function at_face_around(a::ReferenceSpaceAccessor{AtSkeleton},face_around_0)
     (;space,quadrature) = a
     (;d,D,dface_ldfaces) = a.workspace
     (;face,dface) = a.location
@@ -709,7 +718,8 @@ function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
     Drid_ldface_nref = map(GT.reference_spaces(mesh,D)) do refface
         GT.normals(GT.mesh(GT.domain(refface)))# TODO rename normals?
     end
-    replace_reference_normals(a,Drid_ldface_nref)
+    a1 = replace_reference_normals(a,Drid_ldface_nref)
+    tabulate(gradient,a1)
 end
 
 function coordinate end
@@ -857,10 +867,9 @@ function map_unit_normal(J,n)
     end
 end
 
-function quadrature_accessor(quadrature::AbstractQuadrature)
+function quadrature_accessor(quadrature::AbstractQuadrature,d=Val(num_dims(GT.domain(quadrature))))
     domain = GT.domain(quadrature)
     mesh = GT.mesh(domain)
-    d = Val(num_dims(domain))
     acc1 = mesh_accessor(mesh,d,quadrature)
     acc2 = tabulate(GT.value,acc1)
     acc3 = tabulate(ForwardDiff.gradient,acc2)
@@ -1064,6 +1073,13 @@ end
 
 function num_faces(a::SpaceAccessor)
     num_faces(a.mesh_accessor)
+end
+
+function at_any_index(a::SpaceAccessor)
+    mesh_accessor = at_any_index(a.mesh_accessor)
+    reference_space_accessor = at_any_index(a.reference_space_accessor)
+    a2 = replace_mesh_accessor(a,mesh_accessor)
+    replace_reference_space_accessor(a2,reference_space_accessor)
 end
 
 function at_face(a::SpaceAccessor,face)
@@ -1323,7 +1339,7 @@ function values(a::NewDiscreteFieldAccessor{AtSkeleton})
 end
 
 function tabulate(f,a::NewDiscreteFieldAccessor)
-    space_accessor = tabulate(f,aspace_accessor)
+    space_accessor = tabulate(f,a.space_accessor)
     replace_space_accessor(a,space_accessor)
 end
 
@@ -1350,7 +1366,9 @@ function field(f,a::NewDiscreteFieldAccessor)
     s = shape_functions(f,a)
     x = values(a)
     n = num_dofs(a)
-    sum(i->x[i]*s[i],1:n)
+    zi = zero(eltype(x))*zero(eltype(s))
+    z = zero(zi+zi)
+    sum(i->x[i]*s[i],1:n;init=z)
 end
 
 function weight(a::NewDiscreteFieldAccessor)
@@ -1702,34 +1720,34 @@ end
 ###    accessor(face_point_dof_b,prototype)
 ###end
 ###
-###function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
-###    d = num_dims(refdface)
-###    dof_to_f = shape_functions(refdface)
-###    boundary = refDface |> GT.domain |> GT.mesh
-###    lface_to_nodes = GT.face_nodes(boundary,d)
-###    node_to_coords = GT.node_coordinates(boundary)
-###    lface_to_lrefid = GT.face_reference_id(boundary,d)
-###    lrefid_to_lrefface = GT.reference_spaces(boundary,d)
-###    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-###    
-###    func_template = (dof_to_coeff, dof_to_f, ndofs) -> (x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs))
-###    d2c = node_to_coords[lface_to_nodes[1][ lrefid_to_perm_to_ids[lface_to_lrefid[1]][1] ]]
-###    proto = func_template(d2c, dof_to_f, length(d2c))
-###
-###    result::Vector{Vector{typeof(proto)}} = map(1:GT.num_faces(boundary,d)) do lface
-###        lrefid = lface_to_lrefid[lface]
-###        nodes = lface_to_nodes[lface]
-###        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
-###        map(perm_to_ids) do ids
-###            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
-###            dof_to_coeff = similar(node_to_coords[nodes])
-###            dof_to_coeff[ids] = node_to_coords[nodes]
-###            ndofs = length(dof_to_coeff)
-###            result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
-###        end
-###    end
-###    return result
-###end
+function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
+    d = num_dims(refdface)
+    dof_to_f = shape_functions(refdface)
+    boundary = refDface |> GT.domain |> GT.mesh
+    lface_to_nodes = GT.face_nodes(boundary,d)
+    node_to_coords = GT.node_coordinates(boundary)
+    lface_to_lrefid = GT.face_reference_id(boundary,d)
+    lrefid_to_lrefface = GT.reference_spaces(boundary,d)
+    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+    
+    func_template = (dof_to_coeff, dof_to_f, ndofs) -> (x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs))
+    d2c = node_to_coords[lface_to_nodes[1][ lrefid_to_perm_to_ids[lface_to_lrefid[1]][1] ]]
+    proto = func_template(d2c, dof_to_f, length(d2c))
+
+    result::Vector{Vector{typeof(proto)}} = map(1:GT.num_faces(boundary,d)) do lface
+        lrefid = lface_to_lrefid[lface]
+        nodes = lface_to_nodes[lface]
+        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+        map(perm_to_ids) do ids
+            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
+            dof_to_coeff = similar(node_to_coords[nodes])
+            dof_to_coeff[ids] = node_to_coords[nodes]
+            ndofs = length(dof_to_coeff)
+            result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
+        end
+    end
+    return result
+end
 ###
 ###function inv_map(f,x0)
 ###    function pseudo_inverse_if_not_square(J)

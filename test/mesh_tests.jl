@@ -45,16 +45,15 @@ degree = 2
 q = GT.quadrature(domain,degree)
 q = GT.node_quadrature(domain)
 
-face_point_x = GT.coordinate_accessor(q)
-#@code_warntype GT.coordinate_accessor(q)
-face_point_J = GT.jacobian_accessor(q)
-face_point_dV = GT.weight_accessor(q)
-
 face = 2
 point = 1
-x = face_point_x(face)(point)
-J = face_point_J(face)(point)
-dV = face_point_dV(face)(point,J)
+q_faces = GT.each_face(q)
+q_points = GT.each_point(q_faces[face])
+q_point = q_points[point]
+
+x = GT.coordinate(q_point)
+J = GT.jacobian(q_point)
+dV = GT.weight(q_point)
 
 face_nodes = Vector{Ti}[[1,2,3,4]]
 face_reference_id = Tr[1]

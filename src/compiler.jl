@@ -707,7 +707,10 @@ end
 
 function prototype_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     (f,uh,domain,face,face_around) = map(prototype,dependencies(parent))
-    prototype(discrete_field_accessor(f,uh,quadrature))
+    uh_acc = field_accessor(uh,quadrature;tabulate=(f,))
+    uh_point = at_any_index(uh_acc)
+    field(f,uh_point)
+    #prototype(discrete_field_accessor(f,uh,quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:DiscreteFieldTerm})
@@ -721,9 +724,13 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    mesh_acc = :(quadrature_accessor($quadrature, $(Val(D))))
+    mesh_acc = :(quadrature_accessor($quadrature,Val($D)))
     mesh_ready = :(at_point(at_face_around(at_face($mesh_acc,$face),$the_face_around),$point))
-    :(ifelse($face_around == $the_face_around && $field == $the_field,shape_functions($f,at_point(at_face_around(at_face(space_accessor($space,$mesh_acc),$face),$the_face_around),$mesh_ready))[$dof],zero(eltype(shape_functions($f,at_any_index(space_accessor($space,$domain)))))))
+    z = :(zero(eltype(shape_functions($f,at_any_index(tabulate($f,space_accessor($space,$mesh_acc)))))))
+    mask = :($face_around == $the_face_around && $field == $the_field)
+    space_acc = :(tabulate($f,space_accessor($space,$mesh_acc)))
+    sfun = :(shape_functions($f,at_point(at_face_around(at_face($space_acc,$face),$the_face_around),$mesh_ready))[$dof])
+    :(ifelse($mask,$sfun,$z))
 end
 
 #function expression(term::TabulatedTerm{<:FormArgumentTerm})
@@ -737,7 +744,8 @@ end
 function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     form_arg = parent
     (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
-    :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
+    :(field($f,at_point(at_face_around(at_face(tabulate($f,field_accessor($uh,$quadrature)),$face),$face_around),$point)))
+    #:(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
 #function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
@@ -852,7 +860,9 @@ end
 
 function prototype_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(prototype,dependencies(parent))
-    prototype(physical_map_accessor(f,quadrature,vD))
+    acc = quadrature_accessor(quadrature,vD)
+    coordinate(f,at_any_index(acc))
+    #prototype(physical_map_accessor(f,quadrature,vD))
 end
 
 #function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
@@ -864,7 +874,8 @@ end
 
 function expression_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(expression,parent.dependencies)
-    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+    :(coordinate($f,at_point(at_face(quadrature_accessor($quadrature,$vD),$face),$point)))
+    #:(physical_map_accessor($f,$quadrature,$vD)($face)($point))
 end
 
 #
@@ -982,7 +993,11 @@ end
 #end
 
 function prototype_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
-    prototype(unit_normal_accessor(quadrature))
+    mesh = GT.mesh(domain(quadrature))
+    vD = Val(num_dims(mesh))
+    acc = compute(unit_normal,quadrature_accessor(quadrature,vD))
+    unit_normal(at_any_index(acc))
+    #prototype(unit_normal_accessor(quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:UnitNormalTerm})
@@ -994,7 +1009,9 @@ end
 
 function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     (face,the_face_around) = map(expression,dependencies(parent))
-    :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+    mesh = :(mesh(domain($quadrature)))
+    :(unit_normal(at_point(at_face_around(at_face(compute(unit_normal,quadrature_accessor($quadrature,Val(num_dims($mesh)))),$face),$the_face_around),$point)))
+    #:(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
 end
 
 #function expression(term::TabulatedTerm{<:UnitNormalTerm})
@@ -1266,11 +1283,11 @@ end
 function face_contribution_loop!(contribs,face_point_v,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
-    face_npoints = num_points_accessor(quadrature)
+    q_acc = quadrature_accessor(quadrature)
     init = zero(eltype(contribs))
     for face in 1:nfaces
         point_v = face_point_v(face)
-        npoints = face_npoints(face)
+        npoints = num_points(at_face(q_acc,face))
         z = init
         for point in 1:npoints
             z += point_v(point)
@@ -1478,12 +1495,11 @@ end
 function scalar_assembly_loop(face_point_v,init,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
-    face_npoints = num_points_accessor(quadrature)
-
     z = init
+    q_faces = each_face(quadrature)
     for face in 1:nfaces
         point_v = face_point_v(face)
-        npoints = face_npoints(face)
+        npoints = num_points(q_faces[face])
         for point in 1:npoints
             z += point_v(point)
         end
@@ -1824,7 +1840,7 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(domain)
-        face_npoints = GT.num_points_accessor($quadrature)
+        q_acc = GT.quadrature_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
         for $field_trial_symbol in 1:$nfields_trial 
@@ -1842,7 +1858,7 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
         end
 
         for $face = 1:nfaces
-            npoints = face_npoints($face)
+            npoints = num_points(at_face(q_acc,$face))
             for $field_trial_symbol in 1:$nfields_trial
                 n_faces_around_trial_zero = $field_n_faces_around_trial[$field_trial_symbol]
                 for $field_test_symbol in 1:$nfields_test
@@ -1922,7 +1938,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(domain)
-        face_npoints = GT.num_points_accessor($quadrature)
+        q_acc = GT.quadrature_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around, $nfields)
         for $field_symbol in 1:$nfields
@@ -1935,7 +1951,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
         end
 
         for $face = 1:nfaces
-            npoints = face_npoints($face)
+            npoints = num_points(at_face(q_acc,$face))
             for $field_symbol in 1:$nfields
                 n_faces_around_zero = $field_n_faces_around[$field_symbol]
                 for $face_around_symbol in 1:n_faces_around_zero
