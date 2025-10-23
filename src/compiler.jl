@@ -695,7 +695,8 @@ end
 
 function prototype_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
-    prototype(form_argument_accessor(f,space,quadrature))
+    eltype(shape_functions(f,at_any_index(tabulate(f,space_accessor(space,GT.quadrature(domain,0))))))
+    #prototype(form_argument_accessor(f,space,quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:FormArgumentTerm})
@@ -724,7 +725,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    mesh_acc = :(quadrature_accessor($quadrature,Val($D)))
+    mesh_acc = :(tabulate(gradient,mesh_accessor(mesh(GT.domain($quadrature)),Val($D),$quadrature)))
     mesh_ready = :(at_point(at_face_around(at_face($mesh_acc,$face),$the_face_around),$point))
     z = :(zero(eltype(shape_functions($f,at_any_index(tabulate($f,space_accessor($space,$mesh_acc)))))))
     mask = :($face_around == $the_face_around && $field == $the_field)
@@ -1009,7 +1010,7 @@ end
 
 function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     (face,the_face_around) = map(expression,dependencies(parent))
-    mesh = :(mesh(domain($quadrature)))
+    mesh = :(mesh(GT.domain($quadrature)))
     :(unit_normal(at_point(at_face_around(at_face(compute(unit_normal,quadrature_accessor($quadrature,Val(num_dims($mesh)))),$face),$the_face_around),$point)))
     #:(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
 end
@@ -1877,10 +1878,10 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $field_test_symbol in 1:$nfields_test
                         n_faces_around_test = $field_n_faces_around_test[$field_test_symbol]
                         for $face_around_trial_symbol in 1:n_faces_around_trial
-                            dofs_trial = GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol)
+                            dofs_trial = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol))
                             ndofs_trial = length(dofs_trial)
                             for $face_around_test_symbol in 1:n_faces_around_test
-                                dofs_test = GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol)
+                                dofs_test = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol))
                                 ndofs_test = length(dofs_test)
                                 for $dof_trial in 1:ndofs_trial
                                     for $dof_test in 1:ndofs_test
@@ -1901,8 +1902,8 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
                         for $face_around_test_symbol in 1:n_faces_around_test_contribute
                             GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
-                                                GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol),
-                                                GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol),
+                                                GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol)),
+                                                GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol)),
                                                 $field_test_symbol,$field_trial_symbol)
                         end
                     end
@@ -1963,7 +1964,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 for $field_symbol in 1:$nfields
                     n_faces_around = $field_n_faces_around[$field_symbol]
                     for $face_around_symbol in 1:n_faces_around
-                        dofs = GT.dofs_accessor(GT.field($space,$field_symbol),domain)($face,$face_around_symbol)
+                        dofs = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol))
                         ndofs = length(dofs)
                         for $dof in 1:ndofs
                             v = $term
@@ -1977,7 +1978,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 n_faces_around_contribute = $field_n_faces_around[$field_symbol]
                 for $face_around_symbol in 1:n_faces_around_contribute
                     GT.contribute!($alloc,be[$face_around_symbol, $field_symbol],
-                                        GT.dofs_accessor(GT.field($space,$field_symbol),domain)($face,$face_around_symbol),
+                                        GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol)),
                                         $field_symbol)
                 end
 

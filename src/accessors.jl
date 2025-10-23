@@ -406,6 +406,10 @@ function at_face_around(a::ReferenceSpaceAccessor{AtInterior},::Nothing)
     a
 end
 
+function at_face_around(a::ReferenceSpaceAccessor{AtSkeleton},::Nothing)
+    a
+end
+
 function at_face_around(a::ReferenceSpaceAccessor{AtInterior},face_around_0)
     @boundscheck @assert face_around_0 == 1
     a

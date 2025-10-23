@@ -148,33 +148,34 @@ dΛ = GT.measure(Λ,degree)
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
-face_point_x = GT.coordinate_accessor(dΩ)
-face_point_J = GT.jacobian_accessor(dΩ)
-face_point_dV = GT.weight_accessor(dΩ)
-face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
-face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+#face_point_x = GT.coordinate_accessor(dΩ)
+#face_point_J = GT.jacobian_accessor(dΩ)
+#face_point_dV = GT.weight_accessor(dΩ)
+#face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
+#face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+#
+#face = 3
+#point = 4
+#dof = 2
+#
+#point_x = face_point_x(face)
+#point_J = face_point_J(face)
+#point_dV = face_point_dV(face)
+#point_dof_s = face_point_dof_s(face)
+#point_dof_∇s = face_point_dof_∇s(face)
+#
+#x = point_x(point)
+#J = point_J(point)
+#point_dV(point,J)
+#
+#dof_s = point_dof_s(point)
+#dof_∇s = point_dof_∇s(point,J)
+#
+#s = dof_s(dof)
+#∇s = dof_∇s(dof)
+#@show ∇s
 
 face = 3
-point = 4
-dof = 2
-
-point_x = face_point_x(face)
-point_J = face_point_J(face)
-point_dV = face_point_dV(face)
-point_dof_s = face_point_dof_s(face)
-point_dof_∇s = face_point_dof_∇s(face)
-
-x = point_x(point)
-J = point_J(point)
-point_dV(point,J)
-
-dof_s = point_dof_s(point)
-dof_∇s = point_dof_∇s(point,J)
-
-s = dof_s(dof)
-∇s = dof_∇s(dof)
-@show ∇s
-
 T = Float64
 uh = GT.zero_field(T,V)
 ufun = x->0.0
@@ -183,7 +184,7 @@ GT.interpolate_dirichlet!(u,uh)
 #face_dirichlet! = GT.dirichlet_accessor(uh,Ω)
 #dirichlet! = face_dirichlet!(face)
 #
-face_dofs = GT.dofs_accessor(V,Ω)
+V_dΩ = GT.space_accessor(V,dΩ;tabulate=(GT.value,ForwardDiff.gradient),compute=(GT.coordinate,))
 #
 n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
 Auu = zeros(T,n,n)
@@ -191,7 +192,8 @@ bu = zeros(T,n)
 #dirichlet!(Auu,bu)
 #@show bu
 
-dofs = face_dofs(face)
+V_face = GT.at_face(V_dΩ,face)
+dofs = GT.dofs(V_face)
 
 b_alloc = GT.allocate_vector(T,V,Ω)
 GT.contribute!(b_alloc,bu,dofs)
@@ -205,33 +207,28 @@ uhd = GT.zero_dirichlet_field(T,V)
 GT.interpolate_dirichlet!(u,uhd)
 f = x -> 0
 
-face_npoints = GT.num_points_accessor(dΩ)
+#face_npoints = GT.num_points_accessor(dΩ)
 
 b_alloc = GT.allocate_vector(T,V,Ω)
 A_alloc = GT.allocate_matrix(T,V,V,Ω)
 for face in 1:GT.num_faces(Ω)
-    point_x = face_point_x(face)
-    point_J = face_point_J(face)
-    point_dV = face_point_dV(face)
-    point_dof_s = face_point_dof_s(face)
-    point_dof_∇s = face_point_dof_∇s(face)
-    npoints = face_npoints(face)
-    dofs = face_dofs(face)
-    #dirichlet! = face_dirichlet!(face)
+    V_face = GT.at_face(V_dΩ,face)
+    dofs = GT.dofs(V_face)
+    npoints = GT.num_points(V_face)
     fill!(Auu,zero(eltype(Auu)))
     fill!(bu,zero(eltype(bu)))
     for point in 1:npoints
-        x = point_x(point)
-        J = point_J(point)
-        dV = point_dV(point,J)
-        dof_s = point_dof_s(point)
-        dof_∇s = point_dof_∇s(point,J)
+        V_point = GT.at_point(V_face,point)
+        x = GT.coordinate(V_point)
+        dV = GT.weight(V_point)
+        dof_s = GT.shape_functions(GT.value,V_point)
+        dof_∇s = GT.shape_functions(ForwardDiff.gradient,V_point)
         for (i,dofi) in enumerate(dofs)
-            v = dof_s(i)
-            ∇v = dof_∇s(i)
+            v = dof_s[i]
+            ∇v = dof_∇s[i]
             bu[i] += f(x)*v*dV
             for (j,dofj) in enumerate(dofs)
-                ∇u = dof_∇s(j)
+                ∇u = dof_∇s[j]
                 Auu[i,j] += ∇v⋅∇u*dV
             end
         end
@@ -247,40 +244,34 @@ x = A\b
 
 uh = GT.solution_field(uhd,x)
 
-face_point_val = GT.discrete_field_accessor(GT.value,uh,dΩ)
+uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,),compute=(GT.coordinate,))
 
 err = Ref(0.0)
 for face in 1:GT.num_faces(Ω)
-    npoints = face_npoints(face)
-    point_x = face_point_x(face)
-    point_J = face_point_J(face)
-    point_dV = face_point_dV(face)
-    point_val = face_point_val(face)
+    uh_face = GT.at_face(uh_dΩ,face)
+    npoints = GT.num_points(uh_face)
     for point in 1:npoints
-        x = point_x(point)
-        J = point_J(point)
-        dV = point_dV(point,J)
-        val = point_val(point,J)
+        uh_point = GT.at_point(uh_face,point)
+        x = GT.coordinate(uh_point)
+        dV = GT.weight(uh_point)
+        val = GT.field(GT.value,uh_point)
         err[] += abs2(val-ufun(x))*dV
     end
 end
 tol = 1e-12
 @test sqrt(err[]) < tol
 
-face_point_val = GT.update(face_point_val;discrete_field=uh)
+#face_point_val = GT.update(face_point_val;discrete_field=uh)
 
 err = Ref(0.0)
 for face in 1:GT.num_faces(Ω)
-    npoints = face_npoints(face)
-    point_x = face_point_x(face)
-    point_J = face_point_J(face)
-    point_dV = face_point_dV(face)
-    point_val = face_point_val(face)
+    uh_face = GT.at_face(uh_dΩ,face)
+    npoints = GT.num_points(uh_face)
     for point in 1:npoints
-        x = point_x(point)
-        J = point_J(point)
-        dV = point_dV(point,J)
-        val = point_val(point,J)
+        uh_point = GT.at_point(uh_face,point)
+        x = GT.coordinate(uh_point)
+        dV = GT.weight(uh_point)
+        val = GT.field(GT.value,uh_point)
         err[] += abs2(val-ufun(x))*dV
     end
 end
