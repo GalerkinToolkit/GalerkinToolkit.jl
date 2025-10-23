@@ -240,6 +240,7 @@ function mesh_from_gmsh(gmsh::Module;complexify=true,periodic=Val(false))
             end
         end
         periodic_nodes = node_to_master_node
+        fold_periodic_nodes!(periodic_nodes)
     else
         periodic_nodes = 1:nnodes
     end

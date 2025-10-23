@@ -290,20 +290,7 @@ function periodic_faces(topo::MeshTopology,d)
             fill_periodic_faces!(topo,d)
         end
     else
-        if ! isassigned(topo.periodic_faces,d+1)
-            fill_periodic_faces!(topo,d)
-        end
-    end
-    topo.periodic_faces[d+1]
-end
-
-function periodic_faces_per(topo::MeshTopology,d)
-    if eltype(topo.periodic_faces) <: AbstractRange
-        if first(topo.periodic_faces[d+1]) < 0
-            fill_periodic_faces!(topo,d)
-        end
-    else
-        if ! isassigned(topo.periodic_faces,d+1)
+        if ! isassigned(topo.periodic_faces,d+1) || first(topo.periodic_faces[d+1]) == -1
             fill_periodic_faces!(topo,d)
         end
     end
@@ -316,7 +303,7 @@ function periodic_faces_permutation_id(topo::MeshTopology,d)
             fill_periodic_faces_permutation_id!(topo,d)
         end
     else
-        if ! isassigned(topo.periodic_faces_permutation_id,d+1)
+        if ! isassigned(topo.periodic_faces_permutation_id,d+1) || first(topo.periodic_faces_permutation_id[d+1]) == -1
             fill_periodic_faces_permutation_id!(topo,d)
         end
     end
@@ -765,17 +752,21 @@ function fill_periodic_faces!(topo,d)
         topo.periodic_faces[d+1] = 1:num_faces(topo,d)
         return
     end
+    if !isassigned(topo.periodic_faces,d+1)
+        topo.periodic_faces[d+1] = zeros(Int32,num_faces(topo,d))
+    end
+    periodic_dfaces = topo.periodic_faces[d+1]
     if d == 0
         glue = complexify_glue(topo)
         parent_mesh = glue.parent_mesh
         periodic_nodes = GT.periodic_nodes(parent_mesh)
         vertex_node = GT.vertex_node(glue)
         node_vertex = GT.node_vertex(glue)
-        topo.periodic_faces[d+1] = node_vertex[periodic_nodes[vertex_node]]
+        periodic_dfaces[:] = node_vertex[periodic_nodes[vertex_node]]
         return
     end
     nfaces = num_faces(topo,d)
-    face_owner = collect(Int32,1:nfaces)
+    periodic_dfaces .=  1:nfaces #collect(Int32,1:nfaces)
     face_vertices = face_incidence(topo,d,0)
     vertex_faces = face_incidence(topo,0,d)
     vertex_owner = periodic_faces(topo,0)
@@ -803,13 +794,12 @@ function fill_periodic_faces!(topo,d)
             end
             for face1 in faces1
                 if face1 != INVALID_ID
-                    face_owner[face] = face1
+                    periodic_dfaces[face] = face1
                     break
                 end
             end
         end
     end
-    topo.periodic_faces[d+1] = face_owner
     nothing
 end
 
@@ -818,8 +808,13 @@ function fill_periodic_faces_permutation_id!(topo,d)
         topo.periodic_faces_permutation_id[d+1] = Fill(1,num_faces(topo,d))
         return
     end
+    if !isassigned(topo.periodic_faces_permutation_id,d+1)
+        topo.periodic_faces_permutation_id[d+1] = ones(Int32,num_faces(topo,d))
+    end
+    periodic_dfaces_permutation_id = topo.periodic_faces_permutation_id[d+1]
     if d == 0
-        topo.periodic_faces_permutation_id[d+1] = fill(1,num_faces(topo,d))
+        #topo.periodic_faces_permutation_id[d+1] = fill(1,num_faces(topo,d))
+        fill!(periodic_dfaces_permutation_id,1)
         return
     end
     rid_pindex_lvert1_lvert2 = map(vertex_permutations,reference_topologies(topo,d))
@@ -827,7 +822,7 @@ function fill_periodic_faces_permutation_id!(topo,d)
     face_owner = periodic_faces(topo,d)
     face_vertices = face_incidence(topo,d,0)
     nfaces = length(face_owner)
-    face_perm_id = ones(Int32,nfaces)
+    periodic_dfaces_permutation_id = ones(Int32,nfaces)
     periodic_vertices = GT.periodic_faces(topo,0)
     for face in 1:nfaces
         owner = face_owner[face]
@@ -851,14 +846,14 @@ function fill_periodic_faces_permutation_id!(topo,d)
                 end
             end
             if found
-                face_perm_id[face] = pindex
+                periodic_dfaces_permutation_id[face] = pindex
                 pindexfound = true
                 break
             end
         end
         @assert pindexfound "Valid pindex not found"
     end
-    topo.periodic_faces_permutation_id[d+1]  = face_perm_id
+    #topo.periodic_faces_permutation_id[d+1]  = face_perm_id
     nothing
 end
 

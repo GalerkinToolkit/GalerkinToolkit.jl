@@ -2011,7 +2011,7 @@ function interpolate_impl!(
                     x = node_x[node]
                     comp_v = fun(x,name)
                     comp_dof = node_dofs[node]
-                    ncomps = length(comp_v)
+                    ncomps = length(comp_dof)
                     for comp in 1:ncomps
                         dof = comp_dof[comp]
                         if length(comp_dof) == 1

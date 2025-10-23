@@ -7,14 +7,80 @@ using ForwardDiff
 import LinearSolve
 using StaticArrays
 
+
+# How to define these periodic conditions
+# in a unit square mesh:
+# top = 0.5*bottom
+# right = 2*left
+
+# Create mesh of the unit square
+# We ask to allocate space for periodic info
 domain = (0,1,0,1)
 cells = (2,2)
-mesh = GT.cartesian_mesh(domain,cells)
+periodic = Val(true)
+mesh = GT.cartesian_mesh(domain,cells;periodic)
+
+# Define the master boundary
+# as the union of the bottom and left face
+bottom_face = "1-face-1"
+left_face = "1-face-3"
+group_names = [bottom_face,left_face]
+Γ_master = GT.boundary(mesh;group_names)
+
+# Define a map from master to worker boundary
+piecewise = Val(true)
+coupling = GT.analytical_field(Γ_master;piecewise) do x,name
+    if name === bottom_face
+        SVector(x[1],1.0) # bottom -> top
+    elseif name === left_face
+        SVector(1.0,x[2]) # left -> right
+    end
+end
+
+# Find couplings and
+# update the periodic info in the mesh
+tol = 1e-8
+GT.find_periodic_nodes!(coupling;tol)
+
+# NB. The particular computations above can also be done in one line as follows,
+# but the syntax above is more general
+# mesh = GT.cartesian_mesh(domain,cells;periodic=(true,true))
+
+# Define the scaling
+# top = 0.5*bottom
+# right = 2*left
+periodic_scaling = GT.analytical_field(Γ_master;piecewise) do x,name
+    if name === bottom_face
+        0.5
+    elseif name === left_face
+        2.0
+    end
+end
+
+# Define interpolation space
+Ω = GT.interior(mesh)
+order = 1
+V = GT.lagrange_space(Ω,order;periodic,periodic_scaling)
+C = GT.constraints(V)
+
+display(C)
+
+
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = GT.cartesian_mesh(domain,cells;periodic=(true,true))
+display(collect(enumerate(GT.periodic_nodes(mesh))))
+Ω = GT.interior(mesh)
+order = 2
+V = GT.lagrange_space(Ω,order;periodic=true)
+
+domain = (0,1,0,1)
+cells = (2,2)
+mesh = GT.cartesian_mesh(domain,cells;periodic=Val(true))
 Γ_master = GT.boundary(mesh;group_names=["1-face-1"])
 u = GT.analytical_field(x->SVector(1-x[1],1.0),Γ_master)
-periodic_nodes = GT.find_periodic_nodes(u)
+GT.find_periodic_nodes!(u)
 
-mesh = GT.replace_periodic_nodes(mesh,periodic_nodes)
 Ω = GT.interior(mesh)
 
 order = 2
@@ -24,6 +90,7 @@ V = GT.lagrange_space(Ω,order;periodic=true,periodic_scaling=g)
 C = GT.constraints(V)
 
 display(C)
+
 
 function laplace_solve(V)
     ∇ = ForwardDiff.gradient
