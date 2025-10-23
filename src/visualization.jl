@@ -480,13 +480,8 @@ function plot(mesh::AbstractMesh)
     if num_dims(mesh) == 3 && is_cell_complex(mesh) && ! is_partitioned(mesh)
         Γ = GT.domain(mesh,Val(2))
         dΓ = GT.measure(Γ,0)
-        dface_point_n = GT.unit_normal_accessor(dΓ)
-        Tn = typeof(GT.prototype(dface_point_n))
-        ndfaces = GT.num_faces(Γ)
-        dface_to_n = zeros(Tn,ndfaces)
-        for dface in 1:ndfaces
-            dface_to_n[dface] = dface_point_n(dface,1)(1)
-        end
+        D = num_dims(mesh)
+        dface_to_n = map(f->unit_normal(at_point(at_face_around(f,1),1)),GT.each_face(mesh,Val(D),dΓ;compute=(unit_normal,)))
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     elseif num_dims(mesh) == 2 && num_ambient_dims(mesh) == 3
         dface_to_n = normals(mesh)
@@ -685,13 +680,7 @@ function skin(plt::GT.Plot)
         nodedata[k] = v[newnodes]
     end
     dΓ = GT.measure(Γ,0)
-    dface_point_n = GT.unit_normal_accessor(dΓ)
-    Tn = typeof(GT.prototype(dface_point_n))
-    ndfaces = GT.num_faces(Γ)
-    face_to_n = zeros(Tn,ndfaces)
-    for dface in 1:ndfaces
-        face_to_n[dface] = dface_point_n(dface,1)(1)
-    end
+    face_to_n = map(f->unit_normal(at_point(at_face_around(f,1),1)),GT.each_face(mesh,Val(D),dΓ;compute=(unit_normal,)))
     celldata[PLOT_NORMALS_KEY] = face_to_n
     fd = map(0:d) do i
         if i == d
@@ -820,14 +809,9 @@ function plot(domain::AbstractDomain;kwargs...)
         #If we emit faces, then we need to provie the normals for shading
         Γ = domain
         dΓ = GT.measure(Γ,0)
-        parent_point_n = GT.unit_normal_accessor(dΓ)
-        Tn = typeof(GT.prototype(parent_point_n))
-        ndfaces = length(dface_to_parent)
-        dface_to_n = zeros(Tn,ndfaces)
-        for dface in 1:ndfaces
-            parent = dface_to_parent[dface]
-            dface_to_n[dface] = parent_point_n(parent,1)(1)
-        end
+        ndfaces = num_faces(Γ)
+        mesh_faces = GT.mesh_accessor(mesh,Val(num_dims(mesh)),dΓ;compute=(unit_normal,))
+        dface_to_n = map(dface-> unit_normal(at_point(at_face_around(at_face(mesh_faces,dface_to_parent[dface]),1),1)) ,1:ndfaces)
         fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
     end
     fd[d+1]["__PARENT__"] = dface_to_parent

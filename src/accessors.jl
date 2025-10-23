@@ -971,9 +971,15 @@ end
 
 function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwargs...)
     D = num_dims(GT.domain(space))
+    d = num_dims(GT.domain(quadrature))
     mesh = GT.mesh(space)
     mesh_accessor = GT.mesh_accessor(mesh,Val(D),quadrature)
-    mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
+    #TODO this tries to replicate a happy bug in the old accessors.
+    if d <= D
+        mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
+    else
+        mesh_accessor_2 = mesh_accessor
+    end
     space_accessor(space,mesh_accessor_2;kwargs...)
 end
 
@@ -1725,6 +1731,7 @@ end
 ###end
 ###
 function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
+    D = num_dims(refDface)
     d = num_dims(refdface)
     dof_to_f = shape_functions(refdface)
     boundary = refDface |> GT.domain |> GT.mesh

@@ -1162,6 +1162,7 @@ function create_face_vertices!(topo,d)
 end
 
 function create_face_nodes!(mesh,d)
+    @assert d <= num_dims(mesh)
     topo = GT.topology(GT.workspace(mesh))
     glue = complexify_glue(GT.workspace(topo))
     (;parent_mesh,) = glue

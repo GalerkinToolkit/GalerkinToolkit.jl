@@ -725,7 +725,7 @@ function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    mesh_acc = :(tabulate(gradient,mesh_accessor(mesh(GT.domain($quadrature)),Val($D),$quadrature)))
+    mesh_acc = :(tabulate(gradient,mesh_accessor(mesh(domain($quadrature)),Val($D),$quadrature)))
     mesh_ready = :(at_point(at_face_around(at_face($mesh_acc,$face),$the_face_around),$point))
     z = :(zero(eltype(shape_functions($f,at_any_index(tabulate($f,space_accessor($space,$mesh_acc)))))))
     mask = :($face_around == $the_face_around && $field == $the_field)
@@ -1010,7 +1010,7 @@ end
 
 function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     (face,the_face_around) = map(expression,dependencies(parent))
-    mesh = :(mesh(GT.domain($quadrature)))
+    mesh = :(mesh(domain($quadrature)))
     :(unit_normal(at_point(at_face_around(at_face(compute(unit_normal,quadrature_accessor($quadrature,Val(num_dims($mesh)))),$face),$the_face_around),$point)))
     #:(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
 end
@@ -1837,10 +1837,10 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
     field_n_faces_around_test = :(($(field_n_faces_around_test...), ))
 
     assignment = quote
-        domain = GT.domain($quadrature)
+        the_domain = domain($quadrature)
         T = eltype($alloc)
         z = zero(T)
-        nfaces = GT.num_faces(domain)
+        nfaces = GT.num_faces(the_domain)
         q_acc = GT.quadrature_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
@@ -1935,10 +1935,10 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
     field_n_faces_around = :(($(field_n_faces_around...), ))
 
     assignment = quote
-        domain = GT.domain($quadrature)
+        the_domain = domain($quadrature)
         T = eltype($alloc)
         z = zero(T)
-        nfaces = GT.num_faces(domain)
+        nfaces = GT.num_faces(the_domain)
         q_acc = GT.quadrature_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around, $nfields)
