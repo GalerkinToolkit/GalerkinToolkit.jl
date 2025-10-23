@@ -788,7 +788,7 @@ end
     #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
 end
 
- function compute_jacobian(a::MeshAccessor)
+function compute_jacobian(a::MeshAccessor)
     J0 = a.workspace.jacobian
     if J0 === nothing
         return a
@@ -1169,9 +1169,13 @@ end
     end
 end
 
+function location(a::SpaceAccessor)
+    a.mesh_accessor.space_accessor.location
+end
+
 function shape_functions(f,a::SpaceAccessor{AtSkeleton})
     (;space,mesh_accessor,reference_space_accessor) = a
-    face_around = mesh_accessor.space_accessor.location.face_around
+    (;face_around) = GT.location(a)
     dof_sref = GT.shape_functions(f,reference_space_accessor)
     dof_sphys, dof_sphys2 = workspace(f,a)[face_around]
     ndofs = length(dof_sref)
@@ -1265,7 +1269,7 @@ function setup_workspace(a::NewDiscreteFieldAccessor{AtSkeleton})
     n = max_num_reference_dofs(space)
     max_num_faces_around = 2 # TODO
     m = max_num_faces_around
-    T = eltype(free_values(space))
+    T = eltype(free_values(field))
     face_around_dof_value = [zeros(T,n) for _ in 1:m]
     workspace = face_around_dof_value
     replace_workspace(a,workspace)
@@ -1305,6 +1309,10 @@ function num_dofs(a::NewDiscreteFieldAccessor)
     length(dofs(a))
 end
 
+function location(a::NewDiscreteFieldAccessor)
+    a.space_accessor.mesh_accessor.space_accessor.location
+end
+
 function values(a::NewDiscreteFieldAccessor{AtInterior})
     (;space_accessor,field,workspace) = a
     free_dof_value = free_values(field)
@@ -1330,7 +1338,7 @@ function values(a::NewDiscreteFieldAccessor{AtSkeleton})
     (;space_accessor,field,workspace) = a
     free_dof_value = free_values(field)
     diri_dof_value = dirichlet_values(field)
-    face_around = GT.face_around(a)
+    (;face_around) = GT.location(a)
     idof_value = workspace[face_around]
     dofs = GT.dofs(a)
     ndofs = length(dofs)
