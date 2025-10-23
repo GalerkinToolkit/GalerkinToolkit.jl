@@ -51,13 +51,13 @@ See also [`mesh_from_gmsh`](@ref) and [`with_gmsh`](@ref).
 
 Beginner
 """
-function mesh_from_msh(file;complexify=true,renumber=true,kwargs...)
+function mesh_from_msh(file;complexify=true,periodic=Val(false),renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
     with_gmsh(;kwargs...) do gmsh
         gmsh.open(file)
         renumber && gmsh.model.mesh.renumberNodes()
         renumber && gmsh.model.mesh.renumberElements()
-        mesh_from_gmsh(gmsh;complexify)
+        mesh_from_gmsh(gmsh;complexify,periodic)
     end
 end
 
@@ -73,7 +73,7 @@ See also [`mesh_from_msh`](@ref) and [`with_gmsh`](@ref).
 
 Beginner
 """
-function mesh_from_gmsh(gmsh::Module;complexify=true)
+function mesh_from_gmsh(gmsh::Module;complexify=true,periodic=Val(false))
     entities = gmsh.model.getEntities()
     nodeTags, coord, parametricCoord = gmsh.model.mesh.getNodes()
 
@@ -228,17 +228,21 @@ function mesh_from_gmsh(gmsh::Module;complexify=true)
     end
 
     ## Setup periodic nodes
-    node_to_master_node = fill(Int32(INVALID_ID),nnodes)
-    node_to_master_node .= 1:nnodes
-    for (dim,tag) in entities
-        tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
-        for i in 1:length(nodeTags)
-            node = nodeTags[i]
-            master_node = nodeTagsMaster[i]
-            node_to_master_node[node] = master_node
+    if val_parameter(periodic)
+        node_to_master_node = fill(Int32(INVALID_ID),nnodes)
+        node_to_master_node .= 1:nnodes
+        for (dim,tag) in entities
+            tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
+            for i in 1:length(nodeTags)
+                node = nodeTags[i]
+                master_node = nodeTagsMaster[i]
+                node_to_master_node[node] = master_node
+            end
         end
+        periodic_nodes = node_to_master_node
+    else
+        periodic_nodes = 1:nnodes
     end
-    periodic_nodes = node_to_master_node
 
     # Setup physical groups
     my_groups = [ Dict{String,Vector{Int32}}() for d in 0:D]
