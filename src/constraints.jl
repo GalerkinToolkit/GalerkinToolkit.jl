@@ -419,7 +419,8 @@ function find_periodic_nodes(f::AbstractField;tol=1e-9)
     face_nodes = GT.face_nodes(mesh,d)
     nnodes = num_nodes(mesh)
     periodic_nodes = collect(1:nnodes)
-    diam = minimum(face_diameter(domain))
+    face_diam = map(GT.diameter,each_face(quadrature(domain,0)))
+    diam = minimum(face_diam)
     atol = diam*tol
     for face in faces
         nodes = face_nodes[face]

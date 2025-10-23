@@ -1581,15 +1581,15 @@ function complexify(refface::LagrangeFaceSpace)
             reference_quadratures=rid_to_refqua,
             face_reference_id = face_to_rid
            )
-        face_point_x = coordinate_accessor(quadrature)
-        face_npoints = num_points_accessor(quadrature)
+
         nfaces = num_faces(mesh,d)
         dface_to_nodes = Vector{Vector{Ti}}(undef,nfaces)
+        q_faces = each_face(quadrature)
         for face in 1:nfaces
-            npoints = face_npoints(face)
-            point_x = face_point_x(face)
-            x_mapped = map(1:npoints) do point
-                x = point_x(point)
+            q_face = q_faces[face]
+            q_points = each_point(q_face)
+            x_mapped = map(q_points) do q_point
+                x = coordinate(q_point)
                 round_coord(x)
             end
             my_nodes = indexin(x_mapped,node_coordinates_mapped)

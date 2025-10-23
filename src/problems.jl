@@ -135,10 +135,11 @@ function sample(f,quadrature::AbstractQuadrature;kwargs...)
     term = GT.optimize(GT.term(fx,opts))
     T = typeof(GT.prototype(term))
     nfaces = num_faces(domain)
-    face_npoints = num_points_accessor(quadrature)
+    q_faces = each_face(quadrature)
     ptrs = zeros(Int32,nfaces+1)
     for face in 1:nfaces
-        ptrs[face+1] = face_npoints(face)
+        q_face = q_faces[face]
+        ptrs[face+1] = num_points(q_face)
     end
     length_to_ptrs!(ptrs)
     ndata = ptrs[end]-1

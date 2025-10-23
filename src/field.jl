@@ -476,10 +476,10 @@ function discrete_field(u::SemiDiscreteField)
 end
 
 function face_diameter_field(Ω::AbstractDomain)
-    dims = GT.face_diameter(Ω)
+    dΩ = GT.quadrature(Ω,0)
+    dims = map(diameter,each_face(dΩ))
     face_constant_field(dims,Ω)
 end
-
 
 function interpolate!(f,u::SemiDiscreteField;free_or_diri=FREE_AND_DIRICHLET)
     interpolate!(f,u.discrete_field;free_or_dirichlet)

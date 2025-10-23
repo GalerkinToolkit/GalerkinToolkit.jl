@@ -30,6 +30,7 @@ end
 
 for discretization_method in (:interior_penalty,:continuous_galerkin)
     for dirichlet_method in (:multipliers,:nitsche,:strong)
+        @show (discretization_method,dirichlet_method)
         params = Dict{Symbol,Any}()
         params[:implementation] = :automatic
         params[:mesh] = mesh
