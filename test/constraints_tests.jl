@@ -9,12 +9,11 @@ using StaticArrays
 
 domain = (0,1,0,1)
 cells = (2,2)
-mesh = GT.cartesian_mesh(domain,cells)
+mesh = GT.cartesian_mesh(domain,cells;periodic=Val(true))
 Γ_master = GT.boundary(mesh;group_names=["1-face-1"])
 u = GT.analytical_field(x->SVector(1-x[1],1.0),Γ_master)
-periodic_nodes = GT.find_periodic_nodes(u)
+GT.find_periodic_nodes!(u)
 
-mesh = GT.replace_periodic_nodes(mesh,periodic_nodes)
 Ω = GT.interior(mesh)
 
 order = 2

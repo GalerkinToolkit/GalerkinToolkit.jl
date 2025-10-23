@@ -35,7 +35,13 @@ function cartesian_mesh(
         GT.mesh(chain)
     end
     if periodic !== nothing
-        periodic_nodes = cartesian_periodic_nodes(domain,cells_per_dir,periodic)
+        if val_parameter(periodic) == true
+            periodic_nodes = collect(Int32,1:num_nodes(mesh0))
+        elseif val_parameter(periodic) == false
+            periodic_nodes = 1:num_nodes(mesh0)
+        else
+            periodic_nodes = cartesian_periodic_nodes(domain,cells_per_dir,periodic)
+        end
         mesh = replace_periodic_nodes(mesh0,periodic_nodes)
     else
         mesh = mesh0

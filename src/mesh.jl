@@ -689,6 +689,23 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
         )
 end
 
+function periodic_nodes!(mesh::Mesh,periodic_nodes)
+    if mesh.periodic_nodes !== periodic_nodes
+        copyto!(mesh.periodic_nodes,periodic_nodes)
+    end
+    # Invalidate computations made in the topology
+    D = num_dims(mesh)
+    for d in 0:D
+        if isassigned(mesh.workspace.topology.periodic_faces,d+1)
+            mesh.workspace.topology.periodic_faces[d+1][1] = -1
+        end
+        if isassigned(mesh.workspace.topology.periodic_faces_permutation_id,d+1)
+            mesh.workspace.topology.periodic_faces_permutation_id[d+1][1] = -1
+        end
+    end
+    periodic_nodes
+end
+
 function replace_periodic_nodes(workspace::MeshWorkspace,periodic_nodes)
     replace_periodic_nodes(workspace.topology,periodic_nodes)
 end
