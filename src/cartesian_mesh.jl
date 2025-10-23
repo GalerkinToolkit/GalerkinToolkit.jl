@@ -493,6 +493,7 @@ function cartesian_periodic_nodes(domain,cells,periodic)
             node_owner[node] = owner
         end
     end
+    fold_periodic_nodes!(node_owner)
     node_owner
 end
 

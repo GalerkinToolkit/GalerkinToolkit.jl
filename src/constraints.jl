@@ -74,13 +74,13 @@ function interpolate_impl!(
     space::ConstrainedSpace,
     free_or_diri::FreeOrDirichlet)
 
-    parent_space = u.parent
+    parent_space = space.parent
     xf = free_values(u)
     xd = dirichlet_values(u)
     xp = u.workspace
     u_parent = discrete_field(parent_space,xp,xd)
     interpolate_impl!(f,u_parent,parent_space,free_or_diri)
-    C = constrains(space)
+    C = constraints(space)
     free_values!(xf,C,xp)
     u
 end
@@ -426,6 +426,10 @@ function find_periodic_nodes!(f::AbstractField;tol=1e-9)
     for face in faces
         nodes = face_nodes[face]
         for node in nodes
+            #if periodic_nodes[node] != node
+            #    # Skip if the master node is not master anymore
+            #    continue
+            #end
             x = node_x2[node]
             # TODO quadratic complexity
             for node2 in 1:nnodes
@@ -437,7 +441,28 @@ function find_periodic_nodes!(f::AbstractField;tol=1e-9)
             end
         end
     end
+    fold_periodic_nodes!(periodic_nodes)
     periodic_nodes!(mesh,periodic_nodes)
+    periodic_nodes
+end
+
+function fold_periodic_nodes!(periodic_nodes)
+    nnodes = length(periodic_nodes)
+    # Fold cyclic dependencies
+    done = false
+    while ! done
+        done = true
+        for node in 1:nnodes
+            node2 = periodic_nodes[node]
+            if node != node2
+                node3 = periodic_nodes[node2]
+                if node2 != node3
+                    periodic_nodes[node] = node3
+                    done = false
+                end
+            end
+        end
+    end
     periodic_nodes
 end
 

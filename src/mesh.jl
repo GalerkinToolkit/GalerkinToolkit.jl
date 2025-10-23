@@ -1009,6 +1009,11 @@ function face_dofs(space::MeshSpace)
     face_nodes(mesh(space),D)
 end
 
+function face_nodes(space::MeshSpace)
+    D = num_dims(space)
+    face_nodes(mesh(space),D)
+end
+
 function free_dofs(space::MeshSpace)
     nodes(mesh(space))
 end
