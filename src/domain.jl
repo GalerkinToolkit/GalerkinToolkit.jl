@@ -521,10 +521,39 @@ function replace_faces_around(domain::MeshDomain,faces_around)
               )
 end
 
+
+function mesh_domain_mixdim(mesh;
+        mesh_id = objectid(mesh),
+        num_dims = Val(GT.num_dims(mesh)),
+        group_names= [ GT.group_names(mesh,d) for d in 0:val_parameter(num_dims)],
+        is_reference_domain = Val(false),
+        faces_around=nothing,
+        faces_around_permutation=nothing,
+        workspace=nothing,
+        setup = Val(true),
+    )
+    domain = MeshDomain(
+                        mesh,
+                        mesh_id,
+                        Val(val_parameter(num_dims)),
+                        group_names,
+                        Val(val_parameter(is_reference_domain)),
+                        faces_around,
+                        faces_around_permutation,
+                        workspace,
+                       )
+    if val_parameter(setup)
+        domain2 = setup_domain(domain)
+    else
+        domain2 = domain
+    end
+    domain2
+end
+
 function mesh_domain(mesh;
     mesh_id = objectid(mesh),
     num_dims = Val(GT.num_dims(mesh)),
-    group_names=GT.group_names(mesh,num_dims),
+    group_names= GT.group_names(mesh,val_parameter(num_dims)),
     is_reference_domain = Val(false),
     faces_around=nothing,
     faces_around_permutation=nothing,
@@ -532,11 +561,13 @@ function mesh_domain(mesh;
     setup = Val(true),
     )
 
+    D = val_parameter(num_dims)
+
     domain = MeshDomain(
                         mesh,
                         mesh_id,
                         Val(val_parameter(num_dims)),
-                        group_names,
+                        [[ String[] for _ in 0:(D-1) ]...,group_names],
                         Val(val_parameter(is_reference_domain)),
                         faces_around,
                         faces_around_permutation,
@@ -578,7 +609,9 @@ end
 
 mesh(a::MeshDomain) = a.mesh
 mesh_id(a::MeshDomain) = a.mesh_id
-group_names(a::MeshDomain) = a.group_names
+group_names(a::MeshDomain) = group_names(a,num_dims(a))
+group_names(a::MeshDomain,vd) = a.group_names[val_parameter(vd)+1]
+group_names(a::MeshDomain,::Colon) = a.group_names
 faces_around(a::MeshDomain) = a.faces_around
 faces_around_permutation(a::MeshDomain) = a.faces_around_permutation
 num_dims(a::MeshDomain) = GT.val_parameter(a.num_dims)
@@ -639,21 +672,25 @@ function replace_workspace(domain::MeshDomain,workspace)
               )
 end
 
-
 function faces(domain::MeshDomain)
     if workspace(domain) !== nothing
         return workspace(domain).faces
     end
+    D = num_dims(domain)
+    faces(domain,D)
+end
+
+function faces(domain::MeshDomain,vD)
+    D = val_parameter(D)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
-    D = GT.num_dims(domain)
     Dfaces = GT.face_ids(mesh,D)
     if is_partitioned(mesh)
         Dface_to_tag = pzeros(Ti,Dfaces)
     else
         Dface_to_tag = zeros(Ti,Dfaces)
     end
-    tag_to_name = GT.group_names(domain)
+    tag_to_name = GT.group_names(domain,D)
     fill!(Dface_to_tag,zero(eltype(Dface_to_tag)))
     group_faces = GT.group_faces(mesh,D)
     for (tag,name) in enumerate(tag_to_name)
@@ -689,8 +726,13 @@ function inverse_faces(domain::MeshDomain)
     if workspace(domain) !== nothing
         return workspace(domain).inverse_faces
     end
-    Ti = int_type(options(domain))
     d = num_dims(domain)
+    inverse_faces(domain,d)
+end
+
+function inverse_faces(domain::MeshDomain,vd)
+    d = val_parameter(vd)
+    Ti = int_type(options(domain))
     dfaces = GT.face_ids(mesh(domain),d)
     face_to_dface = faces(domain)
     if is_partitioned(domain)
