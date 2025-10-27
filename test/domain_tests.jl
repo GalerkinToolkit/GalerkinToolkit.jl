@@ -71,4 +71,58 @@ mesh = GT.simplexify(spx1)
 mesh = GT.simplexify(spx2)
 mesh = GT.simplexify(spx3)
 
+
+domain = (0,1,0,1)
+n = 2
+cells = (n,n)
+mesh = GT.cartesian_mesh(domain,cells)
+
+Ω = GT.interior(mesh)
+Γ = GT.boundary(Ω)
+
+@show GT.num_dims(Ω)
+@show GT.faces(Ω)
+@show GT.faces(Ω,2)
+@show GT.faces(Ω,1)
+@show GT.faces(Ω,0)
+
+@show GT.num_dims(Γ)
+@show GT.faces(Γ)
+@show GT.faces(Γ,1)
+@show GT.faces(Γ,0)
+
+Ω2 = GT.closure(Ω)
+Γ2 = GT.closure(Γ)
+
+@show GT.num_dims(Ω2)
+@show GT.faces(Ω2,2)
+@show GT.faces(Ω2,1)
+@show GT.faces(Ω2,0)
+
+@show GT.num_dims(Γ2)
+@show GT.faces(Γ2)
+@show GT.faces(Γ2,1)
+@show GT.faces(Γ2,0)
+
+group_2faces = GT.group_faces(mesh,2)
+group_2faces["left"] = findall(GT.each_face(mesh,2)) do face
+    xm = sum(GT.node_coordinates(face)) / GT.num_nodes(face)
+    xm[1] < 0.5
+end
+
+Ω1 = GT.interior(mesh;group_names=["left"])
+Ω2 = GT.complement(Ω1)
+
+Λ = GT.interface(Ω2,Ω1)
+@show GT.faces_around_permutation(Λ)
+
+
+
+
+
+
+
+
+
+
 end # module

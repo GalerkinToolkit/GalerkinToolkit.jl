@@ -497,6 +497,7 @@ end
 
 
 
+# TODO add open_faces flag?
 struct MeshDomain{A,B,C,D,E,F,G,W} <: AbstractMeshDomain
     mesh::A
     mesh_id::B
@@ -517,6 +518,19 @@ function replace_faces_around(domain::MeshDomain,faces_around)
                domain.is_reference_domain,
                faces_around,
                domain.faces_around_permutation,
+               domain.workspace
+              )
+end
+
+function replace_faces_around_permutation(domain::MeshDomain,faces_around_permutation)
+    MeshDomain(
+               domain.mesh,
+               domain.mesh_id,
+               domain.num_dims,
+               domain.group_names,
+               domain.is_reference_domain,
+               domain.faces_around,
+               faces_around_permutation,
                domain.workspace
               )
 end
@@ -612,6 +626,7 @@ mesh_id(a::MeshDomain) = a.mesh_id
 group_names(a::MeshDomain) = group_names(a,num_dims(a))
 group_names(a::MeshDomain,vd) = a.group_names[val_parameter(vd)+1]
 group_names(a::MeshDomain,::Colon) = a.group_names
+group_names(a::MeshDomain,r::AbstractVector) = a.group_names[r .+ 1]
 faces_around(a::MeshDomain) = a.faces_around
 faces_around_permutation(a::MeshDomain) = a.faces_around_permutation
 num_dims(a::MeshDomain) = GT.val_parameter(a.num_dims)
@@ -672,6 +687,19 @@ function replace_workspace(domain::MeshDomain,workspace)
               )
 end
 
+function replace_group_names(domain::MeshDomain,group_names)
+    MeshDomain(
+               domain.mesh,
+               domain.mesh_id,
+               domain.num_dims,
+               group_names,
+               domain.is_reference_domain,
+               domain.faces_around,
+               domain.faces_around_permutation,
+               domain.workspace
+              )
+end
+
 function faces(domain::MeshDomain)
     if workspace(domain) !== nothing
         return workspace(domain).faces
@@ -681,7 +709,7 @@ function faces(domain::MeshDomain)
 end
 
 function faces(domain::MeshDomain,vD)
-    D = val_parameter(D)
+    D = val_parameter(vD)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
     Dfaces = GT.face_ids(mesh,D)
@@ -753,4 +781,154 @@ end
 
 is_partitioned(a::AbstractDomain) = is_partitioned(mesh(a))
 
+
+## Domain algebra
+
+# TODO think how faces_around and faces_around_permutation should be treated.
+#function Base.union(a::AbstractDomain,b::AbstractDomain)
+#    Da = num_dims(a)
+#    Db = num_dims(b)
+#    Dmin = min(Da,Db)
+#    D = max(Da,Db)
+#    group_names_min = map(union,GT.group_names(a,d),GT.group_names(b,d),0:Dmin)
+#    if Dmin == Da
+#        group_names = [group_names_min...,group_names(b,(Dmin+1):Db)...]
+#    else
+#        group_names = [group_names_min...,group_names(a,(Dmin+1):Da)...]
+#    end
+#    @assert D = length(group_names)
+#    mesh = GT.mesh(a)
+#
+#    c0 = mesh_domain_mixdim(mesh;
+#                       num_dims = Val(D),
+#                       group_names,
+#                       is_reference_domain=Val(is_reference_domain(a)),
+#                      )
+#
+#    if faces_around(a) !== nothing && faces_around(b) !== nothing
+#        nfaces = num_faces(c0)
+#        Dface_face = GT.inverse_faces(c0)
+#        faces_around = zeros(Int32,nfaces)
+#        faces_around_a = GT.faces_around(a)
+#        faces_around_b = GT.faces_around(b)
+#        for (face_b,Dface) in enumerate(GT.faces(b))
+#            face = Dface_face[Dface]
+#            if face > 0
+#                faces_around[face] = faces_around_b[face_b]
+#            end
+#        end
+#        for (face_a,Dface) in enumerate(GT.faces(a))
+#            face = Dface_face[Dface]
+#            if face > 0
+#                faces_around[face] = faces_around_a[face_a]
+#            end
+#        end
+#    else
+#        faces_around = nothing
+#    end
+#    if faces_around_permutation(a) !== nothing && faces_around_permutation(b) !== nothing
+#        nfaces = num_faces(c0)
+#        Dface_face = GT.inverse_faces(c0)
+#        faces_around_permutation = Vector{T}(undef,nfaces)
+#        faces_around_permutation_a = GT.faces_around_permutation(a)
+#        faces_around_permutation_b = GT.faces_around_permutation(b)
+#        for (face_b,Dface) in enumerate(GT.faces(b))
+#            face = Dface_face[Dface]
+#            if face > 0
+#                faces_around[face] = faces_around_permutation_b[face_b]
+#            end
+#        end
+#        for (face_a,Dface) in enumerate(GT.faces(a))
+#            face = Dface_face[Dface]
+#            if face > 0
+#                faces_around[face] = faces_around_permutation_a[face_a]
+#            end
+#        end
+#    else
+#        faces_around_permutation = nothing
+#    end
+#    c1 = replace_faces_around(c0,faces_around)
+#    replace_faces_around_permutation(c1,faces_around)
+#end
+
+# TO think the relation between closure and boundary
+# allow for open/closed faces as a kwarg?
+function closure(domain::AbstractDomain;group_name="__CLOSURE_$(objectid(domain))__")
+    D = num_dims(domain)
+    mesh = GT.mesh(domain)
+    topo = GT.topology(mesh)
+    for d in 0:(D-1)
+        dface_mask = fill(false,num_faces(mesh,d)) 
+        Dface_dfaces = GT.face_incidence(topo,D,d)
+        for Dface in GT.faces(domain)
+            dfaces = Dface_dfaces[Dface]
+            for dface in dfaces
+                dface_mask[dface] = true
+            end
+        end
+        GT.group_faces(mesh,d)[group_name] = findall(dface_mask)
+    end
+    group_names = [ [ [group_name] for _ in 0:(D-1)]..., GT.group_names(domain,D)]
+    replace_group_names(domain,group_names)
+end
+
+function interface(left::AbstractDomain,right::AbstractDomain;group_name="__INTERFACE_$(objectid(domain))__")
+    D = num_dims(left)
+    d = D-1
+    mesh = GT.mesh(left)
+    topo = GT.topology(mesh)
+    Dface_dfaces = GT.face_incidence(topo,D,d)
+    ndfaces = num_faces(mesh,d)
+    dface_mask_left = zeros(Int32,ndfaces) 
+    for Dface in GT.faces(left)
+        dfaces = Dface_dfaces[Dface]
+        for dface in dfaces
+            dface_mask_left[dface] = Dface
+        end
+    end
+    dface_mask_right = zeros(Int32,ndfaces) 
+    for Dface in GT.faces(right)
+        dfaces = Dface_dfaces[Dface]
+        for dface in dfaces
+            dface_mask_right[dface] = Dface
+        end
+    end
+    dface_mask = map(tuple,dface_mask_left,dface_mask_right) 
+    face_dface = findall(mask->(mask[1] != 0 && mask[2] != 0),dface_mask)
+    GT.group_faces(mesh,d)[group_name] = face_dface
+    nfaces = length(face_dface)
+    faces_around_permutation = fill((0,0),nfaces)
+    dface_Dfaces = GT.face_incidence(topo,d,D)
+    for (face,dface) in enumerate(face_dface)
+        Dface1,Dface2 = dface_Dfaces[dface]
+        DfaceL,DfaceR = dface_mask[dface]
+        if Dface1 == DfaceL
+            perm = (1,2)
+        else
+            perm = (2,1)
+        end
+        faces_around_permutation[face] = perm
+    end
+    mesh_domain(mesh;
+                mesh_id = GT.mesh_id(left),
+                is_reference_domain = Val(is_reference_domain(left)),
+                num_dims = Val(d),
+                faces_around_permutation
+               )
+end
+
+function complement(domain::AbstractDomain;group_name="__COMPLEMENT_$(objectid(domain))__")
+    d = num_dims(domain)
+    mesh = GT.mesh(domain)
+    ndfaces = num_faces(mesh,d)
+    dface_mask = fill(true,ndfaces)
+    dface_mask[GT.faces(domain,d)] .= false
+    group_faces(mesh,d)[group_name] = findall(dface_mask)
+    mesh_domain(mesh;
+                mesh_id = GT.mesh_id(domain),
+                is_reference_domain = Val(is_reference_domain(domain)),
+                group_names=[group_name],
+                num_dims = Val(d),
+               )
+end
 
