@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761240863953,
+  "lastUpdate": 1761573354313,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -2954,6 +2954,36 @@ window.BENCHMARK_DATA = {
             "value": 870304206.5,
             "unit": "ns",
             "extra": "gctime=5592365.5\nmemory=183339132\nallocs=564069\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "00df41c379e4bb67f646f283748366ed9ed6fd5c",
+          "message": "Merge pull request #261 from GalerkinToolkit/domain\n\nTowards general algebra of domains",
+          "timestamp": "2025-10-27T14:50:23+01:00",
+          "tree_id": "51bf1b21065488f243b4060a30a6dc550787e671",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/00df41c379e4bb67f646f283748366ed9ed6fd5c"
+        },
+        "date": 1761573353184,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 1054327532,
+            "unit": "ns",
+            "extra": "gctime=11244100\nmemory=312614732\nallocs=853972\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
