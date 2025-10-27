@@ -12,6 +12,47 @@ using PartitionedArrays
 
 #using InteractiveUtils
 
+outdir = mkpath(joinpath(@__DIR__,"..","output"))
+domain = (0,1,0,1)
+n = 10
+cells_per_dir = (n,n)
+mesh = GT.cartesian_mesh(domain,cells_per_dir)
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+
+m = GT.analytical_field(x->true,Γ)
+order = 1
+V = GT.lagrange_space(Ω,order)
+mh = GT.interpolate(m,V)
+
+#display(GT.face_dofs(V))
+#display(collect(enumerate(GT.free_values(mh))))
+
+
+V2 = GT.lagrange_space(Ω,order;dirichlet_boundary=m)
+
+uh = GT.rand_field(Float64,V2)
+
+vtk_grid(joinpath(outdir,"Vvec4"),Ω) do plt
+    GT.plot!(plt,mh;label="mh")
+    GT.plot!(plt,uh;label="uh")
+end
+
+
+m = GT.analytical_field(x->SVector(false,true),Γ)
+order = 1
+V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)))
+mh = GT.interpolate(m,V)
+
+V2 = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
+
+uh = GT.rand_field(Float64,V2)
+
+vtk_grid(joinpath(outdir,"Vvec3"),Ω) do plt
+    GT.plot!(plt,mh;label="mh")
+    GT.plot!(plt,uh;label="uh")
+end
+
 domain = (0,1,0,1)
 cells_per_dir = (4,4)
 mesh = GT.cartesian_mesh(domain,cells_per_dir)
@@ -528,7 +569,6 @@ V = GT.lagrange_space(Ωref,order-1;dirichlet_boundary=Γdiri,continuous=false)
 
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
-outdir = mkpath(joinpath(@__DIR__,"..","output"))
 vtk_grid(joinpath(outdir,"omega_ref"),Ωref;plot_params=(;refinement=40)) do plt
     GT.plot!(plt,v;label="v")
     GT.plot!(plt,v2;label="v2")
@@ -552,20 +592,19 @@ GT.reference_spaces(V) # TODO why 2 reference fes?
 @test GT.workspace(V).face_dofs == GT.face_dofs(V)
 
 
-#TODO
-#order = 3
-#m = GT.analytical_field(x->SVector(false,true),Γ)
-#V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
-#
-#@test GT.workspace(V).face_dofs == GT.face_dofs(V)
-#
-#uh = GT.rand_field(Float64,V)
-#
-#vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
-#    GT.plot!(plt,uh;label="uh")
-#    GT.plot!(plt,x->uh(x)[1];label="uh1")
-#    GT.plot!(plt,x->uh(x)[2];label="uh2")
-#end
+order = 3
+m = GT.analytical_field(x->SVector(false,true),Γ)
+V = GT.lagrange_space(Ω,order;tensor_size=Val((2,)),dirichlet_boundary=m)
+
+@test GT.workspace(V).face_dofs == GT.face_dofs(V)
+
+uh = GT.rand_field(Float64,V)
+
+vtk_grid(joinpath(outdir,"Vvec"),Ω;plot_params=(;refinement=10)) do plt
+    GT.plot!(plt,uh;label="uh")
+    GT.plot!(plt,x->uh(x)[1];label="uh1")
+    GT.plot!(plt,x->uh(x)[2];label="uh2")
+end
 
 Γ1 = GT.boundary(mesh;group_names=["1-face-1"])
 Γ2 = GT.boundary(mesh;group_names=["1-face-3"])

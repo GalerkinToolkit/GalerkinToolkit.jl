@@ -50,6 +50,10 @@ workspace(space::AbstractSpace) = nothing
 
 function generate_workspace(space::AbstractSpace)
     state = generate_dof_ids(space)
+    finalize_space_workspace(state)
+end
+
+function finalize_space_workspace(state)
     face_dofs = state.Dface_to_dofs
     free_dofs = state.free_dofs
     dirichlet_dofs = state.dirichlet_dofs
@@ -522,6 +526,41 @@ function generate_dof_ids_step_2(space,state,dirichlet_boundary::AbstractDomain)
     dirichlet_dof_location = ones(Int32,ndiri)
     free_dofs = Base.OneTo(n_free_dofs)
     dirichlet_dofs = Base.OneTo(ndiri)
+    if is_periodic(mesh)
+        periodic_dofs2 = f.(periodic_dofs[first(free_and_dirichlet_dofs)])
+    else
+        periodic_dofs2 = 1:n_free_dofs
+    end
+    (;Dface_to_dofs, free_dofs, dirichlet_dofs,dirichlet_dof_location,periodic_dofs=periodic_dofs2)
+end
+
+function generate_dof_ids_step_2(space,state,q::AbstractField)
+    state2 = generate_dof_ids_step_2(space,state,nothing)
+    workspace2 = finalize_space_workspace(state2)
+    space2 = replace_workspace(space,workspace2)
+    qh = interpolate(q,space2)
+    dof_mask = GT.free_values(qh)
+    (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
+     d_to_ctype_to_ldface_to_dofs,
+     d_to_ndfaces,Dface_to_ctype,cell_to_Dface,periodic_dofs) = state
+    free_and_dirichlet_dofs = GT.partition_from_mask(i->i==false,dof_mask)
+    dof_permutation = GT.permutation(free_and_dirichlet_dofs)
+    n_free_dofs = length(first(free_and_dirichlet_dofs))
+    f = dof -> begin
+        dof2 = dof_permutation[dof]
+        T = typeof(dof2)
+        if dof2 > n_free_dofs
+            return T(n_free_dofs-dof2)
+        end
+        dof2
+    end
+    data = Dface_to_dofs.data
+    data .= f.(data)
+    ndiri = length(last(free_and_dirichlet_dofs))
+    dirichlet_dof_location = ones(Int32,ndiri)
+    free_dofs = Base.OneTo(n_free_dofs)
+    dirichlet_dofs = Base.OneTo(ndiri)
+    mesh = GT.mesh(GT.domain(space))
     if is_periodic(mesh)
         periodic_dofs2 = f.(periodic_dofs[first(free_and_dirichlet_dofs)])
     else
@@ -1971,112 +2010,159 @@ function interpolate_impl!(
     node_x = node_coordinates(space)
     node_dofs = GT.node_dofs(space)
     nnodes = num_nodes(space)
-    #TODO better handling of cases
-    if ! is_piecewise(f)
-        for node in 1:nnodes
-            x = node_x[node]
-            comp_v = fun(x)
-            comp_dof = node_dofs[node]
-            ncomps = length(comp_dof)
-            for comp in 1:ncomps
-                dof = comp_dof[comp]
-                # hack to allow interpolation of vector-valued functions 
-                # to scalar spaces
-                if length(comp_dof) == 1
-                    v = comp_v
-                else
-                    v = comp_v[comp]
-                end
-                if dof > 0
-                    if free_or_diri != DIRICHLET
-                        free_vals[dof] = v
-                    end
-                else
-                    diri_dof = -dof
-                    if free_or_diri != FREE
-                        diri_vals[diri_dof] = v
-                    end
-                end
-            end
+    names = GT.group_names(f.domain)
+    Dface_nodes = GT.face_nodes(space)
+    d = num_dims(f.domain)
+    Drid_ldface_lnodes = map(s->GT.face_nodes(s,d),GT.reference_spaces(space))
+    Dface_Drid = GT.face_reference_id(space)
+    q = GT.quadrature(f.domain,0)
+    for V_dface in GT.each_face(space,q)
+        if is_piecewise(f)
+            (;dface) = GT.location(V_dface)
+            loc = f.location[dface]
+            name = names[loc]
         end
-    else
-        if num_dims(f.domain) == num_dims(space.domain)
-            cell_nodes = GT.face_nodes(space)
-            names = GT.group_names(f.domain)
-            for cell in GT.faces(f.domain)
-                nodes = cell_nodes[cell]
-                loc = f.location[cell]
-                name = names[loc]
-                for node in nodes
-                    x = node_x[node]
+        for V_Dface in GT.each_face_around(V_dface)
+            (;Dface,ldface) = GT.location(V_Dface)
+            Drid = Dface_Drid[Dface]
+            lnodes = Drid_ldface_lnodes[Drid][ldface]
+            nodes = Dface_nodes[Dface]
+            for lnode in lnodes
+                node = nodes[lnode]
+                x = node_x[node]
+                if is_piecewise(f)
                     comp_v = fun(x,name)
-                    comp_dof = node_dofs[node]
-                    ncomps = length(comp_dof)
-                    for comp in 1:ncomps
-                        dof = comp_dof[comp]
-                        if length(comp_dof) == 1
-                            v = comp_v
-                        else
-                            v = comp_v[comp]
+                else
+                    comp_v = fun(x)
+                end
+                comp_dof = node_dofs[node]
+                ncomps = length(comp_v)
+                for comp in 1:ncomps
+                    dof = comp_dof[comp]
+                    if length(comp_dof) == 1
+                        v = comp_v
+                    else
+                        v = comp_v[comp]
+                    end
+                    if dof > 0
+                        if free_or_diri != DIRICHLET
+                            free_vals[dof] = v
                         end
-                        if dof > 0
-                            if free_or_diri != DIRICHLET
-                                free_vals[dof] = v
-                            end
-                        else
-                            diri_dof = -dof
-                            if free_or_diri != FREE
-                                diri_vals[diri_dof] = v
-                            end
+                    else
+                        diri_dof = -dof
+                        if free_or_diri != FREE
+                            diri_vals[diri_dof] = v
                         end
                     end
                 end
             end
-        else
-            Dface_nodes = GT.face_nodes(space)
-            names = GT.group_names(f.domain)
-            domain_D = space.domain
-            D = num_dims(domain_D)
-            domain_d = f.domain
-            d = num_dims(domain_d)
-            mesh = GT.mesh(domain_D)
-            topo = GT.topology(mesh)
-            dface_Dfaces = face_incidence(topo,d,D)
-            for dface in GT.faces(domain_d)
-                loc = f.location[dface]
-                name = names[loc]
-                Dfaces = dface_Dfaces[dface]
-                for Dface in Dfaces
-                    nodes = Dface_nodes[Dface]
-                    for node in nodes
-                        x = node_x[node]
-                        comp_v = fun(x,name)
-                        comp_dof = node_dofs[node]
-                        ncomps = length(comp_v)
-                        for comp in 1:ncomps
-                            dof = comp_dof[comp]
-                            if length(comp_dof) == 1
-                                v = comp_v
-                            else
-                                v = comp_v[comp]
-                            end
-                            if dof > 0
-                                if free_or_diri != DIRICHLET
-                                    free_vals[dof] = v
-                                end
-                            else
-                                diri_dof = -dof
-                                if free_or_diri != FREE
-                                    diri_vals[diri_dof] = v
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-
         end
     end
+    #if ! is_piecewise(f)
+    #    for node in 1:nnodes
+    #        x = node_x[node]
+    #        comp_v = fun(x)
+    #        comp_dof = node_dofs[node]
+    #        ncomps = length(comp_dof)
+    #        for comp in 1:ncomps
+    #            dof = comp_dof[comp]
+    #            # hack to allow interpolation of vector-valued functions 
+    #            # to scalar spaces
+    #            if length(comp_dof) == 1
+    #                v = comp_v
+    #            else
+    #                v = comp_v[comp]
+    #            end
+    #            if dof > 0
+    #                if free_or_diri != DIRICHLET
+    #                    free_vals[dof] = v
+    #                end
+    #            else
+    #                diri_dof = -dof
+    #                if free_or_diri != FREE
+    #                    diri_vals[diri_dof] = v
+    #                end
+    #            end
+    #        end
+    #    end
+    #else
+    #    if num_dims(f.domain) == num_dims(space.domain)
+    #        cell_nodes = GT.face_nodes(space)
+    #        names = GT.group_names(f.domain)
+    #        for cell in GT.faces(f.domain)
+    #            nodes = cell_nodes[cell]
+    #            loc = f.location[cell]
+    #            name = names[loc]
+    #            for node in nodes
+    #                x = node_x[node]
+    #                comp_v = fun(x,name)
+    #                comp_dof = node_dofs[node]
+    #                ncomps = length(comp_dof)
+    #                for comp in 1:ncomps
+    #                    dof = comp_dof[comp]
+    #                    if length(comp_dof) == 1
+    #                        v = comp_v
+    #                    else
+    #                        v = comp_v[comp]
+    #                    end
+    #                    if dof > 0
+    #                        if free_or_diri != DIRICHLET
+    #                            free_vals[dof] = v
+    #                        end
+    #                    else
+    #                        diri_dof = -dof
+    #                        if free_or_diri != FREE
+    #                            diri_vals[diri_dof] = v
+    #                        end
+    #                    end
+    #                end
+    #            end
+    #        end
+    #    else
+    #        Dface_nodes = GT.face_nodes(space)
+    #        names = GT.group_names(f.domain)
+    #        domain_D = space.domain
+    #        D = num_dims(domain_D)
+    #        domain_d = f.domain
+    #        d = num_dims(domain_d)
+    #        mesh = GT.mesh(domain_D)
+    #        topo = GT.topology(mesh)
+    #        dface_Dfaces = face_incidence(topo,d,D)
+    #        for dface in GT.faces(domain_d)
+    #            loc = f.location[dface]
+    #            name = names[loc]
+    #            Dfaces = dface_Dfaces[dface]
+    #            for Dface in Dfaces
+    #                nodes = Dface_nodes[Dface]
+    #                for node in nodes
+    #                    x = node_x[node]
+    #                    comp_v = fun(x,name)
+    #                    comp_dof = node_dofs[node]
+    #                    ncomps = length(comp_v)
+    #                    for comp in 1:ncomps
+    #                        dof = comp_dof[comp]
+    #                        if length(comp_dof) == 1
+    #                            v = comp_v
+    #                        else
+    #                            v = comp_v[comp]
+    #                        end
+    #                        if dof > 0
+    #                            if free_or_diri != DIRICHLET
+    #                                free_vals[dof] = v
+    #                            end
+    #                        else
+    #                            diri_dof = -dof
+    #                            if free_or_diri != FREE
+    #                                diri_vals[diri_dof] = v
+    #                            end
+    #                        end
+    #                    end
+    #                end
+    #            end
+    #        end
+
+    #    end
+    #end
     u
 end
 

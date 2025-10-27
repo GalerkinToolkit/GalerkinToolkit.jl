@@ -330,7 +330,7 @@ function interpolate(f,space::AbstractSpace;free_or_dirichlet=FREE_AND_DIRICHLET
     opts = QuantityOptions(domain,index)
     t = term(vals,opts)
     T = typeof(prototype(t))
-    u = undef_field(T,space)
+    u = zero_field(T,space)
     interpolate!(f,u;free_or_dirichlet)
     u
 end

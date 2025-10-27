@@ -350,7 +350,10 @@ function at_face(a::ReferenceSpaceAccessor{AtInterior},face)
     face_dface = GT.faces(domain)
     dface = face_dface[face]
     Dface = dface
-    replace_face_dface_Dface(a,face,dface,Dface)
+    a2 = replace_face_dface_Dface(a,face,dface,Dface)
+    face_around = 1
+    ldface = 1
+    replace_Dface_face_around_ldface(a2,Dface,face_around,ldface)
 end
 
 function at_face(a::ReferenceSpaceAccessor{AtSkeleton},face)
