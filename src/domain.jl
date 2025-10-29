@@ -159,6 +159,7 @@ is_unitary(geo::UnitNCube) = true
 is_reference_domain(geo::UnitNCube) = true
 is_physical_domain(geo::UnitNCube) = true
 reference_domain(geo::UnitNCube) = geo
+group_names(geo::UnitNCube{D}) where D = ["$D-face-1"]
 
 function bounding_box(geo::UnitNCube)
     D = num_dims(geo)
@@ -366,6 +367,7 @@ bounding_box(geo::UnitSimplex) = bounding_box(unit_n_cube(Val(num_dims(geo)),opt
 is_reference_domain(geo::UnitSimplex) = true
 is_physical_domain(geo::UnitSimplex) = true
 reference_domain(geo::UnitSimplex) = geo
+group_names(geo::UnitSimplex{D}) where D = ["$D-face-1"]
 
 function mesh(geom::UnitSimplex{0})
     Tv = real_type(options(geom))

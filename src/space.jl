@@ -1060,6 +1060,7 @@ space_type(fe::LagrangeFaceSpace) = val_parameter(fe.space_type)
 major(fe::LagrangeFaceSpace) = val_parameter(fe.major)
 tensor_size(fe::LagrangeFaceSpace) = val_parameter(fe.tensor_size)
 dirichlet_boundary(fe::LagrangeFaceSpace) = fe.dirichlet_boundary
+face_nodes(fe::LagrangeFaceSpace) = face_nodes(fe,num_dims(domain(fe)))
 
 function lib_to_user_nodes(fe::LagrangeFaceSpace)
     if val_parameter(fe.lib_to_user_nodes) === :default
@@ -2036,7 +2037,7 @@ function interpolate_impl!(
                     comp_v = fun(x)
                 end
                 comp_dof = node_dofs[node]
-                ncomps = length(comp_v)
+                ncomps = length(comp_dof)
                 for comp in 1:ncomps
                     dof = comp_dof[comp]
                     if length(comp_dof) == 1
