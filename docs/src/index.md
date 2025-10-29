@@ -36,6 +36,8 @@ Find more information about GalerkinToolkit's features and novelties in the [Int
 | [Hello, World!](@ref) |  [Poisson equation](@ref)| [p-Laplacian](@ref) |
 | ![](src_jl/fig_stokes_1.png)  |  ![](src_jl/fig_transient_heat_equation_1.gif) | ![](src_jl/fig_hello_world_dg_1.png)  |
 | [Stokes lid-driven cavity](@ref) |  [Transient heat equation](@ref) | [Discontinuous Galerkin](@ref) |
+| ![](src_jl/fig_linear_elasticity_1.png)  |   |   |
+| [Linear elasticity](@ref) |   |  |
 
 
 ## How to start

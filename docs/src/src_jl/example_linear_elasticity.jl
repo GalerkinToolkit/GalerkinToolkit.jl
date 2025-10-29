@@ -1,4 +1,4 @@
-# # Linear elasticitu
+# # Linear elasticity
 #
 # ![](fig_linear_elasticity_1.png)
 
@@ -43,7 +43,7 @@ mask = GT.analytical_field(Γ;piecewise) do x,name
 end
 
 #Create interpolation space
-order = 1
+order = 2
 tensor_size = Val((3,))
 dirichlet_boundary = mask
 V = GT.lagrange_space(Ω,order;tensor_size,dirichlet_boundary)
@@ -78,11 +78,8 @@ params = GT.analytical_field(Ω;piecewise) do x,name
 end
 
 #Definition of strain
-
-function ε(u,x)
-    ∇_at_x = ForwardDiff.jacobian(u,x)
-    as_tensor = GT.external(Tensors.Tensor{2,3},∇_at_x)
-    GT.external(Tensors.symmetric,as_tensor)
+function ε(∇u)
+    Tensors.symmetric(Tensors.Tensor{2,3}(∇u))
 end
 
 #Definition of stress from strain
@@ -94,7 +91,7 @@ end
 
 #von-Misses stress for visualization
 function σv(σ)
-    J2 = (1/2)*tr(σ*σ) - (1/6)*tr(σ)^2
+    J2 = (1/2)*tr(σ⋅σ) - (1/6)*tr(σ)^2
     sqrt(3*J2)
 end
 
@@ -103,10 +100,12 @@ degree = 2*order
 dΩ = GT.quadrature(Ω,degree)
 a = (u,v) -> begin
     GT.∫(dΩ) do x
-        ε_v_at_x = ε(v,x)
-        ε_u_at_x = ε(u,x)
-        σ_u_at_x = σ(ε_u_at_x,params)
-        GT.external(Tensors.dcontract,σ_u_at_x,σ_u_at_x)
+        ∇_v = GT.jacobian(v,x)
+        ∇_u = GT.jacobian(u,x)
+        ε_v = GT.external(ε,∇_v)
+        ε_u = GT.external(ε,∇_u)
+        σ_u = GT.external(σ,ε_u,params(x))
+        GT.external(Tensors.dcontract,σ_u,ε_v)
     end
 end
 l = 0
@@ -118,8 +117,8 @@ uh = GT.solution_field(uhd,solution)
 
 #Prepare figure
 fig = Makie.Figure()
-elevation = 0.24π
-azimuth = -0.55π
+elevation = 0.4π
+azimuth = -0.5π
 aspect = :data
 ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
 Makie.hidespines!(ax)
@@ -128,13 +127,18 @@ Makie.hidedecorations!(ax)
 #Visualze the domain warp by the displacement
 #and color by von Misses stress
 warp_by_vector = uh
-color = x->σv(σ(ε(uh,x),params))
-GT.makie_surfaces!(Ω;color,warp_by_vector)
-
+warp_scale = 30
+color = x-> begin
+    ∇_uh = GT.jacobian(uh,x)
+    ε_uh = GT.external(ε,∇_uh)
+    σ_uh = GT.external(σ,ε_uh,params(x))
+    GT.external(σv,σ_uh)
+end
+colorrange = (0.0,5e8)
+GT.makie_surfaces!(ax,Ω;color,colorrange,warp_by_vector,warp_scale)
 
 FileIO.save(joinpath(@__DIR__,"fig_linear_elasticity_1.png"),Makie.current_figure()) # hide
 nothing # hide
 
-display(Makie.current_figure())
 
 
