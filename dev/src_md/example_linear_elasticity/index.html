@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Linear elasticity · GalerkinToolkit.jl</title><meta name="title" content="Linear elasticity · GalerkinToolkit.jl"/><meta property="og:title" content="Linear elasticity · GalerkinToolkit.jl"/><meta property="twitter:title" content="Linear elasticity · GalerkinToolkit.jl"/><meta name="description" content="Documentation for GalerkinToolkit.jl."/><meta property="og:description" content="Documentation for GalerkinToolkit.jl."/><meta property="twitter:description" content="Documentation for GalerkinToolkit.jl."/><meta property="og:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_linear_elasticity/"/><meta property="twitter:url" content="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_linear_elasticity/"/><link rel="canonical" href="https://GalerkinToolkit.github.io/GalerkinToolkit.jl/src_md/example_linear_elasticity/"/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/citations.css" rel="stylesheet" type="text/css"/><link href="../../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.svg" alt="GalerkinToolkit.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">GalerkinToolkit.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><span class="tocitem">Manual</span><ul><li><a class="tocitem" href="../../manual/">Manual</a></li><li><a class="tocitem" href="../../manual/introduction/">Introduction</a></li><li><a class="tocitem" href="../manual_meshes/">Meshes</a></li><li><a class="tocitem" href="../manual_mesh_partitioning/">Mesh partitioning</a></li><li><a class="tocitem" href="../manual_domains/">Domains</a></li><li><a class="tocitem" href="../manual_interpolation/">Interpolation</a></li><li><a class="tocitem" href="../manual_visualization/">Visualization</a></li><li><a class="tocitem" href="../../manual/for_developers/">For developers</a></li></ul></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../../examples/">Examples</a></li><li><a class="tocitem" href="../example_hello_world/">Hello, World!</a></li><li><a class="tocitem" href="../example_poisson_equation/">Poisson equation</a></li><li><a class="tocitem" href="../example_p_laplacian/">p-Laplacian</a></li><li><a class="tocitem" href="../example_stokes/">Stokes lid-driven cavity</a></li><li><a class="tocitem" href="../example_transient_heat_eq/">Transient heat equation</a></li><li><a class="tocitem" href="../example_hello_world_dg/">Discontinuous Galerkin</a></li><li class="is-active"><a class="tocitem" href>Linear elasticity</a><ul class="internal"><li><a class="tocitem" href="#Problem-statement"><span>Problem statement</span></a></li><li><a class="tocitem" href="#Implementation"><span>Implementation</span></a></li></ul></li></ul></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/">Tutorials</a></li><li><a class="tocitem" href="../tutorial_intro_to_fem/">Introduction to the FEM</a></li></ul></li><li><a class="tocitem" href="../../reference/">API</a></li><li><a class="tocitem" href="../../refindex/">Index</a></li><li><a class="tocitem" href="../../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Linear elasticity</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Linear elasticity</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/docs/src/src_jl/example_linear_elasticity.jl" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Linear-elasticity"><a class="docs-heading-anchor" href="#Linear-elasticity">Linear elasticity</a><a id="Linear-elasticity-1"></a><a class="docs-heading-anchor-permalink" href="#Linear-elasticity" title="Permalink"></a></h1><p><img src="../fig_linear_elasticity_1.png" alt/></p><h2 id="Problem-statement"><a class="docs-heading-anchor" href="#Problem-statement">Problem statement</a><a id="Problem-statement-1"></a><a class="docs-heading-anchor-permalink" href="#Problem-statement" title="Permalink"></a></h2><h2 id="Implementation"><a class="docs-heading-anchor" href="#Implementation">Implementation</a><a id="Implementation-1"></a><a class="docs-heading-anchor-permalink" href="#Implementation" title="Permalink"></a></h2><pre><code class="language-julia hljs">using LinearAlgebra
+using StaticArrays
+import GalerkinToolkit as GT
+import Tensors
+import LinearSolve
+import ForwardDiff
+import GLMakie as Makie
+
+#Read the mesh file
+assets_dir = normpath(joinpath(@__DIR__,&quot;..&quot;,&quot;..&quot;,&quot;..&quot;,&quot;assets&quot;))
+msh_file = joinpath(assets_dir,&quot;solid.msh&quot;)
+mesh = GT.mesh_from_msh(msh_file)
+
+#Computational domains
+material_1 = &quot;material_1&quot;
+material_2 = &quot;material_2&quot;
+surface_1 = &quot;surface_1&quot;
+surface_2 = &quot;surface_2&quot;
+Ω = GT.interior(mesh;group_names=[material_1,material_2])
+Γ = GT.boundary(mesh;group_names=[surface_1,surface_2])
+
+#Vector-valued mask telling which components
+#of the solution on Γ are enforced
+#with Dirichlet conditions
+piecewise = Val(true)
+mask = GT.analytical_field(Γ;piecewise) do x,name
+    if name === surface_1
+        SVector(true,true,false)
+    elseif name === surface_2
+        SVector(true,true,true)
+    end
+end
+
+#Create interpolation space
+order = 2
+tensor_size = Val((3,))
+dirichlet_boundary = mask
+V = GT.lagrange_space(Ω,order;tensor_size,dirichlet_boundary)
+
+#Dirichlet displacements
+#NB. The third component on surface_1
+#will be ignored according to the mask above
+ud = GT.analytical_field(Γ;piecewise) do x,name
+    if name === surface_1
+        δ = 0.005
+        SVector(δ,0.,0.)
+    elseif name === surface_2
+        SVector(0.,0.,0.)
+    end
+end
+
+#Interpolate Dirichlet function
+uhd = GT.interpolate_dirichlet(ud,V)
+
+#Material dependent parameters
+params = GT.analytical_field(Ω;piecewise) do x,name
+    if name === material_1
+        E=70.0e9
+        ν=0.33
+    elseif name === material_2
+        E=200.0e9
+        ν=0.33
+    end
+    λ = (E*ν)/((1+ν)*(1-2*ν))
+    μ = E/(2*(1+ν))
+    (λ,μ)
+end
+
+#Definition of strain
+function ε(∇u)
+    Tensors.symmetric(Tensors.Tensor{2,3}(∇u))
+end
+
+#Definition of stress from strain
+function σ(ε,params)
+    λ = params[1]
+    μ = params[2]
+    λ*tr(ε)*one(ε) + 2*μ*ε
+end
+
+#von-Misses stress for visualization
+function σv(σ)
+    J2 = (1/2)*tr(σ⋅σ) - (1/6)*tr(σ)^2
+    sqrt(3*J2)
+end
+
+#Weak form
+degree = 2*order
+dΩ = GT.quadrature(Ω,degree)
+a = (u,v) -&gt; begin
+    GT.∫(dΩ) do x
+        ∇_v = GT.jacobian(v,x)
+        ∇_u = GT.jacobian(u,x)
+        ε_v = GT.external(ε,∇_v)
+        ε_u = GT.external(ε,∇_u)
+        σ_u = GT.external(σ,ε_u,params(x))
+        GT.external(Tensors.dcontract,σ_u,ε_v)
+    end
+end
+l = 0
+
+#Solver phase
+problem = GT.SciMLBase_LinearProblem(uhd,a,l)
+solution = LinearSolve.solve(problem)
+uh = GT.solution_field(uhd,solution)
+
+#Prepare figure
+fig = Makie.Figure()
+elevation = 0.4π
+azimuth = -0.5π
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+
+#Visualze the domain warp by the displacement
+#and color by von Misses stress
+warp_by_vector = uh
+warp_scale = 30
+color = x-&gt; begin
+    ∇_uh = GT.jacobian(uh,x)
+    ε_uh = GT.external(ε,∇_uh)
+    σ_uh = GT.external(σ,ε_uh,params(x))
+    GT.external(σv,σ_uh)
+end
+colorrange = (0.0,5e8)
+GT.makie_surfaces!(ax,Ω;color,colorrange,warp_by_vector,warp_scale)</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_hello_world_dg/">« Discontinuous Galerkin</a><a class="docs-footer-nextpage" href="../../tutorials/">Tutorials »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Thursday 30 October 2025 07:01">Thursday 30 October 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
