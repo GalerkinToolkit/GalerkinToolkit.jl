@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1761803975273,
+  "lastUpdate": 1761931486372,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -3014,6 +3014,36 @@ window.BENCHMARK_DATA = {
             "value": 897518556.5,
             "unit": "ns",
             "extra": "gctime=8601782.5\nmemory=320620228\nallocs=889592\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6eee907f5506642158351820ac8f6c7c6079c38e",
+          "message": "Merge pull request #263 from GalerkinToolkit/docs\n\nAdding new example to docs: Dirichlet conditions by Lagrange Multipliers",
+          "timestamp": "2025-10-31T18:19:08+01:00",
+          "tree_id": "d28cb38220ff27fa30a17f46fd81142f1052bd7e",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/6eee907f5506642158351820ac8f6c7c6079c38e"
+        },
+        "date": 1761931485351,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 897743464.5,
+            "unit": "ns",
+            "extra": "gctime=9152745\nmemory=320620228\nallocs=889592\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
