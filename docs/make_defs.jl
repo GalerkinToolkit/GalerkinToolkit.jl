@@ -54,6 +54,7 @@ function main(;debug=false)
     examples_pages = [
                       "example_hello_world.md",
                       "example_hello_world_dg.md",
+                      "example_hello_world_lm.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
                       "example_linear_elasticity.md",
