@@ -53,12 +53,12 @@ function main(;debug=false)
 
     examples_pages = [
                       "example_hello_world.md",
+                      "example_hello_world_dg.md",
                       "example_poisson_equation.md",
                       "example_p_laplacian.md",
+                      "example_linear_elasticity.md",
                       "example_stokes.md",
                       "example_transient_heat_eq.md",
-                      "example_hello_world_dg.md",
-                      "example_linear_elasticity.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
     examples = ["examples.md",examples_pages...]

@@ -1,4 +1,4 @@
-# # Discontinuous Galerkin
+# # Interior penalty
 #
 # ![](fig_hello_world_dg_1.png)
 #
