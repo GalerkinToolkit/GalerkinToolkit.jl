@@ -497,3 +497,38 @@ function cartesian_periodic_nodes(domain,cells,periodic)
     node_owner
 end
 
+
+function moebius_strip(cells;complexify=Val(true))
+    domain = (-1.,1.,0.0,2*pi)
+    mesh0 = cartesian_mesh(domain,cells;complexify=Val(false),boundary=Val(false))
+    #https://simple.wikipedia.org/wiki/M%C3%B6bius_strip
+    function f(x0)
+        r,θ = x0
+        θ2 = 0.5*θ
+        r2 = 0.5*0.5*r
+        t = (1+r2*cos(θ2))
+        x = t*cos(θ)
+        y = t*sin(θ)
+        z = r2*sin(θ2)
+        SVector(x,y,z)
+    end
+    x0 = GT.node_coordinates(mesh0)
+    nnodes0 = num_nodes(mesh0)
+    coupling = collect(Int32,1:nnodes0)
+    nodesx = cells[1] + 1
+    s =  (nnodes0+1) .- (1:nodesx)
+    m =  1:nodesx
+    coupling[s] = m
+    D = num_dims(mesh0)
+    face_nodes = JaggedArray(GT.face_nodes(mesh0,D))
+    face_nodes.data .= (i->coupling[i]).(face_nodes.data)
+    x = f.(x0)
+    x = x[1:(nnodes0-nodesx)]
+    mesh1 = replace_node_coordinates(mesh0,x)
+    if val_parameter(complexify)
+        mesh2 = GT.complexify(mesh1)
+    else
+        mesh2 = mesh1
+    end
+end
+
