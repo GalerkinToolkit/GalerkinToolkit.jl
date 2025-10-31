@@ -1,4 +1,4 @@
-# # Discontinuous Galerkin
+# # Interior penalty
 #
 # ![](fig_hello_world_dg_1.png)
 #
@@ -21,7 +21,6 @@
 import FileIO # hide
 using LinearAlgebra
 import GalerkinToolkit as GT
-import PartitionedSolvers as PS
 import ForwardDiff
 import GLMakie as Makie
 import LinearSolve
