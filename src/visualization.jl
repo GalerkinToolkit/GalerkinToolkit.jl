@@ -807,12 +807,14 @@ function plot(domain::AbstractDomain;kwargs...)
     dface_to_parent = glue.parent_face
     if d == 2 && num_ambient_dims(mesh) == 3
         #If we emit faces, then we need to provie the normals for shading
-        Γ = domain
-        dΓ = GT.measure(Γ,0)
-        ndfaces = num_faces(Γ)
-        mesh_faces = GT.mesh_accessor(mesh,Val(num_dims(mesh)),dΓ;compute=(unit_normal,))
-        dface_to_n = map(dface-> unit_normal(at_point(at_face_around(at_face(mesh_faces,dface_to_parent[dface]),1),1)) ,1:ndfaces)
-        fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+        if num_dims(mesh) == d+1
+            Γ = domain
+            dΓ = GT.measure(Γ,0)
+            ndfaces = num_faces(Γ)
+            mesh_faces = GT.mesh_accessor(mesh,Val(num_dims(mesh)),dΓ;compute=(unit_normal,))
+            dface_to_n = map(dface-> unit_normal(at_point(at_face_around(at_face(mesh_faces,dface_to_parent[dface]),1),1)) ,1:ndfaces)
+            fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
+        end
     end
     fd[d+1]["__PARENT__"] = dface_to_parent
     Plot(vmesh,fd,node_data,cache)
