@@ -60,6 +60,7 @@ function main(;debug=false)
                       "example_linear_elasticity.md",
                       "example_stokes.md",
                       "example_transient_heat_eq.md",
+                      "example_laplace_beltrami.md",
                      ]
     examples_pages = map(p->joinpath("src_md",p),examples_pages)
     examples = ["examples.md",examples_pages...]
