@@ -498,14 +498,14 @@ function cartesian_periodic_nodes(domain,cells,periodic)
 end
 
 
-function moebius_strip(cells;complexify=Val(true))
+function moebius_strip(cells;width=1.0,complexify=Val(true))
     domain = (-1.,1.,0.0,2*pi)
     mesh0 = cartesian_mesh(domain,cells;complexify=Val(false),boundary=Val(false))
     #https://simple.wikipedia.org/wiki/M%C3%B6bius_strip
     function f(x0)
         r,θ = x0
         θ2 = 0.5*θ
-        r2 = 0.5*0.5*r
+        r2 = 0.5*width*r
         t = (1+r2*cos(θ2))
         x = t*cos(θ)
         y = t*sin(θ)

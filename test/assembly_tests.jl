@@ -9,6 +9,35 @@ using LinearAlgebra
 using AbstractTrees
 import WriteVTK
 
+
+
+
+cells = (4,40)
+mesh = GT.moebius_strip(cells;width=0.6)
+Ω = GT.interior(mesh)
+Γ = GT.boundary(mesh)
+V = GT.lagrange_space(Ω,2;dirichlet_boundary=Γ)
+∇m = ForwardDiff.gradient
+f = GT.analytical_field(x->1,Ω)
+dΩ = GT.measure(Ω,4)
+am = (u,v) -> begin
+    GT.∫(dΩ) do x
+        ∇m(u,x)⋅∇m(v,x)
+    end
+end
+lm = (v) -> begin
+    GT.∫(dΩ) do x
+        v(x)*f(x)
+    end
+end
+uhd = GT.zero_field(Float64,V)
+p = GT.PartitionedSolvers_linear_problem(uhd,am,lm)
+sol = PS.solve(p)
+uh = GT.solution_field(uhd,sol)
+
+
+
+
 outdir = mkpath(joinpath(@__DIR__,"..","output"))
 
 Ω = GT.unit_n_cube(Val(2))
