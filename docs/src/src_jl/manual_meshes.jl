@@ -6,12 +6,71 @@
 # # Meshes
 #
 # A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
-# A mesh is a set of polygons (or polytopes in general) which we refer to as *faces* or $d$*-faces*, where $d$ is the face parametric dimension.
-# We call *vertices*, *edges*, *surfaces*, and *volumes* to faces of 0, 1, 2, and 3 dimensions respectively.  
-# Meshes also
-# include additional metadata, including *face groups* used to identify particular faces in the mesh, e.g., to impose boundary conditions.
+# This includes the discretization of computational domains as well as data to impose different types of boundary conditions.
+# It is worth noting that GalerkinToolkit is not a mesh generation library.
+# The mesh API is designed to provide the rich geometrical information needed in FE methods, rather than mesh generation.
+# Meshes are often generated with external tools and then transformed into GalerkinToolkit objects with helper functions such as [`mesh_from_gmsh`](@ref).
+# 
+# ## Definitions
 #
-# It is worth noting that GalerkinToolkit is not a mesh generation library. The mesh implementation is designed to provide the rich geometrical information needed in FE methods, rather than mesh generation. Meshes are often generated with external tools and then transformed into GalerkinToolkit objects with helper functions such as [`mesh_from_gmsh`](@ref).
+# **Mesh and physical faces**: A *mesh* $M$ in GalerkinToolkit is formally defined as set of *physical faces* embedded in the Euclidean space $\mathbb{R}^D$,
+# with $D:=\texttt{num\_ambiend\_dims}(M)$ being the number of *ambient* dimensions of mesh $M$.
+# A physical face $F\in M$ is defined as the image $\phi(\hat F)$ of a *reference face* $\hat F$ via a map $\phi: \mathbb{R}^d \rightarrow \mathbb{R}^D$.
+# The reference face $\hat F$ associated with a physical face
+# $F\in M$ is denoted as $\hat F :=\texttt{reference\_face}(F)$.
+# We call $d := \texttt{num\_dims}(F)$ the number of dimensions  of $F$ and $\hat F$,
+# whereas $D=\texttt{num\_ambient\_dims}(F)$ is the number of ambient dimensions of $F$.
+# Note that the number of dimensions $d$ and the number of ambient dimensions $D$  of a 
+# physical face $F$ might be different, namely $d\leq D$.
+# In GalerkinToolkit, a mesh might contain faces of different number of dimensions. Thus,
+# we define the number of dimensions of a mesh as the maximum number of dimensions
+# of their faces, $\texttt{num\_dims}(M) := \max_{F\in M} \texttt{num\_dims}(F)$. Note however, that the
+# number of ambient dimensions is the same for all faces in a mesh. 
+#
+# **Vertices, edges, surfaces, volumes, and $d$-faces**:  We call $d$-face a face
+# of $d$ dimensions. We call *vertices*, *edges*, *surfaces*, and *volumes* to faces of 0, 1, 2, and 3 dimensions respectively.
+#
+# **Chain**: We call  *chain* to a mesh $M$ that contains faces all of the same dimension. We denote with $\texttt{chain(M,d)}\subset M$ the
+# subset of $M$ containing all $d$-faces of $M$.
+#
+# **Reference face**: A reference $d$-face $\hat F$ is a $d$-dimensional [polytope](https://en.wikipedia.org/wiki/Polytope)
+# embedded in the Euclidian space $\mathbb{R}^d$. In particular, $\hat F$ is a segment, polygon, and a polyhedron for $d=1,2,3$ respectively.
+# For $d=0$, we define a reference face $\hat F:=\{v\}$ as a set containing the only point  $v\in\mathbb{R}^0$. For $d>0$.
+# We define the boundary $\partial\hat F$ of a reference $d$-face $\hat F$ as the union $\partial\hat F := U_{f\in \hat M_{d-1}} \bar f$,
+# where $\hat M_{d-1}$ is a set of faces of dimension $(d-1)$ and $\bar f$ is the [closure](https://en.wikipedia.org/wiki/Closure_(topology)) of a face $f$.
+# E.g., the boundary of a square is defined as the union of four segments and the boundary of a cube is defined as the union of four squares. Assuming that $\partial\hat F$ is closed, we define the reference face $\hat F$ as
+# the open subset of $\mathbb{R}^d$ with boundary $\partial\hat F$. We denote with $\texttt{chain}(\hat F,d-1)$ the set of faces $\hat M_{d-1}$ defining the boundary
+# of $\hat F$.
+# For a reference face $\hat F$, the number of dimensions $d$ coincides with the number of ambient dimensions,
+# namely $d=\texttt{num\_dims}(\hat F)=\texttt{num\_ambient\_dims}(\hat F)$.
+#
+# **Physical map**: The map $\phi$ that transforms a reference face $\hat F$ into a physical one $F$ is called the *physical map*. It is defined by means of a scalar-valued Lagrangian
+# interpolation space $\hat V$ defined on the reference face $\hat F$, which we denote as $\hat V := \texttt{reference\_space}(F)$.
+# The vector of *shape functions* and *node coordinates* of space $\hat V$ are denoted as $\texttt{shape\_functions}(\hat V)$ and
+# $\texttt{node\_coordinates}(\hat V)$ respectively. The length of these vectors is $\texttt{num\_nodes}(\hat V)$. See the [Interpolation](@ref) section for the formal definition
+# of the Lagrangian spaces, as well for the shape functions and node coordinates.
+# The physical map $\phi$ for physical face $F$ is then defined using a vector of physical node coordinates, namely $\texttt{node\_coordinates}(F)$.
+# These physical node coordinates are the prescribed images of the reference node coordinates in $\texttt{node\_coordinates}(\hat V)$.
+# The physical map is defined as follows:
+# 
+# $\phi(\hat x) := \sum_{n=1}^{N} x_n s_n(\hat x),$
+#
+# with $x_n := \texttt{node\_coordinates}(F)[n]$ being the coordinate vector of node $n$ in face $F$, $s_n := \texttt{shape\_functions}(\hat V)[n]$ the shape function of node $n$
+# in space $\hat V$, and $N:=\texttt{num\_nodes}(\hat V)$. As fore computer code, $a[i]$ denotes the $i$-th element of vector $a$.
+#
+#
+# **Face and node ids**:  In the computer code, faces and nodes are identified with integer ids.
+#
+#  **Node coordinates and face nodes**: The node coordinates of a face $F\in M$ in a mesh $M$ are defined as
+#
+#  $\texttt{node_coordinates}(F)[n] := \texttt{node_coordinates}(M)[\texttt{nodes}(F)]$
+#
+# ## Abstract mesh interface
+#
+# All types implementing meshes are subtypes of [`AbstractMesh`](@ref).
+#
+#
+#
 #
 #
 # ### Code dependencies
