@@ -498,6 +498,8 @@ function cartesian_periodic_nodes(domain,cells,periodic)
 end
 
 
+"""
+"""
 function moebius_strip(cells;width=1.0,complexify=Val(true))
     domain = (-1.,1.,0.0,2*pi)
     mesh0 = cartesian_mesh(domain,cells;complexify=Val(false),boundary=Val(false))

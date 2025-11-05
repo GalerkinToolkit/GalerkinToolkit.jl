@@ -1,4 +1,8 @@
 
+"""
+"""
+function each_face end
+
 function each_face(a::NewAbstractAccessor)
     EachFace(a)
 end
@@ -744,6 +748,8 @@ function shape_functions(a::MeshAccessor)
     shape_functions(space_accessor)
 end
 
+"""
+"""
 function diameter(a::MeshAccessor)
     nodes = GT.nodes(a)
     mesh = GT.mesh(a.space_accessor.space)

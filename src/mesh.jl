@@ -547,6 +547,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     lmesh
 end
 
+"""
+"""
 struct Mesh{A,B,C,D,E,F,G,H,I,J,K,W} <: AbstractMesh
     node_coordinates::A
     face_nodes::B
@@ -1035,6 +1037,10 @@ num_nodes(space::MeshSpace) = num_nodes(mesh(space))
 function face_ids(mesh::AbstractMesh,D)
     axes(face_reference_id(mesh,D),1)
 end
+
+"""
+"""
+function nodes end
 
 function nodes(mesh::AbstractMesh)
     axes(node_coordinates(mesh),1)

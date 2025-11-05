@@ -21,10 +21,11 @@ Beginner
 - [`mesh_from_msh`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
+- [`moebius_strip`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
 
-# Queries
+# API
 
 - [`num_dims`](@ref)
 - [`num_ambient_dims`](@ref)
