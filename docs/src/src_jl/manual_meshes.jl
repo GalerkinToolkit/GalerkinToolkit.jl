@@ -35,6 +35,39 @@
 # **Vertices, edges, surfaces, volumes, and $d$-faces**:  We call $d$-face a face
 # of $d$ dimensions. We call *vertices*, *edges*, *surfaces*, and *volumes* to faces of 0, 1, 2, and 3 dimensions respectively.
 #
+# #### Example
+#
+# We show a mesh, where the number of ambient dimensions is 3 and the number
+# of dimensions is 2. This mesh contains vertices, edges, and surfaces. We shrink
+# the mesh faces for visualization purposes.
+# Otherwise faces of hider dimensions would hide faces of lower dimensions.
+
+module Mesh04 # hide
+import GalerkinToolkit as GT
+import GLMakie as Makie
+import FileIO # hide
+
+cells = (4,40)
+mesh = GT.moebius_strip(cells;width=0.6)
+fig = Makie.Figure()
+elevation = 0.24π
+azimuth = -0.55π
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect,elevation,azimuth)
+shrink = 0.8
+shading = Makie.NoShading
+GT.makie_surfaces!(mesh;shrink,shading,dim=2)
+GT.makie_edges!(mesh;shrink,dim=1)
+GT.makie_vertices!(mesh;shrink,dim=0)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_1.png"),Makie.current_figure()) # hide
+end # hide
+nothing # hide
+
+# ![](fig_meshes_defs_1.png)
+
+#
+#
+#
 # **Chain**: We call  *chain* to a mesh $M$ that contains faces all of the same dimension. We denote with $\texttt{chain}(M,d)\subset M$ the
 # subset of $M$ containing all $d$-faces of $M$.
 #
@@ -52,6 +85,51 @@
 # $\mathbb{R}^{d-1}$. The recursion continues until one reaches reference $0$-faces, which are not defined by their boundary.
 # For a reference face $\hat F$, the number of dimensions $d$ coincides with the number of ambient dimensions,
 # namely $d=\texttt{num\_dims}(\hat F)=\texttt{num\_ambient\_dims}(\hat F)$.
+#
+
+module Meshes05 # hide
+import GalerkinToolkit as GT
+import GLMakie as Makie
+import FileIO # hide
+
+domain = (0,2,0,1,0,2)
+cells = (4,2,4)
+M = GT.cartesian_mesh(domain,cells)
+V3ref = first(GT.reference_spaces(M,3))
+M3ref = GT.mesh(V3ref)
+V2ref = first(GT.reference_spaces(M3ref,2))
+M2ref = GT.mesh(V2ref)
+V1ref = first(GT.reference_spaces(M2ref,1))
+M1ref = GT.mesh(V1ref)
+fig = Makie.Figure()
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+shrink = 0.8
+GT.makie_surfaces!(M;dim=3,shrink)
+ax = Makie.Axis3(fig[1,2];aspect)
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surfaces!(M3ref;dim=3,shrink)
+GT.makie_surfaces!(M3ref;dim=2,shrink)
+ax = Makie.Axis(fig[2,1])
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_surfaces!(M2ref;dim=2,shrink,)
+GT.makie_edges!(M2ref;dim=1,shrink)
+ax = Makie.Axis(fig[2,2])
+Makie.hidespines!(ax)
+Makie.hidedecorations!(ax)
+GT.makie_edges!(M1ref;dim=1,shrink)
+GT.makie_vertices!(M1ref;dim=0,shrink)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_2.png"),Makie.current_figure()) # hide
+end # hide
+nothing # hide
+
+
+# ![](fig_meshes_defs_2.png)
+
 #
 # **Physical map**: The map $\phi$ that transforms a reference face $\hat F$ into a physical one $F$ is called the *physical map*.
 # It is defined by means of a scalar-valued Lagrangian
@@ -296,6 +374,7 @@ face_nodes = [
     face_nodes_2]
 
 #Reference spaces
+order = 1
 vertex = GT.unit_simplex(Val(0))
 vertex1 = GT.lagrange_space(vertex,order)
 segment = GT.unit_simplex(Val(1))
@@ -319,6 +398,7 @@ mesh = GT.create_mesh(;
 #Visualize
 axis = (;aspect=Makie.DataAspect())
 shrink = 0.8
+shading = Makie.NoShading
 GT.makie_surfaces(mesh;axis,shading,shrink)
 GT.makie_edges!(mesh;dim=1,shrink)
 GT.makie_vertices!(mesh;dim=0)
@@ -366,6 +446,8 @@ chain = GT.create_chain(;
     reference_spaces)
 
 #Visualize
+axis = (;aspect=Makie.DataAspect())
+shading = Makie.NoShading
 GT.makie_surfaces(chain;axis,shading)
 GT.makie_edges!(chain;color=:black)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_1a.png"),Makie.current_figure()) # hide
