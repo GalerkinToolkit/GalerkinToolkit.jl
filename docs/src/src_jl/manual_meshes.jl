@@ -86,6 +86,12 @@ nothing # hide
 # For a reference face $\hat F$, the number of dimensions $d$ coincides with the number of ambient dimensions,
 # namely $d=\texttt{num\_dims}(\hat F)=\texttt{num\_ambient\_dims}(\hat F)$.
 #
+# #### Example
+# We show the 3-faces of a mesh $M$ (top, left).
+# We also show the reference 3-face of this mesh and the
+# 2-faces defining its boundary (top,right). Then, we repeat this
+# for the reference 2-face (bottom,left), and
+# for the reference 1-face (bottom,right).
 
 module Meshes05 # hide
 import GalerkinToolkit as GT
@@ -107,23 +113,24 @@ ax = Makie.Axis3(fig[1,1];aspect)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
 shrink = 0.8
-GT.makie_surfaces!(M;dim=3,shrink)
+GT.makie_surfaces!(ax,M;dim=3,shrink)
 ax = Makie.Axis3(fig[1,2];aspect)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surfaces!(M3ref;dim=3,shrink)
-GT.makie_surfaces!(M3ref;dim=2,shrink)
-ax = Makie.Axis(fig[2,1])
+GT.makie_surfaces!(ax,M3ref;dim=3,shrink)
+GT.makie_surfaces!(ax,M3ref;dim=2,shrink)
+aspect = Makie.DataAspect()
+axis = (;aspect)
+ax, = GT.makie_surfaces(fig[1,3],M2ref;dim=2,shrink,axis)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_surfaces!(M2ref;dim=2,shrink,)
 GT.makie_edges!(M2ref;dim=1,shrink)
-ax = Makie.Axis(fig[2,2])
+ax = Makie.Axis(fig[1,4])
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
-GT.makie_edges!(M1ref;dim=1,shrink)
-GT.makie_vertices!(M1ref;dim=0,shrink)
-FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_2.png"),Makie.current_figure()) # hide
+GT.makie_edges!(ax,M1ref;dim=1,shrink)
+GT.makie_vertices!(ax,M1ref;dim=0,shrink)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_2.png"),fig) # hide
 end # hide
 nothing # hide
 
