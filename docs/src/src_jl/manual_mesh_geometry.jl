@@ -60,7 +60,7 @@
 # Otherwise faces of hider dimensions would hide faces of lower dimensions.
 #
 module MeshGeo1 # hide
-#Code to generate the figure
+#Code used to generate the figure
 import GalerkinToolkit as GT
 import GLMakie as Makie
 import FileIO # hide
@@ -97,49 +97,10 @@ nothing # hide
 # embedded in the Euclidian space $\mathbb{R}^d$. In particular, $\hat F$ is a segment, polygon, and a polyhedron for $d=1,2,3$ respectively.
 # For $d=0$, we define a reference face $\hat F:=\{v\}$ as a set containing the only point  $v\in\mathbb{R}^0$. For $d>0$.
 # We define the boundary $\partial\hat F$ of a reference $d$-face $\hat F$ as the union $\partial\hat F := U_{f\in \hat M_{d-1}} \bar f$,
-# where $\hat M_{d-1}$ is a set of faces of dimension $(d-1)$ and $\bar f$ is the [closure](https://en.wikipedia.org/wiki/Closure_(topology)) of a face $f\in \hat M_{d-1}$.
-# E.g., the boundary of a segment is the union of two vertices. The boundary of a square is the union of four segments and the boundary of a cube is the union of four squares (see next Figure).
+# where $\hat M_{d-1}$ is a chain of faces of dimension $(d-1)$ and $\bar f$ is the [closure](https://en.wikipedia.org/wiki/Closure_(topology)) of a face $f\in \hat M_{d-1}$.
+# E.g., the boundary of a segment is the union of two vertices. The boundary of a square is the union of four segments and the boundary of a cube is the union of four squares.
 # Assuming that $\partial\hat F$ is closed, we define the reference face $\hat F$ as
 # the open bounded subset of $\mathbb{R}^d$ with boundary $\partial\hat F$.
-#
-# ![](fig_meshes_defs_2.png)
-#
-# **Figure:** Visualization of reference hypercubes of dimension 1,2,3,
-# along the co-dimension 1 faces on the boundary.
-
-module MeshGeo2 # hide
-#Code to generate the figure
-import GalerkinToolkit as GT
-import GLMakie as Makie
-import FileIO # hide
-F1 = GT.unit_n_cube(Val(1))
-F2 = GT.unit_n_cube(Val(2))
-F3 = GT.unit_n_cube(Val(3))
-M1 = GT.mesh(F1)
-M2 = GT.mesh(F2)
-M3 = GT.mesh(F3)
-fig = Makie.Figure()
-aspect = :data
-shrink = 0.8
-ax = Makie.Axis3(fig[1,1];aspect)
-Makie.hidespines!(ax)
-Makie.hidedecorations!(ax)
-GT.makie_surfaces!(ax,M3;dim=3,shrink)
-GT.makie_surfaces!(ax,M3;dim=2,shrink)
-aspect = Makie.DataAspect()
-axis = (;aspect)
-ax, = GT.makie_surfaces(fig[1,2],M2;dim=2,shrink,axis)
-Makie.hidespines!(ax)
-Makie.hidedecorations!(ax)
-GT.makie_edges!(M2;dim=1,shrink)
-ax = Makie.Axis(fig[1,3])
-Makie.hidespines!(ax)
-Makie.hidedecorations!(ax)
-GT.makie_edges!(ax,M1;dim=1,shrink)
-GT.makie_vertices!(ax,M1;dim=0,shrink)
-FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_2.png"),fig) # hide
-end # hide
-nothing # hide
 #
 #
 # ## Reference spaces
@@ -157,10 +118,14 @@ nothing # hide
 # compressed format, where several faces share the same space.  
 # For a given dimension $d$, the unique reference spaces for the $d$-faces
 # are collected in a tuple. In the API, this tuple is returned by `reference_spaces(M,d)` for
-# a mesh `M::AbstractMesh`. The reference space assigned a face with id `face` is then obtained as
-# `reference_spaces(M,d)[r]` with `r=face_reference_id(M,d)[face]`. The vector `face_reference_id(M,d)`
+# a mesh `M::AbstractMesh`. The reference space assigned a face is obtained as
+# `reference_spaces(M,d)[r]` with `r=reference_id(F)`.
 # The value `r` is called
-# the *reference* id of face id `face`.
+# the *reference* id of face id `face`. The reference ids of all `d`-faces are collected
+# in a vector `face_reference_id(M,d)` such that  `face_reference_id(M,d)[face]`
+# is the reference id for the face id `face`. Note that `reference_id(F)`
+# and `face_reference_id(M,num_dims(F))[id(F)]` are equivalent.
+#
 #  The notion of reference id is introduced since different face
 #  typologies such as simplixes and hyper-cubes might be in the same mesh.
 #  If all $d$-faces are topologically equivalent (which is often the case),
@@ -187,7 +152,7 @@ nothing # hide
 # Orange dots illustrate the nodes before and after the map.
 
 module MeshGeo3 # hide
-#Code to generate the figure
+#Code used to generate the figure
 import GalerkinToolkit as GT
 import GLMakie as Makie
 import StaticArrays
@@ -224,5 +189,89 @@ nothing # hide
 #
 #
 #
+# ## Node ids
+#
+# Like in many other FE codes, the node coordinates for the faces of a mesh are
+# encoded here using a vector of node coordinates for the entire mesh, which is accessed
+# with `node_coordinates(M)` for `M::AbstractMesh`. The length of this vector is
+# `num_nodes(M)` and `nodes(M)` is the range `1:num_nodes(M)`.
+#
+# The node coordinates `node_coordinates(F)`
+# for `F::AbstractMeshFace` are computed as the view `view(node_coordinates(M),nodes(F))`.
+#  `nodes(F)` is a vector of integers containing the *node ids* assigned to face `F`
+# This is often called  the *local-to-global* (index) map   or the *connectivity* of face `F`.
+# We call them the global node ids (or simply the nodes) of face `F`
+#  since there several types of local-to-global integer maps in GalerkinToolkit.
+#  The value `g = nodes(F)[l]` is called the *global* node id
+#  associated with the *local* node id `l` in face `F`.
+#
+#  For a given `d`, we collect the node ids of all `d`-faces in a mesh `M` in a vector returned
+#  by `face_nodes(M,d)` such that `nodes(F)`is equivalent to `face_nodes(M,num_dims(F))[id(F)]`.
+#  The vector `face_nodes(M,d)` is a long vector of small vectors of integers with possibly different lengths.
+#  It is often represented using a `PartitionedArrays.JaggedArray` object that uses continuous linear memory for performance.
 #
 #
+# ## Face groups
+#
+# For a given $d$, we call a *face group* to a subset 
+# $G\subset M$ of the $d$-faces in a mesh $M$.
+# A mesh is typically endowed with several
+# of these groups to identify particular faces of the mesh for modeling purposes,
+# e.g., to impose boundary conditions, or define position-dependent material properties.
+# Each group is given a *group name*, which identifies the group.
+#
+# In the API, `group_faces(M,d)` provides access to the face groups for faces of dimension `d`.
+# It is a Julia `Dict`. The keys are `String` objects for the group names, and the value
+# `group_faces(M,d)[group]` is a vector of integers containing the face ids for faces inside the group
+# with name `name`. The keys of this dictionary can also be accessed as
+# `group_names(M,d)`. 
+# Face groups are defined per dimension
+# and it is accepted to have the same group name in two or more dimensions.
+# It is also possible to add new groups by adding new key-value pairs to this
+# dictionary.
+#
+# ### Example
+#
+# We illustrate how a new face group is added to an existing mesh.
+# We create a new group with all $2$-faces whose center is
+# inside the ball centered at the origin and radius 1.
+# The example uses part of the API described above to find
+# the faces to be added in the group. We color code faces inside
+# the group with value 1, and outside with value 0.
+
+module MeshGeo4 # hide
+import GalerkinToolkit as GT
+import GLMakie as Makie
+using LinearAlgebra
+import FileIO # hide
+
+#Create a Cartesian mesh mesh
+domain = (0,1,-1,1,0,1)
+cells = (10,20,10)
+mesh = GT.cartesian_mesh(domain,cells)
+
+#Find faces in new group
+d = 3
+mesh_faces = GT.each_face(mesh,d)
+new_group_faces = findall(mesh_faces) do F
+    xs = GT.node_coordinates(F)
+    x = sum(xs) / length(xs)
+    norm(x) < 1
+end
+
+#Add new group to mesh
+GT.group_faces(mesh,d)["foo"] = new_group_faces
+
+#Visualize
+color = GT.FaceColor("foo")
+fig = Makie.Figure()
+aspect = :data
+ax = Makie.Axis3(fig[1,1];aspect)
+surfs = GT.makie_surfaces!(ax,mesh;dim=d,color)
+GT.makie_edges!(ax,mesh;color=:black)
+Makie.Colorbar(fig[1,2],surfs)
+FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_4.png"),Makie.current_figure()) # hide
+end # hide
+nothing # hide
+
+# ![](fig_meshes_defs_4.png)
