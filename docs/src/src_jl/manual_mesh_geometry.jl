@@ -3,6 +3,12 @@
 # ```
 # # Mesh geometry
 #
+# !!! note
+#     TODOs
+#     - `AbstractMeshFace` is currently called `MeshAccessor`.
+#     - `AbstractMeshFace` should be `AbstractDomain` or `AbstractAccessor`  ?
+#     - API for the referene face. Now a reference face `F` isa `AbstractDomain`, and not the equivalent of `AbstractMeshFace`.
+#
 # A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
 # This includes the discretization of computational domains as well as data to impose different types of boundary conditions.
 # It is worth noting that GalerkinToolkit is not a mesh generation library.
@@ -22,7 +28,7 @@
 # mesh `M` and we often refer to them as the same thing. The same is true for other
 # math definitions and their corresponding API.
 #
-# A face $F\in M$ in a mesh is represented in the code as an object `F::AbstractMeshFace` (TODO now it is called `MeshAccessor`).
+# A face $F\in M$ in a mesh is represented in the code as an object `F::AbstractMeshFace`.
 # Given `M::AbstractMesh`, function `GT.each_face(M,d)` creates an iterator
 # used to traverse all faces of dimensions `d` in mesh `M`. 
 # Using this iterator, faces can be accessed with the 
@@ -54,7 +60,7 @@
 #
 # ![](fig_meshes_defs_1.png)
 #
-# **Figure:** Visualization of the faces in the mesh of a Moebius strip.
+# **Figure:** Visualization of the faces in the mesh of a Möbius strip.
 # We shrink
 # the mesh faces for visualization purposes.
 # Otherwise faces of hider dimensions would hide faces of lower dimensions.
@@ -233,7 +239,7 @@ nothing # hide
 # ### Example
 #
 # We illustrate how a new face group is added to an existing mesh.
-# We create a new group with all $2$-faces whose center is
+# We create a new group with all 2-faces whose center is
 # inside the ball centered at the origin and radius 1.
 # The example uses part of the API described above to find
 # the faces to be added in the group. We color code faces inside

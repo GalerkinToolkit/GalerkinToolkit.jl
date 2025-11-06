@@ -68,6 +68,7 @@ function main(;debug=false)
     manual_pages = [
                     joinpath("manual","introduction.md"),
                     joinpath("src_md","manual_mesh_geometry.md"),
+                    joinpath("src_md","manual_mesh_topology.md"),
                     joinpath("src_md","manual_meshes.md"),
                     joinpath("src_md","manual_mesh_partitioning.md"),
                     joinpath("src_md","manual_domains.md"),
