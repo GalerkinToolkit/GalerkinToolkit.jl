@@ -25,7 +25,11 @@ Beginner
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
 
-# API
+# Iteration
+
+- [`each_face`](@ref)
+
+# Data retrival
 
 - [`num_dims`](@ref)
 - [`num_ambient_dims`](@ref)

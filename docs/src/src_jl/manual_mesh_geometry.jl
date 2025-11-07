@@ -157,15 +157,13 @@ nothing # hide
 # same reference space and, in the limit, all faces of the same dimensions share the same reference
 # space. For each dimension `d`, we collect the unique reference spaces of faces of dimension `d`
 # in a tuple. This tuple is returned by `reference_spaces(M,d)` for a mesh object `M::AbstractMesh`.
-# An item `Vref` in `reference_spaces(M,d)` is of a type that specializes the [`AbstractSpace`](@ref)
-# interface, more details are given below.
 #
 # The reference space assigned to a face is then obtained as
 # `reference_spaces(M,d)[r]`, where `r` is called the *reference* id of the face.
 # The reference id is obtained from a face id `face::Integer`, by indexing the vector
 # `face_reference_id(M,d)`, namely `r = face_reference_id(M,d)[face]`.
 # It can also be obtained from a face object `F::AbstractMeshFace`
-# with `r=reference_id(F)`.
+# with `r=reference_id(F)`, and the corresponding reference space with `reference_space(F)`.
 # Note that `reference_id(F)`
 # and `face_reference_id(M,num_dims(F))[id(F)]` are equivalent.
 #
@@ -173,6 +171,23 @@ nothing # hide
 #  typologies such as simplices and hyper-cubes might be in the same mesh.
 #  If all $d$-faces are topologically equivalent (which is often the case),
 #  there is only one reference  space for all $d$-faces and their reference id is one.
+#
+#  ## Reference spaces
+#
+# An item `Vref` in `reference_spaces(M,d)` is of a type that specializes the [`AbstractSpace`](@ref)
+# interface.
+# The `AbstractSpace` interface 
+# is detailed in section [Interpolation](@ref). In this page,
+# we only need to consider that a reference space has a basis of scalar shape functions,
+# which is accessed as `shape_functions(Vref)`. The result is a vector of functions, where
+# each function is evaluated at a point `x::AbstractVector (often x::SVector)`,
+# and returns a scalar value `s::Real`.
+# 
+# A reference $\hat V$ space is a scalar-valued (possibly high-order) Lagrange FE space 
+# defined on a reference face $\hat F$. Reference spaces can be get from a mesh object
+# as shown above or created from scratch with function [lagrange_space](@ref).
+# E.g., `Vref = lagrange_space(Fref,order)` creates a reference space
+# of order `order` on the reference face `Fref`.
 #
 # ## Reference faces
 #
@@ -208,7 +223,11 @@ nothing # hide
 #
 # In the API, reference faces are often built as `Fref = unit_n_cube(Val(d))` or
 # `Fref = unit_simplex(Val(d))` that create a unit hypercube or a unit simplex
-# of `d` dimensions respectively. The type of the returned object `Fref`
+# of `d` dimensions respectively. One can also access the reference face associated with
+# a physical face in a mesh, by getting the reference space, and then the domain of this space, e.g.,
+# `Fref = domain(reference_space(F))`.
+#
+# The type of the returned object `Fref`
 # is a subtype of [`AbstractDomain`](@ref). One can access the mesh of local faces
 # from the reference face `Fref` with `Mref = mesh(Fref)`. The mesh
 # `Mref::AbstractMesh` is like any other mesh used in the code and, e.g., it can be visualized as
@@ -258,40 +277,23 @@ GT.makie_vertices!(ax,M1;dim=0,shrink)
 FileIO.save(joinpath(@__DIR__,"fig_meshes_defs_5.png"),fig) # hide
 end # hide
 nothing # hide
-
-
-#
-#
-# ## Reference spaces
-#
-# A reference $\hat V$ space is a scalar-valued (possibly high-order) Lagrange FE space 
-# defined on a reference face $\hat F$. The space $\hat V$ is used later to define the physical faces.
-#
-# In the API, a reference space is created with function [lagrange_space](@ref).
-# E.g., `Vref = lagrange_space(Fref,order)` creates a reference space
-# of order `order` on the reference face `Fref`. The type of `Fref` is subtype
-# of [AbstractSpace](@ref).
-# The `AbstractSpace` interface is detailed in section [Interpolation](@ref). In this page,
-# we only need to consider that this space has a basis of scalar shape functions,
-# which is accessed as `shape_functions(Vref)`. The result is a vector of functions, where
-# each function is evaluated at a point `x::AbstractVector (often x::SVector)`,
-# and returns a scalar value `s::Real`.
 #
 #
 #  ## Physical faces
 #
 # A physical face $F\in M$ is defined as the image $\phi(\hat F)$ of its reference face $\hat F$ via a map $\phi: \mathbb{R}^d \rightarrow \mathbb{R}^D$, where $d$ is the dimension of $F$ and $D$ is the ambient dimension of the mesh, see next Figure. This map is called the *physical map* and it is defined using
 # the reference space $\hat V$ 
-# and the *physical* nodes of the face. The coordinates for the physical nodes are in vector `node_coordinates(F)`
-# for an instance `F::AbstractMeshFace`.
+# and the node coordinates of the face.
 #
 # The physical map is defined as follows:
 # 
 # $\phi(\hat x) := \sum_{n=1}^{N^F} x^F_n s^{\hat V}_n(\hat x),$
 #
-# where $N^F$, $x^F_n$, and $s^{\hat V}_n$ are programmatically  obtained as
+# where $N^F$, $x^F_n$, and $s^{\hat V}_n$ are the number of nodes in face `F`, the coordinate vector
+# of the local node $n$ if face $F$ and the shape function number $n$ in the reference space $\hat V$.
+# These quantities can be programmatically  obtained, e.g., as
 # `num_nodes(F)`, `node_coordinates(F)[n]` and `shape_functions(reference_space(F))[n]`
-# for an integer `n`.
+# for a mesh object `F::AbstractMeshFace` an integer `n`.
 #
 # ![](fig_meshes_defs_3.png)
 #
@@ -401,3 +403,15 @@ end # hide
 nothing # hide
 
 # ![](fig_meshes_defs_4.png)
+#
+# ## Summary
+#
+# We discussed how computational meshes are defined in GalerkinToolkit
+# and the core API of the `AbstractMesh` interface.
+# See the docsting of [`AbstractMesh`](@ref) for a summary list of the API functions.
+# Some of them will be introduced in other sections.
+#
+# ```@docs; canonical=false
+# AbstractMesh
+# ```
+#
