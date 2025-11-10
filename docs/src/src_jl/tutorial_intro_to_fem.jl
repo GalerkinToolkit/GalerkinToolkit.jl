@@ -10,7 +10,7 @@
 # It will walk you through the key parts of the library.
 #
 # This lecture is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
-# The API documentation and source code of GalerkinToolkit is available under an [MIT license](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE).
+# The source code of GalerkinToolkit is available under an [MIT license](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE).
 
 # ## Problem statement
 #
