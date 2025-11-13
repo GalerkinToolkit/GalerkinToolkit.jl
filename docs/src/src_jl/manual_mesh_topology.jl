@@ -9,12 +9,24 @@
 #     - Rename `cell_complex` by `polyhedral_complex` ?  or face complex?
 #     - Define $\hat x_n$ and $g^F_n$ in section Mesh geometry
 #     - The code is actually working with the inverse of the permutation matrix $P$.
+#     - A way of getting the local ids directly?
 #
 #
 # The mesh topology describes how the faces in a mesh are connected.
 # This information is needed to "glue" faces together, 
 # e.g., to build (high-order) conforming finite element (FE) spaces,
 # or to integrate at face interfaces.
+#
+# ## Preliminaries
+#
+# In this page, we use the following notations introduced in Page [Mesh geometry](@ref).
+# $\hat\Omega(F)$, $C(\hat F)$, $N(F)$ $\hat V(F)$ $s(V)$ $x(V)$.
+#
+#
+#
+#
+#
+#
 #
 # ## Local faces
 #
