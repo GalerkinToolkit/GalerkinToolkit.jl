@@ -10,6 +10,7 @@
 #     - API for the referene face. Now a reference face `F` isa `AbstractDomain`, and not the equivalent of `AbstractMeshFace`.
 #     - Reference face vs reference domain?
 #     - face complex is currently called cell complex.
+#     - Implement function `barycenter`.
 #
 # A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
 # This includes the discretization of computational domains as well as data to impose different types of boundary conditions.
@@ -54,7 +55,7 @@
 #
 # ## Dimensions
 #
-# Faces $F\in M$ in a mesh are *open* $d$-dimensional manifolds embedded in the Euclidean space $\mathbb{R}^D$. We call 
+# A face $F\in M$ in a mesh is an *open* $d$-dimensional manifold embedded in the Euclidean space $\mathbb{R}^D$. We call 
 # $D$ the number of *ambient* dimensions of the mesh $M$  and of faces $F\in M$, where as
 # $d$ is the number of dimensions of face $F$, which might be $d=0,\ldots,D$.
 # We use $d(X)$ and $D(X)$ to denote the number of dimensions and ambient dimensions
@@ -197,8 +198,8 @@ nothing # hide
 #
 # Reference spaces can be get from a mesh object
 # as shown above or created from scratch with function [lagrange_space](@ref).
-# E.g., `Vref = lagrange_space(Fref,order)` creates a reference space
-# of order `order` on the reference domain `Fref`.
+# E.g., `Vref = lagrange_space(Ωref,order)` creates a reference space
+# of order `order` on the reference domain `Ωref`.
 #
 # ## Reference domains
 #
@@ -243,6 +244,8 @@ nothing # hide
 # where $N^F:=|s(\hat V(F))|$, $x^F_n:=[x(F)]_n$, and $s^{\hat V }_n:=s(\hat V(F))$. This map
 # transforms the node coordinates in the reference space $x(\hat V(F))$ into the physical
 # node coordinates of a face $x(F)$ (see the orange dots in next figure).
+# The map also transforms any other point in the reference domain,
+# leading to potentially curved faces in the physical face.
 #
 # ![](fig_meshes_defs_3.png)
 #
@@ -256,9 +259,9 @@ import GLMakie as Makie
 import StaticArrays
 import FileIO # hide
 order = 3
-Fref = GT.unit_n_cube(Val(3))
-Mref = GT.mesh(Fref)
-Vref = GT.lagrange_space(Fref,order)
+Ωref = GT.unit_n_cube(Val(3))
+Mref = GT.mesh(Ωref)
+Vref = GT.lagrange_space(Ωref,order)
 xref = GT.node_coordinates(Vref)
 T = StaticArrays.SVector{3,Float64}
 x = map(y->y + 0.1*(rand(T) .- 0.5) ,xref)

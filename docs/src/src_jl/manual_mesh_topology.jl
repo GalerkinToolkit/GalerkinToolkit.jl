@@ -12,49 +12,43 @@
 #     - A way of getting the local ids directly?
 #
 #
-# The mesh topology describes how the faces in a mesh are connected.
-# This information is needed to "glue" faces together, 
-# e.g., to build (high-order) conforming finite element (FE) spaces,
+# The mesh topology provides the information needed to "glue" faces
+# in a *face complex*. A face complex is a mesh with some
+# additional properties (see definition below) that allow us 
+# to formalize the meaning of "gluing" faces.
+# This information is needed in many finite element (FE) methods, 
+# e.g., to build (high-order) conforming FE spaces,
 # or to integrate at face interfaces.
-#
-# ## Preliminaries
-#
-# In this page, we use the following notations introduced in Page [Mesh geometry](@ref).
-# $\hat\Omega(F)$, $C(\hat F)$, $N(F)$ $\hat V(F)$ $s(V)$ $x(V)$.
-#
-#
-#
-#
 #
 #
 #
 # ## Local faces
 #
-# Let $F\in M$ be a physical face in mesh $M$, where $\hat F:=R(F)$ is its reference
-# face. Let $\hat C := C(\hat F)$ be the chain used to define the geometry of
-# the reference face $\hat F$ and let $d$ be the dimension of $\hat F$. See
+# In order to define what a face complex is, we need first to introduce
+# the concept of *local faces*. To this end,
+# let $F\in M$ be a physical face in mesh $M$, where $\hat\Omega:=\hat\Omega(F)$ is its reference
+# domain. Let us also consider the chain $\hat C:=C(\hat \Omega)$ used to define the geometry of
+# the reference domain $\hat \Omega$ and let $d$ be the dimension of $\hat \Omega$. See
 # Section [Mesh geometry](@ref) for the definition of these objects.
 # Let us also define the interface
-# $\Gamma(\mathcal{F})$ of a set of faces $\mathcal{F}$
+# $\Gamma(\mathcal{A})$ of a set of faces $\mathcal{A}$
 # as the open set such that its closure is the intersection of the closures
-# of the faces in $\mathcal{F}$, namely 
-# $\overline{\Gamma(\mathcal{F})} = \cap_{G\in \mathcal{F}} \bar G$.
-# If the interface is not empty, $\Gamma(\mathcal{F})\neq\empty$, we call the faces in
-# $\mathcal{F}$ the *faces around* $\Gamma(\mathcal{F})$.
+# of the faces in $\mathcal{A}$, namely 
+# $\overline{\Gamma(\mathcal{A})} = \cap_{A\in \mathcal{A}} \bar A$.
 #
-# With these notations, we define the set of *local faces* of the reference face $\hat F$
-# as the mesh $L(\hat F)$ containing:
-# 1. the reference face $\hat F$,
+# With these notations, we define the set of *local faces* of the reference domain $\hat \Omega$
+# as the mesh $L(\hat \Omega)$ containing:
+# 1. the reference domain $\hat \Omega$,
 # 2. the faces in the chain $\hat C$,
-# 3. and the interfaces $\Gamma(\{A,B\})$ of any pair of faces $A,B\in\hat C$.
+# 3. and the interfaces $\Gamma(\{F_1,F_2\})$ of any pair of faces $F_1,F_2\in\hat C$.
 #
-# The set $L(\hat F)$ contains all faces in the boundary of the polytope $\hat F$. E.g.,
+# The set $L(\hat \Omega)$ contains all faces in the boundary of the polytope $\hat \Omega$. E.g.,
 # for a reference edge, it contains the edge and the two end vertices.
 # For a reference square, it contains the square, four edges, and the four vertices
 # at the intersection of the edges. For a reference cube, it contains the cube, six surfaces, twelve edges, and eight vertices (see the next figure).
 #
 # In the code, one can access the mesh of local faces
-# from a reference face `Fref::AbstractDomain` with `Mref = mesh(Fref)`. The mesh
+# from a reference domain `Ωref::AbstractDomain` with `Mref = mesh(Ωref)`. The mesh
 # `Mref::AbstractMesh` is like any other mesh used in the code and, e.g., it can be visualized as
 # any other mesh shown in next Figure.
 # 
@@ -104,79 +98,76 @@ nothing # hide
 
 # ## Conforming meshes
 #
-# A mesh $M$ is *conforming* if for any pair of faces $F_1,F_2\in M$
-# with non-empty interface $\Gamma(\{F_1,F_2\})\neq\empty$ exists a local
-# face $f_1\in L(R(F_1))$ and a local face  $f_2\in L(R(F_2))$ such that
+# One of the key properties of a face complex is that it is *conforming*.
+# A mesh $M$ is conforming if for any pair of faces $F_1,F_2\in M$
+# with non-empty interface $\Gamma_{1,2}:=\Gamma(\{F_1,F_2\})\neq\empty$ exists a local
+# face $f_1\in L(\hat\Omega(F_1))$ and a local face  $f_2\in L(\hat\Omega(F_2))$ such that
 #
-# * their images via the physical map coincide with the interface, $\Gamma(\{F_1,F_2\})=\phi^{F_1}(f_1)=\phi^{F_2}(f_2)$, and
-# * they share global node ids, $N(F_1,f_1)=PN(F_2,f_2)$.
+# * their images via the physical map coincide with the interface, $\Gamma_{1,2}=\phi^{F_1}(f_1)=\phi^{F_2}(f_2)$, and
+# * they share global node ids, $n(F_1,f_1)=Pn(F_2,f_2)$.
 #
-# If these local faces exist, we call $f_1$ (resp. $f_2$) the local
-# face of $F_1$ (resp $F_2$) *equivalent* to $\Gamma(\{F_1,F_2\})$.
-# In this definition, $P$ is a permutation matrix and $N(F,f)$ is a vector containing the node ids of $F$ restricted to the local face $f\in L(R(F))$, namely $[N(F,f)]_r=[N(F)]_l$ with $l=[N(f)]_r$. Both local faces have the same global ids but these ids are allowed to be order differently in each local face. This is why we include the permutation matrix $P$.
+# In this definition, $P$ is a permutation matrix and $n(F,f)$ is a vector containing the node
+# ids of $F$ restricted to the local face $f\in L(\hat\Omega(F))$, namely $[n(F,f)]_r:=[n(F)]_l$ with $l=[n(f)]_r$.
+# Both local faces have the same global ids but these ids are allowed to be order differently in each local face.
+# This is why we include the permutation matrix $P$.
+#
+# If these local faces exist, we say that face $F_1$ is *conforming* to face $F_2$ at the interface
+# $\Gamma_{1,2}$, *via* the local face $f_1$ (idem for $F_2$). We also say that
+# the local faces $f_1$ and $f_2$, and the interface $\Gamma_{1,2}$ are *equivalent*.
 #
 # ## Face complexes
 #
-# A mesh $M$ is a *face complex* (or [polyhedral complex](https://en.wikipedia.org/wiki/Polyhedral_complex)) if
+# With these notations we can introduce the concept of face complex as follows.
+# A mesh $M$ is a *face complex* (or a [polyhedral complex](https://en.wikipedia.org/wiki/Polyhedral_complex)) if
 # * it is conforming, and
-# * it contains the images of all local faces, namely $\phi^F(f)\in M$ for all $f\in L(R(F))$ and all $F\in M$.
+# * it contains the images of all local faces, namely $\phi^F(f)\in M$ for all $f\in L(\hat\Omega(F))$ and all $F\in M$.
 #
 # Given a mesh $M$ that is conforming, but not a face complex, it is always possible to add additional faces to make it a face complex. In the API, this is done
 # with function `M2 = complexify(M)` from a mesh object `M::AbstractMesh`. The result
 # is `M2::AbstractMesh`. In addition function `is_face_complex(M)` checks if
 # `M` is a face complex. It returns true form meshes created with
 # function `complexify`.
-# If the chain $\hat C$ used to define the local faces $L(\hat F)$ above is conforming,
-# the set of local faces $L(\hat F)$ is a face complex. In fact, we
+# If the chain $\hat C$ used to define the local faces $L(\hat \Omega)$ above is conforming,
+# the set of local faces $L(\hat \Omega)$ is a face complex. In fact, we
 # create the local faces in the library by applying `complexify` to the chain $\hat C$.
 #
 #
 # ## Gluing faces
 #
-# Let us consider a face complex $M$ and a set of faces $\mathcal{F}\subset M$ of dimension $n$ with a non-empty interface $\Gamma(\mathcal{F})\neq\empty$, being a face of dimension $m$.
-# We refer to *gluing* faces $\mathcal{F}$ at the their interface $\Gamma(\mathcal{F})$ as solving the following two-step problem for each face around $F\in\mathcal{F}$:
+# Let us consider a face complex $M$, a face $F\in M$,
+# and the set of faces $\mathcal{A}(F)$ such that their interface $\Gamma(\mathcal{A}(F))=F$  coincides with face
+# $F$. If these face exist, we call $\mathcal{A}(F)$ the *faces around* $F$.
+# We refer to *gluing* faces $\mathcal{A}(F)$ at the their interface $F$ as solving the following two-step
+# problem for each face around $A\in\mathcal{A}(F)$:
 #
-#
-# 1. Find the local face $f\in L(R(F))$ and the permutation matrix $P$ such that $N(\Gamma(\mathcal{F}))=PN(F,f)$.
-# 2. Find a map $\varphi$ such that $\phi^F(\phi^f(\varphi(x)))=\phi^{\Gamma(\mathcal{F})}(x)$ for all $x\in R(\Gamma(\mathcal{F}))$.
+# 1. Find the local face $a\in L(\hat\Omega(A))$ and the permutation matrix $P$ such that $n(F)=P n(A,a)$.
+# 2. Build a map $\varphi$ such that $\phi^A(\phi^a(\varphi(x)))=\phi^{F}(x)$ for all $x\in \hat\Omega(F)$.
 #
 # For this problem to have a solution, the mesh $M$ needs to be conforming. This is what allows
-# us to find the local face $f$, the permutation matrix $P$, and the map $\varphi$. In addition, mesh $M$ needs to be a face complex so that the interface $\Gamma(\mathcal{F}))\in M$ is also
-# a face in the mesh. In this case, it makes sense to talk about the node ids of the interface $N(\Gamma(\mathcal{F})))$, its physical map $\phi^{\Gamma(\mathcal{F})}$, and its reference face $R(\Gamma(\mathcal{F}))$.
+# us to find the local face $a$, the permutation matrix $P$, and the map $\varphi$.
+# In addition, mesh $M$ needs to be a face complex so that the interface $\Gamma(\mathcal{A}(F))\in M$ is also
+# a face in the mesh, i.e., face $F$.
+# In this case, it makes sense to talk about the node ids of the interface $n(F)$,
+# its physical map $\phi^{F}$, and its reference domain $\hat\Omega(F)$.
 #
-# By solving this problem, we are building a parametrization of the interface
-# seen from each face around. This is the key ingredient needed to integrate quantities
-# defined on the faces around at the interface (see section TODO),
-# and to build interpolations that are conforming at the interface (see section TODO).
+# By solving this problem, we are building a common parametrization of the interface
+# seen from each face around. This is the key ingredient needed to compute integrals
+# at the interface of quantities defined on the faces around.
+# (see section TODO),
+# and to build interpolations defined on the faces around that are conforming at the interface (see section TODO).
 #
-# Once the step 1. of the problem is solved and we have the local face $f$
+# Once the step 1. of the problem is solved and we have the local face $a$
 # and the permutation matrix $P$, 
 # the map $\varphi$ solution of step 2. is readily
-# computed as follows
+# computed as
 #
-# $\varphi(x) = \sum_{n=1}^{\hat N} [P\hat X]_n [\hat S]_n(x),$
+# $\varphi(\xi) := \sum_{n=1}^{\hat N} [P\hat x]_n [\hat s]_n(\xi),$
 #
-# where $\hat V$ is the reference space of the local face $f$, $\hat X$ is the vector
-# of node coordinates of $\hat V$, $\hat S$ is the vector of shape functions of $\hat V$, and
-# $\hat N$ is the length of $\hat X$ and $\hat S$.
-# In the API, this map can be built from a mesh object `M::AbstractMesh`, the id `F::Integer` and dimension `m` of face $F$, the local face id `f::Integer` and dimension `n` of $f$, and the permutation vector `P::Vector{<:Integer}` encoding the permutation matrix $P$ as follows:
-#
-# ```julia
-# rm = face_reference_id(M,m)[F]
-# Fref = reference_domain(M,m)[rm]
-# L = mesh(Fref)
-# rn = face_reference_id(L,n)[f]
-# V = reference_spaces(L,n)[rn]
-# X = node_coordinates(V)
-# S = shape_functions(V)
-# N = length(X)
-# φ = x -> sum(n->X[P[n]]*S[n],1:N)
-# ```
-#
-# Thus, the only remaining problem 
-# is finding the local face id of $f$
-# and the permutation vector `P` representing the matrix $P$.
-# In the code, this information is encoded for all possible interfaces
+# where $\hat x:=x(\hat V(a))$, $\hat s:=s(\hat V(a))$, and
+# $\hat N$ is the length of $\hat x$ and $\hat s$.
+# Thus, the only remaining  part of the problem 
+# is step 1.
+# In the code, the solution of this step is encoded for all possible interfaces
 # in the object returned by `T=topology(M)` for a mesh
 # object `M::AbstractMesh`.
 #  The returned object `T` is an instance of a type
@@ -185,12 +176,16 @@ nothing # hide
 #
 # ## Face incidence
 #
-# An object `T::AbstractTopology` represents the *topology* of a given face complex
-# $M$. We define the topology of $M$ 
-# as the graph $T$, where the vertices of $T$ are the faces in $M$.
+# Given a face $F\in M$ in a face complex $M$, we detail how to get
+# the set of faces around $\mathcal{A}(F)\subset M$, and  the local face $a\in L(\hat\Omega(A))$
+# that is equivalent to $F$ for each face around $A\in\mathcal{A}(F)$.
+# This information is encoded in a graph $T$ called the mesh *topology*.
+#
+# We define the topology of $M$ 
+# as the graph $T$, where the vertices of $T$ are the faces in $M$ and its edges are refined as follows:
 # The edges $(F_1,F_2)$ and $(F_2,F_1)$ connecting two faces $F_1,F_2\in M$ exists in the graph $T$ if
 # - the two faces are the same, $F_1 = F_2$, or
-# - the two faces are of different dimensions and have a non-empty interface, $\Gamma(\{F_1,F_2\}) \neq \empty$.
+# - the two faces are of different dimensions and have a non-empty interface, $d(F_1)\neq d(F_2)$ and $\Gamma(\{F_1,F_2\}) \neq \empty$.
 #
 #  If two faces are connected by an edge in the graph $T$, we say that the faces are *incident*, or  *adjacent*. Note that this graph is symmetric.
 #
@@ -201,21 +196,21 @@ nothing # hide
 #  `face_incidence(T,m,n)`. One recovers all edges in the graph `T` by calling this function for all possible pairs `(m,n)` with `m in 0:D` and `n in 0:D`, being `D=num_dims(M)`.
 #  The result of `face_incidence(T,m,n)` is a long vector of small vectors of integers encoded via a `JaggedArray` object, since the inner vectors often have different lengths.
 #
-# The vector `Fns=face_incidence(T,m,n)[Fm]` contains the ids of the `n`-faces $F_n\in M$ that are incident to `m`-face $F_m$ with id `Fm`.
-# For `m>n`, the face ids in `Fns` are sorted according to the id of the local faces of $F_m$,
-# namely `Fn=Fns[fn]` is the id of the `n`-face $F_n\in M$ equivalent to the local
-# face  $f_n\in L(R(F_m))$ with id `fn`.
-# For `m<n`, the ids in `Fns`
-# are arbitrarily sorted.
-# For `m==n`, the vector `Fns` is equal to `[Fm]` (a vector with a single integer).
+# The vector `As=face_incidence(T,m,n)[F]` has the following interpretation.
+# For `m<n`, the ids in `As` are the ids of the faces around $\mathcal{A}(F)$, which are arbitrarily sorted in vector `As`.
+# For `m>n`, the face ids in `As` of the n-faces on the boundary of $F$. The ids in `As`
+# are sorted according to the id of the local faces of $F$,
+# namely `A=As[f]` means that 
+# the local
+# `n`-face  $f$ of $F$  with id `f` is equivalent to the 
+# `n`-face $A\in M$ with id `A`.
+# For `m==n`, the vector `As` is equal to `[F]` (a vector with a single integer).
 #
-# From the topology object `T`, we can obtain part of the solution of the face-gluing problem above as follows.  We start with the id `Fm::Integer` of the face of dimension `m` that
-# stands for the interface $F_m :=\Gamma(\mathcal{F})\in M$. The ids of the `n`-faces in $\mathcal{F}$
-# are obtained as `Fns=face_incidence(T,m,n)[Fm]`. For a given id `Fn in Fns`, say that $F_n$ is the face in $\mathcal{F}$ with id `Fn`. The problem is to 
-# find `fn` the id of the local face $f_n$ of $F_n$ equivalent to the interface $F_m$.
-# This is done
-# by getting the ids `Fms = face_incidence(T,n,m)[Fn]` of the `m`-faces on the boundary of $F_n$ and look for in which position is the id of interface $F_m$, namely 
-# `fn=find(F->F==Fm,Fms)`.
+# In summary, given a topology object `T::AbstractTopology`, we can get the following information for the `m`-face with id `F::Integer`.
+# We get the ids of the `n`-faces around `F` as `As=face_incidence(T,m,n)[F]`. For each `A in As`, we get the id `a` of the local
+# face  of `A` equivalent to `F` as follows. We get all `m`-faces at the boundary of `A` with `Bs=face_incidence(T,n,m)[A]`, and we
+# find in which position in `Bs` the id `F` is located, namely `a=find(B->B==F,Bs)`.
+#
 #
 # ## Node permutations
 #
