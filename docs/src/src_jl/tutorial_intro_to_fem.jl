@@ -92,7 +92,7 @@
 # - Solution
 # - Post-process
 #
-# ## Mesh generation
+# ## Computational meshes
 #
 # The FEM starts by building a "triangulation" $\mathcal{T}$ of the domain $\Omega$ in which the PDE is defined.
 # A triangulation $\mathcal{T}$ is a set of simpler domains $T_k\subset\mathbb{R}^d$, whose union is an approximation of $\Omega$,

@@ -71,9 +71,9 @@ function main(;debug=false)
                     joinpath("src_md","manual_mesh_topology.md"),
                     joinpath("src_md","manual_mesh_generation.md"),
                     joinpath("src_md","manual_mesh_partitioning.md"),
-                    joinpath("src_md","manual_domains.md"),
-                    joinpath("src_md","manual_interpolation.md"),
-                    joinpath("src_md","manual_visualization.md"),
+                    #joinpath("src_md","manual_domains.md"),
+                    #joinpath("src_md","manual_interpolation.md"),
+                    #joinpath("src_md","manual_visualization.md"),
                     joinpath("manual","for_developers.md")
                    ]
     manual = ["manual.md",manual_pages...]
