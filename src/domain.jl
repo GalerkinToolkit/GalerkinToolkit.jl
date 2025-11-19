@@ -183,7 +183,7 @@ function mesh(geom::UnitNCube{0})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -206,7 +206,7 @@ function mesh(geom::UnitNCube{1})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -230,7 +230,7 @@ function mesh(geom::UnitNCube{2})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end
@@ -262,7 +262,7 @@ function mesh(geom::UnitNCube{3})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end
@@ -383,7 +383,7 @@ function mesh(geom::UnitSimplex{0})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -406,7 +406,7 @@ function mesh(geom::UnitSimplex{1})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -432,7 +432,7 @@ function mesh(geom::UnitSimplex{2})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -464,7 +464,7 @@ function mesh(geom::UnitSimplex{3})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end

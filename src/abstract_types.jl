@@ -42,7 +42,7 @@ Beginner
 - [`reference_spaces`](@ref)
 - [`group_faces`](@ref)
 - [`group_names`](@ref)
-- [`is_cell_complex`](@ref)
+- [`is_face_complex`](@ref)
 - [`normals`](@ref)
 
 """
@@ -115,7 +115,7 @@ abstract type AbstractFaceDomain <: AbstractDomain end
 """
     abstract type AbstractTopology
 
-Abstract type representing the incidence relations in a cell complex.
+Abstract type representing the incidence relations in a face complex.
 
 # Level
 
@@ -476,9 +476,9 @@ function mesh_from_space end
 """
     complexify(x)
 
-Convert `x` into a mesh representing a cell complex.
+Convert `x` into a mesh representing a face complex.
 
-See also [`is_cell_complex`](@ref).
+See also [`is_face_complex`](@ref).
 
 # Level
 
@@ -575,7 +575,7 @@ function group_names end
 
 """
 """
-function is_cell_complex end
+function is_face_complex end
 
 """
 """

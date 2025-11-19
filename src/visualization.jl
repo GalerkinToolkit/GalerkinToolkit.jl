@@ -477,7 +477,7 @@ end
 
 function plot(mesh::AbstractMesh)
     fd = face_data(mesh)
-    if num_dims(mesh) == 3 && is_cell_complex(mesh) && ! is_partitioned(mesh)
+    if num_dims(mesh) == 3 && is_face_complex(mesh) && ! is_partitioned(mesh)
         Γ = GT.domain(mesh,Val(2))
         dΓ = GT.measure(Γ,0)
         D = num_dims(mesh)

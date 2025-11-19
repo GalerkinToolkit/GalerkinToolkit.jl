@@ -47,7 +47,7 @@ mesh = GT.create_mesh(;
     node_coordinates,
     face_nodes,
     reference_spaces,
-    is_cell_complex=Val(true),
+    is_face_complex=Val(true),
    )
 
 

@@ -1644,7 +1644,7 @@ function complexify(refface::LagrangeFaceSpace)
         face_nodes,
         face_reference_id,
         reference_spaces,
-        is_cell_complex = Val(true),
+        is_face_complex = Val(true),
         normals
        )
 end

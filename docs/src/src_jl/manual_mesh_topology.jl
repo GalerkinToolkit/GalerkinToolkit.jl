@@ -6,7 +6,7 @@
 # !!! note
 #     TODOs
 #     - The API for $\text{mesh}(\hat F)$ can be improved and for $\text{mesh}(F)$ is not available. The latter is not needed.
-#     - Rename `cell_complex` by `polyhedral_complex` ?  or face complex?
+#     - Rename `face_complex` by `polyhedral_complex` ?  or face complex?
 #     - Define $\hat x_n$ and $g^F_n$ in section Mesh geometry
 #     - The code is actually working with the inverse of the permutation matrix $P$.
 #     - A way of getting the local ids directly?
@@ -158,7 +158,7 @@ GT.makie_vertices!(fig[1,1],mesh,dim=0)
 Makie.hidespines!(ax)
 Makie.hidedecorations!(ax)
 mesh2 = GT.complexify(mesh)
-@assert GT.is_cell_complex(mesh2)
+@assert GT.is_face_complex(mesh2)
 ax, = GT.makie_surfaces(fig[1,2],mesh2;axis,shading,shrink)
 GT.makie_edges!(fig[1,2],mesh2;shrink,dim=1)
 GT.makie_vertices!(fig[1,2],mesh2,dim=0)

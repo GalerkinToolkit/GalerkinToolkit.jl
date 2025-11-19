@@ -371,7 +371,7 @@ function topology(mesh::AbstractMesh)
     if workspace(mesh) !== nothing
         return GT.topology(workspace(mesh))
     end
-    # Assumes that the input is a cell complex
+    # Assumes that the input is a face complex
     # We end up here when computing face topologies
     # The result is fully initialized in this case.
     Ti = Int32
@@ -564,7 +564,7 @@ function fill_face_boundary_mesh_topology!(topo,D,d)
 
                     Error in: topology_from_mesh
 
-                    The given mesh is provably not a cell complex.
+                    The given mesh is provably not a face complex.
                     """
                     @assert dface2 != Int32(INVALID_ID) msg
                 end
@@ -925,7 +925,7 @@ function complexify(parent_mesh::AbstractMesh;glue=Val(false))
                           normals,
                           periodic_nodes,
                           group_faces,
-                          is_cell_complex = Val(true),
+                          is_face_complex = Val(true),
                           workspace = MeshWorkspace(topology)
                          )
 
@@ -1442,7 +1442,7 @@ end
 #            periodic_nodes = periodic_nodes(mesh),
 #            normals = normals(mesh),
 #            geometry_names = geometry_names(mesh),
-#            is_cell_complex = Val(true),
+#            is_face_complex = Val(true),
 #           )
 #    mtopology = mesh_topology(;
 #                          face_incidence = newface_incidence, #m_face_incidence,

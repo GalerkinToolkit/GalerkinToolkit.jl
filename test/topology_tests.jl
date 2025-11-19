@@ -100,7 +100,7 @@ chain = GT.chain(;
 mesh = GT.mesh(chain)
 
 mesh2 = GT.complexify(mesh)
-@test GT.is_cell_complex(mesh2)
+@test GT.is_face_complex(mesh2)
 
 @test GT.node_coordinates(mesh2) === GT.node_coordinates(mesh)
 

@@ -9,7 +9,7 @@
 #     - `AbstractMeshFace` should be `AbstractDomain` or `AbstractAccessor`  ?
 #     - API for the referene face. Now a reference face `F` isa `AbstractDomain`, and not the equivalent of `AbstractMeshFace`.
 #     - Reference face vs reference domain?
-#     - face complex is currently called cell complex.
+#     - face complex is currently called face complex.
 #     - Implement function `barycenter`.
 #     - Implement `faces` and `nodes`.
 #
