@@ -2522,7 +2522,7 @@ end
 function flip_sign(space,qty)
     D = num_dims(mesh(space))
     quantity() do index
-        face_dof_flip = get_symbol!(index,sign_flip_accessor(space),"face_dof_flip")
+        face_dof_flip = get_symbol!(index,sign_flip_face(space),"face_dof_flip")
         face = face_index(index,D)
         t = term(qty,index)
         dof = dof_index(t)
@@ -2544,7 +2544,7 @@ function sign_flip_criterion(cell,cells)
     end
 end
 
-function sign_flip_accessor(space::RaviartThomasMeshSpace)
+function sign_flip_face(space::RaviartThomasMeshSpace)
     D = num_dims(mesh(space))
     cell_rid = face_reference_id(space)
     rid_fe = reference_spaces(space)

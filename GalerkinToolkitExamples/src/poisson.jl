@@ -255,7 +255,7 @@ function assemble_matrix!(A_alloc,Ad_alloc,V,dΩ)
 
     ∇ = ForwardDiff.gradient
 
-    #Accessors to the quantities on the
+    #Faces to the quantities on the
     #integration points
     V_faces = GT.each_face(V,dΩ;tabulate=(∇,))
 
@@ -309,17 +309,17 @@ function assemble_matrix_array_API!(A_alloc,Ad_alloc,V,dΩ)
 
     ∇ = ForwardDiff.gradient
 
-    #Accessors to the quantities on the
+    #Faces to the quantities on the
     #integration points
-    V_dΩ = GT.space_accessor(V,dΩ;tabulate=(∇,))
-    mesh = GT.mesh(V_dΩ.reference_space_accessor.space)
-    J0 = V_dΩ.mesh_accessor.workspace.jacobian
+    V_dΩ = GT.space_face(V,dΩ;tabulate=(∇,))
+    mesh = GT.mesh(V_dΩ.reference_space_face.space)
+    J0 = V_dΩ.mesh_face.workspace.jacobian
     D = GT.num_dims(mesh)
 
     #Important arrays
     face_rid = GT.face_reference_id(V)
-    rid_dof_point_ref∇s = V_dΩ.reference_space_accessor.workspace.gradients
-    rid_node_point_ref∇m = V_dΩ.mesh_accessor.space_accessor.workspace.gradients
+    rid_dof_point_ref∇s = V_dΩ.reference_space_face.workspace.gradients
+    rid_node_point_ref∇m = V_dΩ.mesh_face.space_face.workspace.gradients
     gnode_x = GT.node_coordinates(mesh)
     rid_point_w = map(GT.weights,GT.reference_quadratures(dΩ))
     face_node_gnode = GT.face_nodes(mesh,D)
@@ -438,7 +438,7 @@ function integrate_error(g,uh,dΩ)
 
     ∇ = ForwardDiff.gradient
 
-    #Accessors to the quantities on the
+    #Faces to the quantities on the
     #integration points
     tabulate = (∇,GT.value)
     compute = (GT.coordinate,)

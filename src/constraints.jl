@@ -38,26 +38,26 @@ function face_dofs(a::ConstrainedSpace)
 end
 
 function face_constraints(a::ConstrainedSpace)
-    each_face(FaceConstraintsAccessor(a.constraints,a.workspace))
+    each_face(FaceConstraintsFace(a.constraints,a.workspace))
 end
 
-struct FaceConstraintsAccessor{A,B} <: NewAbstractAccessor
+struct FaceConstraintsFace{A,B} <: AbstractFace
     constraints::A
     workspace::B
 end
 
-function num_faces(a::FaceConstraintsAccessor)
+function num_faces(a::FaceConstraintsFace)
     num_faces(a.workspace)
 end
 
-function at_face(a::FaceConstraintsAccessor,face)
+function at_face(a::FaceConstraintsFace,face)
     constraints_at_face(a.constraints,a.workspace,face)
 end
 
 function face_constraints(a::AbstractSpace)
     C = constraints(a)
     workspace = setup_constraints_workspace(a,C)
-    each_face(FaceConstraintsAccessor(C,workspace))
+    each_face(FaceConstraintsFace(C,workspace))
 end
 
 function constraints(a::ConstrainedSpace)

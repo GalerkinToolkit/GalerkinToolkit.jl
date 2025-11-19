@@ -5,8 +5,8 @@
 #
 # !!! note
 #     TODOs
-#     - `AbstractMeshFace` is currently called `MeshAccessor`.
-#     - `AbstractMeshFace` should be `AbstractDomain` or `AbstractAccessor`  ?
+#     - `AbstractMeshFace` is currently called `MeshFace`.
+#     - `AbstractMeshFace` should be `AbstractDomain` or `AbstractFace`  ?
 #     - API for the referene face. Now a reference face `F` isa `AbstractDomain`, and not the equivalent of `AbstractMeshFace`.
 #     - Reference face vs reference domain?
 #     - face complex is currently called face complex.

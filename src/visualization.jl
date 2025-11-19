@@ -811,7 +811,7 @@ function plot(domain::AbstractDomain;kwargs...)
             Γ = domain
             dΓ = GT.measure(Γ,0)
             ndfaces = num_faces(Γ)
-            mesh_faces = GT.mesh_accessor(mesh,Val(num_dims(mesh)),dΓ;compute=(unit_normal,))
+            mesh_faces = GT.mesh_face(mesh,Val(num_dims(mesh)),dΓ;compute=(unit_normal,))
             dface_to_n = map(dface-> unit_normal(at_point(at_face_around(at_face(mesh_faces,dface_to_parent[dface]),1),1)) ,1:ndfaces)
             fd[2+1][PLOT_NORMALS_KEY] = dface_to_n
         end
@@ -909,9 +909,9 @@ end
 #    nnodes = GT.num_nodes(vmesh)
 #    data = zeros(T,nnodes)
 #    nfaces = num_faces(domain)
-#    face_point_u = discrete_field_accessor(GT.value,field,x)
-#    face_point_J = jacobian_accessor(x)
-#    face_npoints = num_points_accessor(x)
+#    face_point_u = discrete_field_face(GT.value,field,x)
+#    face_point_J = jacobian_face(x)
+#    face_npoints = num_points_face(x)
 #    n = 0
 #    for face in 1:nfaces
 #        point_u = face_point_u(face)

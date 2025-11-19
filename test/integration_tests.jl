@@ -183,11 +183,11 @@ dΛ = GT.measure(Λ,degree)
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
-#face_point_x = GT.coordinate_accessor(dΩ)
-#face_point_J = GT.jacobian_accessor(dΩ)
-#face_point_dV = GT.weight_accessor(dΩ)
-#face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
-#face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+#face_point_x = GT.coordinate_face(dΩ)
+#face_point_J = GT.jacobian_face(dΩ)
+#face_point_dV = GT.weight_face(dΩ)
+#face_point_dof_s = GT.shape_function_face(GT.value,V,dΩ)
+#face_point_dof_∇s = GT.shape_function_face(ForwardDiff.gradient,V,dΩ)
 #
 #face = 3
 #point = 4

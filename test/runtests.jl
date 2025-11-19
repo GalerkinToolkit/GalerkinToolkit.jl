@@ -13,7 +13,7 @@ using Test
     @testset "Field" begin include("field_tests.jl") end
     @testset "Integration" begin include("integration_tests.jl") end
     @testset "Space" begin include("space_tests.jl") end
-    @testset "Accessors" begin include("accessors_tests.jl") end
+    @testset "Faces" begin include("accessors_tests.jl") end
     @testset "Constraints" begin include("constraints_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Compiler" begin include("compiler_tests.jl") end

@@ -39,9 +39,9 @@ function allocate_vector(::Type{T},space_i::AbstractSpace,domains::AbstractDomai
     fields_i = ntuple(identity,num_fields(space_i))
     for domain in domains
         nfaces = num_faces(domain)
-        #field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
+        #field_face_dofs_i = map(field_i->dofs_face(GT.field(space_i,field_i),domain),fields_i)
         #field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
-        field_space_acc_i = map(field_i->space_accessor(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
+        field_space_acc_i = map(field_i->space_face(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
         allocate_vector_barrier!(counter,nfaces,fields_i,field_space_acc_i,free_or_diri_i,dof_map_i)
     end
     alloc = allocate(counter)
@@ -106,12 +106,12 @@ end
 function allocate_matrix_barrier!(counter, domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
     for domain in domains
         nfaces = num_faces(domain)
-        #field_face_dofs_i = map(field_i->dofs_accessor(GT.field(space_i,field_i),domain),fields_i)
-        #field_face_dofs_j = map(field_j->dofs_accessor(GT.field(space_j,field_j),domain),fields_j)
+        #field_face_dofs_i = map(field_i->dofs_face(GT.field(space_i,field_i),domain),fields_i)
+        #field_face_dofs_j = map(field_j->dofs_face(GT.field(space_j,field_j),domain),fields_j)
         #field_face_nfaces_around_i = map(field_i->num_faces_around_accesor(GT.domain(GT.field(space_i,field_i)),domain),fields_i)
         #field_face_nfaces_around_j = map(field_j->num_faces_around_accesor(GT.domain(GT.field(space_j,field_j)),domain),fields_j)
-        field_space_acc_i = map(field_i->space_accessor(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
-        field_space_acc_j = map(field_j->space_accessor(GT.field(space_j,field_j),GT.quadrature(domain,0)),fields_j)
+        field_space_acc_i = map(field_i->space_face(GT.field(space_i,field_i),GT.quadrature(domain,0)),fields_i)
+        field_space_acc_j = map(field_j->space_face(GT.field(space_j,field_j),GT.quadrature(domain,0)),fields_j)
         allocate_matrix_barrier_impl!(counter,nfaces,fields_i,fields_j,field_space_acc_i,field_space_acc_j,free_or_diri_i,free_or_diri_j,dof_map_i,dof_map_j)
     end
 end

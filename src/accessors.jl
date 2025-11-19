@@ -3,27 +3,27 @@
 """
 function each_face end
 
-function each_face(a::NewAbstractAccessor)
+function each_face(a::AbstractFace)
     EachFace(a)
 end
 
 function each_face(mesh::AbstractMesh,args...;kwargs...)
-    mesh_acc = mesh_accessor(mesh,args...;kwargs...)
+    mesh_acc = mesh_face(mesh,args...;kwargs...)
     each_face(mesh_acc)
 end
 
 function each_face(quadrature::AbstractQuadrature,args...;kwargs...)
-    acc = quadrature_accessor(quadrature,args...;kwargs...)
+    acc = quadrature_face(quadrature,args...;kwargs...)
     each_face(acc)
 end
 
 function each_face(space::AbstractSpace,args...;kwargs...)
-    acc = space_accessor(space,args...;kwargs...)
+    acc = space_face(space,args...;kwargs...)
     each_face(acc)
 end
 
 function each_face(uh::AbstractField,args...;kwargs...)
-    acc = field_accessor(uh,args...;kwargs...)
+    acc = field_face(uh,args...;kwargs...)
     each_face(acc)
 end
 
@@ -55,7 +55,7 @@ function Base.iterate(iter::EachFace,face=1)
     end
 end
 
-function each_face_around(a::NewAbstractAccessor)
+function each_face_around(a::AbstractFace)
     EachFaceAround(a)
 end
 
@@ -77,7 +77,7 @@ function Base.iterate(iter::EachFaceAround,face_around=1)
     end
 end
 
-function each_point(a::NewAbstractAccessor)
+function each_point(a::AbstractFace)
     EachPoint(a)
 end
 
@@ -99,7 +99,7 @@ function Base.iterate(iter::EachPoint,point=1)
     end
 end
 
-function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;compute=(),tabulate=())
+function reference_space_face(space::AbstractSpace,quadrature::AbstractQuadrature;compute=(),tabulate=())
     domain = GT.domain(quadrature)
     mesh = GT.mesh(space)
     d = Val(num_dims(domain))
@@ -121,7 +121,7 @@ function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadr
     face_around = -1
     ldface = -1
     point = -1
-    location = ReferenceSpaceAccessorLocation(
+    location = ReferenceSpaceFaceLocation(
                                               face,
                                               dface,
                                               Dface,
@@ -129,7 +129,7 @@ function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadr
                                               ldface,
                                               point,
                                              )
-    workspace = ReferenceSpaceAccessorWorkspace(
+    workspace = ReferenceSpaceFaceWorkspace(
                                                 d,
                                                 D,
                                                 dface_ldfaces,
@@ -137,17 +137,17 @@ function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadr
                                                 gradients,
                                                 jacobians
                                                )
-    a = ReferenceSpaceAccessor(
+    a = ReferenceSpaceFace(
                                loop_case,
                                space,
                                quadrature,
                                location,
                                workspace
                               )
-    setup_accessor(a,tabulate,compute)
+    setup_face(a,tabulate,compute)
 end
 
-function setup_accessor(a0,tabulate,compute)
+function setup_face(a0,tabulate,compute)
     if GT.value in tabulate
         a1 = GT.tabulate(GT.value,a0)
     else
@@ -184,7 +184,7 @@ end
 struct AtInterior end
 struct AtSkeleton end
 
-struct ReferenceSpaceAccessor{A,B,C,D,E} <: NewAbstractAccessor
+struct ReferenceSpaceFace{A,B,C,D,E} <: AbstractFace
     loop_case::A
     space::B
     quadrature::C
@@ -192,7 +192,7 @@ struct ReferenceSpaceAccessor{A,B,C,D,E} <: NewAbstractAccessor
     workspace::E
 end
 
-struct ReferenceSpaceAccessorLocation <: AbstractType
+struct ReferenceSpaceFaceLocation <: AbstractType
     face::Int
     dface::Int
     Dface::Int
@@ -201,7 +201,7 @@ struct ReferenceSpaceAccessorLocation <: AbstractType
     point::Int
 end
 
-struct ReferenceSpaceAccessorWorkspace{A,B,C,X,E,F} <: AbstractType
+struct ReferenceSpaceFaceWorkspace{A,B,C,X,E,F} <: AbstractType
     d::Val{A}
     D::Val{B}
     dface_ldfaces::C
@@ -210,43 +210,43 @@ struct ReferenceSpaceAccessorWorkspace{A,B,C,X,E,F} <: AbstractType
     jacobians::F
 end
 
-function replace_face_dface(a::ReferenceSpaceAccessor,face,dface)
+function replace_face_dface(a::ReferenceSpaceFace,face,dface)
     location = replace_face_dface(a.location,face,dface)
     replace_location(a,location)
 end
 
-function replace_face_dface_Dface(a::ReferenceSpaceAccessor,face,dface,Dface)
+function replace_face_dface_Dface(a::ReferenceSpaceFace,face,dface,Dface)
     location = replace_face_dface_Dface(a.location,face,dface,Dface)
     replace_location(a,location)
 end
 
-function replace_Dface_face_around_ldface(a::ReferenceSpaceAccessor,Dface,face_around,ldface)
+function replace_Dface_face_around_ldface(a::ReferenceSpaceFace,Dface,face_around,ldface)
     location = replace_Dface_face_around_ldface(a.location,Dface,face_around,ldface)
     replace_location(a,location)
 end
 
-function replace_point(a::ReferenceSpaceAccessor,point)
+function replace_point(a::ReferenceSpaceFace,point)
     location = replace_point(a.location,point)
     replace_location(a,location)
 end
 
-function replace_values(a::ReferenceSpaceAccessor,values)
+function replace_values(a::ReferenceSpaceFace,values)
     workspace = replace_values(a.workspace,values)
     replace_workspace(a,workspace)
 end
 
-function replace_gradients(a::ReferenceSpaceAccessor,gradients)
+function replace_gradients(a::ReferenceSpaceFace,gradients)
     workspace = replace_gradients(a.workspace,gradients)
     replace_workspace(a,workspace)
 end
 
-function replace_jacobians(a::ReferenceSpaceAccessor,jacobians)
+function replace_jacobians(a::ReferenceSpaceFace,jacobians)
     workspace = replace_jacobians(a.workspace,jacobians)
     replace_workspace(a,workspace)
 end
 
-function replace_location(a::ReferenceSpaceAccessor,location)
-    ReferenceSpaceAccessor(
+function replace_location(a::ReferenceSpaceFace,location)
+    ReferenceSpaceFace(
                            a.loop_case,
                            a.space,
                            a.quadrature,
@@ -255,8 +255,8 @@ function replace_location(a::ReferenceSpaceAccessor,location)
                           )
 end
 
-function replace_workspace(a::ReferenceSpaceAccessor,workspace)
-    ReferenceSpaceAccessor(
+function replace_workspace(a::ReferenceSpaceFace,workspace)
+    ReferenceSpaceFace(
                            a.loop_case,
                            a.space,
                            a.quadrature,
@@ -265,8 +265,8 @@ function replace_workspace(a::ReferenceSpaceAccessor,workspace)
                           )
 end
 
-function replace_face_dface(a::ReferenceSpaceAccessorLocation,face,dface)
-    ReferenceSpaceAccessorLocation(
+function replace_face_dface(a::ReferenceSpaceFaceLocation,face,dface)
+    ReferenceSpaceFaceLocation(
                                    face,
                                    dface,
                                    a.Dface,
@@ -276,8 +276,8 @@ function replace_face_dface(a::ReferenceSpaceAccessorLocation,face,dface)
                                   )
 end
 
-function replace_face_dface_Dface(a::ReferenceSpaceAccessorLocation,face,dface,Dface)
-    ReferenceSpaceAccessorLocation(
+function replace_face_dface_Dface(a::ReferenceSpaceFaceLocation,face,dface,Dface)
+    ReferenceSpaceFaceLocation(
                                    face,
                                    dface,
                                    Dface,
@@ -287,8 +287,8 @@ function replace_face_dface_Dface(a::ReferenceSpaceAccessorLocation,face,dface,D
                                   )
 end
 
-function replace_Dface_face_around_ldface(a::ReferenceSpaceAccessorLocation,Dface,face_around,ldface)
-    ReferenceSpaceAccessorLocation(
+function replace_Dface_face_around_ldface(a::ReferenceSpaceFaceLocation,Dface,face_around,ldface)
+    ReferenceSpaceFaceLocation(
                                    a.face,
                                    a.dface,
                                    Dface,
@@ -298,8 +298,8 @@ function replace_Dface_face_around_ldface(a::ReferenceSpaceAccessorLocation,Dfac
                                   )
 end
 
-function replace_point(a::ReferenceSpaceAccessorLocation,point)
-    ReferenceSpaceAccessorLocation(
+function replace_point(a::ReferenceSpaceFaceLocation,point)
+    ReferenceSpaceFaceLocation(
                                    a.face,
                                    a.dface,
                                    a.Dface,
@@ -309,8 +309,8 @@ function replace_point(a::ReferenceSpaceAccessorLocation,point)
                                   )
 end
 
-function replace_values(a::ReferenceSpaceAccessorWorkspace,values)
-    ReferenceSpaceAccessorWorkspace(
+function replace_values(a::ReferenceSpaceFaceWorkspace,values)
+    ReferenceSpaceFaceWorkspace(
                                     a.d,
                                     a.D,
                                     a.dface_ldfaces,
@@ -320,8 +320,8 @@ function replace_values(a::ReferenceSpaceAccessorWorkspace,values)
                                    )
 end
 
-function replace_gradients(a::ReferenceSpaceAccessorWorkspace,gradients)
-    ReferenceSpaceAccessorWorkspace(
+function replace_gradients(a::ReferenceSpaceFaceWorkspace,gradients)
+    ReferenceSpaceFaceWorkspace(
                                     a.d,
                                     a.D,
                                     a.dface_ldfaces,
@@ -331,8 +331,8 @@ function replace_gradients(a::ReferenceSpaceAccessorWorkspace,gradients)
                                    )
 end
 
-function replace_jacobians(a::ReferenceSpaceAccessorWorkspace,jacobians)
-    ReferenceSpaceAccessorWorkspace(
+function replace_jacobians(a::ReferenceSpaceFaceWorkspace,jacobians)
+    ReferenceSpaceFaceWorkspace(
                                     a.d,
                                     a.D,
                                     a.dface_ldfaces,
@@ -342,13 +342,13 @@ function replace_jacobians(a::ReferenceSpaceAccessorWorkspace,jacobians)
                                    )
 end
 
-function num_faces(a::ReferenceSpaceAccessor)
+function num_faces(a::ReferenceSpaceFace)
     (;quadrature) = a
     domain = GT.domain(quadrature)
     num_faces(domain)
 end
 
-function at_face(a::ReferenceSpaceAccessor{AtInterior},face)
+function at_face(a::ReferenceSpaceFace{AtInterior},face)
     (;quadrature) = a
     domain = GT.domain(quadrature)
     face_dface = GT.faces(domain)
@@ -360,7 +360,7 @@ function at_face(a::ReferenceSpaceAccessor{AtInterior},face)
     replace_Dface_face_around_ldface(a2,Dface,face_around,ldface)
 end
 
-function at_face(a::ReferenceSpaceAccessor{AtSkeleton},face)
+function at_face(a::ReferenceSpaceFace{AtSkeleton},face)
     (;space,quadrature) = a
     (;d,D) = a.workspace
     mesh = GT.mesh(space)
@@ -380,7 +380,7 @@ end
 
 struct AnyIndex end
 
-function at_any_index(a::ReferenceSpaceAccessor{AtInterior})
+function at_any_index(a::ReferenceSpaceFace{AtInterior})
     # TODO the asserts can be removed by playing with AnyIndex
     @assert num_faces(a) > 0
     a2 = at_face(a,1)
@@ -388,7 +388,7 @@ function at_any_index(a::ReferenceSpaceAccessor{AtInterior})
     a3 = at_point(a2,1)
 end
 
-function at_any_index(a::ReferenceSpaceAccessor{AtSkeleton})
+function at_any_index(a::ReferenceSpaceFace{AtSkeleton})
     # TODO the asserts can be removed by playing with AnyIndex
     @assert num_faces(a) > 0
     a2 = at_face(a,1)
@@ -398,7 +398,7 @@ function at_any_index(a::ReferenceSpaceAccessor{AtSkeleton})
     a4 = at_point(a3,1)
 end
 
-function num_faces_around(a::ReferenceSpaceAccessor)
+function num_faces_around(a::ReferenceSpaceFace)
     (;space) = a
     (;d,D) = a.workspace
     (;dface) = a.location
@@ -409,20 +409,20 @@ function num_faces_around(a::ReferenceSpaceAccessor)
     length(Dfaces)
 end
 
-function at_face_around(a::ReferenceSpaceAccessor{AtInterior},::Nothing)
+function at_face_around(a::ReferenceSpaceFace{AtInterior},::Nothing)
     a
 end
 
-function at_face_around(a::ReferenceSpaceAccessor{AtSkeleton},::Nothing)
+function at_face_around(a::ReferenceSpaceFace{AtSkeleton},::Nothing)
     a
 end
 
-function at_face_around(a::ReferenceSpaceAccessor{AtInterior},face_around_0)
+function at_face_around(a::ReferenceSpaceFace{AtInterior},face_around_0)
     @boundscheck @assert face_around_0 == 1
     a
 end
 
-function at_face_around(a::ReferenceSpaceAccessor{AtSkeleton},face_around_0)
+function at_face_around(a::ReferenceSpaceFace{AtSkeleton},face_around_0)
     (;space,quadrature) = a
     (;d,D,dface_ldfaces) = a.workspace
     (;face,dface) = a.location
@@ -441,18 +441,18 @@ function at_face_around(a::ReferenceSpaceAccessor{AtSkeleton},face_around_0)
     replace_Dface_face_around_ldface(a,Dface,face_around,ldface)
 end
 
-function dofs(a::ReferenceSpaceAccessor)
+function dofs(a::ReferenceSpaceFace)
     (;space) = a
     (;Dface) = a.location
     Dface_dofs = face_dofs(space)
     Dface_dofs[Dface]
 end
 
-function num_dofs(a::ReferenceSpaceAccessor)
+function num_dofs(a::ReferenceSpaceFace)
     length(nodes(a))
 end
 
-function tabulate(f,a::ReferenceSpaceAccessor{AtInterior})
+function tabulate(f,a::ReferenceSpaceFace{AtInterior})
     (;quadrature,space) = a
     (;D) = a.workspace
     rid_point_x = map(coordinates,reference_quadratures(quadrature))
@@ -464,7 +464,7 @@ function tabulate(f,a::ReferenceSpaceAccessor{AtInterior})
     replace_tabulators(f,a,rid_to_tab)
 end
 
-function tabulate(f,a::ReferenceSpaceAccessor{AtSkeleton})
+function tabulate(f,a::ReferenceSpaceFace{AtSkeleton})
     (;quadrature,space) = a
     (;D,d) = a.workspace
     mesh = GT.mesh(space)
@@ -490,19 +490,19 @@ function tabulate(f,a::ReferenceSpaceAccessor{AtSkeleton})
     replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
 end
 
-function replace_tabulators(::typeof(GT.value),a::ReferenceSpaceAccessor,values)
+function replace_tabulators(::typeof(GT.value),a::ReferenceSpaceFace,values)
     replace_values(a,values)
 end
 
-function replace_tabulators(::typeof(ForwardDiff.gradient),a::ReferenceSpaceAccessor,gradients)
+function replace_tabulators(::typeof(ForwardDiff.gradient),a::ReferenceSpaceFace,gradients)
     replace_gradients(a,gradients)
 end
 
-function replace_tabulators(::typeof(ForwardDiff.jacobian),a::ReferenceSpaceAccessor,jacobians)
+function replace_tabulators(::typeof(ForwardDiff.jacobian),a::ReferenceSpaceFace,jacobians)
     replace_jacobians(a,jacobians)
 end
 
-function tabulator(f,a::ReferenceSpaceAccessor{AtInterior})
+function tabulator(f,a::ReferenceSpaceFace{AtInterior})
     (;space) = a
     (;D) = a.workspace
     (;Dface) = a.location
@@ -511,7 +511,7 @@ function tabulator(f,a::ReferenceSpaceAccessor{AtInterior})
     tab = Drid_tab[Drid]
 end
 
-function tabulator(f,a::ReferenceSpaceAccessor{AtSkeleton})
+function tabulator(f,a::ReferenceSpaceFace{AtSkeleton})
     (;space,quadrature) = a
     (;Dface,dface,ldface) = a.location
     (;d,D) = a.workspace
@@ -528,35 +528,35 @@ function tabulator(f,a::ReferenceSpaceAccessor{AtSkeleton})
     tab = drid_Drid_ldface_perm_tab[drid][Drid][ldface][perm]
 end
 
-function tabulators(::typeof(GT.value),a::ReferenceSpaceAccessor)
+function tabulators(::typeof(GT.value),a::ReferenceSpaceFace)
     (;values) = a.workspace
     values
 end
 
-function tabulators(::typeof(ForwardDiff.gradient),a::ReferenceSpaceAccessor)
+function tabulators(::typeof(ForwardDiff.gradient),a::ReferenceSpaceFace)
     (;gradients) = a.workspace
     gradients
 end
 
-function tabulators(::typeof(ForwardDiff.jacobian),a::ReferenceSpaceAccessor)
+function tabulators(::typeof(ForwardDiff.jacobian),a::ReferenceSpaceFace)
     (;jacobians) = a.workspace
     jacobians
 end
 
-function id(a::ReferenceSpaceAccessor)
+function id(a::ReferenceSpaceFace)
     (;space) = a
     (;Dface) = a.location
     Dface
 end
 
-function reference_id(a::ReferenceSpaceAccessor)
+function reference_id(a::ReferenceSpaceFace)
     (;space) = a
     (;Dface) = a.location
     Dface_Drid = face_reference_id(space)
     Drid = Dface_Drid[Dface]
 end
 
-function shape_functions(a::ReferenceSpaceAccessor)
+function shape_functions(a::ReferenceSpaceFace)
     (;space) = a
     (;Dface) = a.location
     Dface_Drid = face_reference_id(space)
@@ -566,7 +566,7 @@ function shape_functions(a::ReferenceSpaceAccessor)
     shape_functions(rspace)
 end
 
-function reference_space(a::ReferenceSpaceAccessor)
+function reference_space(a::ReferenceSpaceFace)
     (;space) = a
     (;Dface) = a.location
     Dface_Drid = face_reference_id(space)
@@ -575,15 +575,15 @@ function reference_space(a::ReferenceSpaceAccessor)
     rspace = Drid_rspace[Drid]
 end
 
-function reference_domain(a::ReferenceSpaceAccessor)
+function reference_domain(a::ReferenceSpaceFace)
     domain(reference_space(a))
 end
 
-function num_points(a::ReferenceSpaceAccessor)
+function num_points(a::ReferenceSpaceFace)
     num_points(quadrature(a))
 end
 
-function quadrature(a::ReferenceSpaceAccessor)
+function quadrature(a::ReferenceSpaceFace)
     (;quadrature) = a
     (;dface) = a.location
     dface_drid = GT.face_reference_id(quadrature)
@@ -592,11 +592,11 @@ function quadrature(a::ReferenceSpaceAccessor)
     drid_refqua[drid]
 end
 
-function at_point(a::ReferenceSpaceAccessor,point)
+function at_point(a::ReferenceSpaceFace,point)
     replace_point(a,point)
 end
 
-function shape_functions(f,a::ReferenceSpaceAccessor)
+function shape_functions(f,a::ReferenceSpaceFace)
     (;point) = a.location
     tab = tabulator(f,a)
     view(tab,:,point)
@@ -604,86 +604,88 @@ end
 
 # Mesh accessor
 
-function mesh_accessor(mesh::AbstractMesh,
+function mesh_face(mesh::AbstractMesh,
     D=Val(num_dims(mesh)),
     domain=GT.domain(mesh,Val(val_parameter(D)));kwargs...)
     degree = 0
     quadrature = GT.quadrature(domain,degree)
-    a = mesh_accessor(mesh,Val(val_parameter(D)),quadrature)
+    a = mesh_face(mesh,Val(val_parameter(D)),quadrature)
 end
 
-function mesh_accessor(mesh::AbstractMesh,D,quadrature::AbstractQuadrature;
+function mesh_face(mesh::AbstractMesh,D,quadrature::AbstractQuadrature;
         tabulate=(), compute=())
     space = mesh_space(mesh,D)
-    space_accessor = reference_space_accessor(space,quadrature)
-    loop_case = space_accessor.loop_case
+    space_face = reference_space_face(space,quadrature)
+    loop_case = space_face.loop_case
     J = nothing
     reference_normals = nothing
-    workspace = MeshAccessorWorkspace(J,reference_normals)
-    a = MeshAccessor(loop_case,space_accessor,workspace)
-    setup_accessor(a,tabulate,compute)
+    workspace = MeshFaceWorkspace(J,reference_normals)
+    a = MeshFace(loop_case,space_face,workspace)
+    setup_face(a,tabulate,compute)
 end
 
-struct MeshAccessor{A,B,C} <: NewAbstractAccessor
+abstract type AbstractMeshFace <: AbstractFace end
+
+struct MeshFace{A,B,C} <: AbstractMeshFace
     loop_case::A
-    space_accessor::B
+    space_face::B
     workspace::C
 end
 
-struct MeshAccessorWorkspace{A,B}
+struct MeshFaceWorkspace{A,B}
     jacobian::A
     reference_normals::B
 end
 
-function replace_space_accessor(a::MeshAccessor,space_accessor)
-    MeshAccessor(
+function replace_space_face(a::MeshFace,space_face)
+    MeshFace(
                  a.loop_case,
-                 space_accessor,
+                 space_face,
                  a.workspace)
 end
 
-function replace_workspace(a::MeshAccessor,workspace)
-    MeshAccessor(
+function replace_workspace(a::MeshFace,workspace)
+    MeshFace(
                  a.loop_case,
-                 a.space_accessor,
+                 a.space_face,
                  workspace)
 end
 
-function replace_jacobian(a::MeshAccessor,jacobian)
+function replace_jacobian(a::MeshFace,jacobian)
     workspace = replace_jacobian(a.workspace,jacobian)
     replace_workspace(a,workspace)
 end
 
-function replace_jacobian(a::MeshAccessorWorkspace,jacobian)
-    MeshAccessorWorkspace(
+function replace_jacobian(a::MeshFaceWorkspace,jacobian)
+    MeshFaceWorkspace(
                           jacobian,
                           a.reference_normals
                          )
 end
 
-function replace_reference_normals(a::MeshAccessor,reference_normals)
+function replace_reference_normals(a::MeshFace,reference_normals)
     workspace = replace_reference_normals(a.workspace,reference_normals)
     replace_workspace(a,workspace)
 end
 
-function replace_reference_normals(a::MeshAccessorWorkspace,reference_normals)
-    MeshAccessorWorkspace(
+function replace_reference_normals(a::MeshFaceWorkspace,reference_normals)
+    MeshFaceWorkspace(
                           a.jacobian,
                           reference_normals
                          )
 end
 
-function num_faces(a::MeshAccessor)
-    (;space_accessor) = a
-    num_faces(space_accessor)
+function num_faces(a::MeshFace)
+    (;space_face) = a
+    num_faces(space_face)
 end
 
-function at_face(a::MeshAccessor,face)
-    space_accessor = at_face(a.space_accessor,face)
-    replace_space_accessor(a,space_accessor)
+function at_face(a::MeshFace,face)
+    space_face = at_face(a.space_face,face)
+    replace_space_face(a,space_face)
 end
 
-function at_any_index(a::MeshAccessor{AtInterior})
+function at_any_index(a::MeshFace{AtInterior})
     # TODO the asserts can be removed by playing with AnyIndex
     @assert num_faces(a) > 0
     a2 = at_face(a,1)
@@ -691,7 +693,7 @@ function at_any_index(a::MeshAccessor{AtInterior})
     a3 = at_point(a2,1)
 end
 
-function at_any_index(a::MeshAccessor{AtSkeleton})
+function at_any_index(a::MeshFace{AtSkeleton})
     # TODO the asserts can be removed by playing with AnyIndex
     @assert num_faces(a) > 0
     a2 = at_face(a,1)
@@ -701,60 +703,60 @@ function at_any_index(a::MeshAccessor{AtSkeleton})
     a4 = at_point(a3,1)
 end
 
-function num_faces_around(a::MeshAccessor)
-    (;space_accessor) = a
-    num_faces_around(space_accessor)
+function num_faces_around(a::MeshFace)
+    (;space_face) = a
+    num_faces_around(space_face)
 end
 
-function at_face_around(a::MeshAccessor,face_around)
-    space_accessor = at_face_around(a.space_accessor,face_around)
-    replace_space_accessor(a,space_accessor)
+function at_face_around(a::MeshFace,face_around)
+    space_face = at_face_around(a.space_face,face_around)
+    replace_space_face(a,space_face)
 end
 
-function nodes(a::MeshAccessor)
-    (;space_accessor) = a
-    dofs(space_accessor)
+function nodes(a::MeshFace)
+    (;space_face) = a
+    dofs(space_face)
 end
 
-function num_nodes(a::MeshAccessor)
+function num_nodes(a::MeshFace)
     length(nodes(a))
 end
 
-function node_coordinates(a::MeshAccessor)
-    (;space_accessor) = a
-    (;space) = space_accessor
+function node_coordinates(a::MeshFace)
+    (;space_face) = a
+    (;space) = space_face
     mesh = GT.mesh(space) 
     node_x = node_coordinates(mesh)
     view(node_x,nodes(a))
 end
 
-function barycenter(a::MeshAccessor)
+function barycenter(a::MeshFace)
     x = node_coordinates(a)
     sum(x)/length(x)
 end
 
-function tabulate(f,a::MeshAccessor)
-    space_accessor = tabulate(f,a.space_accessor)
-    replace_space_accessor(a,space_accessor)
+function tabulate(f,a::MeshFace)
+    space_face = tabulate(f,a.space_face)
+    replace_space_face(a,space_face)
 end
 
-function tabulate(f::typeof(ForwardDiff.gradient),a::MeshAccessor)
-    space_accessor = tabulate(f,a.space_accessor)
-    space_accessor_2 = at_any_index(space_accessor)
-    mesh = GT.mesh(space_accessor.space)
+function tabulate(f::typeof(ForwardDiff.gradient),a::MeshFace)
+    space_face = tabulate(f,a.space_face)
+    space_face_2 = at_any_index(space_face)
+    mesh = GT.mesh(space_face.space)
     x = zero(eltype(node_coordinates(mesh)))
-    g = zero(eltype(shape_functions(f,space_accessor_2)))
+    g = zero(eltype(shape_functions(f,space_face_2)))
     J = zero(outer(x,g))
-    a2 = replace_space_accessor(a,space_accessor)
+    a2 = replace_space_face(a,space_face)
     replace_jacobian(a2,J)
 end
 
 function unit_normal end
 
-function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
-    (;space_accessor) = a
-    (;space) = space_accessor
-    (;D,d) = space_accessor.workspace
+function compute(::typeof(unit_normal),a::MeshFace{AtSkeleton})
+    (;space_face) = a
+    (;space) = space_face
+    (;D,d) = space_face.workspace
     mesh = GT.mesh(space)
     @assert val_parameter(d) + 1 == val_parameter(D)
     Drid_ldface_nref = map(GT.reference_spaces(mesh,D)) do refface
@@ -764,7 +766,7 @@ function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
     tabulate(gradient,a1)
 end
 
-function coordinate_map(a::MeshAccessor)
+function coordinate_map(a::MeshFace)
     x = node_coordinates(a)
     s = shape_functions(a)
     y -> sum(i->x[i]*s[i](y),1:n)
@@ -772,44 +774,44 @@ end
 
 function coordinate end
 
-function compute(::typeof(GT.coordinate),a::MeshAccessor)
+function compute(::typeof(GT.coordinate),a::MeshFace)
     tabulate(GT.value,a)
 end
 
-function compute(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
+function compute(::typeof(ForwardDiff.jacobian),a::MeshFace)
     tabulate(ForwardDiff.gradient,a)
 end
 
-function shape_functions(a::MeshAccessor)
-    (;space_accessor) = a
-    shape_functions(space_accessor)
+function shape_functions(a::MeshFace)
+    (;space_face) = a
+    shape_functions(space_face)
 end
 
-function reference_space(a::MeshAccessor)
-    (;space_accessor) = a
-    reference_space(space_accessor)
+function reference_space(a::MeshFace)
+    (;space_face) = a
+    reference_space(space_face)
 end
 
-function reference_domain(a::MeshAccessor)
-    (;space_accessor) = a
-    reference_domain(space_accessor)
+function reference_domain(a::MeshFace)
+    (;space_face) = a
+    reference_domain(space_face)
 end
 
-function reference_id(a::MeshAccessor)
-    (;space_accessor) = a
-    reference_id(space_accessor)
+function reference_id(a::MeshFace)
+    (;space_face) = a
+    reference_id(space_face)
 end
 
-function id(a::MeshAccessor)
-    (;space_accessor) = a
-    id(space_accessor)
+function id(a::MeshFace)
+    (;space_face) = a
+    id(space_face)
 end
 
 """
 """
-function diameter(a::MeshAccessor)
+function diameter(a::MeshFace)
     nodes = GT.nodes(a)
-    mesh = GT.mesh(a.space_accessor.space)
+    mesh = GT.mesh(a.space_face.space)
     node_x = GT.node_coordinates(mesh)
     nnodes = length(nodes)
     diam = zero(eltype(eltype(node_x)))
@@ -823,19 +825,19 @@ function diameter(a::MeshAccessor)
     diam
 end
 
-function num_points(a::MeshAccessor)
-    (;space_accessor) = a
-    num_points(space_accessor)
+function num_points(a::MeshFace)
+    (;space_face) = a
+    num_points(space_face)
 end
 
-function quadrature(a::MeshAccessor)
-    (;space_accessor) = a
-    quadrature(space_accessor)
+function quadrature(a::MeshFace)
+    (;space_face) = a
+    quadrature(space_face)
 end
 
-function at_point(a::MeshAccessor,point)
-    space_accessor = at_point(a.space_accessor,point)
-    a2 = replace_space_accessor(a,space_accessor)
+function at_point(a::MeshFace,point)
+    space_face = at_point(a.space_face,point)
+    a2 = replace_space_face(a,space_face)
     compute_jacobian(a2)
 end
 
@@ -854,43 +856,43 @@ end
     #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
 end
 
-function compute_jacobian(a::MeshAccessor)
+function compute_jacobian(a::MeshFace)
     J0 = a.workspace.jacobian
     if J0 === nothing
         return a
     end
-    space_accessor = a.space_accessor
-    point = space_accessor.location.point
-    i_s = shape_functions(ForwardDiff.gradient,space_accessor)
+    space_face = a.space_face
+    point = space_face.location.point
+    i_s = shape_functions(ForwardDiff.gradient,space_face)
     i_node = nodes(a)
-    mesh = GT.mesh(space_accessor.space)
+    mesh = GT.mesh(space_face.space)
     node_x = node_coordinates(mesh)
     n = length(i_s)
     J = sum_jacobian(node_x,i_node,i_s,n,J0)
     replace_jacobian(a,J)
 end
 
-function shape_functions(f,a::MeshAccessor)
-    (;space_accessor) = a
-    shape_functions(f,space_accessor)
+function shape_functions(f,a::MeshFace)
+    (;space_face) = a
+    shape_functions(f,space_face)
 end
 
-function coordinate(a::MeshAccessor)
+function coordinate(a::MeshFace)
     coordinate(GT.value,a)
 end
 
-function ForwardDiff.jacobian(a::MeshAccessor)
+function ForwardDiff.jacobian(a::MeshFace)
     coordinate(ForwardDiff.jacobian,a)
 end
 
-function coordinate(::typeof(value),a::MeshAccessor)
+function coordinate(::typeof(value),a::MeshFace)
     s = shape_functions(value,a)
     x = node_coordinates(a)
     n = length(s)
     sum(i->x[i]*s[i],1:n)
 end
 
-function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
+function coordinate(::typeof(ForwardDiff.jacobian),a::MeshFace)
     J = a.workspace.jacobian
     @assert J !== nothing
     J
@@ -900,21 +902,21 @@ function coordinate(::typeof(ForwardDiff.jacobian),a::MeshAccessor)
     #sum(i->outer(x[i],s[i]),1:n)
 end
 
-function weight(a::MeshAccessor)
-    (;space_accessor) = a
-    (;point) = space_accessor.location
+function weight(a::MeshFace)
+    (;space_face) = a
+    (;point) = space_face.location
     qua = quadrature(a)
     w = weights(qua)[point]
     J = coordinate(ForwardDiff.jacobian,a)
     change_of_measure(J)*w
 end
 
-function unit_normal(a::MeshAccessor)
-    (;space_accessor) = a
+function unit_normal(a::MeshFace)
+    (;space_face) = a
     (;reference_normals,) = a.workspace
-    (;space) = space_accessor
-    (;D) = space_accessor.workspace
-    (;Dface,ldface) = space_accessor.location
+    (;space) = space_face
+    (;D) = space_face.workspace
+    (;Dface,ldface) = space_face.location
     Drid_ldface_nref = reference_normals
     mesh = GT.mesh(space)
     Dface_Drid = face_reference_id(mesh,D)
@@ -937,171 +939,171 @@ function map_unit_normal(J,n)
     end
 end
 
-function quadrature_accessor(quadrature::AbstractQuadrature,d=Val(num_dims(GT.domain(quadrature))))
+function quadrature_face(quadrature::AbstractQuadrature,d=Val(num_dims(GT.domain(quadrature))))
     domain = GT.domain(quadrature)
     mesh = GT.mesh(domain)
-    acc1 = mesh_accessor(mesh,d,quadrature)
+    acc1 = mesh_face(mesh,d,quadrature)
     acc2 = tabulate(GT.value,acc1)
     acc3 = tabulate(ForwardDiff.gradient,acc2)
     acc3
 end
 
-struct SpaceAccessor{A,B,C,D,E} <: NewAbstractAccessor
+struct SpaceFace{A,B,C,D,E} <: AbstractFace
     loop_case::A
     space::B
-    mesh_accessor::C
-    reference_space_accessor::D
+    mesh_face::C
+    reference_space_face::D
     workspace::E
 end
 
-struct SpaceAccessorWorkspace{A,B,C} <: AbstractType
+struct SpaceFaceWorkspace{A,B,C} <: AbstractType
     values::A
     gradients::B
     jacobians::C
 end
 
-function replace_mesh_accessor(a::SpaceAccessor,mesh_accessor)
-    SpaceAccessor(
+function replace_mesh_face(a::SpaceFace,mesh_face)
+    SpaceFace(
                   a.loop_case,
                   a.space,
-                  mesh_accessor,
-                  a.reference_space_accessor,
+                  mesh_face,
+                  a.reference_space_face,
                   a.workspace,
                  )
 end
 
-function replace_reference_space_accessor(a::SpaceAccessor,reference_space_accessor)
-    SpaceAccessor(
+function replace_reference_space_face(a::SpaceFace,reference_space_face)
+    SpaceFace(
                   a.loop_case,
                   a.space,
-                  a.mesh_accessor,
-                  reference_space_accessor,
+                  a.mesh_face,
+                  reference_space_face,
                   a.workspace,
                  )
 end
 
-function replace_workspace(a::SpaceAccessor,workspace)
-    SpaceAccessor(
+function replace_workspace(a::SpaceFace,workspace)
+    SpaceFace(
                   a.loop_case,
                   a.space,
-                  a.mesh_accessor,
-                  a.reference_space_accessor,
+                  a.mesh_face,
+                  a.reference_space_face,
                   workspace,
                  )
 end
 
-function replace_values(a::SpaceAccessor,values)
+function replace_values(a::SpaceFace,values)
     workspace = replace_values(a.workspace,values)
     replace_workspace(a,workspace)
 end
 
-function replace_gradients(a::SpaceAccessor,gradients)
+function replace_gradients(a::SpaceFace,gradients)
     workspace = replace_gradients(a.workspace,gradients)
     replace_workspace(a,workspace)
 end
 
-function replace_jacobians(a::SpaceAccessor,jacobians)
+function replace_jacobians(a::SpaceFace,jacobians)
     workspace = replace_jacobians(a.workspace,jacobians)
     replace_workspace(a,workspace)
 end
 
-function replace_values(a::SpaceAccessorWorkspace,values)
-    SpaceAccessorWorkspace(
+function replace_values(a::SpaceFaceWorkspace,values)
+    SpaceFaceWorkspace(
                            values,
                            a.gradients,
                            a.jacobians,
                           )
 end
 
-function replace_gradients(a::SpaceAccessorWorkspace,gradients)
-    SpaceAccessorWorkspace(
+function replace_gradients(a::SpaceFaceWorkspace,gradients)
+    SpaceFaceWorkspace(
                            a.values,
                            gradients,
                            a.jacobians,
                           )
 end
 
-function replace_jacobians(a::SpaceAccessorWorkspace,jacobians)
-    SpaceAccessorWorkspace(
+function replace_jacobians(a::SpaceFaceWorkspace,jacobians)
+    SpaceFaceWorkspace(
                            a.values,
                            a.gradients,
                            jacobians,
                           )
 end
 
-function space_accessor(space::AbstractSpace,domain::AbstractDomain=GT.domain(space);kwargs...)
+function space_face(space::AbstractSpace,domain::AbstractDomain=GT.domain(space);kwargs...)
     degree = 0
     quadrature = GT.quadrature(domain,degree)
-    space_accessor(space,quadrature;kwargs...)
+    space_face(space,quadrature;kwargs...)
 end
 
-function space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;kwargs...)
+function space_face(space::AbstractSpace,quadrature::AbstractQuadrature;kwargs...)
     D = num_dims(GT.domain(space))
     d = num_dims(GT.domain(quadrature))
     mesh = GT.mesh(space)
-    mesh_accessor = GT.mesh_accessor(mesh,Val(D),quadrature)
+    mesh_face = GT.mesh_face(mesh,Val(D),quadrature)
     #TODO this tries to replicate a happy bug in the old accessors.
     if d <= D
-        mesh_accessor_2 = tabulate(ForwardDiff.gradient,mesh_accessor)
+        mesh_face_2 = tabulate(ForwardDiff.gradient,mesh_face)
     else
-        mesh_accessor_2 = mesh_accessor
+        mesh_face_2 = mesh_face
     end
-    space_accessor(space,mesh_accessor_2;kwargs...)
+    space_face(space,mesh_face_2;kwargs...)
 end
 
-function space_accessor(space::AbstractSpace,faces::EachFace;kwargs...)
-    space_accessor(space,faces.accessor;kwargs...)
+function space_face(space::AbstractSpace,faces::EachFace;kwargs...)
+    space_face(space,faces.accessor;kwargs...)
 end
 
-function space_accessor(space::AbstractSpace,mesh_accessor::MeshAccessor;
+function space_face(space::AbstractSpace,mesh_face::MeshFace;
         tabulate=(), compute = ())
-    quadrature = mesh_accessor.space_accessor.quadrature
-    reference_space_accessor = GT.reference_space_accessor(space,quadrature)
-    loop_case = reference_space_accessor.loop_case
+    quadrature = mesh_face.space_face.quadrature
+    reference_space_face = GT.reference_space_face(space,quadrature)
+    loop_case = reference_space_face.loop_case
     values = nothing
     gradients = nothing
     jacobians = nothing
-    workspace = SpaceAccessorWorkspace(
+    workspace = SpaceFaceWorkspace(
                                        values,
                                        gradients,
                                        jacobians
                                       )
-    a = SpaceAccessor(
+    a = SpaceFace(
                       loop_case,
                       space,
-                      mesh_accessor,
-                      reference_space_accessor,
+                      mesh_face,
+                      reference_space_face,
                       workspace)
-    setup_accessor(a,tabulate,compute)
+    setup_face(a,tabulate,compute)
 end
 
-function tabulate(f,a::SpaceAccessor{AtInterior})
-    (;space,mesh_accessor) = a
-    reference_space_accessor = tabulate(f,a.reference_space_accessor)
-    reference_space_accessor_2 = at_any_index(reference_space_accessor)
-    mesh_accessor_2 = at_any_index(mesh_accessor)
-    dof_sref = shape_functions(f,reference_space_accessor_2)
+function tabulate(f,a::SpaceFace{AtInterior})
+    (;space,mesh_face) = a
+    reference_space_face = tabulate(f,a.reference_space_face)
+    reference_space_face_2 = at_any_index(reference_space_face)
+    mesh_face_2 = at_any_index(mesh_face)
+    dof_sref = shape_functions(f,reference_space_face_2)
     sref = zero(eltype(dof_sref))
     dof = AnyIndex()
-    sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
+    sphys = map_shape_function(f,space,dof,mesh_face_2,sref)
     ndofsr = max_num_reference_dofs(space)
     ndofs2 = max_num_face_dofs(space)
     dof_sphys = zeros(typeof(sphys),ndofsr)
     dof_sphys2 = zeros(typeof(sphys),ndofs2)
     workspace = [dof_sphys,dof_sphys2]
-    a2 = replace_reference_space_accessor(a,reference_space_accessor)
+    a2 = replace_reference_space_face(a,reference_space_face)
     replace_workspace(f,a2,workspace)
 end
 
-function tabulate(f,a::SpaceAccessor{AtSkeleton})
-    (;space,mesh_accessor) = a
-    reference_space_accessor = tabulate(f,a.reference_space_accessor)
-    reference_space_accessor_2 = at_any_index(reference_space_accessor)
-    mesh_accessor_2 = at_any_index(mesh_accessor)
-    dof_sref = shape_functions(f,reference_space_accessor_2)
+function tabulate(f,a::SpaceFace{AtSkeleton})
+    (;space,mesh_face) = a
+    reference_space_face = tabulate(f,a.reference_space_face)
+    reference_space_face_2 = at_any_index(reference_space_face)
+    mesh_face_2 = at_any_index(mesh_face)
+    dof_sref = shape_functions(f,reference_space_face_2)
     sref = zero(eltype(dof_sref))
     dof = AnyIndex()
-    sphys = map_shape_function(f,space,dof,mesh_accessor_2,sref)
+    sphys = map_shape_function(f,space,dof,mesh_face_2,sref)
     ndofsr = max_num_reference_dofs(space)
     ndofs2 = max_num_face_dofs(space)
     max_num_faces_around = 2 # TODO
@@ -1109,119 +1111,119 @@ function tabulate(f,a::SpaceAccessor{AtSkeleton})
     face_around_dof_sphys = [ zeros(typeof(sphys),ndofsr) for _ in 1:nfa]
     face_around_dof_sphys2 = [ zeros(typeof(sphys),ndofs2) for _ in 1:nfa]
     workspace = [face_around_dof_sphys,face_around_dof_sphys2]
-    a2 = replace_reference_space_accessor(a,reference_space_accessor)
+    a2 = replace_reference_space_face(a,reference_space_face)
     replace_workspace(f,a2,workspace)
 end
 
-function compute(::typeof(coordinate),a::SpaceAccessor)
-    mesh_accessor = tabulate(GT.value,a.mesh_accessor)
-    replace_mesh_accessor(a,mesh_accessor)
+function compute(::typeof(coordinate),a::SpaceFace)
+    mesh_face = tabulate(GT.value,a.mesh_face)
+    replace_mesh_face(a,mesh_face)
 end
 
-function compute(::typeof(unit_normal),a::SpaceAccessor)
-    mesh_accessor = compute(unit_normal,a.mesh_accessor)
-    replace_mesh_accessor(a,mesh_accessor)
+function compute(::typeof(unit_normal),a::SpaceFace)
+    mesh_face = compute(unit_normal,a.mesh_face)
+    replace_mesh_face(a,mesh_face)
 end
 
-function replace_workspace(::typeof(GT.value),a::SpaceAccessor,values)
+function replace_workspace(::typeof(GT.value),a::SpaceFace,values)
     replace_values(a,values)
 end
 
-function replace_workspace(::typeof(ForwardDiff.gradient),a::SpaceAccessor,gradients)
+function replace_workspace(::typeof(ForwardDiff.gradient),a::SpaceFace,gradients)
     replace_gradients(a,gradients)
 end
 
-function replace_workspace(::typeof(ForwardDiff.jacobian),a::SpaceAccessor,jacobians)
+function replace_workspace(::typeof(ForwardDiff.jacobian),a::SpaceFace,jacobians)
     replace_jacobians(a,jacobians)
 end
 
-function workspace(::typeof(GT.value),a::SpaceAccessor)
+function workspace(::typeof(GT.value),a::SpaceFace)
     a.workspace.values
 end
 
-function workspace(::typeof(ForwardDiff.gradient),a::SpaceAccessor)
+function workspace(::typeof(ForwardDiff.gradient),a::SpaceFace)
     a.workspace.gradients
 end
 
-function workspace(::typeof(ForwardDiff.jacobian),a::SpaceAccessor)
+function workspace(::typeof(ForwardDiff.jacobian),a::SpaceFace)
     a.workspace.jacobians
 end
 
-function num_faces(a::SpaceAccessor)
-    num_faces(a.mesh_accessor)
+function num_faces(a::SpaceFace)
+    num_faces(a.mesh_face)
 end
 
-function at_any_index(a::SpaceAccessor)
-    mesh_accessor = at_any_index(a.mesh_accessor)
-    reference_space_accessor = at_any_index(a.reference_space_accessor)
-    a2 = replace_mesh_accessor(a,mesh_accessor)
-    replace_reference_space_accessor(a2,reference_space_accessor)
+function at_any_index(a::SpaceFace)
+    mesh_face = at_any_index(a.mesh_face)
+    reference_space_face = at_any_index(a.reference_space_face)
+    a2 = replace_mesh_face(a,mesh_face)
+    replace_reference_space_face(a2,reference_space_face)
 end
 
-function at_face(a::SpaceAccessor,face)
-    mesh_accessor = at_face(a.mesh_accessor,face)
-    reference_space_accessor = at_face(a.reference_space_accessor,face)
-    a2 = replace_mesh_accessor(a,mesh_accessor)
-    replace_reference_space_accessor(a2,reference_space_accessor)
+function at_face(a::SpaceFace,face)
+    mesh_face = at_face(a.mesh_face,face)
+    reference_space_face = at_face(a.reference_space_face,face)
+    a2 = replace_mesh_face(a,mesh_face)
+    replace_reference_space_face(a2,reference_space_face)
 end
 
-function num_faces_around(a::SpaceAccessor)
-    num_faces_around(a.mesh_accessor)
+function num_faces_around(a::SpaceFace)
+    num_faces_around(a.mesh_face)
 end
 
-function at_face_around(a::SpaceAccessor,face)
-    mesh_accessor = at_face_around(a.mesh_accessor,face)
-    reference_space_accessor = at_face_around(a.reference_space_accessor,face)
-    a2 = replace_mesh_accessor(a,mesh_accessor)
-    replace_reference_space_accessor(a2,reference_space_accessor)
+function at_face_around(a::SpaceFace,face)
+    mesh_face = at_face_around(a.mesh_face,face)
+    reference_space_face = at_face_around(a.reference_space_face,face)
+    a2 = replace_mesh_face(a,mesh_face)
+    replace_reference_space_face(a2,reference_space_face)
 end
 
-function dofs(a::SpaceAccessor)
-    dofs(a.reference_space_accessor)
+function dofs(a::SpaceFace)
+    dofs(a.reference_space_face)
 end
 
-function num_dofs(a::SpaceAccessor)
+function num_dofs(a::SpaceFace)
     length(dofs(a))
 end
 
-function num_points(a::SpaceAccessor)
-    num_points(a.mesh_accessor)
+function num_points(a::SpaceFace)
+    num_points(a.mesh_face)
 end
 
-function unit_normal(a::SpaceAccessor)
-    unit_normal(a.mesh_accessor)
+function unit_normal(a::SpaceFace)
+    unit_normal(a.mesh_face)
 end
 
-function at_point(a::SpaceAccessor,point)
-    mesh_accessor = at_point(a.mesh_accessor,point)
-    reference_space_accessor = at_point(a.reference_space_accessor,point)
-    a2 = replace_mesh_accessor(a,mesh_accessor)
-    replace_reference_space_accessor(a2,reference_space_accessor)
+function at_point(a::SpaceFace,point)
+    mesh_face = at_point(a.mesh_face,point)
+    reference_space_face = at_point(a.reference_space_face,point)
+    a2 = replace_mesh_face(a,mesh_face)
+    replace_reference_space_face(a2,reference_space_face)
 end
 
-function constraints(a::SpaceAccessor)
-    (;space,mesh_accessor) = a
-    Dface = mesh_accessor.space_accessor.location.Dface
+function constraints(a::SpaceFace)
+    (;space,mesh_face) = a
+    Dface = mesh_face.space_face.location.Dface
     C = face_constraints(space)[Dface]
 end
 
-function at_point(a::SpaceAccessor,mesh_accessor::MeshAccessor)
-    location = mesh_accessor.space_accessor.location
-    reference_space_accessor = replace_location(a.reference_space_accessor,location)
-    a2 = replace_mesh_accessor(a,mesh_accessor)
-    replace_reference_space_accessor(a2,reference_space_accessor)
+function at_point(a::SpaceFace,mesh_face::MeshFace)
+    location = mesh_face.space_face.location
+    reference_space_face = replace_location(a.reference_space_face,location)
+    a2 = replace_mesh_face(a,mesh_face)
+    replace_reference_space_face(a2,reference_space_face)
 end
 
-@inline function shape_functions(f,a::SpaceAccessor{AtInterior})
-    (;space,mesh_accessor,reference_space_accessor) = a
-    dof_sref = GT.shape_functions(f,reference_space_accessor)
+@inline function shape_functions(f,a::SpaceFace{AtInterior})
+    (;space,mesh_face,reference_space_face) = a
+    dof_sref = GT.shape_functions(f,reference_space_face)
     dof_sphys, dof_sphys2 = workspace(f,a)
     ndofs = length(dof_sref)
     dof = 0
     while dof < ndofs
         dof += 1
         sref = dof_sref[dof]
-        sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
+        sphys = map_shape_function(f,space,dof,mesh_face,sref)
         dof_sphys[dof] = sphys
     end
     C = GT.constraints(a)
@@ -1235,19 +1237,19 @@ end
     end
 end
 
-function location(a::SpaceAccessor)
-    a.mesh_accessor.space_accessor.location
+function location(a::SpaceFace)
+    a.mesh_face.space_face.location
 end
 
-function shape_functions(f,a::SpaceAccessor{AtSkeleton})
-    (;space,mesh_accessor,reference_space_accessor) = a
+function shape_functions(f,a::SpaceFace{AtSkeleton})
+    (;space,mesh_face,reference_space_face) = a
     (;face_around) = GT.location(a)
-    dof_sref = GT.shape_functions(f,reference_space_accessor)
+    dof_sref = GT.shape_functions(f,reference_space_face)
     dof_sphys, dof_sphys2 = workspace(f,a)[face_around]
     ndofs = length(dof_sref)
     for dof in 1:ndofs
         sref = dof_sref[dof]
-        sphys = map_shape_function(f,space,dof,mesh_accessor,sref)
+        sphys = map_shape_function(f,space,dof,mesh_face,sref)
         dof_sphys[dof] = sphys
     end
     C = GT.constraints(a)
@@ -1261,65 +1263,65 @@ function shape_functions(f,a::SpaceAccessor{AtSkeleton})
     end
 end
 
-function map_shape_function(::typeof(GT.value),space,dof,mesh_accessor,sref)
+function map_shape_function(::typeof(GT.value),space,dof,mesh_face,sref)
     sref
 end
 
-@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_accessor,sref)
-    J = jacobian(mesh_accessor)
+@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
+    J = jacobian(mesh_face)
     sphys = transpose(J)\sref
 end
 
-function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_accessor,sref)
-    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_face,sref)
+    J = coordinate(ForwardDiff.jacobian,mesh_face)
     sphys = sref/J
 end
 
-function weight(a::SpaceAccessor)
-    (;mesh_accessor) = a
-    weight(mesh_accessor)
+function weight(a::SpaceFace)
+    (;mesh_face) = a
+    weight(mesh_face)
 end
 
-function coordinate(a::SpaceAccessor)
-    (;mesh_accessor) = a
-    coordinate(mesh_accessor)
+function coordinate(a::SpaceFace)
+    (;mesh_face) = a
+    coordinate(mesh_face)
 end
 
-struct NewDiscreteFieldAccessor{A,B,C,D} <: NewAbstractAccessor
+struct NewDiscreteFieldFace{A,B,C,D} <: AbstractFace
     loop_case::A
     field::B
-    space_accessor::C
+    space_face::C
     workspace::D
 end
 
-function replace_workspace(a::NewDiscreteFieldAccessor,workspace)
-    NewDiscreteFieldAccessor(
+function replace_workspace(a::NewDiscreteFieldFace,workspace)
+    NewDiscreteFieldFace(
                              a.loop_case,
                              a.field,
-                             a.space_accessor,
+                             a.space_face,
                              workspace,
                             )
 end
 
-function replace_space_accessor(a::NewDiscreteFieldAccessor,space_accessor)
-    NewDiscreteFieldAccessor(
+function replace_space_face(a::NewDiscreteFieldFace,space_face)
+    NewDiscreteFieldFace(
                              a.loop_case,
                              a.field,
-                             space_accessor,
+                             space_face,
                              a.workspace,
                             )
 end
 
-function field_accessor(field::DiscreteField,args...;kwargs...)
+function field_face(field::DiscreteField,args...;kwargs...)
     space = GT.space(field)
-    space_accessor = GT.space_accessor(space,args...;kwargs...)
-    loop_case = space_accessor.loop_case
+    space_face = GT.space_face(space,args...;kwargs...)
+    loop_case = space_face.loop_case
     workspace = nothing
-    a = NewDiscreteFieldAccessor(loop_case,field,space_accessor,workspace)
+    a = NewDiscreteFieldFace(loop_case,field,space_face,workspace)
     setup_workspace(a)
 end
 
-function setup_workspace(a::NewDiscreteFieldAccessor{AtInterior})
+function setup_workspace(a::NewDiscreteFieldFace{AtInterior})
     (;field) = a
     space = GT.space(field)
     n = max_num_reference_dofs(space)
@@ -1329,7 +1331,7 @@ function setup_workspace(a::NewDiscreteFieldAccessor{AtInterior})
     replace_workspace(a,workspace)
 end
 
-function setup_workspace(a::NewDiscreteFieldAccessor{AtSkeleton})
+function setup_workspace(a::NewDiscreteFieldFace{AtSkeleton})
     (;field) = a
     space = GT.space(field)
     n = max_num_reference_dofs(space)
@@ -1341,46 +1343,46 @@ function setup_workspace(a::NewDiscreteFieldAccessor{AtSkeleton})
     replace_workspace(a,workspace)
 end
 
-function num_faces(a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    num_faces(space_accessor)
+function num_faces(a::NewDiscreteFieldFace)
+    (;space_face) = a
+    num_faces(space_face)
 end
 
-function at_face(a::NewDiscreteFieldAccessor,face)
-    space_accessor = at_face(a.space_accessor,face)
-    replace_space_accessor(a,space_accessor)
+function at_face(a::NewDiscreteFieldFace,face)
+    space_face = at_face(a.space_face,face)
+    replace_space_face(a,space_face)
 end
 
-function at_any_index(a::NewDiscreteFieldAccessor)
-    space_accessor = at_any_index(a.space_accessor)
-    replace_space_accessor(a,space_accessor)
+function at_any_index(a::NewDiscreteFieldFace)
+    space_face = at_any_index(a.space_face)
+    replace_space_face(a,space_face)
 end
 
-function num_faces_around(a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    num_faces_around(space_accessor)
+function num_faces_around(a::NewDiscreteFieldFace)
+    (;space_face) = a
+    num_faces_around(space_face)
 end
 
-function at_face_around(a::NewDiscreteFieldAccessor,face_around)
-    space_accessor = at_face_around(a.space_accessor,face_around)
-    replace_space_accessor(a,space_accessor)
+function at_face_around(a::NewDiscreteFieldFace,face_around)
+    space_face = at_face_around(a.space_face,face_around)
+    replace_space_face(a,space_face)
 end
 
-function dofs(a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    dofs(space_accessor)
+function dofs(a::NewDiscreteFieldFace)
+    (;space_face) = a
+    dofs(space_face)
 end
 
-function num_dofs(a::NewDiscreteFieldAccessor)
+function num_dofs(a::NewDiscreteFieldFace)
     length(dofs(a))
 end
 
-function location(a::NewDiscreteFieldAccessor)
-    a.space_accessor.mesh_accessor.space_accessor.location
+function location(a::NewDiscreteFieldFace)
+    a.space_face.mesh_face.space_face.location
 end
 
-function values(a::NewDiscreteFieldAccessor{AtInterior})
-    (;space_accessor,field,workspace) = a
+function values(a::NewDiscreteFieldFace{AtInterior})
+    (;space_face,field,workspace) = a
     free_dof_value = free_values(field)
     diri_dof_value = dirichlet_values(field)
     idof_value = workspace
@@ -1400,8 +1402,8 @@ function values(a::NewDiscreteFieldAccessor{AtInterior})
     view(idof_value,1:ndofs)
 end
 
-function values(a::NewDiscreteFieldAccessor{AtSkeleton})
-    (;space_accessor,field,workspace) = a
+function values(a::NewDiscreteFieldFace{AtSkeleton})
+    (;space_face,field,workspace) = a
     free_dof_value = free_values(field)
     diri_dof_value = dirichlet_values(field)
     (;face_around) = GT.location(a)
@@ -1422,31 +1424,31 @@ function values(a::NewDiscreteFieldAccessor{AtSkeleton})
     view(idof_value,1:ndofs)
 end
 
-function tabulate(f,a::NewDiscreteFieldAccessor)
-    space_accessor = tabulate(f,a.space_accessor)
-    replace_space_accessor(a,space_accessor)
+function tabulate(f,a::NewDiscreteFieldFace)
+    space_face = tabulate(f,a.space_face)
+    replace_space_face(a,space_face)
 end
 
-function compute(f,a::NewDiscreteFieldAccessor)
-    space_accessor = compute(f,a.space_accessor)
-    replace_space_accessor(a,space_accessor)
+function compute(f,a::NewDiscreteFieldFace)
+    space_face = compute(f,a.space_face)
+    replace_space_face(a,space_face)
 end
 
-function num_points(a::NewDiscreteFieldAccessor)
-    num_points(a.space_accessor)
+function num_points(a::NewDiscreteFieldFace)
+    num_points(a.space_face)
 end
 
-function at_point(a::NewDiscreteFieldAccessor,point)
-    space_accessor = at_point(a.space_accessor,point)
-    replace_space_accessor(a,space_accessor)
+function at_point(a::NewDiscreteFieldFace,point)
+    space_face = at_point(a.space_face,point)
+    replace_space_face(a,space_face)
 end
 
-function shape_functions(f,a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    shape_functions(f,space_accessor)
+function shape_functions(f,a::NewDiscreteFieldFace)
+    (;space_face) = a
+    shape_functions(f,space_face)
 end
 
-function field(f,a::NewDiscreteFieldAccessor)
+function field(f,a::NewDiscreteFieldFace)
     s = shape_functions(f,a)
     x = values(a)
     n = num_dofs(a)
@@ -1455,112 +1457,112 @@ function field(f,a::NewDiscreteFieldAccessor)
     sum(i->x[i]*s[i],1:n;init=z)
 end
 
-function weight(a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    weight(space_accessor)
+function weight(a::NewDiscreteFieldFace)
+    (;space_face) = a
+    weight(space_face)
 end
 
-function coordinate(a::NewDiscreteFieldAccessor)
-    (;space_accessor) = a
-    coordinate(space_accessor)
+function coordinate(a::NewDiscreteFieldFace)
+    (;space_face) = a
+    coordinate(space_face)
 end
 
-struct AnalyticalFieldAccessor{L,A,B} <: NewAbstractAccessor
+struct AnalyticalFieldFace{L,A,B} <: AbstractFace
     loop_case::L
     field::A
-    mesh_accessor::B
+    mesh_face::B
 end
 
-function field_accessor(field::AnalyticalField,quadrature;kwargs...)
+function field_face(field::AnalyticalField,quadrature;kwargs...)
     domain = GT.domain(field)
     mesh = GT.mesh(domain)
     D = num_dims(domain)
-    mesh_accessor = GT.mesh_accessor(mesh,Val(D),quadrature;kwargs...)
-    loop_case = mesh_accessor.loop_case
-    AnalyticalFieldAccessor(loop_case,field,mesh_accessor)
+    mesh_face = GT.mesh_face(mesh,Val(D),quadrature;kwargs...)
+    loop_case = mesh_face.loop_case
+    AnalyticalFieldFace(loop_case,field,mesh_face)
 end
 
-function num_faces(a::AnalyticalFieldAccessor)
-    (;mesh_accessor) = a
-    num_faces(mesh_accessor)
+function num_faces(a::AnalyticalFieldFace)
+    (;mesh_face) = a
+    num_faces(mesh_face)
 end
 
-function at_face(a::AnalyticalFieldAccessor,face)
-    mesh_accessor = at_face(a.mesh_accessor,face)
-    replace_mesh_accessor(a,mesh_accessor)
+function at_face(a::AnalyticalFieldFace,face)
+    mesh_face = at_face(a.mesh_face,face)
+    replace_mesh_face(a,mesh_face)
 end
 
-function at_any_index(a::AnalyticalFieldAccessor)
-    mesh_accessor = at_any_index(a.mesh_accessor)
-    replace_mesh_accessor(a,mesh_accessor)
+function at_any_index(a::AnalyticalFieldFace)
+    mesh_face = at_any_index(a.mesh_face)
+    replace_mesh_face(a,mesh_face)
 end
 
-function num_faces_around(a::AnalyticalFieldAccessor)
-    (;mesh_accessor) = a
-    num_faces_around(mesh_accessor)
+function num_faces_around(a::AnalyticalFieldFace)
+    (;mesh_face) = a
+    num_faces_around(mesh_face)
 end
 
-function at_face_around(a::AnalyticalFieldAccessor,face_around)
-    mesh_accessor = at_face_around(a.mesh_accessor,face_around)
-    replace_mesh_accessor(a,mesh_accessor)
+function at_face_around(a::AnalyticalFieldFace,face_around)
+    mesh_face = at_face_around(a.mesh_face,face_around)
+    replace_mesh_face(a,mesh_face)
 end
 
-function at_point(a::AnalyticalFieldAccessor,point)
-    mesh_accessor = at_point(a.mesh_accessor,point)
-    replace_mesh_accessor(a,mesh_accessor)
+function at_point(a::AnalyticalFieldFace,point)
+    mesh_face = at_point(a.mesh_face,point)
+    replace_mesh_face(a,mesh_face)
 end
 
-function field(a::AnalyticalFieldAccessor)
+function field(a::AnalyticalFieldFace)
     location = a.field.location
     def = f.field.definition
     if location == nothing
         def
     else
         group_names = GT.group_names(a.field.domain)
-        Dface = a.mesh_accessor.space_accessor.location
+        Dface = a.mesh_face.space_face.location
         loc = location[Dface]
         name = group_names
         y->def(y,name)
     end
 end
 
-function field(f,a::AnalyticalFieldAccessor)
-    x = coordinate(a.mesh_accessor)
+function field(f,a::AnalyticalFieldFace)
+    x = coordinate(a.mesh_face)
     g = field(a)
     f(g,x)
 end
 
-function weight(a::AnalyticalFieldAccessor)
-    (;mesh_accessor) = a
-    weight(mesh_accessor)
+function weight(a::AnalyticalFieldFace)
+    (;mesh_face) = a
+    weight(mesh_face)
 end
 
-function coordinate(a::AnalyticalFieldAccessor)
-    (;mesh_accessor) = a
-    coordinate(mesh_accessor)
+function coordinate(a::AnalyticalFieldFace)
+    (;mesh_face) = a
+    coordinate(mesh_face)
 end
 
 #### Old stuff
 ###
 ###function accessor(a,b)
-###    Accessor(a,b)
+###    Face(a,b)
 ###end
 ###
-###struct Accessor{A,B} <: AbstractAccessor
+###struct Face{A,B} <: AbstractFace
 ###    definition::A
 ###    prototype::B
 ###end
 ###
-###function prototype(a::Accessor)
+###function prototype(a::Face)
 ###    a.prototype
 ###end
 ###
-###function (a::Accessor)(face,face_around=nothing)
+###function (a::Face)(face,face_around=nothing)
 ###    a.definition(face,face_around)
 ###end
 ###
 ###"""
-###    reference_space_accessor(g,mesh,d)
+###    reference_space_face(g,mesh,d)
 ###
 ###Return an accessor object `face_g` giving access to a quantity
 ###in the reference space of dimension `d` in the mesh object `mesh`.
@@ -1573,13 +1575,13 @@ end
 ###Intermediate
 ###
 ###"""
-###function reference_space_accessor end
+###function reference_space_face end
 ###
-###function reference_space_accessor(mesh,d)
-###    reference_space_accessor(identity,mesh,d)
+###function reference_space_face(mesh,d)
+###    reference_space_face(identity,mesh,d)
 ###end
 ###
-###function reference_space_accessor(f,mesh,d)
+###function reference_space_face(f,mesh,d)
 ###    rid_to_space = reference_spaces(mesh,d)
 ###    rid_to_v = map(f,rid_to_space)
 ###    face_to_rid = GT.face_reference_id(mesh,d)
@@ -1592,7 +1594,7 @@ end
 ###end
 ###
 ###"""
-###    reference_topology_accessor(g,topo,d)
+###    reference_topology_face(g,topo,d)
 ###
 ###Return an accessor object `face_g` giving access to a quantity
 ###in the reference topology of dimension `d` in the object `topo`.
@@ -1605,13 +1607,13 @@ end
 ###Intermediate
 ###
 ###"""
-###function reference_topology_accessor end
+###function reference_topology_face end
 ###
-###function reference_topology_accessor(mesh,d)
-###    reference_topology_accessor(identity,mesh,d)
+###function reference_topology_face(mesh,d)
+###    reference_topology_face(identity,mesh,d)
 ###end
 ###
-###function reference_topology_accessor(f,mesh,d)
+###function reference_topology_face(f,mesh,d)
 ###    rid_to_topology = reference_topologies(mesh,d)
 ###    rid_to_v = map(f,rid_to_topology)
 ###    face_to_rid = GT.face_reference_id(mesh,d)
@@ -1624,19 +1626,19 @@ end
 ###end
 ###
 ###"""
-###    node_coordinate_accessor(mesh,d)
+###    node_coordinate_face(mesh,d)
 ###
 ###Return an accessor object `face_lnode_x` that gives access to the coordinate vector
 ###`x` of the local node `lnode` of face `f` in dimension `d` in the object `mesh` as 
 ###`x = face_lnode_x(face)(lnode)`.
 ###
-###See also [`reference_space_accessor`](@ref).
+###See also [`reference_space_face`](@ref).
 ###
 #### Level
 ###
 ###Intermediate
 ###"""
-###function node_coordinate_accessor(mesh::AbstractMesh,d)
+###function node_coordinate_face(mesh::AbstractMesh,d)
 ###    node_x = GT.node_coordinates(mesh)
 ###    face_nodes = GT.face_nodes(mesh,d)
 ###    function face_lnode_x(face,face_around)
@@ -1652,26 +1654,26 @@ end
 ###
 ###
 #### Untabulated
-###function shape_function_accessor(f,space::AbstractSpace)
+###function shape_function_face(f,space::AbstractSpace)
 ###    if is_reference_domain(domain(space))
-###        shape_function_accessor_reference(f,space)
+###        shape_function_face_reference(f,space)
 ###    else
-###        shape_function_accessor_physical(f,space)
+###        shape_function_face_physical(f,space)
 ###    end
 ###end
 ###
 #### Tabulated
-###function shape_function_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation=Val(false))
+###function shape_function_face(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation=Val(false))
 ###    if is_reference_domain(domain(space))
 ###        # TODO: do we need to remove the tabulation or inline this?
-###        shape_function_accessor_reference(f,space,measure)
+###        shape_function_face_reference(f,space,measure)
 ###    else
-###        shape_function_accessor_physical(f,space,measure,disable_tabulation)
+###        shape_function_face_physical(f,space,measure,disable_tabulation)
 ###    end
 ###end
 ###
 #### Untabulated
-###function shape_function_accessor_reference(f,space::AbstractSpace)
+###function shape_function_face_reference(f,space::AbstractSpace)
 ###    rid_to_dof_s = map(shape_functions,reference_spaces(space))
 ###    face_to_rid = face_reference_id(space)
 ###    function face_dof_g(face,face_around=nothing)
@@ -1689,22 +1691,22 @@ end
 ###end
 ###
 #### Tabulated
-###function shape_function_accessor_reference(f,space::AbstractSpace,measure::AbstractQuadrature)
+###function shape_function_face_reference(f,space::AbstractSpace,measure::AbstractQuadrature)
 ###    domain_measure = domain(measure)
 ###    domain_space = domain(space)
 ###    d = num_dims(domain_measure)
 ###    D = num_dims(domain_space)
 ###    faces_around = GT.faces_around(domain_measure)
 ###    if d == D
-###        shape_function_accessor_reference_interior(f,space,measure)
+###        shape_function_face_reference_interior(f,space,measure)
 ###    elseif d+1==D && faces_around !== nothing
-###        shape_function_accessor_reference_boundary(f,space,measure)
+###        shape_function_face_reference_boundary(f,space,measure)
 ###    else
-###        shape_function_accessor_reference_skeleton(f,space,measure)
+###        shape_function_face_reference_skeleton(f,space,measure)
 ###    end
 ###end
 ###
-###function shape_function_accessor_reference_interior(f,space::AbstractSpace,measure::AbstractQuadrature)
+###function shape_function_face_reference_interior(f,space::AbstractSpace,measure::AbstractQuadrature)
 ###    dom = GT.domain(measure)
 ###    mesh = GT.mesh(dom)
 ###    d = num_dims(dom)
@@ -1732,7 +1734,7 @@ end
 ###    accessor(face_point_dof_s,prototype)
 ###end
 ###
-###function shape_function_accessor_reference_skeleton(f,space::AbstractSpace,measure::AbstractQuadrature)
+###function shape_function_face_reference_skeleton(f,space::AbstractSpace,measure::AbstractQuadrature)
 ###    d = num_dims(domain(measure))
 ###    D = num_dims(domain(space))
 ###    mesh = GT.mesh(space)
@@ -1793,9 +1795,9 @@ end
 ###    accessor(face_point_dof_s,prototype)
 ###end
 ###
-###function shape_function_accessor_reference_boundary(f,space::AbstractSpace,measure::AbstractQuadrature)
+###function shape_function_face_reference_boundary(f,space::AbstractSpace,measure::AbstractQuadrature)
 ###    faces_around = GT.faces_around(domain(measure))
-###    face_point_dof_s = shape_function_accessor_reference_skeleton(f,space,measure)
+###    face_point_dof_s = shape_function_face_reference_skeleton(f,space,measure)
 ###    prototype = GT.prototype(face_point_dof_s)
 ###    function face_point_dof_b(face,dummy=nothing)
 ###        face_around=faces_around[face]
@@ -1862,20 +1864,20 @@ end
 ###    end
 ###end
 ###
-###function nodes_accessor(mesh::AbstractMesh,vD,domain::AbstractDomain)
+###function nodes_face(mesh::AbstractMesh,vD,domain::AbstractDomain)
 ###    D = val_parameter(vD)
 ###    d = num_dims(domain)
 ###    faces_around = GT.faces_around(domain)
 ###    if d == D
-###        nodes_accessor_interior(mesh,vD,domain)
+###        nodes_face_interior(mesh,vD,domain)
 ###    elseif d+1==D && faces_around !== nothing
-###        nodes_accessor_boundary(mesh,vD,domain)
+###        nodes_face_boundary(mesh,vD,domain)
 ###    else
-###        nodes_accessor_skeleton(mesh,vD,domain)
+###        nodes_face_skeleton(mesh,vD,domain)
 ###    end
 ###end
 ###
-###function nodes_accessor_interior(mesh::AbstractMesh,vD,domain::AbstractDomain)
+###function nodes_face_interior(mesh::AbstractMesh,vD,domain::AbstractDomain)
 ###    D = val_parameter(vD)
 ###    Dface_nodes = face_nodes(mesh,D)
 ###    face_to_Dface = faces(domain)
@@ -1887,7 +1889,7 @@ end
 ###    accessor(face_to_nodes,prototype)
 ###end
 ###
-###function nodes_accessor_skeleton(mesh::AbstractMesh,vD,domain::AbstractDomain)
+###function nodes_face_skeleton(mesh::AbstractMesh,vD,domain::AbstractDomain)
 ###    D = val_parameter(vD)
 ###    d = num_dims(domain)
 ###    Dface_nodes = face_nodes(mesh,D)
@@ -1904,8 +1906,8 @@ end
 ###    accessor(face_to_nodes,prototype)
 ###end
 ###
-###function nodes_accessor_boundary(mesh::AbstractMesh,vD,domain::AbstractDomain)
-###    face_to_nodes = nodes_accessor_skeleton(mesh,vD,domain)
+###function nodes_face_boundary(mesh::AbstractMesh,vD,domain::AbstractDomain)
+###    face_to_nodes = nodes_face_skeleton(mesh,vD,domain)
 ###    faces_around = GT.faces_around(domain)
 ###    prototype = GT.prototype(face_to_nodes)
 ###    function face_to_nodes_2(face,dummy=nothing)
@@ -1916,10 +1918,10 @@ end
 ###end
 ###
 #### Untabulated
-###function physical_map_accessor(f,mesh::AbstractMesh,vD)
+###function physical_map_face(f,mesh::AbstractMesh,vD)
 ###    D = val_parameter(vD)
 ###    space = mesh_space(mesh,vD)
-###    face_lnode_s = shape_function_accessor_reference(value,space)
+###    face_lnode_s = shape_function_face_reference(value,space)
 ###    node_to_x = node_coordinates(mesh)
 ###    Dface_nodes = face_nodes(mesh,D)
 ###    z = zero(eltype(node_to_x))
@@ -1943,15 +1945,15 @@ end
 ###
 #### Tabulated
 ###
-###function physical_map_accessor(f,measure::AbstractQuadrature,vD)
+###function physical_map_face(f,measure::AbstractQuadrature,vD)
 ###    error("Case not implemented and not needed unless you want higher order derivatives of the physical map.")
 ###end
 ###
-###function physical_map_accessor(f::typeof(value),measure::AbstractQuadrature,vD)
+###function physical_map_face(f::typeof(value),measure::AbstractQuadrature,vD)
 ###    mesh = GT.mesh(domain(measure))
 ###    space = mesh_space(mesh,vD)
-###    face_point_lnode_s = shape_function_accessor_reference(f,space,measure)
-###    face_to_nodes = nodes_accessor(mesh,vD,domain(measure))
+###    face_point_lnode_s = shape_function_face_reference(f,space,measure)
+###    face_to_nodes = nodes_face(mesh,vD,domain(measure))
 ###    node_to_x = node_coordinates(mesh)
 ###    z = zero(eltype(node_to_x))
 ###    prototype = z*GT.prototype(face_point_lnode_s)
@@ -1972,11 +1974,11 @@ end
 ###    accessor(face_point_phi,prototype)
 ###end
 ###
-###function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::AbstractQuadrature,vD)
+###function physical_map_face(f::typeof(ForwardDiff.jacobian),measure::AbstractQuadrature,vD)
 ###    mesh = GT.mesh(domain(measure))
 ###    space = mesh_space(mesh,vD)
-###    face_point_lnode_s = shape_function_accessor_reference(ForwardDiff.gradient,space,measure)
-###    face_to_nodes = nodes_accessor(mesh,vD,domain(measure))
+###    face_point_lnode_s = shape_function_face_reference(ForwardDiff.gradient,space,measure)
+###    face_to_nodes = nodes_face(mesh,vD,domain(measure))
 ###    node_to_x = node_coordinates(mesh)
 ###    z = zero(eltype(node_to_x))
 ###    prototype = outer(z,GT.prototype(face_point_lnode_s))
@@ -2020,16 +2022,16 @@ end
 ###    accessor(face_point_phi,prototype)
 ###end
 ###
-###function coordinate_accessor(measure::AbstractQuadrature)
+###function coordinate_face(measure::AbstractQuadrature)
 ###    vD=Val(num_dims(domain(measure)))
-###    physical_map_accessor(value,measure,vD)
+###    physical_map_face(value,measure,vD)
 ###end
 ###
-###function jacobian_accessor(measure::AbstractQuadrature,vD=Val(num_dims(domain(measure))))
-###    physical_map_accessor(ForwardDiff.jacobian,measure,vD)
+###function jacobian_face(measure::AbstractQuadrature,vD=Val(num_dims(domain(measure))))
+###    physical_map_face(ForwardDiff.jacobian,measure,vD)
 ###end
 ###
-###function num_points_accessor(measure::AbstractQuadrature)
+###function num_points_face(measure::AbstractQuadrature)
 ###    rid_to_point_to_w = map(weights,reference_quadratures(measure))
 ###    rid_to_n = map(length,rid_to_point_to_w)
 ###    dface_to_rid = face_reference_id(measure)
@@ -2043,16 +2045,16 @@ end
 ###    accessor(face_npoints,prototype)
 ###end
 ###
-###function weight_accessor(measure::AbstractQuadrature)
+###function weight_face(measure::AbstractQuadrature)
 ###    if is_reference_domain(domain(measure))
-###        weight_accessor_reference(measure)
+###        weight_face_reference(measure)
 ###    else
-###        weight_accessor_physical(measure)
+###        weight_face_physical(measure)
 ###    end
 ###end
 ###
-###function weight_accessor_reference(measure::AbstractQuadrature)
-###    face_point_J = jacobian_accessor(measure)
+###function weight_face_reference(measure::AbstractQuadrature)
+###    face_point_J = jacobian_face(measure)
 ###    rid_to_point_to_w = map(weights,reference_quadratures(measure))
 ###    dface_to_rid = face_reference_id(measure)
 ###    face_to_dface = faces(domain(measure))
@@ -2068,9 +2070,9 @@ end
 ###    accessor(face_point_v,prototype)
 ###end
 ###
-###function weight_accessor_physical(measure::AbstractQuadrature)
-###    face_point_v = weight_accessor_reference(measure)
-###    face_point_J = jacobian_accessor(measure)
+###function weight_face_physical(measure::AbstractQuadrature)
+###    face_point_v = weight_face_reference(measure)
+###    face_point_J = jacobian_face(measure)
 ###    prototype = change_of_measure(GT.prototype(face_point_J))*GT.prototype(face_point_v)
 ###    function face_point_w(face,face_around=nothing)
 ###        point_v = face_point_v(face)
@@ -2086,7 +2088,7 @@ end
 ###
 #### push reference shape functions to physical ones
 ###
-###function shape_function_accessor_modifier(f::typeof(value),space::AbstractSpace)
+###function shape_function_face_modifier(f::typeof(value),space::AbstractSpace)
 ###    function modifier(v,J)
 ###        v
 ###    end
@@ -2098,7 +2100,7 @@ end
 ###    accessor(face_dof_modifier,modifier)
 ###end
 ###
-###function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
+###function shape_function_face_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
 ###    function modifier(v,J)
 ###        transpose(J)\v 
 ###    end
@@ -2110,7 +2112,7 @@ end
 ###    accessor(face_dof_modifier,modifier)
 ###end
 ###
-###function shape_function_accessor_modifier(f::typeof(ForwardDiff.jacobian),space::AbstractSpace)
+###function shape_function_face_modifier(f::typeof(ForwardDiff.jacobian),space::AbstractSpace)
 ###    function modifier(v,J)
 ###        v/J
 ###    end
@@ -2123,21 +2125,21 @@ end
 ###end
 ###
 ###
-###function shape_function_accessor_modifier(f,space::AbstractSpace,domain::AbstractDomain)
+###function shape_function_face_modifier(f,space::AbstractSpace,domain::AbstractDomain)
 ###    D = num_dims(space)
 ###    d = num_dims(domain)
 ###    faces_around = GT.faces_around(domain)
 ###    if d == D
-###        shape_function_accessor_modifier_interior(f,space,domain)
+###        shape_function_face_modifier_interior(f,space,domain)
 ###    elseif d+1==D && faces_around !== nothing
-###        shape_function_accessor_modifier_boundary(f,space,domain)
+###        shape_function_face_modifier_boundary(f,space,domain)
 ###    else
-###        shape_function_accessor_modifier_skeleton(f,space,domain)
+###        shape_function_face_modifier_skeleton(f,space,domain)
 ###    end
 ###end
 ###
-###function shape_function_accessor_modifier_interior(f,space::AbstractSpace,domain::AbstractDomain)
-###    Dface_to_modif = shape_function_accessor_modifier(f,space)
+###function shape_function_face_modifier_interior(f,space::AbstractSpace,domain::AbstractDomain)
+###    Dface_to_modif = shape_function_face_modifier(f,space)
 ###    face_to_Dface = faces(domain)
 ###    function face_to_modif(face,face_around=nothing)
 ###        Dface = face_to_Dface[face]
@@ -2146,13 +2148,13 @@ end
 ###    accessor(face_to_modif,GT.prototype(Dface_to_modif))
 ###end
 ###
-###function shape_function_accessor_modifier_skeleton(f,space::AbstractSpace,domain::AbstractDomain)
+###function shape_function_face_modifier_skeleton(f,space::AbstractSpace,domain::AbstractDomain)
 ###    D = num_dims(GT.domain(space))
 ###    d = num_dims(domain)
 ###    face_to_dface = faces(domain)
 ###    topo = topology(GT.mesh(space))
 ###    dface_to_Dfaces = face_incidence(topo,d,D)
-###    Dface_to_modif = shape_function_accessor_modifier(f,space)
+###    Dface_to_modif = shape_function_face_modifier(f,space)
 ###    function face_to_modif(face,face_around)
 ###        dface = face_to_dface[face]
 ###        Dfaces = dface_to_Dfaces[dface]
@@ -2162,8 +2164,8 @@ end
 ###    accessor(face_to_modif,GT.prototype(Dface_to_modif))
 ###end
 ###
-###function shape_function_accessor_modifier_boundary(f,space::AbstractSpace,domain::AbstractDomain)
-###    face_modif = shape_function_accessor_modifier_skeleton(f,space,domain)
+###function shape_function_face_modifier_boundary(f,space::AbstractSpace,domain::AbstractDomain)
+###    face_modif = shape_function_face_modifier_skeleton(f,space,domain)
 ###    faces_around = GT.faces_around(domain)
 ###    function face_to_modif(face,dummy=nothing)
 ###        face_around=faces_around[face]
@@ -2173,14 +2175,14 @@ end
 ###end
 ###
 #### Untabulated
-###function shape_function_accessor_physical(f,space::AbstractSpace)
+###function shape_function_face_physical(f,space::AbstractSpace)
 ###    domain = GT.domain(space)
 ###    D = num_dims(domain)
 ###    mesh = GT.mesh(domain)
-###    face_dof_s_ref = shape_function_accessor_reference(value,space)
-###    face_dof_modif = shape_function_accessor_modifier(value,space)
-###    face_phi = physical_map_accessor(value,mesh,Val(D))
-###    face_Dphi = physical_map_accessor(ForwardDiff.jacobian,mesh,Val(D))
+###    face_dof_s_ref = shape_function_face_reference(value,space)
+###    face_dof_modif = shape_function_face_modifier(value,space)
+###    face_phi = physical_map_face(value,mesh,Val(D))
+###    face_Dphi = physical_map_face(ForwardDiff.jacobian,mesh,Val(D))
 ###    x0 = zero(SVector{D,Float64})
 ###    prototype = q->f(x->GT.prototype(face_dof_modif)(GT.prototype(face_dof_s_ref)(x),GT.prototype(face_Dphi)(x)),q)
 ###    function face_dof_s_phys(face,face_around=nothing)
@@ -2204,12 +2206,12 @@ end
 ###end
 ###
 #### This gets tabulated only for particular instances of f.
-###function shape_function_accessor_physical(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation)
+###function shape_function_face_physical(f,space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation)
 ###    if num_dims(domain(space)) != num_dims(domain(measure))
 ###        error("case not implemented")
 ###    end
-###    Dface_dof_x_s = shape_function_accessor_physical(f,space)
-###    face_point_x = coordinate_accessor(measure)
+###    Dface_dof_x_s = shape_function_face_physical(f,space)
+###    face_point_x = coordinate_face(measure)
 ###    face_dface = faces(domain(measure))
 ###    function face_point_dof_s(face,face_around=nothing)
 ###        point_x = face_point_x(face)
@@ -2229,12 +2231,12 @@ end
 #### Tabulated
 ###for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
 ###    @eval begin
-###        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{false})
-###            face_point_dof_v = shape_function_accessor_reference(f,space,measure)
-###            face_ndofs = num_dofs_accessor(space,GT.domain(measure))
-###            dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
+###        function shape_function_face_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{false})
+###            face_point_dof_v = shape_function_face_reference(f,space,measure)
+###            face_ndofs = num_dofs_face(space,GT.domain(measure))
+###            dface_to_modif = shape_function_face_modifier(f,space,domain(measure))
 ###            D = num_dims(domain(space))
-###            face_point_Dphi = jacobian_accessor(measure,Val(D))
+###            face_point_Dphi = jacobian_face(measure,Val(D))
 ###            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
 ###            P = typeof(prototype)
 ###            max_n_faces_around = 2
@@ -2275,12 +2277,12 @@ end
 ###        end # function
 ###
 ###
-###        function shape_function_accessor_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{true})
-###            face_point_dof_v = shape_function_accessor_reference(f,space,measure)
-###            face_ndofs = num_dofs_accessor(space,GT.domain(measure))
-###            dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
+###        function shape_function_face_physical(f::typeof($T),space::AbstractSpace,measure::AbstractQuadrature,disable_tabulation::Val{true})
+###            face_point_dof_v = shape_function_face_reference(f,space,measure)
+###            face_ndofs = num_dofs_face(space,GT.domain(measure))
+###            dface_to_modif = shape_function_face_modifier(f,space,domain(measure))
 ###            D = num_dims(domain(space))
-###            face_point_Dphi = jacobian_accessor(measure,Val(D))
+###            face_point_Dphi = jacobian_face(measure,Val(D))
 ###            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
 ###            
 ###            function face_point_dof_s(face,face_around=nothing)
@@ -2307,20 +2309,20 @@ end
 ###    end # @eval
 ###end # for
 ###
-###function dofs_accessor(space::AbstractSpace,domain::AbstractDomain)
+###function dofs_face(space::AbstractSpace,domain::AbstractDomain)
 ###    D = num_dims(space)
 ###    d = num_dims(domain)
 ###    faces_around = GT.faces_around(domain)
 ###    if d == D
-###        dofs_accessor_interior(space,domain)
+###        dofs_face_interior(space,domain)
 ###    elseif d+1==D && faces_around !== nothing
-###        dofs_accessor_boundary(space,domain)
+###        dofs_face_boundary(space,domain)
 ###    else
-###        dofs_accessor_skeleton(space,domain)
+###        dofs_face_skeleton(space,domain)
 ###    end
 ###end
 ###
-###function dofs_accessor_interior(space::AbstractSpace,dom::AbstractDomain)
+###function dofs_face_interior(space::AbstractSpace,dom::AbstractDomain)
 ###    face_to_Dface = faces(dom)
 ###    Dface_to_dofs_ = face_dofs(space)
 ###    prototype = Int32[1]
@@ -2333,7 +2335,7 @@ end
 ###    accessor(face_to_dofs,prototype)
 ###end
 ###
-###function dofs_accessor_skeleton(space::AbstractSpace,domain::AbstractDomain)
+###function dofs_face_skeleton(space::AbstractSpace,domain::AbstractDomain)
 ###    D = num_dims(GT.domain(space))
 ###    d = num_dims(domain)
 ###    Dface_dofs = face_dofs(space)
@@ -2350,8 +2352,8 @@ end
 ###    accessor(face_to_dofs,prototype)
 ###end
 ###
-###function dofs_accessor_boundary(space::AbstractSpace,domain::AbstractDomain)
-###    face_to_dofs = dofs_accessor_skeleton(space,domain)
+###function dofs_face_boundary(space::AbstractSpace,domain::AbstractDomain)
+###    face_to_dofs = dofs_face_skeleton(space,domain)
 ###    faces_around = GT.faces_around(domain)
 ###    prototype = GT.prototype(face_to_dofs)
 ###    function face_to_dofs_2(face,dummy=nothing)
@@ -2361,20 +2363,20 @@ end
 ###    accessor(face_to_dofs_2,prototype)
 ###end
 ###
-###function num_dofs_accessor(space::AbstractSpace,domain::AbstractDomain)
+###function num_dofs_face(space::AbstractSpace,domain::AbstractDomain)
 ###    D = num_dims(space)
 ###    d = num_dims(domain)
 ###    faces_around = GT.faces_around(domain)
 ###    if d == D
-###        num_dofs_accessor_interior(space,domain)
+###        num_dofs_face_interior(space,domain)
 ###    elseif d+1==D && faces_around !== nothing
-###        num_dofs_accessor_boundary(space,domain)
+###        num_dofs_face_boundary(space,domain)
 ###    else
-###        num_dofs_accessor_skeleton(space,domain)
+###        num_dofs_face_skeleton(space,domain)
 ###    end
 ###end
 ###
-###function num_dofs_accessor_interior(space::AbstractSpace,domain::AbstractDomain)
+###function num_dofs_face_interior(space::AbstractSpace,domain::AbstractDomain)
 ###    rid_to_n = map(num_dofs,reference_spaces(space))
 ###    Dface_to_rid = face_reference_id(space)
 ###    face_to_Dface = faces(domain)
@@ -2386,7 +2388,7 @@ end
 ###    accessor(face_to_n,1)
 ###end
 ###
-###function num_dofs_accessor_skeleton(space::AbstractSpace,domain::AbstractDomain)
+###function num_dofs_face_skeleton(space::AbstractSpace,domain::AbstractDomain)
 ###    mesh = GT.mesh(space)
 ###    rid_to_n = map(num_dofs,reference_spaces(space))
 ###    Dface_to_rid = face_reference_id(space)
@@ -2405,8 +2407,8 @@ end
 ###    accessor(face_to_n,1)
 ###end
 ###
-###function num_dofs_accessor_boundary(space::AbstractSpace,domain::AbstractDomain)
-###    a = num_dofs_accessor_skeleton(space,domain)
+###function num_dofs_face_boundary(space::AbstractSpace,domain::AbstractDomain)
+###    a = num_dofs_face_skeleton(space,domain)
 ###    faces_around = GT.faces_around(domain)
 ###    function face_to_n(face,dummy=nothing)
 ###        face_around=faces_around[face]
@@ -2415,27 +2417,27 @@ end
 ###    accessor(face_to_n,GT.prototype(a))
 ###end
 ###
-###struct DiscreteFieldAccessor{A,B} <: AbstractAccessor
+###struct DiscreteFieldFace{A,B} <: AbstractFace
 ###    update::A
 ###    accessor::B
 ###end
 ###
-###prototype(f::DiscreteFieldAccessor) = prototype(f.accessor)
+###prototype(f::DiscreteFieldFace) = prototype(f.accessor)
 ###
-###function (f::DiscreteFieldAccessor)(face,face_around=nothing)
+###function (f::DiscreteFieldFace)(face,face_around=nothing)
 ###    f.accessor(face,face_around)
 ###end
 ###
-###function update(f::DiscreteFieldAccessor;discrete_field)
+###function update(f::DiscreteFieldFace;discrete_field)
 ###    uh = discrete_field
 ###    accessor = f.update(uh)
-###    DiscreteFieldAccessor(f.update,accessor)
+###    DiscreteFieldFace(f.update,accessor)
 ###end
 ###
-###function discrete_field_accessor(f,uh::DiscreteField,measure::AbstractQuadrature)
-###    face_to_dofs = dofs_accessor(GT.space(uh),GT.domain(measure))
-###    face_to_point_to_ldof_to_s = shape_function_accessor(f,GT.space(uh),measure)
-###    function field_to_accessor(uh)
+###function discrete_field_face(f,uh::DiscreteField,measure::AbstractQuadrature)
+###    face_to_dofs = dofs_face(GT.space(uh),GT.domain(measure))
+###    face_to_point_to_ldof_to_s = shape_function_face(f,GT.space(uh),measure)
+###    function field_to_face(uh)
 ###        space = GT.space(uh)
 ###        free_values = GT.free_values(uh)
 ###        dirichlet_values = GT.dirichlet_values(uh)
@@ -2461,31 +2463,31 @@ end
 ###        end
 ###        GT.accessor(face_point_u,prototype)
 ###    end
-###    accessor = field_to_accessor(uh)
-###    DiscreteFieldAccessor(field_to_accessor,accessor)
+###    accessor = field_to_face(uh)
+###    DiscreteFieldFace(field_to_face,accessor)
 ###end
 ###
 ##### TODO not needed anymore
-####struct DirichletAccessor{A,B} <: AbstractAccessor
+####struct DirichletFace{A,B} <: AbstractFace
 ####    update::A
 ####    accessor::B
 ####end
 ####
-####prototype(f::DirichletAccessor) = prototype(f.accessor)
+####prototype(f::DirichletFace) = prototype(f.accessor)
 ####
-####function (f::DirichletAccessor)(face)
+####function (f::DirichletFace)(face)
 ####    f.accessor(face)
 ####end
 ####
-####function update(f::DirichletAccessor;discrete_field)
+####function update(f::DirichletFace;discrete_field)
 ####    uh = discrete_field
 ####    accessor = f.update(uh)
-####    DirichletAccessor(f.update,accessor)
+####    DirichletFace(f.update,accessor)
 ####end
 ####
-####function dirichlet_accessor(uh::DiscreteField,domain::AbstractDomain)
-####    face_to_dofs = dofs_accessor(GT.space(uh),domain)
-####    function field_to_accessor(uh)
+####function dirichlet_face(uh::DiscreteField,domain::AbstractDomain)
+####    face_to_dofs = dofs_face(GT.space(uh),domain)
+####    function field_to_face(uh)
 ####        space = GT.space(uh)
 ####        dirichlet_values = GT.dirichlet_values(uh)
 ####        prototype = nothing
@@ -2511,36 +2513,36 @@ end
 ####        end
 ####        GT.accessor(face_dirichlet!,prototype)
 ####    end
-####    accessor = field_to_accessor(uh)
-####    DirichletAccessor(field_to_accessor,accessor)
+####    accessor = field_to_face(uh)
+####    DirichletFace(field_to_face,accessor)
 ####end
 ###
-###function unit_normal_accessor(measure::AbstractQuadrature)
+###function unit_normal_face(measure::AbstractQuadrature)
 ###    domain = GT.domain(measure)
 ###    mesh = GT.mesh(domain)
 ###    D = num_dims(mesh)
 ###    d = num_dims(domain)
 ###    if D==d && is_physical_domain(domain)
-###        unit_normal_accessor_physical_interior(measure)
+###        unit_normal_face_physical_interior(measure)
 ###    elseif D==d+1 && is_physical_domain(domain)
-###        unit_normal_accessor_physical(measure)
+###        unit_normal_face_physical(measure)
 ###    elseif D==d+1 && is_reference_domain(domain)
-###        unit_normal_accessor_reference(measure)
+###        unit_normal_face_reference(measure)
 ###    else
 ###        error()
 ###    end
 ###end
 ###
-###function unit_normal_accessor_physical_interior(measure::AbstractQuadrature)
+###function unit_normal_face_physical_interior(measure::AbstractQuadrature)
 ###    error("not implemented")
 ###end
 ###
-###function unit_normal_accessor_physical(measure::AbstractQuadrature)
+###function unit_normal_face_physical(measure::AbstractQuadrature)
 ###    domain = GT.domain(measure)
 ###    d = num_dims(domain)
 ###    D = d+1
-###    face_n_ref = unit_normal_accessor_reference(measure)
-###    face_point_J = jacobian_accessor(measure,Val(D))
+###    face_n_ref = unit_normal_face_reference(measure)
+###    face_point_J = jacobian_face(measure,Val(D))
 ###    function face_point_n(face,face_around=nothing)
 ###        point_J = face_point_J(face,face_around)
 ###        n_ref = face_n_ref(face,face_around)
@@ -2554,18 +2556,18 @@ end
 ###end
 ###
 ###
-###function unit_normal_accessor_reference(measure::AbstractQuadrature)
+###function unit_normal_face_reference(measure::AbstractQuadrature)
 ###    D = num_dims(mesh(measure))
 ###    d = num_dims(domain(measure))
 ###    @assert D == d+1
 ###    if GT.faces_around(domain(measure)) === nothing
-###        unit_normal_accessor_reference_skeleton(measure)
+###        unit_normal_face_reference_skeleton(measure)
 ###    else
-###        unit_normal_accessor_reference_boundary(measure)
+###        unit_normal_face_reference_boundary(measure)
 ###    end
 ###end
 ###
-###function unit_normal_accessor_reference_skeleton(measure::AbstractQuadrature)
+###function unit_normal_face_reference_skeleton(measure::AbstractQuadrature)
 ###    domain = GT.domain(measure)
 ###    d = num_dims(domain)
 ###    D = d+1
@@ -2591,8 +2593,8 @@ end
 ###    accessor(face_n,prototype)
 ###end
 ###
-###function unit_normal_accessor_reference_boundary(measure::AbstractQuadrature)
-###    face_n = unit_normal_accessor_reference_skeleton(measure)
+###function unit_normal_face_reference_boundary(measure::AbstractQuadrature)
+###    face_n = unit_normal_face_reference_skeleton(measure)
 ###    faces_around = GT.faces_around(domain(measure))
 ###    function face_n_2(face,dummy=nothing)
 ###        face_around=faces_around[face]
@@ -2606,8 +2608,8 @@ end
 ###    d = num_dims(domain)
 ###    dinv = 1/d
 ###    measure = GT.measure(domain,1)
-###    face_point_w = weight_accessor(measure)
-###    face_npoints = num_points_accessor(measure)
+###    face_point_w = weight_face(measure)
+###    face_npoints = num_points_face(measure)
 ###    z = zero(prototype(face_point_w))
 ###    nfaces = num_faces(domain)
 ###    diams = fill(z,nfaces)
@@ -2625,13 +2627,13 @@ end
 ###end
 ###
 ###
-####function form_argument_accessor(f,space::AbstractSpace)
-####    shape_function_accessor(f,space)
+####function form_argument_face(f,space::AbstractSpace)
+####    shape_function_face(f,space)
 ####end
 ####
 #### TODO: type instability when using accessor for customized functions
-###function form_argument_accessor(f,space::AbstractSpace,measure::AbstractQuadrature,field=1)
-###    face_point_dof_s = shape_function_accessor(f,space,measure)
+###function form_argument_face(f,space::AbstractSpace,measure::AbstractQuadrature,field=1)
+###    face_point_dof_s = shape_function_face(f,space,measure)
 ###    prototype = GT.prototype(face_point_dof_s)
 ###    the_field = field
 ###    z = zero(prototype)
@@ -2688,46 +2690,46 @@ end
 ###end
 ###
 #### remove it as we use quadrature directly
-#### function num_points_accessor(measure::Measure)
-####     num_points_accessor(quadrature(measure))
+#### function num_points_face(measure::Measure)
+####     num_points_face(quadrature(measure))
 #### end
 ###
-#### function coordinate_accessor(measure::Measure)
-####     coordinate_accessor(quadrature(measure))
+#### function coordinate_face(measure::Measure)
+####     coordinate_face(quadrature(measure))
 #### end
 ###
-#### function jacobian_accessor(measure::Measure,args...)
-####     jacobian_accessor(quadrature(measure),args...)
+#### function jacobian_face(measure::Measure,args...)
+####     jacobian_face(quadrature(measure),args...)
 #### end
 ###
-#### function weight_accessor(measure::Measure)
-####     weight_accessor(quadrature(measure))
+#### function weight_face(measure::Measure)
+####     weight_face(quadrature(measure))
 #### end
 ###
-#### function discrete_field_accessor(f,uh::DiscreteField,measure::Measure)
-####     discrete_field_accessor(f,uh,quadrature(measure))
+#### function discrete_field_face(f,uh::DiscreteField,measure::Measure)
+####     discrete_field_face(f,uh,quadrature(measure))
 #### end
 ###
-#### function shape_function_accessor(f,space::AbstractSpace,measure::Measure)
-####     shape_function_accessor(f,space,quadrature(measure))
+#### function shape_function_face(f,space::AbstractSpace,measure::Measure)
+####     shape_function_face(f,space,quadrature(measure))
 #### end
 ###
-#### function form_argument_accessor(f,space::AbstractSpace,measure::Measure)
-####     form_argument_accessor(f,space,quadrature(measure))
+#### function form_argument_face(f,space::AbstractSpace,measure::Measure)
+####     form_argument_face(f,space,quadrature(measure))
 #### end
 ###
-#### function physical_map_accessor(f,measure::Measure,vD)
-####     physical_map_accessor(f,quadrature(measure),vD)
+#### function physical_map_face(f,measure::Measure,vD)
+####     physical_map_face(f,quadrature(measure),vD)
 #### end
 ###
-#### function unit_normal_accessor(measure::Measure)
-####     unit_normal_accessor(quadrature(measure))
+#### function unit_normal_face(measure::Measure)
+####     unit_normal_face(quadrature(measure))
 #### end
 ###
 ###
 #### currently we do 1 step lowering
-#### shape_function_accessor_modifier_term: always tabulated
-#### function shape_function_accessor_modifier_term(f, v, J)
+#### shape_function_face_modifier_term: always tabulated
+#### function shape_function_face_modifier_term(f, v, J)
 ####     if f == value
 ####         v
 ####     elseif f == ForwardDiff.jacobian 
@@ -2740,40 +2742,40 @@ end
 #### end
 ###
 ###
-#### function shape_function_accessor_modifier_interior_term(f, v, J)
-####     shape_function_accessor_modifier_term(f, v, J)
+#### function shape_function_face_modifier_interior_term(f, v, J)
+####     shape_function_face_modifier_term(f, v, J)
 #### end
 ###
-#### function shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+#### function shape_function_face_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
 ####     # is it correct?
-####     shape_function_accessor_modifier_term(f, v, J)
+####     shape_function_face_modifier_term(f, v, J)
 #### end
 ###
-#### function shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+#### function shape_function_face_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
 ####     face_around = :($(GT.face_around)(dom))
-####     shape_function_accessor_modifier_skeleton_term(f, space, dom, face, face_around, dof, v, J)
+####     shape_function_face_modifier_skeleton_term(f, space, dom, face, face_around, dof, v, J)
 #### end
 ###
 ###
-#### function shape_function_accessor_modifier_term(f, space, dom, face, the_face_around, dof, v, J, integral_type)
+#### function shape_function_face_modifier_term(f, space, dom, face, the_face_around, dof, v, J, integral_type)
 ####     # TODO: inline 1 step further
 ####     if integral_type == :interior 
-####         shape_function_accessor_modifier_interior_term(f, v, J)
+####         shape_function_face_modifier_interior_term(f, v, J)
 ####     elseif integral_type == :boundary 
-####         shape_function_accessor_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
+####         shape_function_face_modifier_boundary_term(f, space, dom, face, the_face_around, dof, v, J)
 ####     else
-####         shape_function_accessor_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
+####         shape_function_face_modifier_skeleton_term(f, space, dom, face, the_face_around, dof, v, J)
 ####     end
 #### end
 ###
 ###
 ###
-#### function shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
-####     face_point_dof_v = :(shape_function_accessor_reference($f,$space,$measure)) # TODO: further expand it
+#### function shape_function_face_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+####     face_point_dof_v = :(shape_function_face_reference($f,$space,$measure)) # TODO: further expand it
 ###
-####     # dface_to_modif = :(shape_function_accessor_modifier($f,$space, $(GT.domain)($measure)))
+####     # dface_to_modif = :(shape_function_face_modifier($f,$space, $(GT.domain)($measure)))
 ####     D = :(num_dims($(GT.domain)($space)))
-####     face_point_Dphi = :(jacobian_accessor($measure,Val($D)))
+####     face_point_Dphi = :(jacobian_face($measure,Val($D)))
 ###
 ####     point_dof_v = :($face_point_dof_v($face,$the_face_around))
 ####     # dof_modif = :($dface_to_modif($face, $the_face_around))
@@ -2790,36 +2792,36 @@ end
 ####     v = :($dof_v($dof))
 ####     # modif = :($dof_modif($dof))
 ###
-####     shape_function = shape_function_accessor_modifier_term(f, space, :($(GT.domain)($measure)), face, the_face_around, dof, v, J2, integral_type)
+####     shape_function = shape_function_face_modifier_term(f, space, :($(GT.domain)($measure)), face, the_face_around, dof, v, J2, integral_type)
 ###
 ####     shape_function
 ####     # z, z
 #### end # function
 ###
 ###
-#### function shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
+#### function shape_function_face_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type)
 ####     tabulated_functions = Set([value, ForwardDiff.jacobian, ForwardDiff.gradient])
 ####     if is_reference
-####         # z = :( zero($(GT.prototype)(shape_function_accessor_reference($f,$space,$measure))) )
-####         shape_function = :(shape_function_accessor_reference($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+####         # z = :( zero($(GT.prototype)(shape_function_face_reference($f,$space,$measure))) )
+####         shape_function = :(shape_function_face_reference($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
 ####     elseif f in tabulated_functions
-####         shape_function = shape_function_accessor_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
-####         # z = shape_function_accessor_physical_term(f, space, measure, 1, 1, 1, nothing, 1, integral_type) # TODO: find a better way to get prototype. However, this will probably be removed in the final code.
+####         shape_function = shape_function_face_physical_term(f, space, measure, face, the_face_around, point, J, dof, integral_type)
+####         # z = shape_function_face_physical_term(f, space, measure, 1, 1, 1, nothing, 1, integral_type) # TODO: find a better way to get prototype. However, this will probably be removed in the final code.
 ####     else # Untabulated, keep using accessors
-####         # z = :( zero($(GT.prototype)(shape_function_accessor_physical($f,$space,$measure))) )
-####         shape_function = :(shape_function_accessor_physical($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
+####         # z = :( zero($(GT.prototype)(shape_function_face_physical($f,$space,$measure))) )
+####         shape_function = :(shape_function_face_physical($f,$space,$measure)($face, $the_face_around)($point, $J)($dof))
 ####     end
 ####     return shape_function
 #### end
 ###
 ###
-###function form_argument_accessor_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)
+###function form_argument_face_term(f,space,measure,the_field, face,the_face_around, point, J, dof,field,face_around, is_reference, integral_type)
 ###
 ###    mask = :(($face_around == $the_face_around && $field == $the_field))
 ###    disable_tabulation = :(Val(true))
-###    # shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
-###    z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure,$disable_tabulation))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
-###    shape_function = :(shape_function_accessor($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, $J)($dof))
+###    # shape_function = shape_function_face_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
+###    z = :( zero(GT.prototype(shape_function_face($f,$space,$measure,$disable_tabulation))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
+###    shape_function = :(shape_function_face($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, $J)($dof))
 ###    :(ifelse($mask, $shape_function, $z))
 ###
 ###end

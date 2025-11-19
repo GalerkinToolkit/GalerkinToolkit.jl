@@ -1,8 +1,6 @@
-abstract type NewAbstractAccessor <: AbstractType end
+abstract type AbstractFace <: AbstractType end
 
-abstract type AbstractAccessor <: Function end
-
-function Base.show(io::IO,data::GT.AbstractAccessor)
+function Base.show(io::IO,data::GT.AbstractFace)
     print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
 end
 
