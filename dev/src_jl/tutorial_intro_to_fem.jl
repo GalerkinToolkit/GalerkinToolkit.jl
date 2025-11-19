@@ -9,9 +9,6 @@
 # This lecture is useful even if you are a FEM expert and you want to learn GalerkinToolkit. 
 # It will walk you through the key parts of the library.
 #
-# This lecture is made available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
-# The API documentation and source code of GalerkinToolkit is available under an [MIT license](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE).
-
 # ## Problem statement
 #
 # We show how to solve a simple PDE with the FEM.
@@ -92,7 +89,7 @@
 # - Solution
 # - Post-process
 #
-# ## Mesh generation
+# ## Computational meshes
 #
 # The FEM starts by building a "triangulation" $\mathcal{T}$ of the domain $\Omega$ in which the PDE is defined.
 # A triangulation $\mathcal{T}$ is a set of simpler domains $T_k\subset\mathbb{R}^d$, whose union is an approximation of $\Omega$,
