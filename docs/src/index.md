@@ -75,6 +75,13 @@ This package is under active development and there are several ways to contribut
 
 Discuss with the package authors before working on any non-trivial contribution.
 
+## License
+
+GalerkinToolkit is released under an [MIT licence](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/blob/main/LICENSE),
+except the this documentation webpage and all contents of the [`/docs/src` folder](https://github.com/GalerkinToolkit/GalerkinToolkit.jl/tree/main/docs)),
+which are available under a [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/).
+
+
 ## Acknowledgments
 
 Since July 2024, this package is being developed with support from the [Netherlands eScience Center](https://www.esciencecenter.nl/) under grant ID [NLESC.SS.2023.008](https://research-software-directory.org/projects/hp2sim).

@@ -177,11 +177,11 @@ dΛ = GT.measure(Λ,degree)
 
 V = GT.lagrange_space(Ω,order;dirichlet_boundary=Γ)
 
-#face_point_x = GT.coordinate_accessor(dΩ)
-#face_point_J = GT.jacobian_accessor(dΩ)
-#face_point_dV = GT.weight_accessor(dΩ)
-#face_point_dof_s = GT.shape_function_accessor(GT.value,V,dΩ)
-#face_point_dof_∇s = GT.shape_function_accessor(ForwardDiff.gradient,V,dΩ)
+#face_point_x = GT.coordinate_face(dΩ)
+#face_point_J = GT.jacobian_face(dΩ)
+#face_point_dV = GT.weight_face(dΩ)
+#face_point_dof_s = GT.shape_function_face(GT.value,V,dΩ)
+#face_point_dof_∇s = GT.shape_function_face(ForwardDiff.gradient,V,dΩ)
 #
 #face = 3
 #point = 4
@@ -210,10 +210,10 @@ uh = GT.zero_field(T,V)
 ufun = x->0.0
 u = GT.analytical_field(ufun,Ω)
 GT.interpolate_dirichlet!(u,uh)
-#face_dirichlet! = GT.dirichlet_accessor(uh,Ω)
+#face_dirichlet! = GT.dirichlet_face(uh,Ω)
 #dirichlet! = face_dirichlet!(face)
 #
-V_dΩ = GT.space_accessor(V,dΩ;tabulate=(GT.value,ForwardDiff.gradient),compute=(GT.coordinate,))
+V_dΩ = GT.space_face(V,dΩ;tabulate=(GT.value,ForwardDiff.gradient),compute=(GT.coordinate,))
 #
 n = maximum(map(GT.num_dofs,GT.reference_spaces(V)))
 Auu = zeros(T,n,n)
@@ -236,7 +236,7 @@ uhd = GT.zero_dirichlet_field(T,V)
 GT.interpolate_dirichlet!(u,uhd)
 f = x -> 0
 
-#face_npoints = GT.num_points_accessor(dΩ)
+#face_npoints = GT.num_points_face(dΩ)
 
 b_alloc = GT.allocate_vector(T,V,Ω)
 A_alloc = GT.allocate_matrix(T,V,V,Ω)
@@ -273,7 +273,7 @@ x = A\b
 
 uh = GT.solution_field(uhd,x)
 
-uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,),compute=(GT.coordinate,))
+uh_dΩ = GT.field_face(uh,dΩ;tabulate=(GT.value,),compute=(GT.coordinate,))
 
 err = Ref(0.0)
 for face in 1:GT.num_faces(Ω)

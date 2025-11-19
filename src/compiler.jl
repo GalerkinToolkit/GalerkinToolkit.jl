@@ -429,7 +429,7 @@ end
 
 function prototype(term::CoordinateTerm)
     (quadrature,face,point) = map(prototype,dependencies(term))
-    coordinate(at_any_index(quadrature_accessor(quadrature)))
+    coordinate(at_any_index(quadrature_face(quadrature)))
 end
 
 # dependencies are always terms
@@ -447,7 +447,7 @@ end
 # Not clear if this is even needed for DLS terms
 function expression(term::CoordinateTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    :( coordinate(at_point(at_face(quadrature_accessor($quadrature),$face),$point)) )
+    :( coordinate(at_point(at_face(quadrature_face($quadrature),$face),$point)) )
 end
 
 function weight_quantity(quadrature)
@@ -467,7 +467,7 @@ end
 
 function prototype(term::WeightTerm)
     (quadrature,face,point) = map(prototype,dependencies(term))
-    weight(at_any_index(quadrature_accessor(quadrature)))
+    weight(at_any_index(quadrature_face(quadrature)))
 end
 
 function dependencies(term::WeightTerm)
@@ -481,7 +481,7 @@ end
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
     D = term.D
-    :(weight(at_point(at_face(quadrature_accessor($quadrature),$face),$point)) )
+    :(weight(at_point(at_face(quadrature_face($quadrature),$face),$point)) )
 end
 
 function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
@@ -560,8 +560,8 @@ function expression(term::FormArgumentTerm)
     @error "We dont want untabulated shape functions"
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,term.dependencies)
     # TODO: not tabulated. we need another solution to tabulate it or this cannot be tabulated anyway
-    #:(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
-    :(ifelse($face_around == $the_face_around && $field == $the_field,shape_functions($f,at_point(at_face_around(at_face(space_accessor($space,$domain),$face),$the_face_around),$point))[$dof],zero(eltype(shape_functions($f,at_any_index(space_accessor($space,$domain)))))))
+    #:(form_argument_face($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
+    :(ifelse($face_around == $the_face_around && $field == $the_field,shape_functions($f,at_point(at_face_around(at_face(space_face($space,$domain),$face),$the_face_around),$point))[$dof],zero(eltype(shape_functions($f,at_any_index(space_face($space,$domain)))))))
 end
 
 #function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
@@ -699,41 +699,41 @@ end
 
 function prototype_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
-    eltype(shape_functions(f,at_any_index(tabulate(f,space_accessor(space,GT.quadrature(domain,0))))))
-    #prototype(form_argument_accessor(f,space,quadrature))
+    eltype(shape_functions(f,at_any_index(tabulate(f,space_face(space,GT.quadrature(domain,0))))))
+    #prototype(form_argument_face(f,space,quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:FormArgumentTerm})
 #    parent = term.parent
 #    quadrature = prototype(term.quadrature)
 #    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(parent))
-#    prototype(form_argument_accessor(space,domain,1))
+#    prototype(form_argument_face(space,domain,1))
 #end
 
 function prototype_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     (f,uh,domain,face,face_around) = map(prototype,dependencies(parent))
-    uh_acc = field_accessor(uh,quadrature;tabulate=(f,))
+    uh_acc = field_face(uh,quadrature;tabulate=(f,))
     uh_point = at_any_index(uh_acc)
     field(f,uh_point)
-    #prototype(discrete_field_accessor(f,uh,quadrature))
+    #prototype(discrete_field_face(f,uh,quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:DiscreteFieldTerm})
 #    parent = term.parent
 #    quadrature = prototype(term.quadrature)
 #    (f,uh,domain,face,face_around) = map(prototype,dependencies(parent))
-#    prototype(discrete_field_accessor(f,uh,quadrature))
+#    prototype(discrete_field_face(f,uh,quadrature))
 #end
 
 function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
     form_arg = parent
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
     D = parent.D
-    mesh_acc = :(tabulate(gradient,mesh_accessor(mesh(domain($quadrature)),Val($D),$quadrature)))
+    mesh_acc = :(tabulate(gradient,mesh_face(mesh(domain($quadrature)),Val($D),$quadrature)))
     mesh_ready = :(at_point(at_face_around(at_face($mesh_acc,$face),$the_face_around),$point))
-    z = :(zero(eltype(shape_functions($f,at_any_index(tabulate($f,space_accessor($space,$mesh_acc)))))))
+    z = :(zero(eltype(shape_functions($f,at_any_index(tabulate($f,space_face($space,$mesh_acc)))))))
     mask = :($face_around == $the_face_around && $field == $the_field)
-    space_acc = :(tabulate($f,space_accessor($space,$mesh_acc)))
+    space_acc = :(tabulate($f,space_face($space,$mesh_acc)))
     sfun = :(shape_functions($f,at_point(at_face_around(at_face($space_acc,$face),$the_face_around),$mesh_ready))[$dof])
     :(ifelse($mask,$sfun,$z))
 end
@@ -743,14 +743,14 @@ end
 #    form_arg = term.parent
 #    quadrature = expression(term.quadrature)
 #    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
-#    :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point)($dof,$field,$face_around))
+#    :(form_argument_face($f,$space,$quadrature,$the_field)($face,$the_face_around)($point)($dof,$field,$face_around))
 #end
 
 function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     form_arg = parent
     (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
-    :(field($f,at_point(at_face_around(at_face(tabulate($f,field_accessor($uh,$quadrature)),$face),$face_around),$point)))
-    #:(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
+    :(field($f,at_point(at_face_around(at_face(tabulate($f,field_face($uh,$quadrature)),$face),$face_around),$point)))
+    #:(discrete_field_face($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
 #function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
@@ -758,7 +758,7 @@ end
 #    form_arg = term.parent
 #    quadrature = expression(term.quadrature)
 #    (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
-#    :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
+#    :(discrete_field_face($f,$uh,$quadrature)($face,$face_around)($point))
 #end
 
 struct SkeletonTerm <: AbstractTerm
@@ -865,22 +865,22 @@ end
 
 function prototype_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(prototype,dependencies(parent))
-    acc = quadrature_accessor(quadrature,vD)
+    acc = quadrature_face(quadrature,vD)
     coordinate(f,at_any_index(acc))
-    #prototype(physical_map_accessor(f,quadrature,vD))
+    #prototype(physical_map_face(f,quadrature,vD))
 end
 
 #function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
 #    parent = term.parent
 #    quadrature = prototype(term.quadrature)
 #    (f,mesh,vD,face) = map(prototype,dependencies(parent))
-#    prototype(physical_map_accessor(f,quadrature,vD))
+#    prototype(physical_map_face(f,quadrature,vD))
 #end
 
 function expression_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(expression,parent.dependencies)
-    :(coordinate($f,at_point(at_face(quadrature_accessor($quadrature,$vD),$face),$point)))
-    #:(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+    :(coordinate($f,at_point(at_face(quadrature_face($quadrature,$vD),$face),$point)))
+    #:(physical_map_face($f,$quadrature,$vD)($face)($point))
 end
 
 #
@@ -889,7 +889,7 @@ end
 #    phys_map = term.parent
 #    quadrature = expression(term.quadrature)
 #    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
-#    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+#    :(physical_map_face($f,$quadrature,$vD)($face)($point))
 #end
 
 #function reference_map(mesh::AbstractMesh,vd,vD)
@@ -937,7 +937,7 @@ end
 #    parent = term.parent
 #    quadrature = prototype(term.quadrature)
 #    (f,mesh,vD,face) = map(prototype,dependencies(parent))
-#    prototype(physical_map_accessor(f,quadrature,vD))
+#    prototype(physical_map_face(f,quadrature,vD))
 #end
 #
 #function expression(term::TabulatedTerm{<:ReferenceMapTerm})
@@ -945,7 +945,7 @@ end
 #    phys_map = term.parent
 #    quadrature = expression(term.quadrature)
 #    (f,mesh,vD,face) = map(expression,phys_map.dependencies)
-#    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+#    :(physical_map_face($f,$quadrature,$vD)($face)($point))
 #end
 
 function unit_normal(mesh::AbstractMesh,vd)
@@ -1000,23 +1000,23 @@ end
 function prototype_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     mesh = GT.mesh(domain(quadrature))
     vD = Val(num_dims(mesh))
-    acc = compute(unit_normal,quadrature_accessor(quadrature,vD))
+    acc = compute(unit_normal,quadrature_face(quadrature,vD))
     unit_normal(at_any_index(acc))
-    #prototype(unit_normal_accessor(quadrature))
+    #prototype(unit_normal_face(quadrature))
 end
 
 #function prototype(term::TabulatedTerm{<:UnitNormalTerm})
 #    parent = term.parent
 #    quadrature = prototype(term.quadrature)
 #    #(face,the_face_around) = map(prototype,dependencies(parent))
-#    prototype(unit_normal_accessor(quadrature))
+#    prototype(unit_normal_face(quadrature))
 #end
 
 function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     (face,the_face_around) = map(expression,dependencies(parent))
     mesh = :(mesh(domain($quadrature)))
-    :(unit_normal(at_point(at_face_around(at_face(compute(unit_normal,quadrature_accessor($quadrature,Val(num_dims($mesh)))),$face),$the_face_around),$point)))
-    #:(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+    :(unit_normal(at_point(at_face_around(at_face(compute(unit_normal,quadrature_face($quadrature,Val(num_dims($mesh)))),$face),$the_face_around),$point)))
+    #:(unit_normal_face($quadrature)($face,$the_face_around)($point))
 end
 
 #function expression(term::TabulatedTerm{<:UnitNormalTerm})
@@ -1024,7 +1024,7 @@ end
 #    quadrature = expression(term.quadrature)
 #    point = expression(term.point)
 #    (face,the_face_around) = map(expression,dependencies(parent))
-#    :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
+#    :(unit_normal_face($quadrature)($face,$the_face_around)($point))
 #end
 
 function dual_basis_quantity(space::AbstractSpace)
@@ -1288,7 +1288,7 @@ end
 function face_contribution_loop!(contribs,face_point_v,quadrature)
     domain = GT.domain(quadrature)
     nfaces = num_faces(domain)
-    q_acc = quadrature_accessor(quadrature)
+    q_acc = quadrature_face(quadrature)
     init = zero(eltype(contribs))
     for face in 1:nfaces
         point_v = face_point_v(face)
@@ -1845,7 +1845,7 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(the_domain)
-        q_acc = GT.quadrature_accessor($quadrature)
+        q_acc = GT.quadrature_face($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
         for $field_trial_symbol in 1:$nfields_trial 
@@ -1882,10 +1882,10 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $field_test_symbol in 1:$nfields_test
                         n_faces_around_test = $field_n_faces_around_test[$field_test_symbol]
                         for $face_around_trial_symbol in 1:n_faces_around_trial
-                            dofs_trial = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol))
+                            dofs_trial = GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol))
                             ndofs_trial = length(dofs_trial)
                             for $face_around_test_symbol in 1:n_faces_around_test
-                                dofs_test = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol))
+                                dofs_test = GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol))
                                 ndofs_test = length(dofs_test)
                                 for $dof_trial in 1:ndofs_trial
                                     for $dof_test in 1:ndofs_test
@@ -1906,8 +1906,8 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
                         for $face_around_test_symbol in 1:n_faces_around_test_contribute
                             GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
-                                                GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol)),
-                                                GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol)),
+                                                GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space_test,$field_test_symbol),$quadrature),$face),$face_around_test_symbol)),
+                                                GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space_trial,$field_trial_symbol),$quadrature),$face),$face_around_trial_symbol)),
                                                 $field_test_symbol,$field_trial_symbol)
                         end
                     end
@@ -1943,7 +1943,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(the_domain)
-        q_acc = GT.quadrature_accessor($quadrature)
+        q_acc = GT.quadrature_face($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around, $nfields)
         for $field_symbol in 1:$nfields
@@ -1968,7 +1968,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 for $field_symbol in 1:$nfields
                     n_faces_around = $field_n_faces_around[$field_symbol]
                     for $face_around_symbol in 1:n_faces_around
-                        dofs = GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol))
+                        dofs = GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol))
                         ndofs = length(dofs)
                         for $dof in 1:ndofs
                             v = $term
@@ -1982,7 +1982,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 n_faces_around_contribute = $field_n_faces_around[$field_symbol]
                 for $face_around_symbol in 1:n_faces_around_contribute
                     GT.contribute!($alloc,be[$face_around_symbol, $field_symbol],
-                                        GT.dofs(at_face_around(at_face(GT.space_accessor(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol)),
+                                        GT.dofs(at_face_around(at_face(GT.space_face(GT.field($space,$field_symbol),$quadrature),$face),$face_around_symbol)),
                                         $field_symbol)
                 end
 

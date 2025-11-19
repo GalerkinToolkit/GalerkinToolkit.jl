@@ -1,8 +1,6 @@
-abstract type NewAbstractAccessor <: AbstractType end
+abstract type AbstractFace <: AbstractType end
 
-abstract type AbstractAccessor <: Function end
-
-function Base.show(io::IO,data::GT.AbstractAccessor)
+function Base.show(io::IO,data::GT.AbstractFace)
     print(io,"GalerkinToolkit.$(nameof(typeof(data)))(…)")
 end
 
@@ -21,10 +19,15 @@ Beginner
 - [`mesh_from_msh`](@ref)
 - [`mesh_from_gmsh`](@ref)
 - [`cartesian_mesh`](@ref)
+- [`moebius_strip`](@ref)
 - [`complexify`](@ref)
 - [`simplexify`](@ref)
 
-# Queries
+# Iteration
+
+- [`each_face`](@ref)
+
+# Data retrival
 
 - [`num_dims`](@ref)
 - [`num_ambient_dims`](@ref)
@@ -37,7 +40,7 @@ Beginner
 - [`reference_spaces`](@ref)
 - [`group_faces`](@ref)
 - [`group_names`](@ref)
-- [`is_cell_complex`](@ref)
+- [`is_face_complex`](@ref)
 - [`normals`](@ref)
 
 """
@@ -110,7 +113,7 @@ abstract type AbstractFaceDomain <: AbstractDomain end
 """
     abstract type AbstractTopology
 
-Abstract type representing the incidence relations in a cell complex.
+Abstract type representing the incidence relations in a face complex.
 
 # Level
 
@@ -471,9 +474,9 @@ function mesh_from_space end
 """
     complexify(x)
 
-Convert `x` into a mesh representing a cell complex.
+Convert `x` into a mesh representing a face complex.
 
-See also [`is_cell_complex`](@ref).
+See also [`is_face_complex`](@ref).
 
 # Level
 
@@ -570,7 +573,7 @@ function group_names end
 
 """
 """
-function is_cell_complex end
+function is_face_complex end
 
 """
 """

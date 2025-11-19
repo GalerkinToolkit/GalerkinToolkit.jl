@@ -43,7 +43,7 @@ See also [`mesh_from_gmsh`](@ref) and [`with_gmsh`](@ref).
 
 # Keyword arguments
 
-- `complexify=true` [optional]: If `complexify==true`, the mesh will be completed with all low dimensional faces into a cell complex.
+- `complexify=true` [optional]: If `complexify==true`, the mesh will be completed with all low dimensional faces into a face complex.
 - `renumber=true` [optional]: If `renumber==true`, then `gmsh.model.mesh.renumberNodes()` and `gmsh.model.mesh.renumberElements()` will be called.
 -  Any other keyword argument will be passed to function [`with_gmsh`](@ref).
 
@@ -65,7 +65,7 @@ end
     mesh_from_gmsh(gmsh::Module;complexify=true)
 
 Create a mesh objects from the current state of the `gmsh` module.
-If `complexify==true`, the mesh will be completed with all low dimensional faces into a cell complex.
+If `complexify==true`, the mesh will be completed with all low dimensional faces into a face complex.
 
 See also [`mesh_from_msh`](@ref) and [`with_gmsh`](@ref).
 

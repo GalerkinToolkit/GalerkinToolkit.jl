@@ -53,7 +53,7 @@ function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
         return group_name
     end
     if is_partitioned(m)
-        faces = map(partition(GT.face_ids(m,d))) do ids
+        faces = map(partition(GT.faces(m,d))) do ids
             Ti = int_type(options(m))
             collect(Ti,own_to_global(ids))
         end |> Partitioned
@@ -318,7 +318,7 @@ function remove_interior(mesh::AbstractMesh)
          reference_spaces = reference_spaces(mesh)[1:end-1],
          group_faces = group_faces(mesh)[1:end-1],
          normals = normals(mesh),
-         is_cell_complex = Val(is_cell_complex(mesh)),
+         is_face_complex = Val(is_face_complex(mesh)),
          periodic_nodes = periodic_nodes(mesh)
         )
 end
@@ -547,6 +547,8 @@ function restrict_mesh(mesh,lnode_to_node,lface_to_face_mesh;kwargs...)
     lmesh
 end
 
+"""
+"""
 struct Mesh{A,B,C,D,E,F,G,H,I,J,K,W} <: AbstractMesh
     node_coordinates::A
     face_nodes::B
@@ -556,7 +558,7 @@ struct Mesh{A,B,C,D,E,F,G,H,I,J,K,W} <: AbstractMesh
     group_faces::F
     normals::G
     geometry_names::H
-    is_cell_complex::I
+    is_face_complex::I
     node_local_indices::J
     face_local_indices::K
     workspace::W
@@ -580,7 +582,7 @@ Intermediate
 - `reference_spaces`: A nested tuple containing the reference spaces for faces. `reference_spaces[d+1][i]` is the reference space number `i` in dimension `d`. Reference interpolation spaces are defined with functions like [`lagrange_space`](@ref).
 - `face_reference_id` [optional]: A nested vector containing which reference space is assigned to each face. `reference_sapces[d+1][r]` with `r=face_reference_id[d+1][i]` is the reference space associated with face number `i` of dimension `d`. By default, all faces are assigned to the first reference space in its dimension.
 - `group_faces` [optional]: A vector of dictionaries containing labeled groups of faces. `group_faces[d+1][group_name]` is a vector of integers containing the ids  of the faces of dimension `d` in the group named `group_name`. These groups might overlap. By default, no faces groups are created.
-- `is_cell_complex=Val(false)` [optional]: `Val(true)` if the input data represents a cell complex, `Val(false)` otherwise.
+- `is_face_complex=Val(false)` [optional]: `Val(true)` if the input data represents a face complex, `Val(false)` otherwise.
 - `normals=nothing` [optinal]: Vector containing the normal vectors for the faces of maximum dimension of the mesh. This is relevant for meshes of dimension `d` embedded in `d+1` dimensions as there is no way to tell which should be the orientation of the normals from the other quantities in the mesh.  `normals[f]` gives the normal vector of face number `f` of dimension `d=length(face_nodes)-1`.
 """
 function create_mesh end
@@ -604,7 +606,7 @@ function mesh(;
         group_faces = default_group_faces(reference_spaces),
         normals = nothing,
         geometry_names = [ String[] for d in 1:length(face_reference_id)],
-        is_cell_complex = Val(false),
+        is_face_complex = Val(false),
         node_local_indices = nothing, #PartitionedArrays.block_with_constant_size(1,(1,),(length(node_coordinates),)),
         face_local_indices = nothing, # [ PartitionedArrays.block_with_constant_size(1,(1,),(length(face_reference_id[d]),)) for d in 1:length(face_reference_id)],
         workspace = nothing,
@@ -618,7 +620,7 @@ function mesh(;
                 group_faces,
                 normals,
                 geometry_names,
-                is_cell_complex,
+                is_face_complex,
                 node_local_indices,
                 face_local_indices,
                 workspace,
@@ -635,7 +637,7 @@ function replace_workspace(mesh::Mesh,workspace)
          mesh.group_faces,
          mesh.normals,
          mesh.geometry_names,
-         mesh.is_cell_complex,
+         mesh.is_face_complex,
          mesh.node_local_indices,
          mesh.face_local_indices,
          workspace,
@@ -682,7 +684,7 @@ function replace_node_coordinates(mesh::Mesh,node_coordinates)
          mesh.group_faces,
          mesh.normals,
          mesh.geometry_names,
-         mesh.is_cell_complex,
+         mesh.is_face_complex,
          mesh.node_local_indices,
          mesh.face_local_indices,
          mesh.workspace,
@@ -725,7 +727,7 @@ function replace_periodic_nodes(mesh::Mesh,periodic_nodes)
          mesh.group_faces,
          mesh.normals,
          mesh.geometry_names,
-         mesh.is_cell_complex,
+         mesh.is_face_complex,
          mesh.node_local_indices,
          mesh.face_local_indices,
          workspace,
@@ -783,7 +785,7 @@ function group_faces(m::Mesh,vd)
     m.group_faces[d+1]
 end
 periodic_nodes(m::Mesh) = m.periodic_nodes
-is_cell_complex(m::Mesh) = val_parameter(m.is_cell_complex)
+is_face_complex(m::Mesh) = val_parameter(m.is_face_complex)
 workspace(m::Mesh) = m.workspace
 
 node_local_indices(m::Mesh) = m.node_local_indices
@@ -1029,12 +1031,13 @@ num_nodes(space::MeshSpace) = num_nodes(mesh(space))
 
 # PartitionedRelated
 
-#TODO eventually rename to faces
-# faces to mesh_faces
-# and inverse_faces to domain_faces
-function face_ids(mesh::AbstractMesh,D)
+function faces(mesh::AbstractMesh,D)
     axes(face_reference_id(mesh,D),1)
 end
+
+"""
+"""
+function nodes end
 
 function nodes(mesh::AbstractMesh)
     axes(node_coordinates(mesh),1)
@@ -1093,7 +1096,7 @@ function partitioned_mesh(mesh,node_partition)
     face_reference_id = partitioned_faces(GT.face_reference_id(mesh),face_partition)
     group_faces = partitioned_groups(GT.group_faces(mesh),face_part,parts)
     reference_spaces = GT.reference_spaces(mesh)
-    is_cell_complex = GT.is_cell_complex(mesh)
+    is_face_complex = GT.is_face_complex(mesh)
     if GT.workspace(mesh) !== nothing
         topology = partitioned_topology(GT.topology(mesh),face_partition)
         workspace = mesh_workspace(;topology)
@@ -1106,7 +1109,7 @@ function partitioned_mesh(mesh,node_partition)
         face_reference_id,
         reference_spaces,
         group_faces,
-        is_cell_complex,
+        is_face_complex,
         workspace
        )
 end
@@ -1218,7 +1221,7 @@ function scatter_mesh(mesh_main)
     face_reference_id = scatter_faces(GT.face_reference_id,mesh_main,face_partition)
     group_faces = scatter_group_faces(mesh_main)
     reference_spaces = PA.getany(multicast(map_main(GT.reference_spaces,mesh_main)))
-    is_cell_complex = PA.getany(multicast(map_main(GT.is_cell_complex,mesh_main)))
+    is_face_complex = PA.getany(multicast(map_main(GT.is_face_complex,mesh_main)))
     workspace = scatter_mesh_workspace(mesh_main,face_partition)
     create_mesh(;
         node_coordinates,
@@ -1226,7 +1229,7 @@ function scatter_mesh(mesh_main)
         face_reference_id,
         reference_spaces,
         group_faces,
-        is_cell_complex,
+        is_face_complex,
         workspace
        )
 end
@@ -1263,7 +1266,7 @@ function scatter_face_partition(mesh_main)
     dims = ntuple(d->d-1,Val(D+1))
     map(dims) do d
         dface_part_main = map_main(mesh_main) do mesh
-            dfaces = GT.face_ids(mesh,d)
+            dfaces = GT.faces(mesh,d)
             PA.getany(map(PA.global_to_owner,partition(dfaces)))
         end
         dface_part = PA.getany(multicast(dface_part_main))
@@ -1374,7 +1377,7 @@ function PartitionedArrays.centralize(mesh::AbstractMesh)
         end |> Dict
     end
     reference_spaces = GT.reference_spaces(mesh)
-    is_cell_complex = GT.is_cell_complex(mesh)
+    is_face_complex = GT.is_face_complex(mesh)
     workspace = GT.centralize(GT.workspace(mesh))
     create_mesh(;
         node_coordinates,
@@ -1382,7 +1385,7 @@ function PartitionedArrays.centralize(mesh::AbstractMesh)
         face_reference_id,
         reference_spaces,
         group_faces,
-        is_cell_complex,
+        is_face_complex,
         workspace
        )
 end

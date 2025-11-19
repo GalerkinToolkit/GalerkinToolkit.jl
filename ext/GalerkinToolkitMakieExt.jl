@@ -408,6 +408,11 @@ function setup_plt_changes(plt,vector,scalar,scale,shrink)
     if GT.is_partitioned(plt)
         plt = GT.centralize(plt)
     end
+    if GT.num_dims(plt.mesh) == 1
+        x = map(x->SVector(x[1],0*x[1]),GT.node_coordinates(plt.mesh))
+        mesh2 = GT.replace_node_coordinates(plt.mesh,x)
+        plt = GT.replace_mesh(plt,mesh2)
+    end
     (plt,)
 end
 
@@ -511,7 +516,7 @@ function setup_makie_domain(domain,refinement,color,vec,scal)
 end
 
 function plot_for_makie(domain::GT.AbstractDomain,refinement)
-    return GT.plot(domain;refinement) 
+    plt = GT.plot(domain;refinement)
     # TODO not sure about this one
     #function collect_face_normals(Γ::GT.AbstractDomain)
     #    dΓ = GT.measure(Γ,0)

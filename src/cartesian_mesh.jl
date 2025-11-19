@@ -10,7 +10,7 @@ by the mesh is given by `domain[2*i-1,2*i]`.
 
 # Keyword arguments
 - `boundary=true` [optional]: Include faces on the boundary and generate face groups identifying which faces are  on which face of  bounding box of the mesh. The groups are named `\$d-face-\$i` for the face `i` of dimension `d` of the bounding box.
-- `complexify=true` [optional]: Generate all low dimensional faces so that the mesh is  a cell complex.
+- `complexify=true` [optional]: Generate all low dimensional faces so that the mesh is  a face complex.
 - `simplexify=false` [optional]: Generate a mesh of simplex faces instead of hyper-cubes.
 """
 function cartesian_mesh(
@@ -498,6 +498,8 @@ function cartesian_periodic_nodes(domain,cells,periodic)
 end
 
 
+"""
+"""
 function moebius_strip(cells;width=1.0,complexify=Val(true))
     domain = (-1.,1.,0.0,2*pi)
     mesh0 = cartesian_mesh(domain,cells;complexify=Val(false),boundary=Val(false))

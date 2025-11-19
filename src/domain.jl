@@ -183,7 +183,7 @@ function mesh(geom::UnitNCube{0})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -206,7 +206,7 @@ function mesh(geom::UnitNCube{1})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -230,7 +230,7 @@ function mesh(geom::UnitNCube{2})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end
@@ -262,7 +262,7 @@ function mesh(geom::UnitNCube{3})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end
@@ -383,7 +383,7 @@ function mesh(geom::UnitSimplex{0})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -406,7 +406,7 @@ function mesh(geom::UnitSimplex{1})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -432,7 +432,7 @@ function mesh(geom::UnitSimplex{2})
          face_reference_id,
          reference_spaces,
          normals,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
         )
 end
 
@@ -464,7 +464,7 @@ function mesh(geom::UnitSimplex{3})
          face_nodes,
          face_reference_id,
          reference_spaces,
-         is_cell_complex = Val(true),
+         is_face_complex = Val(true),
          normals
         )
 end
@@ -714,7 +714,7 @@ function faces(domain::MeshDomain,vD)
     D = val_parameter(vD)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
-    Dfaces = GT.face_ids(mesh,D)
+    Dfaces = GT.faces(mesh,D)
     if is_partitioned(mesh)
         Dface_to_tag = pzeros(Ti,Dfaces)
     else
@@ -763,7 +763,7 @@ end
 function inverse_faces(domain::MeshDomain,vd)
     d = val_parameter(vd)
     Ti = int_type(options(domain))
-    dfaces = GT.face_ids(mesh(domain),d)
+    dfaces = GT.faces(mesh(domain),d)
     face_to_dface = faces(domain)
     if is_partitioned(domain)
         dface_to_face = pzeros(Ti,dfaces)
