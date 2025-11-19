@@ -11,6 +11,7 @@
 #     - Reference face vs reference domain?
 #     - face complex is currently called cell complex.
 #     - Implement function `barycenter`.
+#     - Implement `faces` and `nodes`.
 #
 # A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
 # This includes the discretization of computational domains as well as data to impose different types of boundary conditions.
@@ -18,11 +19,11 @@
 # see the Page about Mesh generation for more details.
 # In this page, we assume that
 # we have already created a mesh object and
-# will discuss its geometrical representation in particular:
+# will discuss its geometrical representation and in particular:
 #
-# - the definition of a mesh,
-# - reference and physical faces,
-# - the physical map,
+# - our math definition of a mesh,
+# - reference domains and spaces, 
+# - physical faces and coordinate maps,
 # - face, node, and reference ids, and
 # - face groups.
 #
@@ -36,7 +37,7 @@
 # In the API, a mesh $M$ is represented with a mesh object `M`,
 # whose type is a subtype of [`AbstractMesh`](@ref). Even though our math notation
 # defines a mesh $M$ as a set, a mesh object `M::AbstractMesh` has not the API
-# of a set, but rich API providing the information encoding the set of faces $M$.
+# of a set, but an API providing the information encoding the set of faces $M$.
 # There is a one-to-one relation between the mathematical mesh $M$ and the API
 # mesh `M` and we often refer to them simply as "a mesh". The same is true for other
 # math definitions and their corresponding API.
@@ -56,13 +57,13 @@
 # ## Dimensions
 #
 # A face $F\in M$ in a mesh is an *open* $d$-dimensional manifold embedded in the Euclidean space $\mathbb{R}^D$. We call 
-# $D$ the number of *ambient* dimensions of the mesh $M$  and of faces $F\in M$, where as
+# $D$ the number of *ambient* dimensions of the mesh $M$  and of faces $F\in M$, and
 # $d$ is the number of dimensions of face $F$, which might be $d=0,\ldots,D$.
 # We use $d(X)$ and $D(X)$ to denote the number of dimensions and ambient dimensions
 # of an object $X$ and define
 # the number of
 # *co-dimensions* of $X$ as $D(X)-d(X)$.
-# A mesh might contain faces of different dimensions. For convenience,
+# Since a mesh might contain faces of different dimensions,
 # we define the number of dimensions of a mesh $M$
 # as the maximum number of dimensions
 # of their faces, $d(M):=\max_{F\in M} d(F)$.
@@ -110,7 +111,7 @@ nothing # hide
 #
 # ## Face ids
 #
-# We assign a unique integer $\text{id}(F)$ in to each face $F\in M$ of a given dimension $d$, called the *face id*.
+# We assign a unique integer, called the *face id* $\text{id}(F)$, to each face $F\in M$ of a given dimension $d$ .
 # Face ids are assigned per dimension (two faces of different dimension might have the same id).
 # Thus, a face is uniquely identified by its face id *and* its dimension $d$.
 # The face ids are arbitrary as long as they are consecutive integers starting by one.
@@ -129,8 +130,8 @@ nothing # hide
 # ## Node ids
 #
 # Like in many other FE codes, the node coordinates of a face $F\in M$ are
-# encoded here using the vector of node coordinates of the mesh $x(M)$ and
-# the *node ids* of the face $n(F)$. In this setup, the node coordinates of 
+# encoded using a vector of node coordinates $x(M)$ for the mesh  $M$ and
+# the *node ids* $n(F)$ of the face $F$. In this setup, the node coordinates of 
 # a face $x(F)$ are computed as $[x(F)]_l := [x(M)]_g\in\mathbb{R}^D$ with $g = [n(F)]_l$ for $l=1,\ldots,|n(F)|$.
 # The vector $n(F)$ is often called  the *local-to-global* (index) map or the face *connectivity*.
 # We call them the face node ids.
@@ -159,7 +160,7 @@ nothing # hide
 #  ## Reference ids
 #
 # Each physical face $F\in M$ in a mesh is defined by means of a reference FE space $\hat V(F)$. Several faces often share the
-# same reference space and, in the limit, all faces of the same dimensions share the same reference
+# same reference space and often all faces of the same dimensions share the same reference
 # space. For each dimension `d`, we collect the unique reference spaces of faces of dimension `d`
 # in a tuple. This tuple is returned by `reference_spaces(M,d)` for a mesh object `M::AbstractMesh`.
 #
@@ -181,7 +182,7 @@ nothing # hide
 #
 #  The reference space $\hat V(F)$ of a face $F\in M$ is 
 #  is a scalar-valued (possibly high-order) Lagrange FE space 
-#  defined on the reference domain $\hat \Omega(F)$. From this space one can obtain
+#  defined on the reference domain $\hat \Omega(F)$. From this space, one can obtain
 #  a vector of (high-order) node coordinates $x(\hat V(F))$ and a vector of 
 #  shape functions $s(\hat V(F))$.
 #
@@ -196,7 +197,7 @@ nothing # hide
 # is evaluated at a point `x::AbstractVector` (often `x::SVector`),
 # and returns a scalar value `s::Real`.
 #
-# Reference spaces can be get from a mesh object
+# One can get a reference spaces from a mesh object
 # as shown above or created from scratch with function [lagrange_space](@ref).
 # E.g., `Vref = lagrange_space(Ωref,order)` creates a reference space
 # of order `order` on the reference domain `Ωref`.
@@ -228,28 +229,33 @@ nothing # hide
 # as `Ωref=reference_domain(F)` or from a reference space `Ωref = domain(Vref)` with `Vref::AbstractSpace`. The
 # reference domain is also obtained
 # from a face with id `F_id::Integer` and dimension `d`,
-# by getting the reference space `Vref=reference_spaces(M,d)[face_reference_id(M,d)[F_id]]`
+# by getting the reference space `Vref=reference_spaces(M,d)[r]` with `r=face_reference_id(M,d)[F_id]`
 # and then calling `Ωref = domain(Vref)`.
 #
 #  ## Physical faces
 #
-# A physical face $F\in M$ is defined as the image $\phi^F(\hat F)$ of its reference domain $\hat \Omega(F)$ via a map $\phi^F: \mathbb{R}^d \rightarrow \mathbb{R}^D$, where $d$ is the dimension of $F$ and $D$ is the ambient dimension of the mesh, see next Figure. This map is called the *physical map* and it is defined using
-# the reference space $\hat V$ 
-# and the node coordinates of the face $F$.
+# A physical face $F\in M$ is defined as the image $\phi^F(\hat \Omega(F))$ of its reference domain $\hat \Omega(F)$ via a map $\phi^F: \mathbb{R}^d \rightarrow \mathbb{R}^D$, where $d$ is the dimension of $F$ and $D$ is the ambient dimension of the mesh, see next Figure. This map is called the *coordinate map* and it is defined using
+# the reference space $\hat V(F)$ 
+# and the node coordinates $x(F)$ of the face $F$.
 #
-# The physical map for a face $F$ is defined as follows:
+# The coordinate map for a face $F$ is defined as follows:
 # 
 # $\phi^F(\hat x) := \sum_{n=1}^{N^F} x^F_n s^{\hat V}_n(\hat x),$
 #
-# where $N^F:=|s(\hat V(F))|$, $x^F_n:=[x(F)]_n$, and $s^{\hat V }_n:=s(\hat V(F))$. This map
+# where $N^F:=|s(\hat V(F))|$ is the number of nodes of $F$ and $x^F_n:=[x(F)]_n$, and $s^{\hat V }_n:=s(\hat V(F))$. This map
 # transforms the node coordinates in the reference space $x(\hat V(F))$ into the physical
 # node coordinates of a face $x(F)$ (see the orange dots in next figure).
 # The map also transforms any other point in the reference domain,
 # leading to potentially curved faces in the physical face.
 #
+# From a physical face `F::AbstractMeshFace`, we can obtain its coordinate map
+# and additional geometrical
+# information such as is barycenter and its diameter, namely `coordinate_map(F)`, `barycenter(F)` and
+# `dimameter(F)`.
+#
 # ![](fig_meshes_defs_3.png)
 #
-# **Figure:** Effect of mapping a reference cube with a third order physical map.
+# **Figure:** Effect of mapping a reference cube with a third order coordinate map.
 # Orange dots illustrate the nodes before and after the map.
 
 module MeshGeo3 # hide
@@ -296,7 +302,7 @@ nothing # hide
 # For a given $d$, we call a *face group* to a subset 
 # $G\subset M$ of the $d$-faces in a mesh $M$.
 # A mesh is typically endowed with several
-# of these groups to identify particular faces of the mesh for modeling purposes,
+# of these groups to identify particular faces for modeling purposes,
 # e.g., to impose boundary conditions, or define position-dependent material properties.
 # Each group is given a *group name*, which identifies the group.
 #
@@ -334,8 +340,7 @@ mesh = GT.cartesian_mesh(domain,cells)
 d = 3
 mesh_faces = GT.each_face(mesh,d)
 new_group_faces = findall(mesh_faces) do F
-    xs = GT.node_coordinates(F)
-    x = sum(xs) / length(xs)
+    x = GT.barycenter(F)
     norm(x) < 1
 end
 
@@ -371,23 +376,14 @@ nothing # hide
 # | Dimensions | $d(x)$ | `num_dims(x)` |
 # | Ambient dimensions | $D(x)$ | `num_ambient_dims(x)` |
 # | Co-dimensions | $D(x)-d(x)$ | `num_codims(x)` |
-# | Face id | $\text{id}(F)$ | `F_id = id(F)` |
-# | Node coordinates | $x(M)$ | `node_coordinates(M)` |
-# | Node coordinates | $x(F)$ | `node_coordinates(F)` |
-# | Node coordinates | $x(F)$ | `node_coordinates(M)[face_nodes(M,d)[F_id]]` |
-# | Vector indexing | $[a]_i$ | `a[i]` |
-# | Length | $ \|a\| $ | `length(a)` |
-# | Node ids | $n(M)$  | `nodes(M)` |
-# | Node ids | $n(F)$  | `nodes(F)` |
-# | Node ids | $n(F)$  | `face_nodes(M,d)[F_id]` |
+# | Face id | $\text{id}(F)$ | `id(F)` |
+# | Node coordinates | $x(A)$ | `node_coordinates(A)` |
+# | Node ids | $n(A)$  | `nodes(A)` |
 # | Number of nodes | $ \|n(A)\| $ | `num_nodes(A)` |
 # | Reference id |  | `r=reference_id(F)` |
-# | Reference id |  | `r=face_reference_id(M,d)[F_id]` |
-# | Reference space |  $\hat V(F)$ | `reference_space(F)` |
-# | Reference space |  $\hat V(F)$ | `reference_spaces(M,d)[r]` |
-# | Shape functions |  $s(V)$ | `shape_functions(V)` |
+# | Reference space |  $\hat V(F)$ | `Vref=reference_space(F)` |
+# | Shape functions |  $s(V)$ | `shape_functions(Vref)` |
 # | Reference domain |  $\hat \Omega(F)$ | `reference_domain(F)` |
-# | Reference domain |  $\hat \Omega(F)$ | `domain(reference_spaces(M,d)[r])` |
 # | Chain |  $C(\hat\Omega)$ |  |
 # | Face groups |  | `group_faces(M,d)` |
 # | Group names |  | `group_names(M,d)` |

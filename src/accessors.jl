@@ -543,6 +543,19 @@ function tabulators(::typeof(ForwardDiff.jacobian),a::ReferenceSpaceAccessor)
     jacobians
 end
 
+function id(a::ReferenceSpaceAccessor)
+    (;space) = a
+    (;Dface) = a.location
+    Dface
+end
+
+function reference_id(a::ReferenceSpaceAccessor)
+    (;space) = a
+    (;Dface) = a.location
+    Dface_Drid = face_reference_id(space)
+    Drid = Dface_Drid[Dface]
+end
+
 function shape_functions(a::ReferenceSpaceAccessor)
     (;space) = a
     (;Dface) = a.location
@@ -551,6 +564,19 @@ function shape_functions(a::ReferenceSpaceAccessor)
     Drid_rspace = reference_spaces(space)
     rspace = Drid_rspace[Drid]
     shape_functions(rspace)
+end
+
+function reference_space(a::ReferenceSpaceAccessor)
+    (;space) = a
+    (;Dface) = a.location
+    Dface_Drid = face_reference_id(space)
+    Drid = Dface_Drid[Dface]
+    Drid_rspace = reference_spaces(space)
+    rspace = Drid_rspace[Drid]
+end
+
+function reference_domain(a::ReferenceSpaceAccessor)
+    domain(reference_space(a))
 end
 
 function num_points(a::ReferenceSpaceAccessor)
@@ -702,6 +728,11 @@ function node_coordinates(a::MeshAccessor)
     view(node_x,nodes(a))
 end
 
+function barycenter(a::MeshAccessor)
+    x = node_coordinates(a)
+    sum(x)/length(x)
+end
+
 function tabulate(f,a::MeshAccessor)
     space_accessor = tabulate(f,a.space_accessor)
     replace_space_accessor(a,space_accessor)
@@ -733,6 +764,12 @@ function compute(::typeof(unit_normal),a::MeshAccessor{AtSkeleton})
     tabulate(gradient,a1)
 end
 
+function coordinate_map(a::MeshAccessor)
+    x = node_coordinates(a)
+    s = shape_functions(a)
+    y -> sum(i->x[i]*s[i](y),1:n)
+end
+
 function coordinate end
 
 function compute(::typeof(GT.coordinate),a::MeshAccessor)
@@ -746,6 +783,26 @@ end
 function shape_functions(a::MeshAccessor)
     (;space_accessor) = a
     shape_functions(space_accessor)
+end
+
+function reference_space(a::MeshAccessor)
+    (;space_accessor) = a
+    reference_space(space_accessor)
+end
+
+function reference_domain(a::MeshAccessor)
+    (;space_accessor) = a
+    reference_domain(space_accessor)
+end
+
+function reference_id(a::MeshAccessor)
+    (;space_accessor) = a
+    reference_id(space_accessor)
+end
+
+function id(a::MeshAccessor)
+    (;space_accessor) = a
+    id(space_accessor)
 end
 
 """
