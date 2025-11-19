@@ -498,7 +498,7 @@ const PLOT_NORMALS_KEY = "__FACE_NORMALS__"
 function face_data(mesh::AbstractMesh,d)
     ndfaces = num_faces(mesh,d)
     dict = Dict{String,Any}()
-    dfaces = GT.face_ids(mesh,d)
+    dfaces = GT.faces(mesh,d)
     for group in group_faces(mesh,d)
         name,faces = group
         face_mask = similar(face_reference_id(mesh,d))

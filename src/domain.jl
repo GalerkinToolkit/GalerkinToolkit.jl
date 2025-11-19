@@ -714,7 +714,7 @@ function faces(domain::MeshDomain,vD)
     D = val_parameter(vD)
     Ti = int_type(options(domain))
     mesh = domain |> GT.mesh
-    Dfaces = GT.face_ids(mesh,D)
+    Dfaces = GT.faces(mesh,D)
     if is_partitioned(mesh)
         Dface_to_tag = pzeros(Ti,Dfaces)
     else
@@ -763,7 +763,7 @@ end
 function inverse_faces(domain::MeshDomain,vd)
     d = val_parameter(vd)
     Ti = int_type(options(domain))
-    dfaces = GT.face_ids(mesh(domain),d)
+    dfaces = GT.faces(mesh(domain),d)
     face_to_dface = faces(domain)
     if is_partitioned(domain)
         dface_to_face = pzeros(Ti,dfaces)

@@ -53,7 +53,7 @@ function group_faces_in_dim!(m::AbstractMesh,d;group_name="__$d-FACES__")
         return group_name
     end
     if is_partitioned(m)
-        faces = map(partition(GT.face_ids(m,d))) do ids
+        faces = map(partition(GT.faces(m,d))) do ids
             Ti = int_type(options(m))
             collect(Ti,own_to_global(ids))
         end |> Partitioned
@@ -1031,10 +1031,7 @@ num_nodes(space::MeshSpace) = num_nodes(mesh(space))
 
 # PartitionedRelated
 
-#TODO eventually rename to faces
-# faces to mesh_faces
-# and inverse_faces to domain_faces
-function face_ids(mesh::AbstractMesh,D)
+function faces(mesh::AbstractMesh,D)
     axes(face_reference_id(mesh,D),1)
 end
 
@@ -1269,7 +1266,7 @@ function scatter_face_partition(mesh_main)
     dims = ntuple(d->d-1,Val(D+1))
     map(dims) do d
         dface_part_main = map_main(mesh_main) do mesh
-            dfaces = GT.face_ids(mesh,d)
+            dfaces = GT.faces(mesh,d)
             PA.getany(map(PA.global_to_owner,partition(dfaces)))
         end
         dface_part = PA.getany(multicast(dface_part_main))
