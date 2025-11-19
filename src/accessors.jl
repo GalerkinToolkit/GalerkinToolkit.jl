@@ -55,17 +55,30 @@ function Base.iterate(iter::EachFace,face=1)
     end
 end
 
-function each_face_around(a::AbstractFace)
-    EachFaceAround(a)
+function each_face_around(a::AbstractFace,vD=nothing)
+    EachFaceAround(a,vD)
 end
 
-struct EachFaceAround{A} <: AbstractType
+struct EachFaceAround{A,B} <: AbstractType
     accessor::A
+    dim::B
 end
 
-Base.length(iter::EachFaceAround) = num_faces_around(iter.accessor)
+function Base.length(iter::EachFaceAround)
+    if  iter.dim === nothing
+        num_faces_around(iter.accessor)
+    else
+        num_faces_around(iter.accessor,iter.dim)
+    end
+end
 Base.isdone(iter::EachFaceAround,face_around) = face_around > length(iter)
-Base.getindex(iter::EachFaceAround,face_around) = at_face_around(iter.accessor,face_around)
+function Base.getindex(iter::EachFaceAround,face_around)
+    if  iter.dim === nothing
+        at_face_around(iter.accessor,face_around)
+    else
+        at_face_around(iter.accessor,face_around,iter.dim)
+    end
+end
 Base.keys(iter::EachFaceAround) = LinearIndices((length(iter),))
 
 function Base.iterate(iter::EachFaceAround,face_around=1)
@@ -340,6 +353,14 @@ function replace_jacobians(a::ReferenceSpaceFaceWorkspace,jacobians)
                                     a.gradients,
                                     jacobians
                                    )
+end
+
+function mesh(a::ReferenceSpaceFace)
+    mesh(a.space)
+end
+
+function num_dims(a::ReferenceSpaceFace)
+    val_parameter(a.workspace.D)
 end
 
 function num_faces(a::ReferenceSpaceFace)
@@ -711,6 +732,64 @@ end
 function at_face_around(a::MeshFace,face_around)
     space_face = at_face_around(a.space_face,face_around)
     replace_space_face(a,space_face)
+end
+
+function mesh(a::MeshFace)
+    (;space_face) = a
+    mesh(space_face)
+end
+
+function num_dims(a::MeshFace)
+    (;space_face) = a
+    num_dims(space_face)
+end
+
+function local_face(A::MeshFace,F::MeshFace)
+    mesh = GT.mesh(A)
+    d = GT.num_dims(F)
+    D = GT.num_dims(A)
+    dom = GT.reference_domain(A)
+    L = GT.mesh(dom)
+    L_faces = each_face(L,Val(d))
+    topo = topology(mesh)
+    F_id = GT.id(F)
+    A_id = GT.id(A)
+    Bs = face_incidence(topo,D,d)[A_id]
+    a_id = findfirst(B->B==F_id,Bs)
+    L_faces[a_id]
+end
+
+function permutation_id(A::MeshFace,a::MeshFace)
+    T = GT.topology(GT.mesh(A))
+    D = GT.num_dims(A)
+    d = GT.num_dims(a)
+    face_permutation_ids(T,D,d)[id(A)][id(a)]
+end
+
+function node_permutation(A::MeshFace,a::MeshFace)
+    k = permutation_id(A,a)
+    Ps = GT.node_permutations(reference_space(a))
+    Ps[k]
+end
+
+function num_faces_around(a::MeshFace,vD)
+    mesh = GT.mesh(a)
+    topo = topology(mesh)
+    a_id = GT.id(a)
+    d = GT.num_dims(a)
+    D = val_parameter(vD)
+    length(face_incidence(topo,d,D)[a_id])
+end
+
+function at_face_around(a::MeshFace,face_around,vD)
+    mesh = GT.mesh(a)
+    topo = topology(mesh)
+    a_id = GT.id(a)
+    d = GT.num_dims(a)
+    D = val_parameter(vD)
+    b_id = face_incidence(topo,d,D)[a_id][face_around]
+    b = mesh_face(mesh,vD)
+    at_face(b,b_id)
 end
 
 function nodes(a::MeshFace)

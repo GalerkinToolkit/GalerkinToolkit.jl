@@ -9,6 +9,13 @@ domain = (0,1,0,1)
 n = 4
 cells = (n,n)
 mesh = GT.cartesian_mesh(domain,cells)
+for F in GT.each_face(mesh,Val(1))
+    for A in GT.each_face_around(F,Val(2))
+        a = GT.local_face(A,F)
+        P = GT.node_permutation(A,a)
+        @assert GT.nodes(F) == GT.nodes(A)[ GT.nodes(a)[P]]
+    end
+end
 
 Ω = GT.interior(mesh)
 Γ = GT.boundary(mesh)
@@ -29,6 +36,7 @@ mesh_faces = GT.each_face(mesh_dΩ)
 mesh_face = mesh_faces[2]
 @show GT.nodes(mesh_face)
 @show GT.node_coordinates(mesh_face)
+@show GT.barycenter(mesh_face)
 @show GT.diameter(mesh_face)
 mesh_points = GT.each_point(mesh_face)
 mesh_point = mesh_points[1]

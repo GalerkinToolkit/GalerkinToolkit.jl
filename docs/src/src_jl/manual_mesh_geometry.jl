@@ -3,16 +3,6 @@
 # ```
 # # Mesh geometry
 #
-# !!! note
-#     TODOs
-#     - `AbstractMeshFace` is currently called `MeshFace`.
-#     - `AbstractMeshFace` should be `AbstractDomain` or `AbstractFace`  ?
-#     - API for the referene face. Now a reference face `F` isa `AbstractDomain`, and not the equivalent of `AbstractMeshFace`.
-#     - Reference face vs reference domain?
-#     - face complex is currently called face complex.
-#     - Implement function `barycenter`.
-#     - Implement `faces` and `nodes`.
-#
 # A mesh object in GalerkinToolkit contains all geometrical information needed in a finite element (FE) computation.
 # This includes the discretization of computational domains as well as data to impose different types of boundary conditions.
 # Meshes are often generated with external tools and then transformed into GalerkinToolkit objects with helper functions such as [`mesh_from_gmsh`](@ref),

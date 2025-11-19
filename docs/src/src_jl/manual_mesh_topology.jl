@@ -3,14 +3,6 @@
 # ```
 #
 # # Mesh topology
-# !!! note
-#     TODOs
-#     - The API for $\text{mesh}(\hat F)$ can be improved and for $\text{mesh}(F)$ is not available. The latter is not needed.
-#     - Rename `face_complex` by `polyhedral_complex` ?  or face complex?
-#     - Define $\hat x_n$ and $g^F_n$ in section Mesh geometry
-#     - The code is actually working with the inverse of the permutation matrix $P$.
-#     - A way of getting the local ids directly?
-#     - each_face_around(F,n), `local_face(A,F)`, node_permutations(A,a), permutation_id(A,a).
 #
 #
 # In this page, we discuss how to "glue" faces
@@ -188,6 +180,11 @@ nothing # hide
 # In this case, it makes sense to talk about the node ids of the interface $n(F)$,
 # its coordinate map $\phi^{F}$, and its reference domain $\hat\Omega(F)$.
 #
+# !!! note
+#      TODO: The code is currently working with the inverse of the permutation matrix $P$,
+#     namely $P n(F)= n(A,a)$. In the future we will use the definition of $P$
+#     as in $n(F)=P n(A,a)$.
+#
 # By solving this problem, we are building a common parametrization of the interface
 # seen from each face around. This is the key ingredient needed to compute integrals
 # at the interface of quantities defined on the faces around.
@@ -246,7 +243,7 @@ nothing # hide
 # Consider a topology object `T::AbstractTopology` and let $F$ be the `m`-face in mesh $M$ with id `F::Integer`.
 # We get the ids of the `n`-faces around `F` as `As=face_incidence(T,m,n)[F]`. For each `A in As`, we get the id `a` of the local
 # face  of `A` equivalent to `F` as follows. We get all `m`-faces at the boundary of `A` with `Bs=face_incidence(T,n,m)[A]`, and we
-# find in which position in `Bs` the id `F` is located, namely `a=find(B->B==F,Bs)`.
+# find in which position in `Bs` the id `F` is located, namely `a=findfirst(B->B==F,Bs)`.
 #
 # It is also possible to access to the same information using face objects rather than face ids.
 # Given a face object `F::AbstractMeshFace` one iterates over all faces around of dimension `m`, 
@@ -275,7 +272,10 @@ nothing # hide
 # around $A\in\mathcal{A}(F)$ and of its local `m`-face $a$ equivalent to $F$.
 # Then, we get the permutation `P=k_P[k]` for this local face by indexing `k_P`
 # at the index `k` obtained as follows
-# `k=face_permutation_id(T,m,n)[A][a]`. Note that the function `face_permutation_id(T,m,n)` has a similar structure than function `face_incidence(T,m,n)`, but the former returns
+# `k=face_permutation_ids(T,n,m)[A][a]`. Note that the function
+# `face_permutation_ids(T,n,m)` has a similar structure than function
+# `face_incidence(T,n,m)`,
+# both are vectors of vectors of integers, but the former contains
 # the indices used to get the permutation vectors instead of face ids.
 # The permutation vector `P` is more conveniently accessed given a face object `F::AbstractMeshFace`
 # as follows:
@@ -327,25 +327,24 @@ m = 2
 n = 3
 F_As = GT.face_incidence(T,m,n)
 A_Bs = GT.face_incidence(T,n,m)
-A_a_k = GT.face_permutation_id(T,n,m)
+A_a_k = GT.face_permutation_ids(T,n,m)
 A_rA = GT.face_reference_id(M,n)
 rA_VA = GT.reference_spaces(M,n)
 F_nodes = GT.face_nodes(M,m)
 A_nodes = GT.face_nodes(M,n)
-for F in 1:num_faces(M,m)
+for F in 1:GT.num_faces(M,m)
     As = F_As[F]
     for A in As
-        l_g = A_l_g[A]
         Bs = A_Bs[A]
-        a = find(B->B==F,Bs)
+        a = findfirst(B->B==F,Bs)
         k = A_a_k[A][a]
         rA = A_rA[A]
         VA = rA_VA[rA]
         ΩA = GT.domain(VA)
         LA = GT.mesh(ΩA)
-        a_nodes = GT.face_nodes(LA,n)
-        a_ra = GT.face_reference_id(LA,n)
-        ra_Va = GT.reference_spaces(LA,n)
+        a_nodes = GT.face_nodes(LA,m)
+        a_ra = GT.face_reference_id(LA,m)
+        ra_Va = GT.reference_spaces(LA,m)
         ra = a_ra[a]
         Va = ra_Va[ra]
         Ps = GT.node_permutations(Va)
@@ -353,9 +352,14 @@ for F in 1:num_faces(M,m)
         @assert F_nodes[F] == A_nodes[A][a_nodes[a][P]]
     end
 end
+end # hide
 
 # ## Summary
 #
+# We discussed the strategy to glue faces in GalerkinToolkit. It required to
+# introduce concepts including local faces, the faces a round a face, face complex,
+# and the mesh topology. The following table summarizes the key definitions
+# in this page with its corresponding code API.
 #
 # | Concept | Notation | API |
 # |---------|----------|-----|
