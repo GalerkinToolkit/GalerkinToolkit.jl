@@ -914,6 +914,7 @@ function interface(left::AbstractDomain,right::AbstractDomain;group_name="__INTE
     mesh_domain(mesh;
                 mesh_id = GT.mesh_id(left),
                 is_reference_domain = Val(is_reference_domain(left)),
+                group_names = [group_name],
                 num_dims = Val(d),
                 faces_around_permutation
                )
