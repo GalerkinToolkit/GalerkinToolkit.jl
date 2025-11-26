@@ -43,6 +43,10 @@ end
 #    reduce(vcat,map(d->face_dim(a,d),0:D))
 #end
 
+function max_num_reference_nodes(mesh::AbstractMesh,vD)
+    maximum(num_nodes,reference_spaces(mesh,vD))
+end
+
 """
 """
 function group_faces_in_dim! end

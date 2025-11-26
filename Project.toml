@@ -5,6 +5,7 @@ version = "0.5.0"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 AutoHashEquals = "15f4f7f2-30c1-5605-9d31-71845cf9641f"
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
@@ -26,17 +27,18 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 [weakdeps]
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 OrdinaryDiffEqCore = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
-WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [extensions]
 GalerkinToolkitMakieExt = "Makie"
 GalerkinToolkitOrdinaryDiffEqCoreExt = "OrdinaryDiffEqCore"
-GalerkinToolkitWriteVTKExt = "WriteVTK"
 GalerkinToolkitSciMLBaseExt = "SciMLBase"
+GalerkinToolkitWriteVTKExt = "WriteVTK"
 
 [compat]
-AbstractTrees = "0.4" 
+AbstractTrees = "0.4"
+Adapt = "4.4.0"
 AutoHashEquals = "2"
 BlockArrays = "1"
 Combinatorics = "1"
@@ -62,14 +64,12 @@ WriteVTK = "1.21"
 julia = "1.10"
 
 [extras]
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
-DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [targets]
-test = ["Test", "GLMakie", "WriteVTK","LinearSolve","NonlinearSolve","DifferentialEquations"]
-
-
+test = ["Test", "GLMakie", "WriteVTK", "LinearSolve", "NonlinearSolve", "DifferentialEquations"]
