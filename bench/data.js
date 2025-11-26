@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1763581254807,
+  "lastUpdate": 1764154836877,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -3104,6 +3104,36 @@ window.BENCHMARK_DATA = {
             "value": 909585082.5,
             "unit": "ns",
             "extra": "gctime=7857469\nmemory=320620228\nallocs=889592\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "26dce5603fb0e3e09ce79f2b74529e8bfb13d080",
+          "message": "Merge pull request #266 from GalerkinToolkit/interface\n\nBugfix when building interface domains.",
+          "timestamp": "2025-11-26T11:55:03+01:00",
+          "tree_id": "64964a0d2475e1ec0f85603b585930e9a05728de",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/26dce5603fb0e3e09ce79f2b74529e8bfb13d080"
+        },
+        "date": 1764154836307,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 896165412,
+            "unit": "ns",
+            "extra": "gctime=7537496\nmemory=320620228\nallocs=889592\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
