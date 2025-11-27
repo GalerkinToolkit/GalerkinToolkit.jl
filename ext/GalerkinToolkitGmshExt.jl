@@ -194,7 +194,7 @@ function GT.mesh_from_gmsh(gmsh::Module;complexify=true,periodic=Val(false))
 
     ## Setup periodic nodes
     if val_parameter(periodic)
-        node_to_master_node = fill(Int32(INVALID_ID),nnodes)
+        node_to_master_node = fill(Int32(GT.INVALID_ID),nnodes)
         node_to_master_node .= 1:nnodes
         for (dim,tag) in entities
             tagMaster, nodeTags, nodeTagsMaster, = gmsh.model.mesh.getPeriodicNodes(dim,tag)
@@ -205,7 +205,7 @@ function GT.mesh_from_gmsh(gmsh::Module;complexify=true,periodic=Val(false))
             end
         end
         periodic_nodes = node_to_master_node
-        fold_periodic_nodes!(periodic_nodes)
+        GT.fold_periodic_nodes!(periodic_nodes)
     else
         periodic_nodes = 1:nnodes
     end
