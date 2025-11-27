@@ -1,6 +1,11 @@
 module GalerkinToolkitGmshExt
 
 import GalerkinToolkit as GT
+using Gmsh
+using Gmsh: gmsh
+using StaticArrays
+using PartitionedArrays
+using PartitionedArrays: val_parameter
 
 function GT.default_gmsh_options()
     [
@@ -11,7 +16,7 @@ function GT.default_gmsh_options()
     ]
 end
 
-function GT.with_gmsh(f;options=default_gmsh_options())
+function GT.with_gmsh(f;options=GT.default_gmsh_options())
     gmsh.initialize()
     for (k,v) in options
         gmsh.option.setNumber(k,v)
@@ -25,11 +30,11 @@ end
 
 function GT.mesh_from_msh(file;complexify=true,periodic=Val(false),renumber=true,kwargs...)
     @assert ispath(file) "File not found: $(file)"
-    with_gmsh(;kwargs...) do gmsh
+    GT.with_gmsh(;kwargs...) do gmsh
         gmsh.open(file)
         renumber && gmsh.model.mesh.renumberNodes()
         renumber && gmsh.model.mesh.renumberElements()
-        mesh_from_gmsh(gmsh;complexify,periodic)
+        GT.mesh_from_gmsh(gmsh;complexify,periodic)
     end
 end
 
@@ -155,7 +160,7 @@ function GT.mesh_from_gmsh(gmsh::Module;complexify=true,periodic=Val(false))
         refdfaces = ()
         drid_lib_to_gmsh = Vector{Int}[]
         for t in 1:length(elemTypes)
-            refface, lib_to_gmsh = reference_face_from_gmsh_eltype(elemTypes[t])
+            refface, lib_to_gmsh = GT.reference_face_from_gmsh_eltype(elemTypes[t])
             refdfaces = (refdfaces...,refface)
             push!(drid_lib_to_gmsh,lib_to_gmsh)
         end
@@ -252,41 +257,41 @@ end
 function GT.reference_face_from_gmsh_eltype(eltype)
     if eltype == 1
         order = 1
-        geom = unit_simplex(Val(1))
+        geom = GT.unit_simplex(Val(1))
         lib_to_gmsh = [1,2]
     elseif eltype == 2
         order = 1
-        geom = unit_simplex(Val(2))
+        geom = GT.unit_simplex(Val(2))
         lib_to_gmsh = [1,2,3]
     elseif eltype == 3
         order = 1
-        geom = unit_n_cube(Val(2))
+        geom = GT.unit_n_cube(Val(2))
         lib_to_gmsh = [1,2,4,3]
     elseif eltype == 4
         order = 1
-        geom = unit_simplex(Val(3))
+        geom = GT.unit_simplex(Val(3))
         lib_to_gmsh =[1,2,3,4]
     elseif eltype == 5
         order = 1
-        geom = unit_n_cube(Val(3))
+        geom = GT.unit_n_cube(Val(3))
         lib_to_gmsh = [1,2,4,3,5,6,8,7]
     elseif eltype == 15
         order = 1
-        geom = unit_n_cube(Val(0))
+        geom = GT.unit_n_cube(Val(0))
         lib_to_gmsh = [1]
     elseif eltype == 8
         order = 2
-        geom = unit_n_cube(Val(1))
+        geom = GT.unit_n_cube(Val(1))
         lib_to_gmsh = [1,3,2]
     elseif eltype == 9
         order = 2
-        geom = unit_simplex(Val(2))
+        geom = GT.unit_simplex(Val(2))
         lib_to_gmsh = [1,4,2,6,5,3]
     else
         en, = gmsh.model.mesh.getElementProperties(eltype)
         error("Unsupported element type. elemType: $eltype ($en)")
     end
-    reffe = lagrange_space(geom,order)
+    reffe = GT.lagrange_space(geom,order)
     reffe, lib_to_gmsh
 end
 
