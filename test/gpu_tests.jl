@@ -17,7 +17,7 @@ dΩ = GT.quadrature(Ω,degree)
 dΩ_faces = GT.each_face(dΩ)
 
 # This is still on CPU, but with a data
-# layout more appropiate for GPUs.
+# layout more appropriate for GPUs.
 dΩ_faces_cpu = GT.device_layout(dΩ_faces)
 
 # For reference, this is how you can do this on the CPU
