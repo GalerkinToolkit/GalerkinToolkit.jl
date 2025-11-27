@@ -6,7 +6,6 @@ using StaticArrays
 using LinearAlgebra
 import LinearAlgebra
 import ForwardDiff
-using Gmsh
 import PartitionedArrays as PA
 using PartitionedArrays
 using BlockArrays
@@ -28,8 +27,8 @@ include("helpers.jl")
 include("abstract_types.jl")
 include("domain.jl")
 include("mesh.jl")
-include("cartesian_mesh.jl")
 include("gmsh.jl")
+include("cartesian_mesh.jl")
 include("topology.jl")
 include("field.jl")
 include("space.jl")

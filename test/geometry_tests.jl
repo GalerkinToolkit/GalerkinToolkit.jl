@@ -1,6 +1,7 @@
 module MeshInterfaceTests
 
 using Test
+import Gmsh
 import GalerkinToolkit as GT
 using WriteVTK
 using PartitionedArrays

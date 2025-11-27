@@ -1,5 +1,6 @@
 module VisualizationTests
 
+import Gmsh
 import GalerkinToolkit as GT
 using GLMakie
 using WriteVTK
