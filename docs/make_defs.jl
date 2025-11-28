@@ -22,6 +22,18 @@ function media()
     end
 end
 
+function preprocess(contents)
+    @show typeof(contents), length(contents)
+    new_lines = map(eachline(IOBuffer(contents))) do line
+        if  ! endswith(line,"# hide")
+            newline = line * "\n"
+        else
+            newline = ""
+        end
+    end
+    join(new_lines)
+end
+
 function main(;debug=false)
 
     if debug
@@ -37,7 +49,7 @@ function main(;debug=false)
     for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
         f = joinpath(src_jl,file_jl)
         if debug
-            Literate.markdown(f,src_md;codefence)
+            Literate.markdown(f,src_md;codefence,preprocess)
         else
             Literate.markdown(f,src_md)
         end
