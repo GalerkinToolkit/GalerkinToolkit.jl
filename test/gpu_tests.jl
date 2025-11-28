@@ -1,5 +1,8 @@
 module GPUTests
 
+using CUDA
+using Test
+import Adapt
 import GalerkinToolkit as GT
 
 # Goal integrate function f(x)
@@ -19,6 +22,34 @@ dΩ_faces = GT.each_face(dΩ)
 # This is still on CPU, but with a data
 # layout more appropiate for GPUs.
 dΩ_faces_cpu = GT.device_layout(dΩ_faces)
+dΩ_faces_gpu = cu(dΩ_faces_cpu)
+
+nfaces = length(dΩ_faces_gpu)
+contributions = CUDA.zeros(Float64,nfaces)
+
+
+function kernel!(contributions,dΩ_faces_gpu)
+    face_id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if face_id > length(dΩ_faces_gpu)
+        return nothing
+    end
+    dΩ_face = dΩ_faces_gpu[face_id]
+    s = 0.0
+    for dΩ_point in GT.each_point(dΩ_face)
+        x = GT.coordinate(dΩ_point)
+        dx = GT.weight(dΩ_point)
+        s += f(x)*dx
+    end
+    contributions[face_id] = s
+    return nothing
+end
+
+# Launch kernel
+threads_in_block = 256
+blocks_in_grid = ceil(Int, nfaces/256)
+@cuda threads=threads_in_block blocks=blocks_in_grid kernel!(contributions,dΩ_faces_gpu)
+
+@show r_gpu = sum(contributions)
 
 # For reference, this is how you can do this on the CPU
 function cpu_loop(dΩ_faces)
@@ -32,6 +63,10 @@ function cpu_loop(dΩ_faces)
     end
     return s
 end
-@show cpu_loop(dΩ_faces_cpu)
+@show r_cpu = cpu_loop(dΩ_faces_cpu)
+@test r_gpu≈r_cpu
+
+@show r_cpu = cpu_loop(dΩ_faces)
+@test r_gpu≈r_cpu
 
 end # module

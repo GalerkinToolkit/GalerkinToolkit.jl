@@ -48,6 +48,7 @@
 #
 
 module mesh_partitioning_1 # hide
+import Gmsh
 import GalerkinToolkit as GT
 import GLMakie
 import Makie

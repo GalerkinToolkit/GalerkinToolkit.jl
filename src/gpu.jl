@@ -11,10 +11,10 @@ function device_layout(mesh_face::MeshFace;tile_size=nothing)
     face_nodes = GT.face_nodes_coalesced(mesh,D)
     node_coordinates = GT.node_coordinates(mesh)
     face_reference_id = GT.face_reference_id(mesh,D)
-    tabulated_values = mesh_face.space_face.workspace.values
-    tabulated_gradients = mesh_face.space_face.workspace.gradients
+    tabulated_values = mesh_face.space_face.workspace.values |> Tuple
+    tabulated_gradients = mesh_face.space_face.workspace.gradients |> Tuple
     quad = mesh_face.space_face.quadrature
-    reference_weights = map(weights,GT.reference_quadratures(quad))
+    reference_weights = map(weights,GT.reference_quadratures(quad)) |> Tuple
     Dface = 0
     point = 0
     MeshFaceWithDeviceLayout(
@@ -96,12 +96,16 @@ function coordinate(f::MeshFaceWithDeviceLayout)
     point = f.point
     values = f.tabulated_values[rid]
     n = size(values,1)
-    sum(1:n) do i
+    Tx = eltype(f.node_coordinates)
+    Ts = eltype(values)
+    r = zero(Tx)*zero(Ts)
+    for i in 1:n
         s = values[i,point]
         node = f.face_nodes[face,i]
         x = f.node_coordinates[node]
-        s*x
+        r += s*x
     end
+    r
 end
 
 function ForwardDiff.jacobian(f::MeshFaceWithDeviceLayout)
@@ -110,12 +114,16 @@ function ForwardDiff.jacobian(f::MeshFaceWithDeviceLayout)
     point = f.point
     values = f.tabulated_gradients[rid]
     n = size(values,1)
-    sum(1:n) do i
+    Tx = eltype(f.node_coordinates)
+    Ts = eltype(values)
+    r = outer(zero(Tx),zero(Ts))
+    for i in 1:n
         s = values[i,point]
         node = f.face_nodes[face,i]
         x = f.node_coordinates[node]
-        outer(x,s)
+        r += outer(x,s)
     end
+    r
 end
 
 function weight(f::MeshFaceWithDeviceLayout)
@@ -128,16 +136,21 @@ function weight(f::MeshFaceWithDeviceLayout)
     w*dJ
 end
 
+function Adapt.adapt_structure(to,x::EachFace)
+    accessor = Adapt.adapt_structure(to,x.accessor)
+    EachFace(accessor)
+end
+
 function Adapt.adapt_structure(to,x::MeshFaceWithDeviceLayout)
     MeshFaceWithDeviceLayout(
-                     Adapt.adapt(to,x.Dface),
-                     Adapt.adapt(to,x.point),
-                     Adapt.adapt(to,x.node_coordinates),
-                     Adapt.adapt(to,x.face_nodes),
-                     Adapt.adapt(to,x.face_reference_id),
-                     Adapt.adapt(to,x.reference_weights),
-                     Adapt.adapt(to,x.tabulated_values),
-                     Adapt.adapt(to,x.tabulated_gradients)
+                     Adapt.adapt_structure(to,x.Dface),
+                     Adapt.adapt_structure(to,x.point),
+                     Adapt.adapt_structure(to,x.node_coordinates),
+                     Adapt.adapt_structure(to,x.face_nodes),
+                     Adapt.adapt_structure(to,x.face_reference_id),
+                     Adapt.adapt_structure(to,x.reference_weights),
+                     Adapt.adapt_structure(to,x.tabulated_values),
+                     Adapt.adapt_structure(to,x.tabulated_gradients)
                     )
 end
 

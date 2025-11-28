@@ -39,6 +39,7 @@
 
 import FileIO # hide
 using LinearAlgebra
+import Gmsh
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import NonlinearSolve

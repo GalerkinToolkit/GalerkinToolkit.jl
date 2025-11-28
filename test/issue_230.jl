@@ -1,5 +1,6 @@
 module Issue230
 
+import Gmsh
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 using LinearAlgebra

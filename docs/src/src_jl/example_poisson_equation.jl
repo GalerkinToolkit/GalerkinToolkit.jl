@@ -34,6 +34,7 @@
 
 import FileIO # hide
 using LinearAlgebra
+import Gmsh
 import GalerkinToolkit as GT
 import LinearSolve
 import ForwardDiff

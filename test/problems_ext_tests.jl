@@ -1,5 +1,6 @@
 module ProblemsExt
 
+import Gmsh
 import GalerkinToolkit as GT
 import LinearSolve
 import NonlinearSolve
