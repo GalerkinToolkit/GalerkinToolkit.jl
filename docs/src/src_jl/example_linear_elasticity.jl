@@ -11,6 +11,7 @@
 import FileIO # hide
 using LinearAlgebra
 using StaticArrays
+import Gmsh
 import GalerkinToolkit as GT
 import Tensors
 import LinearSolve

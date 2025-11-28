@@ -1,5 +1,6 @@
 module GmshTests
 
+import Gmsh
 import GalerkinToolkit as GT
 
 outdir = mkpath(joinpath(@__DIR__,"..","output"))

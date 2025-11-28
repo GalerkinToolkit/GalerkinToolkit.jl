@@ -102,6 +102,7 @@
 #
 using LinearAlgebra
 using Random
+import Gmsh
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import ForwardDiff
