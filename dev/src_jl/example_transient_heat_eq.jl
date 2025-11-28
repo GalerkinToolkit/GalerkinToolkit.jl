@@ -16,6 +16,7 @@
 #
 
 using LinearAlgebra
+import Gmsh
 import GalerkinToolkit as GT
 import DifferentialEquations
 import ForwardDiff

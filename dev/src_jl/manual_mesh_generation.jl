@@ -33,6 +33,7 @@
 #
 
 module MeshGen01 # hide
+import Gmsh
 import GalerkinToolkit as GT
 import GLMakie as Makie
 import FileIO # hide
@@ -72,6 +73,7 @@ nothing # hide
 #
 
 module MeshGen02 # hide
+import Gmsh
 import GalerkinToolkit as GT
 import GLMakie as Makie
 import FileIO # hide

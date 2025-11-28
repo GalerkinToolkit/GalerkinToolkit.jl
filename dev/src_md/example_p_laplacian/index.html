@@ -7,6 +7,7 @@ u = 1 \ &amp;\text{on} \ \Gamma_1,\\
 \sigma(u)\cdot n = 0 \ &amp;\text{elsewhere on} \ \partial\Omega,
 \end{aligned}
 \right.\]</p><p>with <span>$\sigma(u) = |\nabla u|^{p-2} \ \nabla u$</span> and <span>$p&gt;2$</span>. The vector field <span>$n$</span> is the outwards unit normal vector to <span>$\partial\Omega$</span>. The computational domains are defined in the mesh file <code>model.msh</code>. The domain <span>$\Omega$</span> is represented by the 3D faces in this mesh. The domain <span>$\Gamma_0$</span> is represented by the physical group named <code>&quot;sides&quot;</code> and <span>$\Gamma_1$</span> is the union of the physical groups named <code>&quot;circle&quot;</code>, <code>&quot;triangle&quot;</code>, and <code>&quot;square&quot;</code>.</p><h2 id="Numerical-scheme"><a class="docs-heading-anchor" href="#Numerical-scheme">Numerical scheme</a><a id="Numerical-scheme-1"></a><a class="docs-heading-anchor-permalink" href="#Numerical-scheme" title="Permalink"></a></h2><p>We discretize the problem with a space <span>$V$</span> with piece-wise continuous Lagrangian basis functions. For this formulation, the nonlinear weak form reads: find <span>$u\in V_g$</span> such that <span>$[r(u)](v) = 0$</span> for all <span>$v\in V_0$</span>. The auxiliary spaces <span>$V_g$</span> and <span>$V_0$</span> are the subsets of <span>$V$</span> that fulfill the Dirichlet boundary condition <span>$g$</span> and <span>$0$</span> on <span>$\partial\Omega$</span> respectively.</p><p>The weak residual <span>$r(u)$</span> evaluated at a function  <span>$u\in V_g$</span> is the linear form defined as</p><p class="math-container">\[[r(u)](v) \doteq \int_\Omega \nabla v \cdot \left( |\nabla u|^{p-2}\ \nabla u \right) \ {\rm d}\Omega - \int_\Omega v\ f \ {\rm d}\Omega.\]</p><p>In order to solve this nonlinear weak equation, we consider a Newton-Raphson method, which is associated with a linearization of the problem in an arbitrary direction <span>$\delta u\in V_0$</span>, namely <span>$[r(u+\delta u)](v)\approx [r(u)](v) + [j(u)](\delta u,v)$</span>. In previous formula,  <span>$j(u)$</span> is the Jacobian evaluated at <span>$u\in V_g$</span>, which is the bilinear form</p><p class="math-container">\[[j(u)](\delta u,v) = \int_\Omega \nabla v \cdot \left( |\nabla u|^{p-2}\ \nabla \delta u \right) \ {\rm d}\Omega + (p-2) \int_\Omega \nabla v \cdot \left(  |\nabla u|^{p-4} (\nabla u \cdot \nabla \delta u) \nabla u  \right) \ {\rm d}\Omega.\]</p><h2 id="Implementation"><a class="docs-heading-anchor" href="#Implementation">Implementation</a><a id="Implementation-1"></a><a class="docs-heading-anchor-permalink" href="#Implementation" title="Permalink"></a></h2><pre><code class="language-julia hljs">using LinearAlgebra
+import Gmsh
 import GalerkinToolkit as GT
 import PartitionedSolvers as PS
 import NonlinearSolve
@@ -88,18 +89,18 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	1.80428306e+01      	0.00000000e+00
-1       	4.57112530e+00      	1.71158688e+01
-2       	1.14246084e+00      	7.87253099e+00
-3       	2.76952317e-01      	3.07128651e+00
-4       	4.53808567e-02      	1.05620573e+00
-5       	1.10138230e-02      	2.61540200e-01
-6       	9.04149499e-04      	5.39449694e-02
-7       	1.46795127e-04      	9.09289045e-03
-8       	2.35459446e-06      	1.57862159e-03
-9       	9.33799215e-10      	2.98435803e-05
-10      	4.71844785e-16      	1.39327263e-08
-Final   	4.71844785e-16
+0       	1.56635566e+01      	1.00000000e+00
+1       	4.01539430e+00      	1.68842228e+01
+2       	1.06609115e+00      	7.89171493e+00
+3       	2.62451165e-01      	3.10481202e+00
+4       	4.49988226e-02      	9.55377792e-01
+5       	4.87088726e-03      	2.48064070e-01
+6       	8.36330227e-04      	4.50090114e-02
+7       	1.30575975e-04      	1.02072293e-02
+8       	2.16403624e-06      	1.92987625e-03
+9       	1.42909748e-09      	4.88975478e-05
+10      	8.84058451e-16      	3.40238650e-08
+Final   	8.84058451e-16
 ----------------------</code></pre><h2 id="Building-the-algebraic-non-linear-problem-explicitly"><a class="docs-heading-anchor" href="#Building-the-algebraic-non-linear-problem-explicitly">Building the algebraic non-linear problem explicitly</a><a id="Building-the-algebraic-non-linear-problem-explicitly-1"></a><a class="docs-heading-anchor-permalink" href="#Building-the-algebraic-non-linear-problem-explicitly" title="Permalink"></a></h2><p>In this other version, we explicitly build the algebraic residual and Jacobian (functions that take plain Julia vectors) and build a algebraic non-linear problem from them.</p><pre><code class="language-julia hljs">import SciMLBase
 
 #Initial guess
@@ -163,16 +164,16 @@ Algorithm: NewtonRaphson(
 ----    	-------------       	-----------
 Iter    	f(u) inf-norm       	Step 2-norm
 ----    	-------------       	-----------
-0       	1.76885398e+01      	NaN
-1       	4.46001968e+00      	1.72620505e+01
-2       	1.12651756e+00      	7.97442799e+00
-3       	2.68581442e-01      	3.27431792e+00
-4       	5.18738601e-02      	1.06055915e+00
-5       	8.03046374e-03      	2.78821305e-01
-6       	8.52988345e-04      	5.99579966e-02
-7       	5.92881127e-05      	9.03407459e-03
-8       	4.98056822e-07      	7.99263017e-04
-9       	1.05874340e-10      	1.18086564e-05
-10      	3.48679419e-16      	2.48718467e-09
-Final   	3.48679419e-16
-----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_linear_elasticity/">Linear elasticity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Wednesday 26 November 2025 12:53">Wednesday 26 November 2025</span>. Using Julia version 1.12.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+0       	2.12275081e+01      	NaN
+1       	5.35681377e+00      	1.68924861e+01
+2       	1.44898683e+00      	7.89362506e+00
+3       	3.46055463e-01      	3.13839183e+00
+4       	6.80400744e-02      	1.00331524e+00
+5       	1.78850390e-02      	2.69123892e-01
+6       	1.42175552e-03      	6.52080772e-02
+7       	6.38531661e-05      	1.41430359e-02
+8       	2.58376813e-06      	2.00092325e-03
+9       	2.68422006e-09      	6.42621042e-05
+10      	3.69087492e-15      	6.44740407e-08
+Final   	3.69087492e-15
+----------------------</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../example_poisson_equation/">« Poisson equation</a><a class="docs-footer-nextpage" href="../example_linear_elasticity/">Linear elasticity »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 28 November 2025 08:41">Friday 28 November 2025</span>. Using Julia version 1.12.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
