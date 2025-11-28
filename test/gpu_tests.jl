@@ -2,7 +2,6 @@ module GPUTests
 
 using CUDA
 using Test
-import Adapt
 import GalerkinToolkit as GT
 
 # Goal integrate function f(x)
@@ -22,11 +21,12 @@ dΩ_faces = GT.each_face(dΩ)
 # This is still on CPU, but with a data
 # layout more appropiate for GPUs.
 dΩ_faces_cpu = GT.device_layout(dΩ_faces)
-dΩ_faces_gpu = cu(dΩ_faces_cpu)
+
+# Now, move data to GPU
+dΩ_faces_gpu = CUDA.cu(dΩ_faces_cpu)
 
 nfaces = length(dΩ_faces_gpu)
 contributions = CUDA.zeros(Float64,nfaces)
-
 
 function kernel!(contributions,dΩ_faces_gpu)
     face_id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
