@@ -103,6 +103,9 @@ jobs:
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
+          ls /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          du -h --max-depth=0 /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          git status 
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
 
   benchmark:
