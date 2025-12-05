@@ -76,7 +76,7 @@ jobs:
           echo "All test jobs have been successful"
 
   docs:
-    name: Documentation (no media build)
+    name: Documentation
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,19 +97,21 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
             Pkg.build("GLMakie")'
+      - uses: actions/cache@v4
+        id: mediacache
+        with:
+          path: ~/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          key: docs-media-cache
       - name: Build media
+        if: steps.mediacache.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
-          ls /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
-          du -h --max-depth=0 /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
-      - name: Upload media images as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docs_media
-          path: /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          ls ~/
+          ls ~/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
+          ls ~/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
       - name: Build and deploy docs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
