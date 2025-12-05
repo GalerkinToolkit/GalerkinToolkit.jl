@@ -97,7 +97,12 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
             Pkg.build("GLMakie")'
-      - name: Build and deploy
+      - name: Checkout docs_img branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs_img 
+          path: docs_img
+      - name: Build media
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
@@ -105,7 +110,16 @@ jobs:
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
           ls /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           du -h --max-depth=0 /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
-          git status 
+      - name: Upload media images as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: docs_media
+          path: /home/runner/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+      - name: Build and deploy docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: |
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
 
   benchmark:
