@@ -92,17 +92,32 @@ jobs:
           sudo apt-get install -y xorg-dev mesa-utils xvfb libgl1 freeglut3-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
       - name: Install dependencies
         run: |
-          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e '
+          julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
             Pkg.build("GLMakie")'
-      - name: Build and deploy
+      - uses: actions/cache@v4
+        id: mediacache
+        with:
+          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          key: docs-media-cache
+      - name: Build media
+        if: steps.mediacache.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
-          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make.jl")'
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
+          ls ~/work/
+          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
+          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+      - name: Build and deploy docs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: |
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
 
   benchmark:
     name: Run performance regression tests
