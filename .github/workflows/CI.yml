@@ -97,11 +97,6 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
             Pkg.build("GLMakie")'
-      - name: Checkout docs_img branch
-        uses: actions/checkout@v4
-        with:
-          ref: docs_img 
-          path: docs_img
       - name: Build media
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
