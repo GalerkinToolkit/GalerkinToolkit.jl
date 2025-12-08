@@ -1,4 +1,4 @@
-name: CI
+name: Build Documentation Media
 on:
   workflow_dispatch
 
