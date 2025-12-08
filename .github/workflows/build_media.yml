@@ -28,6 +28,8 @@ jobs:
             Pkg.instantiate()
             Pkg.build("GLMakie")'
       - name: Clear media cache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh cache delete docs-media-cache
       - uses: actions/cache@v4
