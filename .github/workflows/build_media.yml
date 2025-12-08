@@ -1,6 +1,6 @@
 name: Build Documentation Media
 on:
-  workflow_dispatch
+  workflow_dispatch:
 
 jobs:
   docsmedia:
