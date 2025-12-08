@@ -1,0 +1,40 @@
+name: CI
+on:
+  workflow_dispatch
+
+jobs:
+  docsmedia:
+    name: Build documentation media
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Prepare environment for xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorg-dev mesa-utils xvfb libgl1 freeglut3-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+      - name: Install dependencies
+        run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()
+            Pkg.build("GLMakie")'
+      - name: Clear media cache
+        run: |
+          gh cache delete docs-media-cache
+      - uses: actions/cache@v4
+        id: mediacache
+        with:
+          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          key: docs-media-cache
+      - name: Build media
+        if: steps.mediacache.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+        run: |
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
