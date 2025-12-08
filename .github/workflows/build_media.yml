@@ -1,7 +1,9 @@
 name: Build Documentation Media
 on:
   workflow_dispatch:
-  pull_request:
+
+permissions:
+  actions: write
 
 jobs:
   docsmedia:
