@@ -35,15 +35,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh cache delete docs-media-cache
-      - uses: actions/cache@v4
-        id: mediacache
+      - uses: actions/cache/save@v4
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           key: docs-media-cache
       - name: Build media
-        if: steps.mediacache.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
+          pwd
+          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+
