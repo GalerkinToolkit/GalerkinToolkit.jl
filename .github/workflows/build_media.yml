@@ -44,10 +44,10 @@ jobs:
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
           pwd
           ls
-          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
-          du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
+          du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
       - uses: actions/cache/save@v4
         if: '!cancelled()'
         with:
-          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           key: docs-media-cache

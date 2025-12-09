@@ -100,7 +100,7 @@ jobs:
       - uses: actions/cache/restore@v4
         id: mediacache
         with:
-          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           key: docs-media-cache
           fail-on-cache-miss: true
       - name: Build and deploy docs
