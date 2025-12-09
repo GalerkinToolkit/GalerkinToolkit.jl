@@ -36,6 +36,7 @@ jobs:
         run: |
           gh cache delete docs-media-cache
       - name: Build media
+        if: '!cancelled()'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
@@ -46,6 +47,7 @@ jobs:
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
       - uses: actions/cache/save@v4
+        if: '!cancelled()'
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           key: docs-media-cache
