@@ -110,8 +110,11 @@ jobs:
         run: |
           pwd
           ls
+          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/
+          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
+          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
