@@ -110,9 +110,9 @@ jobs:
         run: |
           echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          cd ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
-          mkdir -p src_md
-          cp src_jl/*.png src_jl/*.gif src_md/
+          cd ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/
+          mkdir -p src/src_md
+          cp src/src_jl/*.png src/src_jl/*.gif src/src_md/
           echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("make_with_media.jl")'
