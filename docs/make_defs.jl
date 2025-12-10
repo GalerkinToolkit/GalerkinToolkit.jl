@@ -37,13 +37,14 @@ end
 function main(;debug=false)
 
     if debug
+        mkpath(src_md)
         for file_png in filter(f->f[end-3:end]==".png" || f[end-3:end]==".gif" ,readdir(src_jl))
             cp(joinpath(src_jl,file_png),joinpath(src_md,file_png),force=true)
         end
     else
         rm(src_md,force=true,recursive=true)
+        mkpath(src_md)
     end
-    mkpath(src_md)
 
     codefence = "```julia" => "```"
     for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
