@@ -113,7 +113,9 @@ jobs:
           cd ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
           mkdir -p src_md
           cp src_jl/*.png src_jl/*.gif src_md/
-          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
+          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("make_with_media.jl")'
 
   benchmark:
     name: Run performance regression tests
