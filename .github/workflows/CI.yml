@@ -108,17 +108,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
-          pwd
-          ls
-          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/
-          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/
-          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
-          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
           echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          echo ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
-          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_md/
           cd ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/
+          mkdir -p src_md
           cp src_jl/*.png src_jl/*.gif src_md/
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
 
