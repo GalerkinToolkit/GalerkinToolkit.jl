@@ -31,23 +31,18 @@ jobs:
             Pkg.instantiate()
             Pkg.build("GLMakie")'
       - name: Clear media cache
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh cache delete docs-media-cache
       - name: Build media
-        if: '!cancelled()'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
           DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_media.jl")'
-          pwd
-          ls
-          ls ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          du -h ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
       - uses: actions/cache/save@v4
-        if: '!cancelled()'
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
           key: docs-media-cache
