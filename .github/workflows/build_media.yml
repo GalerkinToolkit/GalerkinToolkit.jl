@@ -45,4 +45,4 @@ jobs:
       - uses: actions/cache/save@v4
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          key: docs-media-cache-${{ GITHUB_REF_NAME_SLUG }}
+          key: docs-media-cache-${{ GITHUB_REF_NAME }}
