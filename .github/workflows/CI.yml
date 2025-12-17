@@ -90,8 +90,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          key: docs-media-cache
           fail-on-cache-miss: true
+          key: docs-media-cache-${GITHUB_REF_NAME_SLUG}
+          restore-keys: |
+            docs-media-cache-${github.event.repository.default_branch}
       - name: Prepare environment for xvfb
         run: |
           sudo apt-get update
