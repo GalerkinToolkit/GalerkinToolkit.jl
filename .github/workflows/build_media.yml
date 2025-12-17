@@ -48,4 +48,4 @@ jobs:
       - uses: actions/cache/save@v4
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          key: docs-media-cache-${{ BRANCH_NAME }}
+          key: docs-media-cache-${{ env.BRANCH_NAME }}
