@@ -9,6 +9,9 @@ permissions:
   actions: write
   contents: write
 
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }} 
+
 jobs:
   docsmedia:
     name: Build documentation media
@@ -45,4 +48,4 @@ jobs:
       - uses: actions/cache/save@v4
         with:
           path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
-          key: docs-media-cache-${{ GITHUB_REF_NAME }}
+          key: docs-media-cache-${{ BRANCH_NAME }}
