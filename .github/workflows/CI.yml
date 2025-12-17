@@ -167,7 +167,7 @@ jobs:
   copybenchmarks:
     name: Copy benchmark results to gh-pages
     if: github.ref == 'refs/heads/main'
-    needs: [benchmark, docs]
+    needs: [benchmark, docs_no_media]
     runs-on: ubuntu-latest
     permissions:
       contents: write
