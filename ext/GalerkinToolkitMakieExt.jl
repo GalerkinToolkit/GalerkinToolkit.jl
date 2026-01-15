@@ -408,7 +408,7 @@ function setup_plt_changes(plt,vector,scalar,scale,shrink)
     if GT.is_partitioned(plt)
         plt = GT.centralize(plt)
     end
-    if GT.num_dims(plt.mesh) == 1
+    if GT.num_ambient_dims(plt.mesh) == 1
         x = map(x->SVector(x[1],0*x[1]),GT.node_coordinates(plt.mesh))
         mesh2 = GT.replace_node_coordinates(plt.mesh,x)
         plt = GT.replace_mesh(plt,mesh2)
