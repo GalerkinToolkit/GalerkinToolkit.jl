@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768392309402,
+  "lastUpdate": 1768552486251,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -3194,6 +3194,36 @@ window.BENCHMARK_DATA = {
             "value": 910941081,
             "unit": "ns",
             "extra": "gctime=8121531.5\nmemory=320776180\nallocs=891345\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "66dd5d04ca9bc094ee5068af9600aa421b7b3d94",
+          "message": "Merge pull request #271 from GalerkinToolkit/fix_1d_plots\n\nFix 1d makie recipies.",
+          "timestamp": "2026-01-16T09:29:37+01:00",
+          "tree_id": "558227a49d8e4e5900429537ada3b11f15e4189d",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/66dd5d04ca9bc094ee5068af9600aa421b7b3d94"
+        },
+        "date": 1768552485667,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 895135910.5,
+            "unit": "ns",
+            "extra": "gctime=8427641.5\nmemory=320776180\nallocs=891345\nparams={\"gctrial\":true,\"time_tolerance\":0.05,\"evals_set\":false,\"samples\":10000,\"evals\":1,\"gcsample\":false,\"seconds\":5,\"overhead\":0,\"memory_tolerance\":0.01}"
           }
         ]
       }
