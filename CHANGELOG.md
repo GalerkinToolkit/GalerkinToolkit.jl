@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-01-15
+
+### Fixed
+
+- Recipes for 1d Makie plots.
+
+
+## [0.6.0] - 2026-01-14
+
+### Changes
+
+- Cell complex is renamed to face complex.
+- `MeshAccessor` is renamed to `MeshFace`.
+
+### Added
+
+- Support for periodic and Bloch conditions.
+- Extension module for Gmsh-related functions.
+- Function `moebius_strip` to build structured meshes of Möbius strips.
+
+### Fixed
+
+- Bugfix in interface domains.
 
 ## [0.5.0] - 2025-10-03
 
