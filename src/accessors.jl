@@ -1885,35 +1885,35 @@ end
 ###    accessor(face_point_dof_b,prototype)
 ###end
 ###
-function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
-    D = num_dims(refDface)
-    d = num_dims(refdface)
-    dof_to_f = shape_functions(refdface)
-    boundary = refDface |> GT.domain |> GT.mesh
-    lface_to_nodes = GT.face_nodes(boundary,d)
-    node_to_coords = GT.node_coordinates(boundary)
-    lface_to_lrefid = GT.face_reference_id(boundary,d)
-    lrefid_to_lrefface = GT.reference_spaces(boundary,d)
-    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
-    
-    func_template = (dof_to_coeff, dof_to_f, ndofs) -> (x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs))
-    d2c = node_to_coords[lface_to_nodes[1][ lrefid_to_perm_to_ids[lface_to_lrefid[1]][1] ]]
-    proto = func_template(d2c, dof_to_f, length(d2c))
-
-    result::Vector{Vector{typeof(proto)}} = map(1:GT.num_faces(boundary,d)) do lface
-        lrefid = lface_to_lrefid[lface]
-        nodes = lface_to_nodes[lface]
-        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
-        map(perm_to_ids) do ids
-            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
-            dof_to_coeff = similar(node_to_coords[nodes])
-            dof_to_coeff[ids] = node_to_coords[nodes]
-            ndofs = length(dof_to_coeff)
-            result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
-        end
-    end
-    return result
-end
+##function reference_map(refdface::AbstractFaceSpace,refDface::AbstractFaceSpace)
+##    D = num_dims(refDface)
+##    d = num_dims(refdface)
+##    dof_to_f = shape_functions(refdface)
+##    boundary = refDface |> GT.domain |> GT.mesh
+##    lface_to_nodes = GT.face_nodes(boundary,d)
+##    node_to_coords = GT.node_coordinates(boundary)
+##    lface_to_lrefid = GT.face_reference_id(boundary,d)
+##    lrefid_to_lrefface = GT.reference_spaces(boundary,d)
+##    lrefid_to_perm_to_ids = map(GT.node_permutations,lrefid_to_lrefface)
+##    
+##    func_template = (dof_to_coeff, dof_to_f, ndofs) -> (x -> sum(dof->dof_to_coeff[dof]*dof_to_f[dof](x),1:ndofs))
+##    d2c = node_to_coords[lface_to_nodes[1][ lrefid_to_perm_to_ids[lface_to_lrefid[1]][1] ]]
+##    proto = func_template(d2c, dof_to_f, length(d2c))
+##
+##    result::Vector{Vector{typeof(proto)}} = map(1:GT.num_faces(boundary,d)) do lface
+##        lrefid = lface_to_lrefid[lface]
+##        nodes = lface_to_nodes[lface]
+##        perm_to_ids = lrefid_to_perm_to_ids[lrefid]
+##        map(perm_to_ids) do ids
+##            #dof_to_coeff = node_to_coords[nodes[ids]] # Wrong
+##            dof_to_coeff = similar(node_to_coords[nodes])
+##            dof_to_coeff[ids] = node_to_coords[nodes]
+##            ndofs = length(dof_to_coeff)
+##            result_inner::typeof(proto) = func_template(dof_to_coeff, dof_to_f, ndofs)
+##        end
+##    end
+##    return result
+##end
 ###
 ###function inv_map(f,x0)
 ###    function pseudo_inverse_if_not_square(J)
