@@ -55,7 +55,6 @@ mesh_Dfaces = GT.each_face_new(mesh,D,dΩ)
 mesh_Dfaces = GT.tabulate(GT.value,mesh_Dfaces)
 mesh_Dfaces = GT.tabulate(ForwardDiff.gradient,mesh_Dfaces)
 
-
 mesh_faces = GT.each_face_new(dΩ)
 mesh_face = mesh_faces[2]
 @show GT.nodes(mesh_face)
@@ -68,6 +67,17 @@ mesh_point = mesh_points[1]
 @show GT.coordinate(ForwardDiff.jacobian,mesh_point)
 @show GT.weight(mesh_point)
 
-xx
+V_faces = GT.each_face(V,dΩ)
+V_faces = GT.tabulate(GT.value,V_faces)
+V_faces = GT.tabulate(ForwardDiff.gradient,V_faces)
+#xx
+#V_dΩ = GT.tabulate(ForwardDiff.gradient,V_dΩ)
+#V_faces = GT.each_face(V_dΩ)
+#V_face = V_faces[1]
+#V_points = GT.each_point(V_face)
+#V_point = V_points[1]
+#@show GT.shape_functions(GT.value,V_point)
+#V_point = GT.at_point(V_dΩ,dΩ_point)
+#@show GT.shape_functions(GT.value,V_point)
 
 end # module

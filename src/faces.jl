@@ -585,27 +585,27 @@ end
 
 function coordinate(::typeof(value),point::AbstractPointNew)
     a = mesh_sampling_point(point)
-    s = shape_functions(value,a)
-    x = node_coordinates(a)
+    s = reference_shape_functions(value,a)
+    x = node_coordinates(parent_face(a))
     n = length(s)
     sum(i->x[i]*s[i],1:n)
 end
 
 function coordinate(::typeof(ForwardDiff.jacobian),point::AbstractPointNew)
     a = mesh_sampling_point(point)
-    s = shape_functions(ForwardDiff.gradient,a)
-    x = node_coordinates(a)
-    n = num_nodes(a)
+    s = reference_shape_functions(ForwardDiff.gradient,a)
+    x = node_coordinates(parent_face(a))
+    n = length(s)
     sum(i->outer(x[i],s[i]),1:n)
 end
 
 function reference_weight(a::AbstractPointNew)
-    quadrature = GT.quadrature(a)
+    quadrature = GT.reference_quadrature(parent_face(a))
     weights(quadrature)[id(a)]
 end
 
 function weight(a::AbstractPointNew)
-    w = weight(reference(a))
+    w = reference_weight(a)
     J = coordinate(ForwardDiff.jacobian,a)
     change_of_measure(J)*w
 end
