@@ -13,29 +13,20 @@ mesh = GT.cartesian_mesh(domain,cells)
 @test length(GT.each_face_new(mesh,Val(1))) == GT.num_faces(mesh,Val(1))
 
 for F in GT.each_face_new(mesh,Val(1))
+    @test GT.num_faces_around(F,Val(2)) in (1,2)
     for A in GT.each_face_around_new(F,Val(2))
         a = GT.local_face(A,F)
-        A2 = GT.parent_face(a)
-        @test GT.id(A) == GT.id(A2)
-        @test GT.num_dims(A) == GT.num_dims(A2)
-        @test GT.mesh(A) === GT.mesh(A2)
-        F2 = GT.global_face(a)
-        @test GT.id(F) == GT.id(F2)
-        @test GT.num_dims(F) == GT.num_dims(F2)
-        @test GT.mesh(F) === GT.mesh(F2)
         P = GT.node_permutation(A,a)
-        @assert GT.nodes(F) == GT.nodes(A)[ GT.nodes(a)[P]]
-        P = GT.node_permutation(a)
         @assert GT.nodes(F) == GT.nodes(A)[ GT.nodes(a)[P]]
     end
 end
 
 for A in GT.each_face_new(mesh,Val(2))
+    @test GT.num_local_faces(A,Val(1)) == 4
     for a in GT.each_local_face(A,Val(1))
-        A2 = GT.parent_face(a)
-        @test GT.id(A) == GT.id(A2)
-        @test GT.num_dims(A) == GT.num_dims(A2)
-        @test GT.mesh(A) === GT.mesh(A2)
+        F = GT.global_face(A,a)
+        P = GT.node_permutation(A,a)
+        @assert GT.nodes(F) == GT.nodes(A)[ GT.nodes(a)[P]]
     end
 end
 
@@ -67,17 +58,74 @@ mesh_point = mesh_points[1]
 @show GT.coordinate(ForwardDiff.jacobian,mesh_point)
 @show GT.weight(mesh_point)
 
-V_faces = GT.each_face(V,dΩ)
-V_faces = GT.tabulate(GT.value,V_faces)
-V_faces = GT.tabulate(ForwardDiff.gradient,V_faces)
-#xx
-#V_dΩ = GT.tabulate(ForwardDiff.gradient,V_dΩ)
-#V_faces = GT.each_face(V_dΩ)
-#V_face = V_faces[1]
-#V_points = GT.each_point(V_face)
-#V_point = V_points[1]
-#@show GT.shape_functions(GT.value,V_point)
-#V_point = GT.at_point(V_dΩ,dΩ_point)
-#@show GT.shape_functions(GT.value,V_point)
+for mesh_face in GT.each_face_new(dΩ)
+    GT.nodes(mesh_face)
+    GT.node_coordinates(mesh_face)
+    GT.num_nodes(mesh_face)
+    for mesh_point in GT.each_point_new(mesh_face)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+    end
+end
+
+mesh_dfaces = GT.each_face_new(mesh,D,dΛ)
+mesh_dface = mesh_dfaces[2]
+mesh_Dfaces = GT.each_face_around_new(mesh_dface)
+mesh_Dface = mesh_Dfaces[2]
+@show GT.nodes(mesh_Dface)
+@show GT.node_coordinates(mesh_Dface)
+mesh_points = GT.each_point_new(mesh_Dface)
+mesh_point = mesh_points[1]
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+@show GT.unit_normal(mesh_point)
+@show GT.coordinate(mesh_point)
+@show GT.jacobian(mesh_point)
+
+for mesh_dface in mesh_dfaces
+    for mesh_Dface in GT.each_face_around_new(mesh_dface)
+        GT.nodes(mesh_Dface)
+        GT.node_coordinates(mesh_Dface)
+        GT.num_nodes(mesh_Dface)
+        for mesh_point in GT.each_point_new(mesh_Dface)
+            GT.coordinate(mesh_point)
+            GT.coordinate(GT.value,mesh_point)
+            GT.coordinate(ForwardDiff.jacobian,mesh_point)
+            GT.weight(mesh_point)
+            GT.unit_normal(mesh_point)
+        end
+    end
+end
+
+mesh_dfaces = GT.each_face_new(mesh,D,dΓ)
+mesh_dface = mesh_dfaces[2]
+mesh_Dface = mesh_dface
+@show GT.nodes(mesh_Dface)
+@show GT.node_coordinates(mesh_Dface)
+mesh_points = GT.each_point_new(mesh_Dface)
+mesh_point = mesh_points[1]
+@show GT.coordinate(GT.value,mesh_point)
+@show GT.coordinate(ForwardDiff.jacobian,mesh_point)
+@show GT.weight(mesh_point)
+@show GT.unit_normal(mesh_point)
+@show GT.coordinate(mesh_point)
+@show GT.jacobian(mesh_point)
+
+for mesh_Dface in mesh_Dfaces
+    GT.nodes(mesh_Dface)
+    GT.node_coordinates(mesh_Dface)
+    GT.num_nodes(mesh_Dface)
+    for mesh_point in GT.each_point_new(mesh_Dface)
+        GT.coordinate(mesh_point)
+        GT.coordinate(GT.value,mesh_point)
+        GT.coordinate(ForwardDiff.jacobian,mesh_point)
+        GT.weight(mesh_point)
+        GT.unit_normal(mesh_point)
+    end
+end
+
 
 end # module

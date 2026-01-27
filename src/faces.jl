@@ -1,7 +1,6 @@
 
 abstract type AbstractFaceNew <: AbstractType end
 abstract type AbstractMeshFaceNew <: AbstractFaceNew end
-abstract type AbstractLocalMeshFaceNew <: AbstractMeshFaceNew end
 abstract type AbstractQuadratureFaceNew <: AbstractFaceNew end
 abstract type AbstractSpaceFaceNew <: AbstractFaceNew end
 abstract type AbstractDiscreteFieldFaceNew <: AbstractSpaceFaceNew end
@@ -30,6 +29,7 @@ function Base.iterate(iter::Each,id=1)
         (accessor,id+1)
     end
 end
+Base.keys(iter::Each) = LinearIndices((length(iter),))
 prototype(x::Each) = x.prototype
 function tabulate(f,x::Each)
     Each(x.update_id,tabulate(f,x.prototype),x.ids)
@@ -73,6 +73,10 @@ function each_face_new(mesh::AbstractMesh,vald)
     Each(update_id,face,ids)
 end
 
+function num_faces_around(dface::AbstractMeshFaceNew,valD)
+    length(each_face_around_new(dface,valD))
+end
+
 function each_face_around_new(dface::AbstractMeshFaceNew,valD)
     D = val_parameter(valD)
     d = GT.num_dims(dface)
@@ -85,38 +89,12 @@ function each_face_around_new(dface::AbstractMeshFaceNew,valD)
     Each(update_id,Dface,ids)
 end
 
-struct LocalMeshFaceNew{A,B} <: AbstractLocalMeshFaceNew
-    local_face::A
-    parent_face::B
-end
-mesh(f::LocalMeshFaceNew) = mesh(local_face(f))
-id(f::LocalMeshFaceNew) = id(local_face(f))
-num_dims(f::LocalMeshFaceNew) = num_dims(local_face(f))
-function update_id(face::LocalMeshFaceNew,id)
-    local_face = update_id(GT.local_face(face),id)
-    LocalMeshFaceNew(local_face,parent_face(face))
-end
-local_face(a::LocalMeshFaceNew) = a.local_face
-parent_face(a::LocalMeshFaceNew) = a.parent_face
-function global_face(a::LocalMeshFaceNew)
-    d = num_dims(a)
-    ldid = id(a)
-    parent_face = GT.parent_face(a)
-    D = num_dims(parent_face)
-    Did = id(parent_face)
-    mesh = GT.mesh(parent_face)
-    topo = topology(mesh)
-    did = face_incidence(topo,D,d)[Did][ldid]
-    MeshFaceNew(mesh,Val(d),did)
-end
-
 function each_local_face(Df::MeshFaceNew,vald)
     d = val_parameter(vald)
     D = GT.num_dims(Df)
     l_mesh = GT.mesh(GT.reference_domain(Df))
     l_id = ANY_INDEX_NEW
-    dface = MeshFaceNew(l_mesh,Val(d),l_id)
-    l_dface = LocalMeshFaceNew(dface,Df)
+    l_dface = MeshFaceNew(l_mesh,Val(d),l_id)
     nldfaces = num_faces(l_mesh,d)
     Each(update_id,l_dface,1:nldfaces)
 end
@@ -134,12 +112,31 @@ function local_face(Df::AbstractMeshFaceNew,df::AbstractMeshFaceNew)
     L_faces[a_id]
 end
 
+function num_local_faces(Df::MeshFaceNew,vald)
+    length(each_local_face(Df,vald))
+end
+
+function global_face(A::AbstractFaceNew,a::AbstractFaceNew)
+    D = GT.num_dims(A)
+    d = GT.num_dims(a)
+    mesh = GT.mesh(A)
+    topo = topology(mesh)
+    id = face_incidence(topo,D,d)[GT.id(A)][GT.id(a)]
+    MeshFaceNew(mesh,Val(d),id)
+end
+
 struct QuadratureFaceNew{A,B} <: AbstractQuadratureFaceNew
     mesh_quadrature::A
     id::B
 end
 mesh_quadrature(a::QuadratureFaceNew) = a.mesh_quadrature
 mesh(a::QuadratureFaceNew) = mesh(domain(mesh_quadrature(a)))
+function mesh_face(a::QuadratureFaceNew)
+    mesh = GT.mesh(a.mesh_quadrature)
+    d = num_dims(GT.domain(a.mesh_quadrature))
+    MeshFaceNew(mesh,Val(d),a.id)
+end
+num_dims(a::QuadratureFaceNew) = num_dims(GT.domain(a.mesh_quadrature))
 id(a::QuadratureFaceNew) = a.id
 update_id(a::QuadratureFaceNew,id) = QuadratureFaceNew(mesh_quadrature(a),id)
 function update_id(a::QuadratureFaceNew,face2::MeshFaceNew)
@@ -147,6 +144,7 @@ function update_id(a::QuadratureFaceNew,face2::MeshFaceNew)
     @assert num_dims(q) == num_dims(face_2)
     QuadratureFaceNew(q,GT.id(face2))
 end
+
 
 struct PointNew{A,B} <: AbstractPointNew
     parent_face::A
@@ -164,15 +162,18 @@ function each_point_new(face::AbstractFaceNew)
     Each(update_id,point,1:npoints)
 end
 
-struct MeshSamplingFaceNew{A,B,C,D} <: AbstractSamplingFaceNew
+struct MeshSamplingFaceNew{A,B,C,D,E,F} <: AbstractSamplingFaceNew
     mesh_face::A
     quadrature_face::B
-    tabulated_values::C
-    tabulated_gradients::D
+    local_face::C
+    tabulated_values::D
+    tabulated_gradients::E
+    reference_unit_normals::F
 end
 mesh_space(a::MeshSamplingFaceNew) = mesh_space(mesh(a),Val(num_dims(a)))
 mesh_quadrature(a::MeshSamplingFaceNew) = mesh_quadrature(quadrature_face(a))
 mesh_face(a::MeshSamplingFaceNew) = a.mesh_face
+local_face(a::MeshSamplingFaceNew) = a.local_face
 mesh_sampling_face(a::MeshSamplingFaceNew) = a
 quadrature_face(a::MeshSamplingFaceNew) = a.quadrature_face
 mesh(a::MeshSamplingFaceNew) = mesh(quadrature_face(a))
@@ -180,78 +181,168 @@ num_dims(a::MeshSamplingFaceNew) = num_dims(mesh_face(a))
 id(a::MeshSamplingFaceNew) = a.id
 nodes(a::MeshSamplingFaceNew) = nodes(mesh_face(a))
 node_coordinates(a::MeshSamplingFaceNew) = node_coordinates(mesh_face(a))
-function update_id(a::MeshSamplingFaceNew,id)
-    update_id(a,id,mesh_face(a))
-end
-function update_id(a::MeshSamplingFaceNew,id,mesh_face::AbstractMeshFaceNew)
-    mesh_face_2 = update_id(mesh_face,id)
-    quadrature_face_2 = update_id(quadrature_face(a),id)
-    MeshSamplingFaceNew(
-                     mesh_face_2,
-                     quadrature_face_2,
-                     a.tabulated_values,
-                     a.tabulated_gradients)
-end
-function update_id(a::MeshSamplingFaceNew,id::AbstractLocalMeshFaceNew,mesh_face::AbstractLocalMeshFaceNew)
-    mesh_face_2 = id
-    @assert num_dims(mesh_face_2) == num_dims(mesh_face)
-    global_face_2 = GT.global_face(mesh_face_2)
-    quadrature_face_2 = update_id(quadrature_face(a),global_face_2)
-    MeshSamplingFaceNew(
-                     mesh_face_2,
-                     quadrature_face_2,
-                     a.tabulated_values,
-                     a.tabulated_gradients)
-end
 
 function replace_tabulators(f::typeof(value),a::MeshSamplingFaceNew,tabulated_values)
     MeshSamplingFaceNew(
                      a.mesh_face,
                      a.quadrature_face,
+                     a.local_face,
                      tabulated_values,
-                     a.tabulated_gradients)
+                     a.tabulated_gradients,
+                     a.reference_unit_normals)
 end
 
 function replace_tabulators(f::typeof(ForwardDiff.gradient),a::MeshSamplingFaceNew,tabulated_gradients)
     MeshSamplingFaceNew(
                      a.mesh_face,
                      a.quadrature_face,
+                     a.local_face,
                      a.tabulated_values,
-                     tabulated_gradients)
+                     tabulated_gradients,
+                     a.reference_unit_normals)
 end
 
 tabulators(f::typeof(value),a::MeshSamplingFaceNew) = a.tabulated_values
 tabulators(f::typeof(ForwardDiff.gradient),a::MeshSamplingFaceNew) = a.tabulated_gradients
 
-function each_face_new(mesh::AbstractMesh,valD,mesh_quadrature::AbstractQuadrature)
+function replace_reference_unit_normals(a::MeshSamplingFaceNew,reference_unit_normals)
+    MeshSamplingFaceNew(
+                     a.mesh_face,
+                     a.quadrature_face,
+                     a.local_face,
+                     a.tabulated_values,
+                     a.tabulated_gradients,
+                     reference_unit_normals)
+end
+
+reference_unit_normals(a::MeshSamplingFaceNew) = a.reference_unit_normals
+
+function each_face_new(
+    mesh::AbstractMesh,
+    valD,
+    mesh_quadrature::AbstractQuadrature,
+    val_loop_dim=Val(num_dims(domain(mesh_quadrature))))
+
+    loop_dim = val_parameter(val_loop_dim)
     domain_d = GT.domain(mesh_quadrature)
     d = num_dims(domain_d)
     D = val_parameter(valD)
     id = ANY_INDEX_NEW
-    quadrature_face = QuadratureFaceNew(mesh_quadrature,id)
-    if d == D
+    if d == loop_dim
+        quadrature_face = QuadratureFaceNew(mesh_quadrature,id)
         mesh_face = MeshFaceNew(mesh,Val(D),id)
+        local_face = nothing
         ids = GT.faces(domain_d)
-    else
-        local_face = MeshFaceNew(mesh,Val(d),ANY_INDEX_NEW)
-        parent_face = MeshFaceNew(mesh,Val(D),ANY_INDEX_NEW)
-        mesh_face = LocalMeshFaceNew(local_face,parent_face)
-        ids = nothing
+        tabulated_values = nothing
+        tabulated_gradients = nothing
+        reference_unit_normals = nothing
+        face0 = MeshSamplingFaceNew(
+                                    mesh_face,
+                                    quadrature_face,
+                                    local_face,
+                                    tabulated_values,
+                                    tabulated_gradients,
+                                    reference_unit_normals)
+        face = setup_mesh_sampling_face(face0)
+        return Each(update_quadrature_face_id,face,ids)
     end
-    tabulated_values = nothing
-    tabulated_grediants = nothing
-    face = MeshSamplingFaceNew(mesh_face,quadrature_face,tabulated_values,tabulated_grediants)
-    Each(update_id,face,ids)
+    if D == loop_dim
+        error("not implemented")
+    end
+    error()
+end
+
+function setup_mesh_sampling_face(a0)
+    a1 = GT.tabulate(GT.value,a0)
+    a2 = GT.tabulate(ForwardDiff.gradient,a1)
+    D = num_dims(mesh_face(a0))
+    d = num_dims(quadrature_face(a0))
+    if d + 1 == D
+        a3 = setup_unit_normal(a2)
+    else
+        a3 = a2
+    end
+    a3
+end
+
+function each_face_around_new(a::MeshSamplingFaceNew)
+    n_faces_around = num_faces_around(a)
+    ids = 1:n_faces_around
+    Each(update_face_around_id,a,ids)
+end
+
+function num_faces_around(a::MeshSamplingFaceNew)
+    dface = mesh_face(quadrature_face(a))
+    D = num_dims(mesh_face(a))
+    num_faces_around(dface,Val(D))
+end
+
+# NB update_id alone does not makes sense since there are several ids involved.
+
+function update_quadrature_face_id(a::MeshSamplingFaceNew,id)
+    quadrature_face_2 = update_id(quadrature_face(a),id)
+    d = num_dims(quadrature_face(a))
+    D = num_dims(mesh_face(a))
+    if d == D
+        mesh_face_2 = update_id(a.mesh_face,id)
+    else
+        mesh_face_2 = a.mesh_face
+    end
+    face0 = MeshSamplingFaceNew(
+                     mesh_face_2,
+                     quadrature_face_2,
+                     a.local_face,
+                     a.tabulated_values,
+                     a.tabulated_gradients,
+                     a.reference_unit_normals)
+    domain = GT.domain(GT.domain(mesh_quadrature(a)))
+    faces_around = GT.faces_around(domain)
+    if faces_around === nothing
+        face1 = face0
+    else
+        face_around = faces_around[inverse_faces(domain)[id]]
+        face1 = update_face_around_id(face0,face_around)
+    end
+    face1
+end
+
+function update_face_around_id(a::MeshSamplingFaceNew,face_around_0)
+    mesh = GT.mesh(a)
+    topo = GT.topology(mesh)
+    d = num_dims(quadrature_face(a))
+    D = num_dims(mesh_face(a))
+    dface = id(quadrature_face(a))
+    domain = GT.domain(GT.domain(mesh_quadrature(a)))
+    faces_around_permutation = GT.faces_around_permutation(domain)
+    if faces_around_permutation !== nothing
+        face = inverse_faces(domain)[dface]
+        face_around = faces_around_permutation[face][face_around_0]
+    else
+        face_around = face_around_0
+    end
+    Dface = face_incidence(topo,d,D)[dface][face_around]
+    mesh_face_2 = update_id(mesh_face(a),Dface)
+    local_face_2 = GT.local_face(mesh_face_2,mesh_face(quadrature_face(a)))
+    MeshSamplingFaceNew(
+                     mesh_face_2,
+                     a.quadrature_face,
+                     local_face_2,
+                     a.tabulated_values,
+                     a.tabulated_gradients,
+                     a.reference_unit_normals)
+end
+
+function update_mesh_face_id(a::MeshSamplingFaceNew,id)
+end
+
+function update_local_face_id(a::MeshSamplingFaceNew,local_id)
 end
 
 function each_face_new(mesh_quadrature::AbstractQuadrature)
     domain = GT.domain(mesh_quadrature)
     d = num_dims(domain)
     mesh = GT.mesh(domain)
-    faces = each_face_new(mesh,Val(d),mesh_quadrature)
-    faces2 = tabulate(value,faces)
-    faces3 = tabulate(ForwardDiff.gradient,faces2)
-    faces3
+    each_face_new(mesh,Val(d),mesh_quadrature)
 end
 
 struct SpaceSamplingFaceNew{A,B,C,D,E} <: AbstractSamplingFaceNew
@@ -267,7 +358,26 @@ mesh_face(a::SpaceSamplingFaceNew) = mesh_face(mesh_sampling_face(a))
 quadrature_face(a::SpaceSamplingFaceNew) = quadrature_face(mesh_sampling_face(a))
 mesh(a::SpaceSamplingFaceNew) = mesh(quadrature_face(a))
 
-function update_id(a::SpaceSamplingFaceNew,id)
+function each_face_new(mesh_space::AbstractSpace,mesh_quadrature::AbstractQuadrature)
+    mesh = GT.mesh(mesh_space)
+    D =  GT.num_dims(mesh_space)
+    mesh_faces = each_face_new(mesh,Val(D),mesh_quadrature)
+    mesh_sampling_face = prototype(mesh_sampling_face)
+    face = SpaceSamplingFaceNew(
+        mesh_space,
+        mesh_sampling_face,
+        tabulated_values,
+        tabulated_gradients,
+        tabulated_jacobians)
+    Each(update_mesh_sampling_face,face,mesh_faces)
+end
+
+function each_face_around_new(a::SpaceSamplingFaceNew)
+    mesh_sampling_faces_around = each_face_around_new(mesh_sampling_face(a))
+    Each(update_mesh_sampling_face,a,mesh_sampling_faces_around)
+end
+
+function update_mesh_sampling_face(a::SpaceSamplingFaceNew,mesh_sampling_face)
     msf = mesh_sampling_face(a)
     msf2 = update_id(msf,id)
     SpaceSamplingFaceNew(
@@ -318,6 +428,9 @@ mesh_sampling_face(a::DiscreteFieldSamplingFaceNew) = a.mesh_sampling_face
 mesh_face(a::DiscreteFieldSamplingFaceNew) = mesh_face(mesh_sampling_face(a))
 quadrature_face(a::DiscreteFieldSamplingFaceNew) = quadrature_face(mesh_sampling_face(a))
 mesh(a::DiscreteFieldSamplingFaceNew) = mesh(quadrature_face(a))
+
+
+
 
 function reference_id(f::AbstractMeshFaceNew)
     mesh = GT.mesh(f)
@@ -410,21 +523,11 @@ function node_coordinates(a::AbstractSpaceFaceNew)
     view(node_x,nodes(a))
 end
 
-function permutation_id(a::AbstractLocalMeshFaceNew)
-    A = parent_face(a)
-    permutation_id(A,a)
-end
-
 function permutation_id(A::AbstractMeshFaceNew,a::AbstractMeshFaceNew)
     T = GT.topology(GT.mesh(A))
     D = GT.num_dims(A)
     d = GT.num_dims(a)
     face_permutation_ids(T,D,d)[id(A)][id(a)]
-end
-
-function node_permutation(a::AbstractLocalMeshFaceNew)
-    A = parent_face(a)
-    node_permutation(A,a)
 end
 
 function node_permutation(A::AbstractMeshFaceNew,a::AbstractMeshFaceNew)
@@ -455,10 +558,13 @@ function diameter(a::AbstractFaceNew)
 end
 
 function tabulate(f,face::AbstractSamplingFaceNew)
-    tabulate(f,face,mesh_face(face))
+    D = num_dims(mesh_face(face))
+    d = num_dims(quadrature_face(face))
+    aligned = Val(d==D)
+    tabulate(f,face,aligned)
 end
 
-function tabulate(f,face::AbstractSamplingFaceNew,mesh_face::AbstractMeshFaceNew)
+function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{true})
     space = GT.mesh_space(face)
     quadrature = GT.mesh_quadrature(face)
     rid_point_x = map(coordinates,reference_quadratures(quadrature))
@@ -470,7 +576,7 @@ function tabulate(f,face::AbstractSamplingFaceNew,mesh_face::AbstractMeshFaceNew
     replace_tabulators(f,face,rid_to_tab)
 end
 
-function tabulate(f,face::AbstractSamplingFaceNew,mesh_face::AbstractLocalMeshFaceNew)
+function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{false})
     space = GT.mesh_space(face)
     quadrature = GT.mesh_quadrature(face)
     D = num_dims(space)
@@ -495,7 +601,7 @@ function tabulate(f,face::AbstractSamplingFaceNew,mesh_face::AbstractLocalMeshFa
             end
         end
     end
-    replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
+    replace_tabulators(f,face,drid_Drid_ldface_perm_tab)
 end
 
 function reference_map(refdface,refDface)
@@ -529,10 +635,13 @@ function reference_map(refdface,refDface)
 end
 
 function tabulator(f,face::AbstractSamplingFaceNew)
-    tabulator(f,face,mesh_face(face))
+    D = num_dims(mesh_face(face))
+    d = num_dims(quadrature_face(face))
+    aligned = Val(d==D)
+    tabulator(f,face,aligned)
 end
 
-function tabulator(f,face::AbstractSamplingFaceNew,mesh_face::AbstractMeshFaceNew)
+function tabulator(f,face::AbstractSamplingFaceNew,aligned::Val{true})
     tabulators = GT.tabulators(f,face)
     drid_tab = tabulators
     dface = face
@@ -540,12 +649,12 @@ function tabulator(f,face::AbstractSamplingFaceNew,mesh_face::AbstractMeshFaceNe
     tab = drid_tab[drid]
 end
 
-function tabulator(f,face::AbstractSamplingFaceNew,mesh_face::AbstractLocalMeshFaceNew)
+function tabulator(f,face::AbstractSamplingFaceNew,aligned::Val{false})
     tabulators = GT.tabulators(f,face)
-    ldface = face
-    Dface = parent_face(ldface)
-    dface = global_face(ldface)
-    perm = permutation_id(ldface)
+    Dface = mesh_face(face)
+    dface = mesh_face(quadrature_face(face))
+    ldface = local_face(face)
+    perm = permutation_id(Dface,ldface)
     drid = reference_id(dface)
     Drid = reference_id(Dface)
     drid_Drid_ldface_perm_tab = tabulators
@@ -618,3 +727,42 @@ function field(f,point::AbstractPointNew)
         values[i]*funs[i]
     end
 end
+
+function setup_unit_normal(a::AbstractFaceNew)
+    d = num_dims(quadrature_face(a))
+    D = num_dims(mesh_face(a))
+    mesh = GT.mesh(a)
+    @assert d + 1 == D
+    Drid_ldface_nref = map(GT.reference_spaces(mesh,D)) do refface
+        GT.normals(GT.mesh(GT.domain(refface)))# TODO rename normals?
+    end
+    replace_reference_unit_normals(a,Drid_ldface_nref)
+end
+
+function reference_unit_normal(a::AbstractFaceNew)
+    Drid_ldface_nref = reference_unit_normals(a)
+    Dface = mesh_face(a)
+    ldface = local_face(a)
+    Drid = reference_id(Dface)
+    Drid_ldface_nref[Drid][id(ldface)]
+end
+
+function unit_normal(a::AbstractPointNew)
+    nref = reference_unit_normal(parent_face(a))
+    J = coordinate(ForwardDiff.jacobian,a)
+    map_unit_normal(J,nref)
+end
+
+function map_unit_normal(J,n)
+    Jt = transpose(J)
+    pinvJt = transpose(inv(Jt*J)*Jt)
+    v = pinvJt*n
+    m = sqrt(v⋅v)
+    if m < eps()
+        return zero(v)
+    else
+        return v/m
+    end
+end
+
+

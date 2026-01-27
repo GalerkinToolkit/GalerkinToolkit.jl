@@ -21,6 +21,8 @@ function num_points(q::AbstractQuadrature)
     length(weights(q))
 end
 
+num_dims(q::AbstractQuadrature) = num_dims(domain(q))
+
 struct FaceQuadrature{A,B,C} <: AbstractFaceQuadrature
     domain::A
     coordinates::B

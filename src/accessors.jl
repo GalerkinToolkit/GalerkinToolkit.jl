@@ -1006,18 +1006,6 @@ function unit_normal(a::MeshFace)
     nphys
 end
 
-function map_unit_normal(J,n)
-    Jt = transpose(J)
-    pinvJt = transpose(inv(Jt*J)*Jt)
-    v = pinvJt*n
-    m = sqrt(v⋅v)
-    if m < eps()
-        return zero(v)
-    else
-        return v/m
-    end
-end
-
 function quadrature_face(quadrature::AbstractQuadrature,d=Val(num_dims(GT.domain(quadrature))))
     domain = GT.domain(quadrature)
     mesh = GT.mesh(domain)
