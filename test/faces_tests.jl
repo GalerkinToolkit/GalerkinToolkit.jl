@@ -127,5 +127,69 @@ for mesh_Dface in mesh_Dfaces
     end
 end
 
+V_faces = GT.each_face_new(V,dΩ;tabulate=(GT.value,GT.gradient))
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+
+V_dfaces = GT.each_face_new(V,dΛ;tabulate=(GT.value,GT.gradient))
+V_dface = V_dfaces[1]
+V_faces = GT.each_face_around_new(V_dface)
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+
+V_faces = GT.each_face_new(V,dΓ;tabulate=(GT.value,GT.gradient))
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+
+uh = GT.zero_field(Float64,V)
+V_faces = GT.each_face_new(uh,dΩ;tabulate=(GT.value,GT.gradient))
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+@show GT.field(GT.value,V_point)
+@show GT.field(GT.gradient,V_point)
+
+V_dfaces = GT.each_face_new(uh,dΛ;tabulate=(GT.value,GT.gradient))
+V_dface = V_dfaces[1]
+V_faces = GT.each_face_around_new(V_dface)
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+@show GT.field(GT.value,V_point)
+@show GT.field(GT.gradient,V_point)
+
+V_faces = GT.each_face_new(uh,dΓ;tabulate=(GT.value,GT.gradient))
+V_face = V_faces[1]
+@show GT.dofs(V_face)
+@show GT.num_dofs(V_face)
+V_points = GT.each_point_new(V_face)
+V_point = V_points[1]
+@show GT.shape_functions(GT.value,V_point)
+@show GT.shape_functions(GT.gradient,V_point)
+@show GT.field(GT.value,V_point)
+@show GT.field(GT.gradient,V_point)
 
 end # module

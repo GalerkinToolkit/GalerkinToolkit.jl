@@ -920,21 +920,6 @@ function at_point(a::MeshFace,point)
     compute_jacobian(a2)
 end
 
-# Do not remove the @noinline
-# it seems to be performance relevant
-@noinline function sum_jacobian(node_x,i_node,i_s,n,J0)
-    J = zero(J0)
-    i = 0
-    while i < n
-        i += 1
-        J += outer(node_x[i_node[i]],i_s[i])
-    end
-    J
-    ##TODO sum leads to much faster than hand-written loop, but why?
-    #the answer was the noinline above. But why?
-    #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
-end
-
 function compute_jacobian(a::MeshFace)
     J0 = a.workspace.jacobian
     if J0 === nothing
@@ -1328,20 +1313,6 @@ function shape_functions(f,a::SpaceFace{AtSkeleton})
     else
         s
     end
-end
-
-function map_shape_function(::typeof(GT.value),space,dof,mesh_face,sref)
-    sref
-end
-
-@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
-    J = jacobian(mesh_face)
-    sphys = transpose(J)\sref
-end
-
-function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_face,sref)
-    J = coordinate(ForwardDiff.jacobian,mesh_face)
-    sphys = sref/J
 end
 
 function weight(a::SpaceFace)

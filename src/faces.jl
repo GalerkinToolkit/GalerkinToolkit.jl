@@ -5,38 +5,46 @@ abstract type AbstractQuadratureFaceNew <: AbstractFaceNew end
 abstract type AbstractSpaceFaceNew <: AbstractFaceNew end
 abstract type AbstractDiscreteFieldFaceNew <: AbstractSpaceFaceNew end
 abstract type AbstractSamplingFaceNew <: AbstractFaceNew end
-
 abstract type AbstractPointNew <: AbstractType end
-#abstract type AbstractQuadraturePointNew <: AbstractPointNew end
-#abstract type AbstractSamplingPointNew <: AbstractPointNew end
+
 
 struct Each{A,B,C}
-    update_id::A
+    update::A
     prototype::B
-    ids::C
+    iterator::C #
 end
-Base.length(iter::Each) = length(iter.ids)
+Base.length(iter::Each) = length(iter.iterator)
 Base.isdone(iter::Each,id) = id > length(iter)
 function Base.getindex(iter::Each,i::Integer)
-    id = iter.ids[i]
-    iter.update_id(iter.prototype,id)
+    item = iter.iterator[i]
+    iter.update(iter.prototype,item)
 end
-function Base.iterate(iter::Each,id=1)
-    if Base.isdone(iter,id)
+function Base.iterate(iter::Each,i=1)
+    if Base.isdone(iter,i)
         nothing
     else
-        accessor = iter[id]
-        (accessor,id+1)
+        accessor = iter[i]
+        (accessor,i+1)
     end
 end
 Base.keys(iter::Each) = LinearIndices((length(iter),))
 prototype(x::Each) = x.prototype
+iterator(x::Each) = x.iterator
 function tabulate(f,x::Each)
-    Each(x.update_id,tabulate(f,x.prototype),x.ids)
+    Each(x.update,tabulate(f,x.prototype),x.iterator)
 end
 
 struct AnyIndexNew <: AbstractType end
 const ANY_INDEX_NEW = AnyIndexNew()
+#function Base.getindex(a::Vector,i::AnyIndexNew)
+#    first(a)
+#end
+#function Base.getindex(a::JaggedArray,i::AnyIndexNew)
+#    first(a)
+#end
+#function Base.getindex(a::Matrix,i::AnyIndexNew,j::AnyIndexNew)
+#    first(a)
+#end
 
 struct MeshFaceNew{A,B,C} <: AbstractMeshFaceNew
     mesh::A
@@ -49,11 +57,11 @@ num_dims(f::MeshFaceNew) = val_parameter(f.num_dims)
 function update_id(face::MeshFaceNew,id)
     MeshFaceNew(face.mesh,face.num_dims,id)
 end
-function update_id(face::MeshFaceNew,face2::MeshFaceNew)
-    @assert num_dims(face) == num_dims(face_2)
-    id = GT.id(face2)
-    MeshFaceNew(face.mesh,face.num_dims,id)
-end
+#function update_id(face::MeshFaceNew,face2::MeshFaceNew)
+#    @assert num_dims(face) == num_dims(face_2)
+#    id = GT.id(face2)
+#    MeshFaceNew(face.mesh,face.num_dims,id)
+#end
 
 function each_face_new(domain::AbstractDomain)
     mesh = GT.mesh(domain)
@@ -145,7 +153,6 @@ function update_id(a::QuadratureFaceNew,face2::MeshFaceNew)
     QuadratureFaceNew(q,GT.id(face2))
 end
 
-
 struct PointNew{A,B} <: AbstractPointNew
     parent_face::A
     id::B
@@ -161,6 +168,13 @@ function each_point_new(face::AbstractFaceNew)
     npoints = num_points(face)
     Each(update_id,point,1:npoints)
 end
+
+struct SpaceFaceNew{A,B} <: AbstractSpaceFaceNew
+    mesh_space::A
+    id::B
+end
+mesh_space(a::SpaceFaceNew) = a.mesh_space
+id(a::SpaceFaceNew) = a.id
 
 struct MeshSamplingFaceNew{A,B,C,D,E,F} <: AbstractSamplingFaceNew
     mesh_face::A
@@ -216,6 +230,8 @@ function replace_reference_unit_normals(a::MeshSamplingFaceNew,reference_unit_no
 end
 
 reference_unit_normals(a::MeshSamplingFaceNew) = a.reference_unit_normals
+
+allocate_shape_funcions(f,a::MeshSamplingFaceNew) = a
 
 function each_face_new(
     mesh::AbstractMesh,
@@ -345,47 +361,139 @@ function each_face_new(mesh_quadrature::AbstractQuadrature)
     each_face_new(mesh,Val(d),mesh_quadrature)
 end
 
-struct SpaceSamplingFaceNew{A,B,C,D,E} <: AbstractSamplingFaceNew
+struct SpaceSamplingFaceNew{A,B,C,D,E,F,G,H} <: AbstractSamplingFaceNew
     mesh_space::A
     mesh_sampling_face::B
     tabulated_values::C
     tabulated_gradients::D
     tabulated_jacobians::E
+    shape_function_values::F
+    shape_function_gradients::G
+    shape_function_jacobians::H
 end
 mesh_space(a::SpaceSamplingFaceNew) = a.mesh_space
 mesh_sampling_face(a::SpaceSamplingFaceNew) = a.mesh_sampling_face
+space_sampling_face(a::SpaceSamplingFaceNew) = a
+mesh_quadrature(a::SpaceSamplingFaceNew) = mesh_quadrature(a.mesh_sampling_face)
 mesh_face(a::SpaceSamplingFaceNew) = mesh_face(mesh_sampling_face(a))
+local_face(a::SpaceSamplingFaceNew) = local_face(mesh_sampling_face(a))
 quadrature_face(a::SpaceSamplingFaceNew) = quadrature_face(mesh_sampling_face(a))
 mesh(a::SpaceSamplingFaceNew) = mesh(quadrature_face(a))
+function space_face(a::SpaceSamplingFaceNew)
+    space = GT.mesh_space(a)
+    f = mesh_face(a)
+    SpaceFaceNew(space,id(f))
+end
+num_faces_around(a::SpaceSamplingFaceNew) = num_faces_around(mesh_sampling_face(a))
 
-function each_face_new(mesh_space::AbstractSpace,mesh_quadrature::AbstractQuadrature)
+function setup_space_sampling_face(a0::SpaceSamplingFaceNew,tabulate)
+    if GT.value in tabulate
+        a1 = GT.tabulate(GT.value,a0)
+    else
+        a1 = a0
+    end
+    if ForwardDiff.gradient in tabulate
+        a2 = GT.tabulate(ForwardDiff.gradient,a1)
+    else
+        a2 = a1
+    end
+    if ForwardDiff.jacobian in tabulate
+        a3 = GT.tabulate(ForwardDiff.jacobian,a2)
+    else
+        a3 = a2
+    end
+    a3
+end
+
+function each_face_new(mesh_space::AbstractSpace,mesh_quadrature::AbstractQuadrature;tabulate=())
     mesh = GT.mesh(mesh_space)
     D =  GT.num_dims(mesh_space)
-    mesh_faces = each_face_new(mesh,Val(D),mesh_quadrature)
-    mesh_sampling_face = prototype(mesh_sampling_face)
-    face = SpaceSamplingFaceNew(
-        mesh_space,
-        mesh_sampling_face,
-        tabulated_values,
-        tabulated_gradients,
-        tabulated_jacobians)
-    Each(update_mesh_sampling_face,face,mesh_faces)
+    mesh_sampling_faces = each_face_new(mesh,Val(D),mesh_quadrature)
+    mesh_sampling_face = prototype(mesh_sampling_faces)
+    ids = GT.iterator(mesh_sampling_faces)
+    tabulated_values = nothing
+    tabulated_gradients = nothing
+    tabulated_jacobians = nothing
+    shape_function_values = nothing
+    shape_function_gradients = nothing
+    shape_function_jacobians = nothing
+    face0 = SpaceSamplingFaceNew(
+                                 mesh_space,
+                                 mesh_sampling_face,
+                                 tabulated_values,
+                                 tabulated_gradients,
+                                 tabulated_jacobians,
+                                 shape_function_values,
+                                 shape_function_gradients,
+                                 shape_function_jacobians,
+                                )
+    face = setup_space_sampling_face(face0,tabulate)
+    Each(update_quadrature_face_id,face,ids)
 end
 
-function each_face_around_new(a::SpaceSamplingFaceNew)
-    mesh_sampling_faces_around = each_face_around_new(mesh_sampling_face(a))
-    Each(update_mesh_sampling_face,a,mesh_sampling_faces_around)
-end
-
-function update_mesh_sampling_face(a::SpaceSamplingFaceNew,mesh_sampling_face)
-    msf = mesh_sampling_face(a)
-    msf2 = update_id(msf,id)
-    SpaceSamplingFaceNew(
+function update_quadrature_face_id(a::SpaceSamplingFaceNew,id)
+    msf = GT.mesh_sampling_face(a)
+    mesh_sampling_face = update_quadrature_face_id(msf,id)
+    a1 = SpaceSamplingFaceNew(
         a.mesh_space,
-        msf2,
+        mesh_sampling_face,
         a.tabulated_values,
         a.tabulated_gradients,
         a.tabulated_jacobians,
+        a.shape_function_values,
+        a.shape_function_gradients,
+        a.shape_function_jacobians,
+       )
+    domain = GT.domain(GT.domain(mesh_quadrature(msf)))
+    faces_around = GT.faces_around(domain)
+    if faces_around === nothing
+        a2 = a1
+    else
+        face_around = faces_around[inverse_faces(domain)[id]]
+        a2 = update_face_around_id_allocation(a1,face_around)
+    end
+    a2
+end
+
+function each_face_around_new(a::SpaceSamplingFaceNew)
+    n_faces_around = num_faces_around(a)
+    ids = 1:n_faces_around
+    Each(update_face_around_id,a,ids)
+end
+
+function update_face_around_id(a::SpaceSamplingFaceNew,face_around_id)
+    a1 = update_face_around_id_parent(a,face_around_id)
+    a2 = update_face_around_id_allocation(a1,face_around_id)
+end
+
+function update_face_around_id_parent(a::SpaceSamplingFaceNew,face_around_id)
+    msf = GT.mesh_sampling_face(a)
+    mesh_sampling_face = update_face_around_id(msf,face_around_id)
+    SpaceSamplingFaceNew(
+                         a.mesh_space,
+                         mesh_sampling_face,
+                         a.tabulated_values,
+                         a.tabulated_gradients,
+                         a.tabulated_jacobians,
+                         a.shape_function_values,
+                         a.shape_function_gradients,
+                         a.shape_function_jacobians,
+                        )
+end
+
+function update_face_around_id_allocation(a::SpaceSamplingFaceNew,face_around_id)
+    v = a.shape_function_values
+    g = a.shape_function_gradients
+    j = a.shape_function_jacobians
+    SpaceSamplingFaceNew(
+        a.mesh_space,
+        a.mesh_sampling_face,
+        a.tabulated_values,
+        a.tabulated_gradients,
+        a.tabulated_jacobians,
+        v === nothing ? v : v[face_around_id],
+        g === nothing ? g : g[face_around_id],
+        j === nothing ? j : j[face_around_id],
        )
 end
 
@@ -396,6 +504,9 @@ function replace_tabulators(f::typeof(value),a::SpaceSamplingFaceNew,tabulated_v
         tabulated_values,
         a.tabulated_gradients,
         a.tabulated_jacobians,
+        a.shape_function_values,
+        a.shape_function_gradients,
+        a.shape_function_jacobians,
        )
 end
 
@@ -406,6 +517,9 @@ function replace_tabulators(f::typeof(ForwardDiff.gradient),a::SpaceSamplingFace
         a.tabulated_values,
         tabulated_gradients,
         a.tabulated_jacobians,
+        a.shape_function_values,
+        a.shape_function_gradients,
+        a.shape_function_jacobians,
        )
 end
 
@@ -416,39 +530,194 @@ function replace_tabulators(f::typeof(ForwardDiff.jacobian),a::SpaceSamplingFace
         a.tabulated_values,
         a.tabulated_gradients,
         tabulated_jacobians,
+        a.shape_function_values,
+        a.shape_function_gradients,
+        a.shape_function_jacobians,
        )
 end
 
-struct DiscreteFieldSamplingFaceNew{A,B} <: AbstractSamplingFaceNew
+function replace_shape_function_allocation(f::typeof(value),a::SpaceSamplingFaceNew,shape_function_values)
+    SpaceSamplingFaceNew(
+        a.mesh_space,
+        a.mesh_sampling_face,
+        a.tabulated_values,
+        a.tabulated_gradients,
+        a.tabulated_jacobians,
+        shape_function_values,
+        a.shape_function_gradients,
+        a.shape_function_jacobians,
+       )
+end
+
+function replace_shape_function_allocation(f::typeof(ForwardDiff.gradient),a::SpaceSamplingFaceNew,shape_function_gradients)
+    SpaceSamplingFaceNew(
+        a.mesh_space,
+        a.mesh_sampling_face,
+        a.tabulated_values,
+        a.tabulated_gradients,
+        a.tabulated_jacobians,
+        a.shape_function_values,
+        shape_function_gradients,
+        a.shape_function_jacobians,
+       )
+end
+
+function replace_shape_function_allocation(f::typeof(ForwardDiff.jacobian),a::SpaceSamplingFaceNew,shape_function_jacobians)
+    SpaceSamplingFaceNew(
+        a.mesh_space,
+        a.mesh_sampling_face,
+        a.tabulated_values,
+        a.tabulated_gradients,
+        a.tabulated_jacobians,
+        a.shape_function_values,
+        a.shape_function_gradients,
+        shape_function_jacobians,
+       )
+end
+
+function tabulators(::typeof(value),a::SpaceSamplingFaceNew)
+    a.tabulated_values
+end
+
+function tabulators(::typeof(ForwardDiff.gradient),a::SpaceSamplingFaceNew)
+    a.tabulated_gradients
+end
+
+function tabulators(::typeof(ForwardDiff.jacobian),a::SpaceSamplingFaceNew)
+    a.tabulated_jacobians
+end
+
+function shape_functions_allocation(::typeof(value),a::SpaceSamplingFaceNew)
+    a.shape_function_values
+end
+
+function shape_functions_allocation(::typeof(ForwardDiff.gradient),a::SpaceSamplingFaceNew)
+    a.shape_function_gradients
+end
+
+function shape_functions_allocation(::typeof(ForwardDiff.jacobian),a::SpaceSamplingFaceNew)
+    a.shape_function_jacobians
+end
+
+struct DiscreteFieldSamplingFaceNew{A,B,C} <: AbstractSamplingFaceNew
     mesh_discrete_field::A
     space_sampling_face::B
+    values_allocation::C
 end
 mesh_space(a::DiscreteFieldSamplingFaceNew) = a.mesh_space
-mesh_sampling_face(a::DiscreteFieldSamplingFaceNew) = a.mesh_sampling_face
+space_sampling_face(a::DiscreteFieldSamplingFaceNew) = a.space_sampling_face
+mesh_discrete_field(a::DiscreteFieldSamplingFaceNew) = a.mesh_discrete_field
+mesh_sampling_face(a::DiscreteFieldSamplingFaceNew) = mesh_sampling_face(space_sampling_face(a))
 mesh_face(a::DiscreteFieldSamplingFaceNew) = mesh_face(mesh_sampling_face(a))
+local_face(a::DiscreteFieldSamplingFaceNew) = local_face(mesh_sampling_face(a))
+space_face(a::DiscreteFieldSamplingFaceNew) = space_face(space_sampling_face(a))
 quadrature_face(a::DiscreteFieldSamplingFaceNew) = quadrature_face(mesh_sampling_face(a))
 mesh(a::DiscreteFieldSamplingFaceNew) = mesh(quadrature_face(a))
+mesh_space(a::DiscreteFieldSamplingFaceNew) = mesh_space(space_sampling_face(a))
+num_faces_around(a::DiscreteFieldSamplingFaceNew) = num_faces_around(mesh_sampling_face(a))
 
+function replace_values_allocation(a::DiscreteFieldSamplingFaceNew,values)
+    DiscreteFieldSamplingFaceNew(
+                                 a.mesh_discrete_field,
+                                 a.space_sampling_face,
+                                 values
+                                )
+end
+values_allocation(a::DiscreteFieldSamplingFaceNew) = a.values_allocation
+tabulators(f,a::DiscreteFieldSamplingFaceNew) = tabulators(f,space_sampling_face(a))
+shape_functions_allocation(f,a::DiscreteFieldSamplingFaceNew) = shape_functions_allocation(f,space_sampling_face(a))
 
+function each_face_new(uh::DiscreteField,mesh_quadrature::AbstractQuadrature;kwargs...)
+    V = GT.space(uh)
+    V_faces = each_face_new(V,mesh_quadrature;kwargs...)
+    space_sampling_face = GT.prototype(V_faces)
+    ids = GT.iterator(V_faces)
+    values_allocation = nothing
+    face0 = DiscreteFieldSamplingFaceNew(uh,space_sampling_face,values_allocation)
+    face = allocate_values(face0)
+    Each(update_quadrature_face_id,face,ids)
+end
 
+function update_quadrature_face_id(a::DiscreteFieldSamplingFaceNew,id)
+    ssf = GT.space_sampling_face(a)
+    space_sampling_face = update_quadrature_face_id(ssf,id)
+    a1 = DiscreteFieldSamplingFaceNew(
+                                      a.mesh_discrete_field,
+                                      space_sampling_face,
+                                      a.values_allocation
+                                     )
+    domain = GT.domain(GT.domain(mesh_quadrature(ssf)))
+    faces_around = GT.faces_around(domain)
+    if faces_around === nothing
+        a2 = a1
+    else
+        face_around = faces_around[inverse_faces(domain)[id]]
+        a2 = update_face_around_id_allocation(a1,face_around)
+    end
+    a2
+end
+
+function each_face_around_new(a::DiscreteFieldSamplingFaceNew)
+    n_faces_around = num_faces_around(a)
+    ids = 1:n_faces_around
+    Each(update_face_around_id,a,ids)
+end
+
+function update_face_around_id(a::DiscreteFieldSamplingFaceNew,face_around_id)
+    a1 = update_face_around_id_parent(a,face_around_id)
+    a2 = update_face_around_id_allocation(a1,face_around_id)
+end
+
+function update_face_around_id_parent(a::DiscreteFieldSamplingFaceNew,face_around_id)
+    ssf = GT.space_sampling_face(a)
+    space_sampling_face = update_face_around_id(ssf,face_around_id)
+    a1 = DiscreteFieldSamplingFaceNew(
+                                      a.mesh_discrete_field,
+                                      space_sampling_face,
+                                      a.values_allocation
+                                     )
+end
+
+function update_face_around_id_allocation(a::DiscreteFieldSamplingFaceNew,face_around_id)
+    v = a.values_allocation
+    a1 = DiscreteFieldSamplingFaceNew(
+                                      a.mesh_discrete_field,
+                                      a.space_sampling_face,
+                                      v === nothing ? v : v[face_around_id],
+                                     )
+end
 
 function reference_id(f::AbstractMeshFaceNew)
     mesh = GT.mesh(f)
     d = num_dims(f)
     f_id = GT.id(f)
-    face_reference_id(mesh,d)[f_id]
+    fr = face_reference_id(mesh,d)
+    if f_id isa AnyIndexNew
+        one(eltype(fr))
+    else
+        fr[f_id]
+    end
 end
 
 function reference_id(f::AbstractSpaceFaceNew)
     space = GT.mesh_space(f)
     f_id = GT.id(f)
-    face_reference_id(space)[f_id]
+    fr = face_reference_id(space)
+    if f_id isa AnyIndexNew
+        one(eltype(fr))
+    else
+        fr[f_id]
+    end
 end
 
 function reference_id(f::AbstractQuadratureFaceNew)
     q = GT.mesh_quadrature(f)
     f_id = GT.id(f)
-    face_reference_id(q)[f_id]
+    if f_id isa AnyIndexNew
+        one(eltype(face_reference_id(q)))
+    else
+        face_reference_id(q)[f_id]
+    end
 end
 
 function reference_space(f::AbstractMeshFaceNew)
@@ -498,13 +767,25 @@ function nodes(f::AbstractMeshFaceNew)
     d = num_dims(f)
     mesh = GT.mesh(f)
     f_id = GT.id(f)
-    face_nodes(mesh,d)[f_id]
+    fn = face_nodes(mesh,d)
+    if f_id isa AnyIndexNew
+        T = eltype(eltype(fn))
+        T[]
+    else
+        fn[f_id]
+    end
 end
 
 function nodes(f::AbstractSpaceFaceNew)
-    mesh = GT.space(f)
+    space = GT.space(f)
     f_id = GT.id(f)
-    face_nodes(mesh)[f_id]
+    fn = face_nodes(space)
+    if f_id isa AnyIndexNew
+        T = eltype(eltype(fn))
+        T[]
+    else
+        fn[f_id]
+    end
 end
 
 function num_nodes(a::AbstractFaceNew)
@@ -515,6 +796,17 @@ function node_coordinates(a::AbstractMeshFaceNew)
     mesh = GT.mesh(a) 
     node_x = node_coordinates(mesh)
     view(node_x,nodes(a))
+end
+
+function dofs(a::AbstractFaceNew)
+    space = GT.mesh_space(a)
+    face_dofs = GT.face_dofs(space)
+    i = id(a)
+    face_dofs[i]
+end
+
+function num_dofs(a::AbstractFaceNew)
+    length(dofs(a))
 end
 
 function node_coordinates(a::AbstractSpaceFaceNew)
@@ -564,6 +856,20 @@ function tabulate(f,face::AbstractSamplingFaceNew)
     tabulate(f,face,aligned)
 end
 
+function allocate_shape_funcions(f,face::AbstractSamplingFaceNew)
+    D = num_dims(mesh_face(face))
+    d = num_dims(quadrature_face(face))
+    aligned = Val(d==D)
+    allocate_shape_funcions(f,face,aligned)
+end
+
+function allocate_values(face::AbstractSamplingFaceNew)
+    D = num_dims(mesh_face(face))
+    d = num_dims(quadrature_face(face))
+    aligned = Val(d==D)
+    allocate_values(face,aligned)
+end
+
 function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{true})
     space = GT.mesh_space(face)
     quadrature = GT.mesh_quadrature(face)
@@ -573,7 +879,27 @@ function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{true})
     rid_to_tab = map(rid_point_x,reference_spaces(space)) do point_to_x, refface
         collect(permutedims(tabulator(refface)(f,point_to_x))) # TODO fix this globally
     end
-    replace_tabulators(f,face,rid_to_tab)
+    face1 = replace_tabulators(f,face,rid_to_tab)
+    allocate_shape_funcions(f,face1)
+end
+
+function allocate_shape_funcions(f,face::AbstractSamplingFaceNew,aligned::Val{true})
+    space = GT.mesh_space(face)
+    point = prototype(each_point_new(face))
+    dof = ANY_INDEX_NEW
+    sphys = shape_function(f,point,dof)
+    ndofsr = max_num_reference_dofs(space)
+    dof_sphys = zeros(typeof(sphys),ndofsr)
+    replace_shape_function_allocation(f,face,dof_sphys)
+end
+
+function allocate_values(face::AbstractSamplingFaceNew,aligned::Val{true})
+    space = GT.mesh_space(face)
+    uh = GT.mesh_discrete_field(face)
+    ndofsr = max_num_reference_dofs(space)
+    T = eltype(GT.free_values(uh))
+    alloc = zeros(T,ndofsr)
+    replace_values_allocation(face,alloc)
 end
 
 function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{false})
@@ -601,7 +927,31 @@ function tabulate(f,face::AbstractSamplingFaceNew,aligned::Val{false})
             end
         end
     end
-    replace_tabulators(f,face,drid_Drid_ldface_perm_tab)
+    face1 = replace_tabulators(f,face,drid_Drid_ldface_perm_tab)
+    allocate_shape_funcions(f,face1)
+end
+
+function allocate_shape_funcions(f,face::AbstractSamplingFaceNew,aligned::Val{false})
+    space = GT.mesh_space(face)
+    point = prototype(each_point_new(face))
+    dof = ANY_INDEX_NEW
+    sphys = shape_function(f,point,dof)
+    ndofsr = max_num_reference_dofs(space)
+    max_num_faces_around = 2 # TODO
+    nfa = max_num_faces_around
+    dof_sphys = [zeros(typeof(sphys),ndofsr) for _ in 1:nfa]
+    replace_shape_function_allocation(f,face,dof_sphys)
+end
+
+function allocate_values(face::AbstractSamplingFaceNew,aligned::Val{false})
+    space = GT.mesh_space(face)
+    uh = GT.mesh_discrete_field(face)
+    ndofsr = max_num_reference_dofs(space)
+    T = eltype(GT.free_values(uh))
+    max_num_faces_around = 2 # TODO
+    nfa = max_num_faces_around
+    alloc = [zeros(T,ndofsr) for _ in 1:nfa]
+    replace_values_allocation(face,alloc)
 end
 
 function reference_map(refdface,refDface)
@@ -654,25 +1004,116 @@ function tabulator(f,face::AbstractSamplingFaceNew,aligned::Val{false})
     Dface = mesh_face(face)
     dface = mesh_face(quadrature_face(face))
     ldface = local_face(face)
-    perm = permutation_id(Dface,ldface)
+    if GT.id(dface) isa AnyIndexNew
+        perm = 1
+    else
+        perm = permutation_id(Dface,ldface)
+    end
+    if ldface === nothing
+        ldid = 1
+    else
+        ldid = GT.id(ldface)
+    end
     drid = reference_id(dface)
     Drid = reference_id(Dface)
     drid_Drid_ldface_perm_tab = tabulators
-    drid_Drid_ldface_perm_tab[drid][Drid][id(ldface)][perm]
+    drid_Drid_ldface_perm_tab[drid][Drid][ldid][perm]
+end
+
+function dofs(face::AbstractSamplingFaceNew)
+    sf = space_face(face)
+    dofs(sf)
+end
+
+function shape_functions_allocation(f,point::AbstractPointNew)
+    sf = space_sampling_face(parent_face(point))
+    shape_functions_allocation(f,sf)
 end
 
 function shape_functions(f,point::AbstractPointNew)
+    map_shape_functions!(f,point)
+    phys_funs = shape_functions_allocation(f,point)
+    ndofs = num_dofs(parent_face(point))
+    view(phys_funs,1:ndofs)
+end
+
+function shape_function(f,point::AbstractPointNew,dof)
+    space = mesh_space(parent_face(point))
+    sref = reference_shape_function(f,point,dof)
+    point2 = mesh_sampling_point(point)
+    sphys = map_shape_function(f,space,dof,point2,sref)
+end
+
+function map_shape_functions!(f,point::AbstractPointNew)
+    space = mesh_space(parent_face(point))
+    point2 = mesh_sampling_point(point)
     ref_funs = reference_shape_functions(f,point)
     phys_funs = shape_functions_allocation(f,point)
-    map_shape_functions!(f,phys_funs,ref_funs)
-    phys_funs
+    ndofs = length(ref_funs)
+    dof = 0
+    while dof < ndofs
+        dof += 1
+        sref = ref_funs[dof]
+        sphys = map_shape_function(f,space,dof,point2,sref)
+        phys_funs[dof] = sphys
+    end
+    nothing
 end
 
 function reference_shape_functions(f,point::AbstractPointNew)
     tabulator = GT.tabulator(f,parent_face(point))
     p_id = id(point)
-    ref_funs = view(tabulator,:,p_id)
+    if p_id isa AnyIndexNew
+        ref_funs = view(tabulator,:,1)
+    else
+        ref_funs = view(tabulator,:,p_id)
+    end
     ref_funs
+end
+
+function reference_shape_function(f,point::AbstractPointNew,dof)
+    tabulator = GT.tabulator(f,parent_face(point))
+    p_id = id(point)
+    if dof isa AnyIndexNew
+        zero(eltype(tabulator))
+    else
+        tabulator[dof,p_id]
+    end
+end
+
+function values(a::AbstractFaceNew)
+    fill_values!(a)
+    v = values_allocation(a)
+    ndofs = num_dofs(a)
+    view(v,1:ndofs)
+end
+
+function fill_values!(a::AbstractFaceNew)
+    v = values_allocation(a)
+    uh = mesh_discrete_field(a)
+    fv = free_values(uh)
+    dv = dirichlet_values(uh)
+    dofs = GT.dofs(a)
+    for i in 1:length(dofs)
+        g = dofs[i]
+        if g < 0
+            iv = dv[-g]
+        else
+            iv = fv[g]
+        end
+        v[i] = iv
+    end
+    nothing
+end
+
+function field(f,a::AbstractPointNew)
+    s = shape_functions(f,a)
+    pf = parent_face(a)
+    x = values(pf)
+    n = num_dofs(pf)
+    zi = zero(eltype(x))*zero(eltype(s))
+    z = zero(zi+zi)
+    sum(i->x[i]*s[i],1:n;init=z)
 end
 
 function num_points(a::AbstractFaceNew)
@@ -700,12 +1141,35 @@ function coordinate(::typeof(value),point::AbstractPointNew)
     sum(i->x[i]*s[i],1:n)
 end
 
+# Do not remove the @noinline
+# it seems to be performance relevant
+@noinline function sum_jacobian(node_x,i_node,i_s,n,J0)
+    J = zero(J0)
+    i = 0
+    while i < n
+        i += 1
+        J += outer(node_x[i_node[i]],i_s[i])
+    end
+    J
+    ##TODO sum leads to much faster than hand-written loop, but why?
+    #the answer was the noinline above. But why?
+    #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
+end
+
 function coordinate(::typeof(ForwardDiff.jacobian),point::AbstractPointNew)
+    face = parent_face(point)
+    mesh = GT.mesh(face)
     a = mesh_sampling_point(point)
-    s = reference_shape_functions(ForwardDiff.gradient,a)
-    x = node_coordinates(parent_face(a))
-    n = length(s)
-    sum(i->outer(x[i],s[i]),1:n)
+    i_s = reference_shape_functions(ForwardDiff.gradient,a)
+    node_x = node_coordinates(mesh)
+    i_node = GT.nodes(mesh_face(face))
+    n = length(i_node)
+    x0 = zero(eltype(node_x))
+    s0 = zero(eltype(i_s))
+    o0 = outer(x0,s0)
+    J0 = zero(o0+o0)
+    J = sum_jacobian(node_x,i_node,i_s,n,J0)
+    #sum(i->outer(x[i],s[i]),1:n)
 end
 
 function reference_weight(a::AbstractPointNew)
@@ -717,15 +1181,6 @@ function weight(a::AbstractPointNew)
     w = reference_weight(a)
     J = coordinate(ForwardDiff.jacobian,a)
     change_of_measure(J)*w
-end
-
-function field(f,point::AbstractPointNew)
-    values = GT.values(face(point))
-    funs = GT.shape_functions(f,point)
-    nvalues = length(values)
-    sum(1:nvalues) do i
-        values[i]*funs[i]
-    end
 end
 
 function setup_unit_normal(a::AbstractFaceNew)
@@ -765,4 +1220,17 @@ function map_unit_normal(J,n)
     end
 end
 
+function map_shape_function(::typeof(GT.value),space,dof,mesh_face,sref)
+    sref
+end
+
+@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
+    J = jacobian(mesh_face)
+    sphys = transpose(J)\sref
+end
+
+function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_face,sref)
+    J = jacobian(mesh_face)
+    sphys = sref/J
+end
 
