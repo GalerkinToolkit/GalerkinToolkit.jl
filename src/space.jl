@@ -1030,6 +1030,10 @@ function lagrange_face_space(
     space2 = replace_workspace(space,workspace)
 end
 
+function normals(a::AbstractFaceSpace)
+    GT.normals(GT.mesh(GT.domain(a)))
+end
+
 @auto_hash_equals struct LagrangeFaceSpace{A,B,C,D,E,F,G,W} <: AbstractFaceSpace
     domain::A
     order_per_dir::B
