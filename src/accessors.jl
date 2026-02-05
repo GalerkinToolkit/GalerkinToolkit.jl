@@ -1346,7 +1346,7 @@ function map_shape_function(::typeof(GT.value),space,dof,mesh_face,sref)
     sref
 end
 
-@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
+function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
     J = jacobian(mesh_face)
     sphys = transpose(J)\sref
 end

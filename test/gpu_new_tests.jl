@@ -66,7 +66,9 @@ function cpu_loop_4!(b,bf,uh_faces)
                 bf[i] += ux_dx⋅sx[i]
             end
         end
-        b[dofs] += bf
+        for i in 1:n
+            b[dofs[i]] += bf[i]
+        end
     end
 end
 
@@ -91,7 +93,9 @@ function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
                 bf[i] += ux_dx⋅sx[i]
             end
         end
-        b[dofs] += bf
+        for i in 1:n
+            b[dofs[i]] += bf[i]
+        end
     end
 end
 

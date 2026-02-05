@@ -699,7 +699,10 @@ function map_shape_functions!(f,point::AbstractPointNew)
     i_fun = shape_functions(f,alloc)
     i_p_ref_fun = reference_shape_functions(f,alloc)
     p = id(point)
-    for i in 1:size(i_p_ref_fun,1)
+    ndofs = size(i_p_ref_fun,1)
+    i = 0
+    while i < ndofs
+        i += 1
         ref_fun = i_p_ref_fun[i,p]
         fun = map_shape_function(f,space,i,point,ref_fun)
         i_fun[i] = fun
