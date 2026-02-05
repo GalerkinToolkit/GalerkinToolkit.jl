@@ -7,43 +7,7 @@ import Adapt
 import PartitionedArrays as PA
 import GalerkinToolkit as GT
 
-# Goal integrate function f(x)
 f(x) = 2*sin(sum(x))
-# on a domain Ω defined by a computational mesh
-# (a square in this example)
-
-# Start at CPU
-domain = (0,1,0,1)
-cells = (4,4)
-mesh = GT.cartesian_mesh(domain,cells)
-Ω = GT.interior(mesh)
-degree = 4
-dΩ = GT.quadrature(Ω,degree)
-
-k = 1
-V = GT.lagrange_space(Ω,k)
-u = GT.analytical_field(f,Ω)
-uh = GT.interpolate(u,V)
-
-tabulate = (GT.value,GT.gradient)
-dΩ_faces_cpu = GT.each_face_new(dΩ)
-V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
-uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
-
-# This is not needed in practice, just to make sure that
-# we do not break anything when adapting.
-dΩ_faces_cpu = Adapt.adapt_structure(Array,dΩ_faces_cpu)
-V_faces_cpu = Adapt.adapt_structure(Array,V_faces_cpu)
-uh_faces_cpu = Adapt.adapt_structure(Array,uh_faces_cpu)
-
-dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes=GT.face_minor_array)
-
-#dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
-#dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;
-#    face_dofs_layout=:face_major, # :face_minor
-#    granularity=:face_per_thread, # :face_per_block
-#    shape_functions_location =:global_memory, # :shared_memory, :kernel_memory
-#   )
 
 # 0-form for analytical solution
 function cpu_loop_1(dΩ_faces)
@@ -57,7 +21,6 @@ function cpu_loop_1(dΩ_faces)
     end
     return s
 end
-@show r_cpu = cpu_loop_1(dΩ_faces_cpu)
 
 # 0-form for discrete field
 function cpu_loop_2(uh_faces)
@@ -71,7 +34,6 @@ function cpu_loop_2(uh_faces)
     end
     return s
 end
-@show r_cpu = cpu_loop_2(uh_faces_cpu)
 
 # 0-form for discrete field but with a syntax that potentially
 # reuses the jacobians.
@@ -88,12 +50,8 @@ function cpu_loop_3(uh_faces,dΩ_faces)
     end
     return s
 end
-@show r_cpu = cpu_loop_3(uh_faces_cpu,dΩ_faces_cpu)
 
 # 1-form equivalent to matrix free
-b = zeros(GT.num_free_dofs(V))
-nmax = GT.max_num_reference_dofs(V)
-bf = zeros(nmax)
 function cpu_loop_4!(b,bf,uh_faces)
     for uh_face in uh_faces
         dofs = GT.dofs(uh_face)
@@ -111,13 +69,10 @@ function cpu_loop_4!(b,bf,uh_faces)
         b[dofs] += bf
     end
 end
-r_cpu = cpu_loop_4!(b,bf,uh_faces_cpu)
-@show norm(b)
 
 # 1-form equivalent to matrix free
 # where the discrete field
 # and trial functions are potentially different
-fill!(b,0)
 function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
     for dΩ_face in dΩ_faces
         V_face = V_faces[dΩ_face]
@@ -139,11 +94,8 @@ function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
         b[dofs] += bf
     end
 end
-r_cpu = cpu_loop_5!(b,bf,uh_faces_cpu,V_faces_cpu,dΩ_faces_cpu)
-@show norm(b)
 
 # 2-form assembly in coo format
-
 function cpu_loop_6_count(V_faces)
     num_nz = 0
     for V_face in V_faces
@@ -194,25 +146,93 @@ function cpu_loop_6_numeric!(AV,Af,V_faces)
     end
 end
 
-num_nz = cpu_loop_6_count(V_faces_cpu)
-AI = zeros(Int32,num_nz)
-AJ = zeros(Int32,num_nz)
-AV = zeros(num_nz)
-Af = zeros(nmax,nmax)
-cpu_loop_6_symbolic!(AI,AJ,V_faces_cpu)
-cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
-n_global = GT.num_dofs(V)
-A,Acache = PA.sparse_matrix(AI,AJ,AV,n_global,n_global;reuse=Val(true))
-x = GT.free_values(uh)
-b = A*x
-@show norm(b)
+function main_cpu(params)
+    (;face_nodes_layout,face_dofs_layout) = params
 
-# Loop using a previously built matrix
-fill(AV,0)
-cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
-PA.sparse_matrix!(A,AV,Acache)
-b = A*x
-@show norm(b)
+    # Start at CPU
+    domain = (0,1,0,1)
+    cells = (4,4)
+    mesh = GT.cartesian_mesh(domain,cells)
+    Ω = GT.interior(mesh)
+    degree = 4
+    dΩ = GT.quadrature(Ω,degree)
+
+    k = 1
+    V = GT.lagrange_space(Ω,k)
+    u = GT.analytical_field(f,Ω)
+    uh = GT.interpolate(u,V)
+
+    tabulate = (GT.value,GT.gradient)
+    dΩ_faces_cpu = GT.each_face_new(dΩ)
+    V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
+    uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
+
+    # This is not needed in practice, just to make sure that
+    # we do not break anything when adapting.
+    dΩ_faces_cpu = Adapt.adapt_structure(Array,dΩ_faces_cpu)
+    V_faces_cpu = Adapt.adapt_structure(Array,V_faces_cpu)
+    uh_faces_cpu = Adapt.adapt_structure(Array,uh_faces_cpu)
+
+    # Change data layout
+    dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes_layout)
+    V_faces_cpu = GT.change_data_layout(V_faces_cpu;face_nodes_layout,face_dofs_layout)
+    uh_faces_cpu = GT.change_data_layout(uh_faces_cpu;face_nodes_layout,face_dofs_layout)
+
+    #dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
+    #dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;
+    #    face_dofs_layout=:face_major, # :face_minor
+    #    granularity=:face_per_thread, # :face_per_block
+    #    shape_functions_location =:global_memory, # :shared_memory, :kernel_memory
+    #   )
+
+    @show r_cpu = cpu_loop_1(dΩ_faces_cpu)
+    @show r_cpu = cpu_loop_2(uh_faces_cpu)
+    @show r_cpu = cpu_loop_3(uh_faces_cpu,dΩ_faces_cpu)
+
+    b = zeros(GT.num_free_dofs(V))
+    nmax = GT.max_num_reference_dofs(V)
+    bf = zeros(nmax)
+    r_cpu = cpu_loop_4!(b,bf,uh_faces_cpu)
+    @show norm(b)
+
+    fill!(b,0)
+    r_cpu = cpu_loop_5!(b,bf,uh_faces_cpu,V_faces_cpu,dΩ_faces_cpu)
+    @show norm(b)
+
+    num_nz = cpu_loop_6_count(V_faces_cpu)
+    AI = zeros(Int32,num_nz)
+    AJ = zeros(Int32,num_nz)
+    AV = zeros(num_nz)
+    Af = zeros(nmax,nmax)
+    cpu_loop_6_symbolic!(AI,AJ,V_faces_cpu)
+    cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
+    n_global = GT.num_dofs(V)
+    A,Acache = PA.sparse_matrix(AI,AJ,AV,n_global,n_global;reuse=Val(true))
+    x = GT.free_values(uh)
+    b = A*x
+    @show norm(b)
+
+    # Loop using a previously built matrix
+    fill(AV,0)
+    cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
+    PA.sparse_matrix!(A,AV,Acache)
+    b = A*x
+    @show norm(b)
+
+end
+
+layouts = (PA.jagged_array,GT.face_minor_array,GT.face_major_array)
+for face_dofs_layout in layouts
+    for face_nodes_layout in layouts
+        params = (;face_nodes_layout,face_dofs_layout)
+        main_cpu(params)
+    end
+end
+
+
+
+
+
 
 
 

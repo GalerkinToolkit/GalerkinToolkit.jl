@@ -6,9 +6,23 @@ abstract type AbstractTabulation <: AbstractType end
 ## Data-Layout
 ## ===========
 
-struct FaceMinorArray{A,B} <: AbstractType
+struct FaceMinorArray{T,A,B} <: AbstractVector{T}
     data::A
     stride::B
+    function FaceMinorArray(data,stride)
+        T = typeof(view(data,1:0))
+        A = typeof(data)
+        B = typeof(stride)
+        new{T,A,B}(data,stride)
+    end
+end
+
+Base.length(a::FaceMinorArray) = div(length(a.data),a.stride)
+function Base.getindex(a::FaceMinorArray,f::Integer)
+    stride = a.stride
+    offset = (f-1)*stride
+    r = (1+offset):(stride+offset)
+    view(a.data,r)
 end
 
 function face_minor_array(a::PartitionedArrays.AbstractJaggedArray)
@@ -17,9 +31,24 @@ function face_minor_array(a::PartitionedArrays.AbstractJaggedArray)
     FaceMinorArray(a.data,stride)
 end
 
-struct FaceMajorArray{A,B} <: AbstractType
+struct FaceMajorArray{T,A,B} <: AbstractVector{T}
     data::A
     stride::B
+    function FaceMajorArray(data,stride)
+        T = typeof(view(data,1:1:0))
+        A = typeof(data)
+        B = typeof(stride)
+        new{T,A,B}(data,stride)
+    end
+end
+
+Base.length(a::FaceMajorArray) = div(length(a.data),a.stride)
+function Base.getindex(a::FaceMajorArray,f::Integer)
+    stride = a.stride
+    l = length(a.data)
+    n = div(l,stride)
+    r = f:stride:((n-1)*stride+f)
+    view(a.data,r)
 end
 
 function face_major_array(a::PartitionedArrays.AbstractJaggedArray)
@@ -101,7 +130,7 @@ function Adapt.adapt_structure(to,x::TabulatedMesh)
                   reference_coordinates,)
 end
 
-function change_data_layout(x::TabulatedMesh;face_nodes)
+function change_data_layout(x::TabulatedMesh;face_nodes_layout=identity)
     TabulatedMesh(
                   x.mesh,
                   x.num_dims,
@@ -109,7 +138,7 @@ function change_data_layout(x::TabulatedMesh;face_nodes)
                   x.reference_shape_functions_value,
                   x.reference_shape_functions_gradient,
                   x.reference_unit_normals,
-                  face_nodes(x.face_nodes),
+                  face_nodes_layout(x.face_nodes),
                   x.node_coordinates,
                   x.reference_weights,
                   x.reference_coordinates,)
@@ -242,6 +271,23 @@ function Adapt.adapt_structure(to,x::TabulatedSpace)
                    face_dofs,
                   )
 end
+
+function change_data_layout(x::TabulatedSpace;face_dofs_layout=identity,kwargs...)
+    tabulated_mesh = change_data_layout(x.tabulated_mesh;kwargs...)
+    TabulatedSpace(
+                   x.space,
+                   tabulated_mesh,
+                   x.reference_shape_functions_value,
+                   x.reference_shape_functions_gradient,
+                   x.reference_shape_functions_jacobian,
+                   x.shape_functions_value,
+                   x.shape_functions_gradient,
+                   x.shape_functions_jacobian,
+                   face_dofs_layout(x.face_dofs),
+                  )
+end
+
+
 function each_face_new(space::AbstractSpace, quadrature::AbstractQuadrature;tabulate=())
     state = GT.tabulate(space,quadrature;tabulate)
     each_face_new(state)
@@ -318,6 +364,16 @@ function Adapt.adapt_structure(to,x::TabulatedField)
                    tabulated_space,
                    free_values,
                    dirichlet_values,
+                  )
+end
+
+function change_data_layout(x::TabulatedField;kwargs...)
+    tabulated_space = change_data_layout(x.tabulated_space;kwargs...)
+    TabulatedField(
+                   x.field,
+                   tabulated_space,
+                   x.free_values,
+                   x.dirichlet_values,
                   )
 end
 
@@ -659,7 +715,19 @@ function num_dofs(face::AbstractFaceNew)
     alloc = GT.tabulated_space(face)
     f_i_dof = face_dofs(alloc)
     f = id(face)
+    num_dofs_impl(f_i_dof,f)
+end
+
+function num_dofs_impl(f_i_dof::PartitionedArrays.AbstractJaggedArray,f)
     f_i_dof.ptrs[f+1] - f_i_dof.ptrs[f]
+end
+
+function num_dofs_impl(f_i_dof::FaceMajorArray,f)
+    div(length(f_i_dof.data),f_i_dof.stride)
+end
+
+function num_dofs_impl(f_i_dof::FaceMinorArray,f)
+    f_i_dof.stride
 end
 
 function field(f,point::AbstractPointNew)
@@ -677,7 +745,7 @@ function field(f,point::AbstractPointNew)
     sum_field_no_views(free_dof_val,diri_dof_val,f_i_dof,i_fun,f,J0)
 end
 
-@noinline function sum_field_no_views(free_dof_val,diri_dof_val,f_i_dof,i_fun,f,J0)
+@noinline function sum_field_no_views(free_dof_val,diri_dof_val,f_i_dof::PartitionedArrays.AbstractJaggedArray,i_fun,f,J0)
     J = zero(J0)
     i = 0
     n = length(i_fun)
@@ -695,8 +763,49 @@ end
         J += val*fun
     end
     J
-    ##TODO sum leads to much faster than hand-written loop, but why?
-    #the answer was the noinline above. But why?
-    #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
 end
+
+@noinline function sum_field_no_views(free_dof_val,diri_dof_val,f_i_dof::FaceMajorArray,i_fun,f,J0)
+    J = zero(J0)
+    i = 0
+    n = length(i_fun)
+    stride = f_i_dof.stride
+    while i < n
+        ptr = i*stride + f
+        i += 1
+        dof = f_i_dof.data[ptr]
+        if dof < 0
+            val = diri_dof_val[-dof]
+        else
+            val = free_dof_val[dof]
+        end
+        fun = i_fun[i]
+        J += val*fun
+    end
+    J
+end
+
+@noinline function sum_field_no_views(free_dof_val,diri_dof_val,f_i_dof::FaceMinorArray,i_fun,f,J0)
+    J = zero(J0)
+    i = 0
+    n = length(i_fun)
+    stride = f_i_dof.stride
+    offset = (f-one(f))*stride
+    while i < n
+        i += 1
+        ptr = i + offset
+        dof = f_i_dof.data[ptr]
+        if dof < 0
+            val = diri_dof_val[-dof]
+        else
+            val = free_dof_val[dof]
+        end
+        fun = i_fun[i]
+        J += val*fun
+    end
+    J
+end
+
+
+
 
