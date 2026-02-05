@@ -3,6 +3,44 @@ abstract type AbstractPointNew <: AbstractType end
 abstract type AbstractTabulation <: AbstractType end
 
 ## ===========
+## Data-Layout
+## ===========
+
+struct FaceMinorArray{A,B} <: AbstractType
+    data::A
+    stride::B
+end
+
+function face_minor_array(a::PartitionedArrays.AbstractJaggedArray)
+    # we assume that the stride is constant
+    stride = a.ptrs[2] - a.ptrs[1]
+    FaceMinorArray(a.data,stride)
+end
+
+struct FaceMajorArray{A,B} <: AbstractType
+    data::A
+    stride::B
+end
+
+function face_major_array(a::PartitionedArrays.AbstractJaggedArray)
+    # we assume that the stride is constant
+    nfaces = length(a.ptrs) - 1
+    data = similar(a.data)
+    # This is essentially a naive matrix transposition.
+    # which can be improved.
+    # This also only works on CPUs
+    for face in 1:nfaces
+        pini = a.ptrs[face]
+        pend = a.ptrs[face+1]-1
+        for (i,p) in enumerate(pini:pend)
+            k = (i-1)*nfaces + face
+            data[k] = a.data[p]
+        end
+    end
+    FaceMajorArray(data,nfaces)
+end
+
+## ===========
 ## Mesh-related
 ## ===========
 
@@ -62,6 +100,21 @@ function Adapt.adapt_structure(to,x::TabulatedMesh)
                   reference_weights,
                   reference_coordinates,)
 end
+
+function change_data_layout(x::TabulatedMesh;face_nodes)
+    TabulatedMesh(
+                  x.mesh,
+                  x.num_dims,
+                  x.quadrature,
+                  x.reference_shape_functions_value,
+                  x.reference_shape_functions_gradient,
+                  x.reference_unit_normals,
+                  face_nodes(x.face_nodes),
+                  x.node_coordinates,
+                  x.reference_weights,
+                  x.reference_coordinates,)
+end
+
 
 function at_face_id(state::TabulatedMesh,face_id)
     TabulatedFace(state,face_id,nothing)
@@ -173,9 +226,9 @@ function Adapt.adapt_structure(to,x::TabulatedSpace)
     reference_shape_functions_value = Adapt.adapt_structure(to,x.reference_shape_functions_value)
     reference_shape_functions_gradient = Adapt.adapt_structure(to,x.reference_shape_functions_gradient)
     reference_shape_functions_jacobian = Adapt.adapt_structure(to,x.reference_shape_functions_jacobian)
-    shape_functions_value = nothing
-    shape_functions_gradient = nothing
-    shape_functions_jacobian = nothing
+    shape_functions_value = Adapt.adapt_structure(to,x.shape_functions_value)
+    shape_functions_gradient = Adapt.adapt_structure(to,x.shape_functions_gradient)
+    shape_functions_jacobian = Adapt.adapt_structure(to,x.shape_functions_jacobian)
     face_dofs = Adapt.adapt_structure(to,x.face_dofs)
     TabulatedSpace(
                    space,
@@ -293,6 +346,12 @@ function at_mesh_point(state::TabulatedField,face,mesh_point)
     point = PointNew(face,id(mesh_point),space_point)
 end
 
+
+
+
+
+
+
 ## ===========
 ## Common functions
 ## ===========
@@ -334,6 +393,14 @@ function Adapt.adapt_structure(to,x::Each)
          update,
          state,
          iterator,
+        )
+end
+
+function change_data_layout(a::Each;kwargs...)
+    Each(
+         a.update,
+         change_data_layout(a.state;kwargs...),
+         a.iterator,
         )
 end
 
@@ -438,7 +505,7 @@ function coordinate(point::AbstractPointNew)
     sum_coordinate_no_views(node_x,f_i_node,i_p_ref_fun,p,f,J0)
 end
 
-@noinline function sum_coordinate_no_views(node_x,f_i_node,i_p_ref_fun,p,f,J0)
+@noinline function sum_coordinate_no_views(node_x,f_i_node::PartitionedArrays.AbstractJaggedArray,i_p_ref_fun,p,f,J0)
     J = zero(J0)
     i = 0
     n = size(i_p_ref_fun,1)
@@ -455,6 +522,39 @@ end
     ##TODO sum leads to much faster than hand-written loop, but why?
     #the answer was the noinline above. But why?
     #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
+end
+
+@noinline function sum_coordinate_no_views(node_x,f_i_node::FaceMajorArray,i_p_ref_fun,p,f,J0)
+    J = zero(J0)
+    i = 0
+    n = size(i_p_ref_fun,1)
+    stride = f_i_node.stride
+    while i < n
+        ptr = i*stride + f
+        i += 1
+        node = f_i_node.data[ptr]
+        x = node_x[node]
+        ref_fun = i_p_ref_fun[i,p]
+        J += x*ref_fun
+    end
+    J
+end
+
+@noinline function sum_coordinate_no_views(node_x,f_i_node::FaceMinorArray,i_p_ref_fun,p,f,J0)
+    J = zero(J0)
+    i = 0
+    n = size(i_p_ref_fun,1)
+    stride = f_i_node.stride
+    offset = (f-one(f))*stride
+    while i < n
+        i += 1
+        ptr = i + offset
+        node = f_i_node.data[ptr]
+        x = node_x[node]
+        ref_fun = i_p_ref_fun[i,p]
+        J += x*ref_fun
+    end
+    J
 end
 
 function jacobian(point::AbstractPointNew)
@@ -479,7 +579,7 @@ function jacobian(point::AbstractPointNew,workspace)
     jacobian(workspace)
 end
 
-@noinline function sum_jacobian_no_views(node_x,f_i_node,i_p_ref_fun,p,f,J0)
+@noinline function sum_jacobian_no_views(node_x,f_i_node::PartitionedArrays.AbstractJaggedArray,i_p_ref_fun,p,f,J0)
     J = zero(J0)
     i = 0
     n = size(i_p_ref_fun,1)
@@ -496,6 +596,39 @@ end
     ##TODO sum leads to much faster than hand-written loop, but why?
     #the answer was the noinline above. But why?
     #J = sum(i->outer(node_x[i_node[i]],i_s[i]),1:n;init=zero(J0))
+end
+
+@noinline function sum_jacobian_no_views(node_x,f_i_node::FaceMajorArray,i_p_ref_fun,p,f,J0)
+    J = zero(J0)
+    i = 0
+    n = size(i_p_ref_fun,1)
+    stride = f_i_node.stride
+    while i < n
+        ptr = i*stride + f
+        i += 1
+        node = f_i_node.data[ptr]
+        x = node_x[node]
+        ref_fun = i_p_ref_fun[i,p]
+        J += outer(x,ref_fun)
+    end
+    J
+end
+
+@noinline function sum_jacobian_no_views(node_x,f_i_node::FaceMinorArray,i_p_ref_fun,p,f,J0)
+    J = zero(J0)
+    i = 0
+    n = size(i_p_ref_fun,1)
+    stride = f_i_node.stride
+    offset = (f-one(f))*stride
+    while i < n
+        i += 1
+        ptr = i + offset
+        node = f_i_node.data[ptr]
+        x = node_x[node]
+        ref_fun = i_p_ref_fun[i,p]
+        J += outer(x,ref_fun)
+    end
+    J
 end
 
 function shape_functions(f,point::AbstractPointNew)

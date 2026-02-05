@@ -30,9 +30,13 @@ dΩ_faces_cpu = GT.each_face_new(dΩ)
 V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
 uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
 
-Adapt.adapt_structure(Array,dΩ_faces_cpu)
-Adapt.adapt_structure(Array,V_faces_cpu)
-Adapt.adapt_structure(Array,uh_faces_cpu)
+# This is not needed in practice, just to make sure that
+# we do not break anything when adapting.
+dΩ_faces_cpu = Adapt.adapt_structure(Array,dΩ_faces_cpu)
+V_faces_cpu = Adapt.adapt_structure(Array,V_faces_cpu)
+uh_faces_cpu = Adapt.adapt_structure(Array,uh_faces_cpu)
+
+dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes=GT.face_minor_array)
 
 #dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
 #dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;
