@@ -2,6 +2,8 @@ module GPUNewTests
 
 using Test
 using LinearAlgebra
+using SparseArrays
+import PartitionedArrays as PA
 import GalerkinToolkit as GT
 
 # Goal integrate function f(x)
@@ -22,7 +24,17 @@ V = GT.lagrange_space(Ω,k)
 u = GT.analytical_field(f,Ω)
 uh = GT.interpolate(u,V)
 
+tabulate = (GT.value,GT.gradient)
 dΩ_faces_cpu = GT.each_face_new(dΩ)
+uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
+V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
+
+#dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
+#dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;
+#    face_dofs_layout=:face_major, # :face_minor
+#    granularity=:face_per_thread, # :face_per_block
+#    shape_functions_location =:global_memory, # :shared_memory, :kernel_memory
+#   )
 
 # 0-form for analytical solution
 function cpu_loop_1(dΩ_faces)
@@ -39,7 +51,6 @@ end
 @show r_cpu = cpu_loop_1(dΩ_faces_cpu)
 
 # 0-form for discrete field
-uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate=(GT.value,))
 function cpu_loop_2(uh_faces)
     s = 0.0
     for uh_face in uh_faces
@@ -72,19 +83,20 @@ end
 
 # 1-form equivalent to matrix free
 b = zeros(GT.num_free_dofs(V))
-bf = zeros(GT.max_num_reference_dofs(V))
+nmax = GT.max_num_reference_dofs(V)
+bf = zeros(nmax)
 function cpu_loop_4!(b,bf,uh_faces)
     for uh_face in uh_faces
         dofs = GT.dofs(uh_face)
         n = GT.num_dofs(uh_face)
         fill!(bf,0)
         for uh_point in GT.each_point_new(uh_face)
-            ux = GT.field(GT.value,uh_point)
-            sx = GT.shape_functions(GT.value,uh_point)
+            ux = GT.field(GT.gradient,uh_point)
+            sx = GT.shape_functions(GT.gradient,uh_point)
             dx = GT.weight(uh_point)
             ux_dx = ux*dx
             for i in 1:n
-                bf[i] += ux_dx*sx[i]
+                bf[i] += ux_dx⋅sx[i]
             end
         end
         b[dofs] += bf
@@ -97,7 +109,6 @@ r_cpu = cpu_loop_4!(b,bf,uh_faces_cpu)
 # where the discrete field
 # and trial functions are potentially different
 fill!(b,0)
-V_faces_cpu = GT.each_face_new(V,dΩ;tabulate=(GT.value,))
 function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
     for dΩ_face in dΩ_faces
         V_face = V_faces[dΩ_face]
@@ -108,12 +119,12 @@ function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
         for dΩ_point in GT.each_point_new(dΩ_face)
             V_point = V_face[dΩ_point]
             uh_point = uh_face[dΩ_point]
-            ux = GT.field(GT.value,uh_point)
-            sx = GT.shape_functions(GT.value,V_point)
+            ux = GT.field(GT.gradient,uh_point)
+            sx = GT.shape_functions(GT.gradient,V_point)
             dx = GT.weight(dΩ_point)
             ux_dx = ux*dx
             for i in 1:n
-                bf[i] += ux_dx*sx[i]
+                bf[i] += ux_dx⋅sx[i]
             end
         end
         b[dofs] += bf
@@ -121,6 +132,79 @@ function cpu_loop_5!(b,bf,uh_faces,V_faces,dΩ_faces)
 end
 r_cpu = cpu_loop_5!(b,bf,uh_faces_cpu,V_faces_cpu,dΩ_faces_cpu)
 @show norm(b)
+
+# 2-form assembly in coo format
+
+function cpu_loop_6_count(V_faces)
+    num_nz = 0
+    for V_face in V_faces
+        n = GT.num_dofs(V_face)
+        num_nz += n*n
+    end
+    num_nz
+end
+
+function cpu_loop_6_symbolic!(AI,AJ,V_faces)
+    num_nz = 0
+    for V_face in V_faces
+        n = GT.num_dofs(V_face)
+        dofs = GT.dofs(V_face)
+        for j in 1:n
+            gj = dofs[j]
+            for i in 1:n
+                gi = dofs[i]
+                num_nz += 1
+                AI[num_nz] = gi
+                AJ[num_nz] = gj
+            end
+        end
+    end
+end
+
+function cpu_loop_6_numeric!(AV,Af,V_faces)
+    num_nz = 0
+    for V_face in V_faces
+        n = GT.num_dofs(V_face)
+        fill!(Af,0)
+        for V_point in GT.each_point_new(V_face)
+            dx = GT.weight(V_point)
+            sx = GT.shape_functions(GT.gradient,V_point)
+            for j in 1:n
+                sx_dx_j = sx[j]*dx
+                for i in 1:n
+                    Af[i,j] += sx[i]⋅sx_dx_j
+                end
+            end
+        end
+        for j in 1:n
+            for i in 1:n
+                num_nz += 1
+                AV[num_nz] = Af[i,j]
+            end
+        end
+    end
+end
+
+num_nz = cpu_loop_6_count(V_faces_cpu)
+AI = zeros(Int32,num_nz)
+AJ = zeros(Int32,num_nz)
+AV = zeros(num_nz)
+Af = zeros(nmax,nmax)
+cpu_loop_6_symbolic!(AI,AJ,V_faces_cpu)
+cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
+n_global = GT.num_dofs(V)
+A,Acache = PA.sparse_matrix(AI,AJ,AV,n_global,n_global;reuse=Val(true))
+x = GT.free_values(uh)
+b = A*x
+@show norm(b)
+
+# Loop using a previously built matrix
+fill(AV,0)
+cpu_loop_6_numeric!(AV,Af,V_faces_cpu)
+PA.sparse_matrix!(A,AV,Acache)
+b = A*x
+@show norm(b)
+
 
 
 end # module
