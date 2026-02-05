@@ -167,16 +167,16 @@ function main_cpu(params)
     V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
     uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
 
+    # Change data layout
+    dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes_layout)
+    V_faces_cpu = GT.change_data_layout(V_faces_cpu;face_nodes_layout,face_dofs_layout)
+    uh_faces_cpu = GT.change_data_layout(uh_faces_cpu;face_nodes_layout,face_dofs_layout)
+
     # This is not needed in practice, just to make sure that
     # we do not break anything when adapting.
     dΩ_faces_cpu = Adapt.adapt_structure(Array,dΩ_faces_cpu)
     V_faces_cpu = Adapt.adapt_structure(Array,V_faces_cpu)
     uh_faces_cpu = Adapt.adapt_structure(Array,uh_faces_cpu)
-
-    # Change data layout
-    dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes_layout)
-    V_faces_cpu = GT.change_data_layout(V_faces_cpu;face_nodes_layout,face_dofs_layout)
-    uh_faces_cpu = GT.change_data_layout(uh_faces_cpu;face_nodes_layout,face_dofs_layout)
 
     #dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
     #dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;

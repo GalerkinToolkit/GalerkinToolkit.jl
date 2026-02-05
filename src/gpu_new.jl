@@ -6,18 +6,19 @@ abstract type AbstractTabulation <: AbstractType end
 ## Data-Layout
 ## ===========
 
-struct FaceMinorArray{T,A,B} <: AbstractVector{T}
+struct FaceMinorArray{A,B} <: AbstractType
     data::A
     stride::B
-    function FaceMinorArray(data,stride)
-        T = typeof(view(data,1:0))
-        A = typeof(data)
-        B = typeof(stride)
-        new{T,A,B}(data,stride)
-    end
+end
+
+function Adapt.adapt_structure(to,x::FaceMinorArray)
+    data = Adapt.adapt_structure(to,x.data)
+    stride = Adapt.adapt_structure(to,x.stride)
+    FaceMinorArray(data,stride)
 end
 
 Base.length(a::FaceMinorArray) = div(length(a.data),a.stride)
+
 function Base.getindex(a::FaceMinorArray,f::Integer)
     stride = a.stride
     offset = (f-1)*stride
@@ -31,24 +32,25 @@ function face_minor_array(a::PartitionedArrays.AbstractJaggedArray)
     FaceMinorArray(a.data,stride)
 end
 
-struct FaceMajorArray{T,A,B} <: AbstractVector{T}
+struct FaceMajorArray{A,B} <: AbstractType
     data::A
     stride::B
-    function FaceMajorArray(data,stride)
-        T = typeof(view(data,1:1:0))
-        A = typeof(data)
-        B = typeof(stride)
-        new{T,A,B}(data,stride)
-    end
 end
 
 Base.length(a::FaceMajorArray) = div(length(a.data),a.stride)
+
 function Base.getindex(a::FaceMajorArray,f::Integer)
     stride = a.stride
     l = length(a.data)
     n = div(l,stride)
     r = f:stride:((n-1)*stride+f)
     view(a.data,r)
+end
+
+function Adapt.adapt_structure(to,x::FaceMajorArray)
+    data = Adapt.adapt_structure(to,x.data)
+    stride = Adapt.adapt_structure(to,x.stride)
+    FaceMajorArray(data,stride)
 end
 
 function face_major_array(a::PartitionedArrays.AbstractJaggedArray)
