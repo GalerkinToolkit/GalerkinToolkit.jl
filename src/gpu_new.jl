@@ -2,6 +2,10 @@ abstract type AbstractFaceNew <: AbstractType end
 abstract type AbstractPointNew <: AbstractType end
 abstract type AbstractTabulation <: AbstractType end
 
+## ===========
+## Mesh-related
+## ===========
+
 function each_face_new(
     mesh::AbstractMesh, valD, quadrature::AbstractQuadrature)
     state = tabulate(mesh,valD,quadrature)
@@ -34,6 +38,30 @@ face_nodes(a::TabulatedMesh) = a.face_nodes
 node_coordinates(a::TabulatedMesh) = a.node_coordinates
 reference_weights(a::TabulatedMesh) = a.reference_weights
 quadrature(a::TabulatedMesh) = a.quadrature
+
+function Adapt.adapt_structure(to,x::TabulatedMesh)
+    mesh = nothing
+    num_dims = Adapt.adapt_structure(to,x.num_dims)
+    quadrature = nothing
+    reference_shape_functions_value = Adapt.adapt_structure(to,x.reference_shape_functions_value)
+    reference_shape_functions_gradient = Adapt.adapt_structure(to,x.reference_shape_functions_gradient)
+    reference_unit_normals = Adapt.adapt_structure(to,x.reference_unit_normals)
+    face_nodes = Adapt.adapt_structure(to,x.face_nodes)
+    node_coordinates = Adapt.adapt_structure(to,x.node_coordinates)
+    reference_weights = Adapt.adapt_structure(to,x.reference_weights)
+    reference_coordinates = Adapt.adapt_structure(to,x.reference_coordinates)
+    TabulatedMesh(
+                  mesh,
+                  num_dims,
+                  quadrature,
+                  reference_shape_functions_value,
+                  reference_shape_functions_gradient,
+                  reference_unit_normals,
+                  face_nodes,
+                  node_coordinates,
+                  reference_weights,
+                  reference_coordinates,)
+end
 
 function at_face_id(state::TabulatedMesh,face_id)
     TabulatedFace(state,face_id,nothing)
@@ -75,6 +103,10 @@ function tabulate(mesh::AbstractMesh, valD, quadrature::AbstractQuadrature)
                   reference_weights,
                   reference_coordinates,)
 end
+
+## ===========
+## Space-related
+## ===========
 
 struct TabulatedSpace{A,B,C,D,E,F,G,H,I} <: AbstractTabulation
     space::A
@@ -135,6 +167,28 @@ function tabulate(space::AbstractSpace,quadrature::AbstractQuadrature;tabulate=(
                   )
 end
 
+function Adapt.adapt_structure(to,x::TabulatedSpace)
+    space = nothing
+    tabulated_mesh = Adapt.adapt_structure(to,x.tabulated_mesh)
+    reference_shape_functions_value = Adapt.adapt_structure(to,x.reference_shape_functions_value)
+    reference_shape_functions_gradient = Adapt.adapt_structure(to,x.reference_shape_functions_gradient)
+    reference_shape_functions_jacobian = Adapt.adapt_structure(to,x.reference_shape_functions_jacobian)
+    shape_functions_value = nothing
+    shape_functions_gradient = nothing
+    shape_functions_jacobian = nothing
+    face_dofs = Adapt.adapt_structure(to,x.face_dofs)
+    TabulatedSpace(
+                   space,
+                   tabulated_mesh,
+                   reference_shape_functions_value,
+                   reference_shape_functions_gradient,
+                   reference_shape_functions_jacobian,
+                   shape_functions_value,
+                   shape_functions_gradient,
+                   shape_functions_jacobian,
+                   face_dofs,
+                  )
+end
 function each_face_new(space::AbstractSpace, quadrature::AbstractQuadrature;tabulate=())
     state = GT.tabulate(space,quadrature;tabulate)
     each_face_new(state)
@@ -168,8 +222,12 @@ function at_mesh_point(state::TabulatedSpace,face,mesh_point)
     point
 end
 
+## ===========
+## Field-related
+## ===========
+
 struct TabulatedField{A,B,C,D} <: AbstractTabulation
-    space::A
+    field::A
     tabulated_space::B
     free_values::C
     dirichlet_values::D
@@ -190,7 +248,20 @@ function tabulate(uh::DiscreteField,quadrature::AbstractQuadrature;tabulate=())
     free_values = GT.free_values(uh)
     dirichlet_values = GT.dirichlet_values(uh)
     a = TabulatedField(
-                   space,
+                   uh,
+                   tabulated_space,
+                   free_values,
+                   dirichlet_values,
+                  )
+end
+
+function Adapt.adapt_structure(to,x::TabulatedField)
+    field = nothing
+    tabulated_space = Adapt.adapt_structure(to,x.tabulated_space)
+    free_values = Adapt.adapt_structure(to,x.free_values)
+    dirichlet_values = Adapt.adapt_structure(to,x.dirichlet_values)
+    TabulatedField(
+                   field,
                    tabulated_space,
                    free_values,
                    dirichlet_values,
@@ -222,6 +293,10 @@ function at_mesh_point(state::TabulatedField,face,mesh_point)
     point = PointNew(face,id(mesh_point),space_point)
 end
 
+## ===========
+## Common functions
+## ===========
+
 struct Each{A,B,C} <: AbstractType
     update::A
     state::B
@@ -250,6 +325,17 @@ end
 Base.keys(iter::Each) = LinearIndices((length(iter),))
 state(x::Each) = x.state
 iterator(x::Each) = x.iterator
+
+function Adapt.adapt_structure(to,x::Each)
+    update = Adapt.adapt_structure(to,x.update)
+    state = Adapt.adapt_structure(to,x.state)
+    iterator = Adapt.adapt_structure(to,x.iterator)
+    Each(
+         update,
+         state,
+         iterator,
+        )
+end
 
 struct TabulatedFace{A,B,C} <: AbstractFaceNew
     parent::A

@@ -3,6 +3,7 @@ module GPUNewTests
 using Test
 using LinearAlgebra
 using SparseArrays
+import Adapt
 import PartitionedArrays as PA
 import GalerkinToolkit as GT
 
@@ -26,8 +27,12 @@ uh = GT.interpolate(u,V)
 
 tabulate = (GT.value,GT.gradient)
 dΩ_faces_cpu = GT.each_face_new(dΩ)
-uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
 V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
+uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
+
+Adapt.adapt_structure(Array,dΩ_faces_cpu)
+Adapt.adapt_structure(Array,V_faces_cpu)
+Adapt.adapt_structure(Array,uh_faces_cpu)
 
 #dΩ_face_gpu = CUDA.cu(dΩ_faces_cpu)
 #dΩ_face_gpu = GT.loop_options(dΩ_face_gpu;
