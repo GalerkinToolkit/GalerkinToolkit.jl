@@ -1,5 +1,6 @@
 module GPUNewTests
 
+using CUDA
 using Test
 using LinearAlgebra
 using SparseArrays
@@ -225,17 +226,113 @@ function main_cpu(params)
 
 end
 
-layouts = (PA.jagged_array,GT.face_minor_array,GT.face_major_array)
+function kernel_1!(contributions,dΩ_faces_gpu)
+    face_id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if face_id > length(dΩ_faces_gpu)
+        return nothing
+    end
+    dΩ_face = dΩ_faces_gpu[face_id]
+    s = 0.0
+    for dΩ_point in GT.each_point_new(dΩ_face)
+        x = GT.coordinate(dΩ_point)
+        dx = GT.weight(dΩ_point)
+        s += f(x)*dx
+    end
+    contributions[face_id] = s
+    return nothing
+end
+
+function kernel_2!(contributions,uh_faces_gpu)
+    face_id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if face_id > length(uh_faces_gpu)
+        return nothing
+    end
+    uh_face = uh_faces_gpu[face_id]
+    s = 0.0
+    for uh_point in GT.each_point_new(uh_face)
+        ux = GT.field(GT.value,uh_point)
+        dx = GT.weight(uh_point)
+        s += ux*dx
+    end
+    contributions[face_id] = s
+    return nothing
+end
+
+function kernel_5!()
+    #TODO
+end
+
+function main_gpu(params)
+    (;face_nodes_layout,face_dofs_layout) = params
+
+    # Start at CPU
+    domain = (0,1,0,1)
+    cells = (4,4)
+    mesh = GT.cartesian_mesh(domain,cells)
+    Ω = GT.interior(mesh)
+    degree = 4
+    dΩ = GT.quadrature(Ω,degree)
+
+    k = 1
+    V = GT.lagrange_space(Ω,k)
+    u = GT.analytical_field(f,Ω)
+    uh = GT.interpolate(u,V)
+
+    tabulate = (GT.value,GT.gradient)
+    dΩ_faces_cpu = GT.each_face_new(dΩ)
+    V_faces_cpu = GT.each_face_new(V,dΩ;tabulate)
+    uh_faces_cpu = GT.each_face_new(uh,dΩ;tabulate)
+
+    # Change data layout
+    # This can also be done after moving memory to GPU (but not implemented yet)
+    dΩ_faces_cpu = GT.change_data_layout(dΩ_faces_cpu;face_nodes_layout)
+    V_faces_cpu = GT.change_data_layout(V_faces_cpu;face_nodes_layout,face_dofs_layout)
+    uh_faces_cpu = GT.change_data_layout(uh_faces_cpu;face_nodes_layout,face_dofs_layout)
+
+    # This is not needed in practice, just to make sure that
+    # we do not break anything when adapting.
+    dΩ_faces_gpu = CUDA.cu(dΩ_faces_cpu)
+    V_faces_gpu = CUDA.cu(V_faces_cpu)
+    uh_faces_gpu = CUDA.cu(uh_faces_cpu)
+
+    #TODO
+    #granularity = Val(:face_per_thread) # Val(:face_per_block)
+    #dΩ_faces_cpu = GT.change_loop_granularity(dΩ_faces_cpu,granularity)
+    #V_faces_cpu = GT.change_loop_granularity(V_faces_cpu,granularity)
+    #uh_faces_cpu = GT.change_loop_granularity(uh_faces_cpu,granularity)
+    #
+    #Maybe workspace location should not be independent and depend on granularity
+    #workspace_location = Val(:global_memory) # Val(:shared_memory) Val(:thread_memory)
+    #dΩ_faces_gpu = GT.change_workspace_location(dΩ_faces_gpu,workspace_location)
+    #V_faces_gpu = GT.change_workspace_location(V_faces_gpu,workspace_location)
+    #uh_faces_gpu = GT.change_workspace_location(uh_faces_gpu,workspace_location)
+
+    nfaces = length(dΩ_faces_gpu)
+    contributions = CUDA.zeros(Float64,nfaces)
+
+    # Launch kernel 1
+    threads_in_block = 256
+    blocks_in_grid = ceil(Int, nfaces/256)
+    @cuda threads=threads_in_block blocks=blocks_in_grid kernel_1!(contributions,dΩ_faces_gpu)
+    @show r_gpu = sum(contributions)
+
+    # Launch kernel 2
+    threads_in_block = 256
+    blocks_in_grid = ceil(Int, nfaces/256)
+    @cuda threads=threads_in_block blocks=blocks_in_grid kernel_2!(contributions,uh_faces_gpu)
+    @show r_gpu = sum(contributions)
+
+end
+
+
+layouts = (GT.face_minor_array,GT.face_major_array)
 for face_dofs_layout in layouts
     for face_nodes_layout in layouts
         params = (;face_nodes_layout,face_dofs_layout)
         main_cpu(params)
+        main_gpu(params)
     end
 end
-
-
-
-
 
 
 
