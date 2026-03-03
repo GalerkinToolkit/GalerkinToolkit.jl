@@ -1832,6 +1832,42 @@ function physical_map_accessor(f::typeof(value),measure::AbstractQuadrature,vD)
     accessor(face_point_phi,prototype)
 end
 
+# generated function for the jacobian sum of a specific dimension
+@generated function jacobian_sum(vD, z, nlnodes, lnode_to_node, node_to_x, lnode_s)
+    D = val_parameter(vD())
+    
+    result = Expr(:block)
+    symbols = []
+    for j in 1:D
+        for i in 1:D 
+            v = Symbol("j$i$j")
+            push!(symbols, v)
+            push!(result.args, :($v=z))
+        end
+    end
+    
+    body = []
+    push!(body, :(node = lnode_to_node[lnode]))
+    push!(body, :(x = node_to_x[node]))
+    push!(body, :(s = lnode_s(lnode)))
+    for i in 1:D
+        for j in 1:D
+            v = Symbol("j$i$j")
+            push!(body, :($v += x[$j] * s[$i]))
+        end
+    end
+
+    loop = quote
+        for lnode in 1:nlnodes
+            $(body...)
+        end
+    end
+
+    push!(result.args, loop)
+    push!(result.args, :(SMatrix{$D, $D}($(symbols...))) )
+    result
+end
+
 function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::AbstractQuadrature,vD)
     mesh = GT.mesh(domain(measure))
     space = mesh_space(mesh,vD)
@@ -1839,6 +1875,7 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
     face_to_nodes = nodes_accessor(mesh,vD,domain(measure))
     node_to_x = node_coordinates(mesh)
     z = zero(eltype(node_to_x))
+    z_element = zero(eltype(z))
     prototype = outer(z,GT.prototype(face_point_lnode_s))
 
     D = val_parameter(vD)
@@ -1854,7 +1891,7 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
         is_simplex = (nlnodes == D + 1) # TODO: find a better way to check whether it is a simplex
         if is_simplex
             lnode_s_1 = point_lnode_s(1)
-
+            # TODO: test with generated function
             jacobian_cache[index] = sum(1:nlnodes) do lnode
                 node = lnode_to_node[lnode]
                 x = node_to_x[node]
@@ -1867,13 +1904,44 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
                 return jacobian_cache[index]
             end
             lnode_s = point_lnode_s(point)
-            # nlnodes = length(lnode_to_node)
-            jacobian_cache[index] = sum(1:nlnodes) do lnode
-                node = lnode_to_node[lnode]
-                x = node_to_x[node]
-                s = lnode_s(lnode)
-                outer(x,s)
-            end
+            
+            # direct outer product sum (not efficient)
+            # jacobian_cache[index] = sum(1:nlnodes) do lnode
+            #     node = lnode_to_node[lnode]
+            #     x = node_to_x[node]
+            #     s = lnode_s(lnode)
+            #     @inline outer(x,s)
+            # end
+
+            # hand-written 3D template (not general)
+            
+            # j1 = z_element
+            # j2 = z_element
+            # j3 = z_element
+            # j4 = z_element
+            # j5 = z_element
+            # j6 = z_element
+            # j7 = z_element
+            # j8 = z_element
+            # j9 = z_element
+            # for lnode in 1:nlnodes
+            #     node = lnode_to_node[lnode]
+            #     x = node_to_x[node]
+            #     s = lnode_s(lnode)
+            #     j1 += x[1] * s[1]
+            #     j2 += x[2] * s[1]
+            #     j3 += x[3] * s[1]
+            #     j4 += x[1] * s[2]
+            #     j5 += x[2] * s[2]
+            #     j6 += x[3] * s[2]
+            #     j7 += x[1] * s[3]
+            #     j8 += x[2] * s[3]
+            #     j9 += x[3] * s[3]
+            # end
+            # jacobian_cache[index] = SMatrix{3, 3}(j1, j2, j3, j4, j5, j6, j7, j8, j9)
+
+            # julia generated function
+            jacobian_cache[index] = jacobian_sum(vD, z_element, nlnodes, lnode_to_node, node_to_x, lnode_s)
             return jacobian_cache[index]
         end
     end
