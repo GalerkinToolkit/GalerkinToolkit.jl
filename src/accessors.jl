@@ -2193,7 +2193,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
 
                 function point_invJ_dof_s(point,J)
                     dof_v = point_dof_v(point)
-                    invJ = invfunc(J)
+                    invJ = (invJ !== nothing && $(T != :value)) ? invfunc(J) : J 
                     for dof in 1:ndofs
                        v = dof_v(dof)
                        modif = dof_modif(dof)
@@ -2230,7 +2230,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                 point_Dphi = face_point_Dphi(face,face_around)
                 
                 function point_invJ_dof_s(point,J)
-                    invJ = invfunc(J)
+                    invJ = (invJ !== nothing && $(T != :value)) ? invfunc(J) : J 
                     dof_v = point_dof_v(point)
                     function dof_f(dof)
                         v = dof_v(dof)
