@@ -786,7 +786,7 @@ end
     mesh = GT.mesh(space_accessor.space)
     node_x = node_coordinates(mesh)
     n = length(i_s)
-    J = sum_jacobian(node_x,i_node,i_s,n,J0)
+    J = sum_jacobian(node_x,i_node,i_s,n,J0) # TODO: generated function
     replace_jacobian(a,J)
 end
 
@@ -1833,13 +1833,14 @@ function physical_map_accessor(f::typeof(value),measure::AbstractQuadrature,vD)
 end
 
 # generated function for the jacobian sum of a specific dimension
-@generated function jacobian_sum(vD, z, nlnodes, lnode_to_node, node_to_x, lnode_s)
-    D = val_parameter(vD())
-    
+# assuming that all vectors are defined as staticarrays, or otherwise length is not defined for a data type
+@generated function jacobian_sum(prototype, z, nlnodes, lnode_to_node, node_to_x, lnode_s)
+    Di, Dj = size(prototype)
+
     result = Expr(:block)
     symbols = []
-    for j in 1:D
-        for i in 1:D 
+    for j in 1:Dj
+        for i in 1:Di 
             v = Symbol("j$i$j")
             push!(symbols, v)
             push!(result.args, :($v=z))
@@ -1850,10 +1851,10 @@ end
     push!(body, :(node = lnode_to_node[lnode]))
     push!(body, :(x = node_to_x[node]))
     push!(body, :(s = lnode_s(lnode)))
-    for i in 1:D
-        for j in 1:D
+    for i in 1:Di
+        for j in 1:Dj
             v = Symbol("j$i$j")
-            push!(body, :($v += x[$j] * s[$i]))
+            push!(body, :($v += x[$i] * s[$j]))
         end
     end
 
@@ -1864,7 +1865,7 @@ end
     end
 
     push!(result.args, loop)
-    push!(result.args, :(SMatrix{$D, $D}($(symbols...))) )
+    push!(result.args, :(SMatrix{$Di, $Dj}($(symbols...))) )
     result
 end
 
@@ -1891,13 +1892,13 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
         is_simplex = (nlnodes == D + 1) # TODO: find a better way to check whether it is a simplex
         if is_simplex
             lnode_s_1 = point_lnode_s(1)
-            # TODO: test with generated function
-            jacobian_cache[index] = sum(1:nlnodes) do lnode
-                node = lnode_to_node[lnode]
-                x = node_to_x[node]
-                s = lnode_s_1(lnode)
-                outer(x,s)
-            end
+            jacobian_cache[index] = jacobian_sum(prototype, z_element, nlnodes, lnode_to_node, node_to_x, lnode_s_1)
+            # jacobian_cache[index] = sum(1:nlnodes) do lnode
+            #     node = lnode_to_node[lnode]
+            #     x = node_to_x[node]
+            #     s = lnode_s_1(lnode)
+            #     outer(x,s)
+            # end
         end
         function point_s(point) 
             if is_simplex
@@ -1941,7 +1942,7 @@ function physical_map_accessor(f::typeof(ForwardDiff.jacobian),measure::Abstract
             # jacobian_cache[index] = SMatrix{3, 3}(j1, j2, j3, j4, j5, j6, j7, j8, j9)
 
             # julia generated function
-            jacobian_cache[index] = jacobian_sum(vD, z_element, nlnodes, lnode_to_node, node_to_x, lnode_s)
+            jacobian_cache[index] = jacobian_sum(prototype, z_element, nlnodes, lnode_to_node, node_to_x, lnode_s)
             return jacobian_cache[index]
         end
     end
@@ -2015,7 +2016,7 @@ end
 # push reference shape functions to physical ones
 
 function shape_function_accessor_modifier(f::typeof(value),space::AbstractSpace)
-    function modifier(v,J)
+    function modifier(v,invJ)
         v
     end
     function face_dof_modifier(face,face_around=nothing)
@@ -2027,8 +2028,9 @@ function shape_function_accessor_modifier(f::typeof(value),space::AbstractSpace)
 end
 
 function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space::AbstractSpace)
-    function modifier(v,J)
-        transpose(J)\v 
+    function modifier(v,invJ)
+        transpose(invJ) * v
+        # transpose(invJ)\v 
     end
     function face_dof_modifier(face,face_around=nothing)
         function dof_modifier(dof)
@@ -2039,8 +2041,9 @@ function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space:
 end
 
 function shape_function_accessor_modifier(f::typeof(ForwardDiff.jacobian),space::AbstractSpace)
-    function modifier(v,J)
-        v/J
+    function modifier(v,invJ)
+        v*invJ
+        # v/invJ
     end
     function face_dof_modifier(face,face_around=nothing)
         function dof_modifier(dof)
@@ -2110,7 +2113,7 @@ function shape_function_accessor_physical(f,space::AbstractSpace)
     face_phi = physical_map_accessor(value,mesh,Val(D))
     face_Dphi = physical_map_accessor(ForwardDiff.jacobian,mesh,Val(D))
     x0 = zero(SVector{D,Float64})
-    prototype = q->f(x->GT.prototype(face_dof_modif)(GT.prototype(face_dof_s_ref)(x),GT.prototype(face_Dphi)(x)),q)
+    prototype = q->f(x->GT.prototype(face_dof_modif)(GT.prototype(face_dof_s_ref)(x),pinv(GT.prototype(face_Dphi)(x))),q)
     function face_dof_s_phys(face,face_around=nothing)
         phi = face_phi(face)
         Dphi = face_Dphi(face)
@@ -2123,7 +2126,7 @@ function shape_function_accessor_physical(f,space::AbstractSpace)
             function s_phys(x)
                 v = s_ref(x)
                 J = Dphi(x)
-                modif(v,J)
+                modif(v,pinv(J))
             end
             x->f(s_phys,x)
         end
@@ -2163,7 +2166,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
             D = num_dims(domain(space))
             face_point_Dphi = jacobian_accessor(measure,Val(D))
-            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
+            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),pinv(GT.prototype(face_point_Dphi)))
             P = typeof(prototype)
             max_n_faces_around = 2
 
@@ -2181,21 +2184,22 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                 else
                     face_around_dof_s[face_around]
                 end
-                
-                function point_J_dof_s(point,J)
+
+                function point_invJ_dof_s(point,invJ)
                     dof_v = point_dof_v(point)
+                    # invJ = inv(J)
                     for dof in 1:ndofs
                        v = dof_v(dof)
                        modif = dof_modif(dof)
-                       dof_s[dof] = modif(v,J)
+                       dof_s[dof] = modif(v,invJ)
                     end
                     function dof_f(dof)
                         dof_s[dof]
                     end
                 end
-                function point_dof_s(point,J = nothing)
-                    J2 = J === nothing ? point_Dphi(point) : J
-                    point_J_dof_s(point,J2)
+                function point_dof_s(point,invJ = nothing)
+                    invJ2 = (invJ === nothing && $(T != :value) ) ? pinv(point_Dphi(point)) : invJ
+                    point_invJ_dof_s(point,invJ2)
                 end
                 return point_dof_s
             end
@@ -2209,24 +2213,24 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
             dface_to_modif = shape_function_accessor_modifier(f,space,domain(measure))
             D = num_dims(domain(space))
             face_point_Dphi = jacobian_accessor(measure,Val(D))
-            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),GT.prototype(face_point_Dphi))
+            prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),pinv(GT.prototype(face_point_Dphi)))
             
             function face_point_dof_s(face,face_around=nothing)
                 point_dof_v = face_point_dof_v(face,face_around)
                 dof_modif = dface_to_modif(face,face_around)
                 point_Dphi = face_point_Dphi(face,face_around)
                 
-                function point_J_dof_s(point,J)
+                function point_invJ_dof_s(point,invJ)
                     dof_v = point_dof_v(point)
                     function dof_f(dof)
                         v = dof_v(dof)
                         modif = dof_modif(dof)
-                        modif(v,J)
+                        modif(v,invJ)
                     end
                 end
-                function point_dof_s(point,J = nothing)
-                    J2 = J === nothing ? point_Dphi(point) : J
-                    point_J_dof_s(point,J2)
+                function point_dof_s(point,invJ = nothing)
+                    invJ2 = (invJ === nothing && $(T != :value) ) ? pinv(point_Dphi(point)) : invJ
+                    point_invJ_dof_s(point,invJ2)
                 end
                 return point_dof_s
             end
@@ -2747,7 +2751,7 @@ function form_argument_accessor_term(f,space,measure,the_field, face,the_face_ar
     disable_tabulation = :(Val(true))
     # shape_function = shape_function_accessor_term(f, space, measure, face, the_face_around, point, J, dof, is_reference, integral_type) # TODO: add an arg to remove tabulation
     z = :( zero(GT.prototype(shape_function_accessor($f,$space,$measure,$disable_tabulation))) ) # TODO find a better way to do the prototype, maybe inlining 1 step further
-    shape_function = :(shape_function_accessor($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, $J)($dof))
+    shape_function = :(shape_function_accessor($f,$space,$measure,$disable_tabulation)($face, $the_face_around)($point, pinv($J))($dof))
     :(ifelse($mask, $shape_function, $z))
 
 end
