@@ -2191,9 +2191,9 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                     face_around_dof_s[face_around]
                 end
 
-                function point_invJ_dof_s(point,J)
+                function point_J_dof_s(point,J)
                     dof_v = point_dof_v(point)
-                    invJ = (invJ !== nothing && $(T != :value)) ? invfunc(J) : J 
+                    invJ = (J !== nothing && $(T != :value)) ? invfunc(J) : J 
                     for dof in 1:ndofs
                        v = dof_v(dof)
                        modif = dof_modif(dof)
@@ -2203,9 +2203,9 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                         dof_s[dof]
                     end
                 end
-                function point_dof_s(point,invJ = nothing)
-                    invJ2 = (J === nothing && $(T != :value) ) ? invfunc(point_Dphi(point)) : invJ
-                    point_invJ_dof_s(point,invJ2)
+                function point_dof_s(point,J = nothing)
+                    J2 = (J === nothing && $(T != :value) ) ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
                 end
                 return point_dof_s
             end
@@ -2229,7 +2229,7 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                 dof_modif = dface_to_modif(face,face_around)
                 point_Dphi = face_point_Dphi(face,face_around)
                 
-                function point_invJ_dof_s(point,J)
+                function point_J_dof_s(point,J)
                     invJ = (J !== nothing && $(T != :value)) ? invfunc(J) : J 
                     dof_v = point_dof_v(point)
                     function dof_f(dof)
@@ -2238,9 +2238,9 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
                         modif(v,invJ)
                     end
                 end
-                function point_dof_s(point,invJ = nothing)
-                    invJ2 = (invJ === nothing && $(T != :value) ) ? invfunc(point_Dphi(point)) : invJ
-                    point_invJ_dof_s(point,invJ2)
+                function point_dof_s(point,J = nothing)
+                    J2 = (J === nothing && $(T != :value) ) ? point_Dphi(point) : J
+                    point_J_dof_s(point,J2)
                 end
                 return point_dof_s
             end
