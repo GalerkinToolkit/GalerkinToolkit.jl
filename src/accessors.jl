@@ -496,6 +496,17 @@ function tabulate(f,a::ReferenceSpaceFace{AtSkeleton})
     drid_point_x = map(coordinates,reference_quadratures(quadrature))
     # NB the TODOs below can be solved by introducing two extra nesting levels
     # TODO this assumes the same reffes for mesh and quadrature
+    p2x = drid_point_x[1]
+    rdf = drid_refdface[1]
+    rfe = Drid_reffe[1]
+    rDf = Drid_refDface[1]
+
+    lpv = reference_map(rdf,rDf)
+    pv = lpv[1]
+    v = pv[1]
+    p2q = v.(p2x)
+    prototype_inner = collect(permutedims(tabulator(rfe)(f,p2q)))
+
     drid_Drid_ldface_perm_tab = map(drid_point_x,drid_refdface) do point_to_x,refdface
         # TODO this assumes the same reffes for mesh and interpolation
         map(Drid_reffe,Drid_refDface) do reffe,refDface
@@ -503,9 +514,9 @@ function tabulate(f,a::ReferenceSpaceFace{AtSkeleton})
             map(ldface_perm_varphi) do perm_varphi
                 map(perm_varphi) do varphi
                     point_to_q = varphi.(point_to_x)
-                    collect(permutedims(tabulator(reffe)(f,point_to_q)))
+                    collect(permutedims(tabulator(reffe)(f,point_to_q)))::typeof(prototype_inner)
                 end
-            end
+            end ::Vector{Vector{typeof(prototype_inner)}}
         end
     end
     replace_tabulators(f,a,drid_Drid_ldface_perm_tab)
@@ -1298,9 +1309,7 @@ end
     dof_sref = GT.shape_functions(f,reference_space_face)
     dof_sphys, dof_sphys2 = workspace(f,a)
     ndofs = length(dof_sref)
-    dof = 0
-    while dof < ndofs
-        dof += 1
+    @simd for dof in 1:ndofs # TODO: further reduce matrix inversion
         sref = dof_sref[dof]
         sphys = map_shape_function(f,space,dof,mesh_face,sref)
         dof_sphys[dof] = sphys
