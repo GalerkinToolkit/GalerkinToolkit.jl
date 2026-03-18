@@ -12,6 +12,11 @@ function each_face(mesh::AbstractMesh,args...;kwargs...)
     each_face(mesh_acc)
 end
 
+function each_face(domain::AbstractDomain)
+    mesh_acc = mesh_face(domain)
+    each_face(mesh_acc)
+end
+
 function each_face(quadrature::AbstractQuadrature,args...;kwargs...)
     acc = quadrature_face(quadrature,args...;kwargs...)
     each_face(acc)
@@ -643,6 +648,12 @@ function mesh_face(mesh::AbstractMesh,D,quadrature::AbstractQuadrature;
     workspace = MeshFaceWorkspace(J,reference_normals)
     a = MeshFace(loop_case,space_face,workspace)
     setup_face(a,tabulate,compute)
+end
+
+function mesh_face(domain::AbstractDomain)
+    mesh = GT.mesh(domain)
+    D = Val(GT.num_dims(domain))
+    mesh_face(mesh,D,domain)
 end
 
 abstract type AbstractMeshFace <: AbstractFace end
