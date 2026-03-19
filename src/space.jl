@@ -2028,6 +2028,9 @@ function interpolate_impl!(
             Drid = Dface_Drid[Dface]
             lnodes = Drid_ldface_lnodes[Drid][ldface]
             nodes = Dface_nodes[Dface]
+            if length(nodes) == 0 #TODO
+                continue
+            end
             for lnode in lnodes
                 node = nodes[lnode]
                 x = node_x[node]

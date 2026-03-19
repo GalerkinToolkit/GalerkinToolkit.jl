@@ -248,10 +248,12 @@ end
 
 function boundary(mesh::AbstractMesh;
     mesh_id = objectid(mesh),
-    group_names=[group_boundary_faces!(mesh)],
+    group_name=nothing,
+    group_names = (group_name !== nothing ? [group_boundary_faces!(mesh;group_name)] : [group_boundary_faces!(mesh)]),
     is_reference_domain=Val(false),
     faces_around = nothing,
     )
+
     d = num_dims(mesh) - 1
     domain = mesh_domain(mesh;
         mesh_id,
@@ -269,7 +271,8 @@ function boundary(mesh::AbstractMesh;
 end
 
 function boundary(domain::AbstractDomain;
-    group_names=[group_boundary_faces!(domain)],
+    group_name=nothing,
+    group_names = (group_name !== nothing ? [group_boundary_faces!(domain;group_name)] : [group_boundary_faces!(domain)]),
     kwargs...)
     mesh = GT.mesh(domain)
     nfaces = num_faces(domain)
