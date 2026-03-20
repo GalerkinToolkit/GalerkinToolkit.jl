@@ -2170,6 +2170,85 @@ function interpolate_impl!(
     u
 end
 
+function interpolate_impl!(
+    f::DiscreteField,
+    u::DiscreteField,
+    space::Union{LagrangeFaceSpace,LagrangeMeshSpace,MeshSpace},
+    free_or_diri::FreeOrDirichlet)#;location=1)
+
+    domain_f = GT.domain(f)
+    mesh = GT.mesh(domain_f)
+    d = num_dims(domain_f)
+    face_reference_id = fill(Int8(1),num_faces(mesh,d)) # TODO
+    face_space = first(GT.reference_spaces(space)) # TODO
+    face_mesh = GT.complexify(face_space)
+    dface_space = first(GT.reference_spaces(face_mesh,d))
+    perms = GT.node_permutations(dface_space)
+    dface_quadtrature = GT.node_quadrature(dface_space)
+    reference_quadratures = (dface_quadtrature,)
+    d_domain_f = mesh_quadrature(;
+                                 domain=domain_f,
+                                 face_reference_id,
+                                 reference_quadratures)
+
+    f_dfaces = GT.each_face(f,d_domain_f;tabulate=(GT.value,))
+    V_dfaces = GT.each_face(space,d_domain_f)
+    free_vals = GT.free_values(u)
+    diri_vals = GT.dirichlet_values(u)
+    domain = GT.domain(space)
+    @assert is_physical_domain(domain)
+    node_dofs = GT.node_dofs(space)
+    nnodes = num_nodes(space)
+    Dface_nodes = GT.face_nodes(space)
+    Drid_ldface_lnodes = map(s->GT.face_nodes(s,d),GT.reference_spaces(space))
+    Dface_Drid = GT.face_reference_id(space)
+    D = GT.num_dims(domain)
+    topo = GT.topology(mesh)
+    Dface_permids = GT.face_permutation_ids(topo,D,d)
+    for (f_dface,V_dface) in zip(f_dfaces,V_dfaces)
+        f_points = GT.each_point(f_dface)
+        for V_Dface in GT.each_face_around(V_dface)
+            (;Dface,ldface) = GT.location(V_Dface)
+            pid = Dface_permids[Dface][ldface]
+            perm = perms[pid]
+            Drid = Dface_Drid[Dface]
+            lnodes = Drid_ldface_lnodes[Drid][ldface]
+            nodes = Dface_nodes[Dface]
+            if length(nodes) == 0 #TODO
+                continue
+            end
+            for (inode,lnode) in enumerate(lnodes)
+                node = nodes[lnode]
+                f_point = f_points[perm[inode]]
+                comp_v = GT.field(GT.value,f_point)
+                comp_dof = node_dofs[node]
+                ncomps = length(comp_dof)
+                for comp in 1:ncomps
+                    dof = comp_dof[comp]
+                    if length(comp_dof) == 1
+                        v = comp_v
+                    else
+                        v = comp_v[comp]
+                    end
+                    if dof > 0
+                        if free_or_diri != DIRICHLET
+                            free_vals[dof] = v
+                        end
+                    else
+                        diri_dof = -dof
+                        if free_or_diri != FREE
+                            diri_vals[diri_dof] = v
+                        end
+                    end
+                end
+            end
+        end
+    end
+    u
+end
+
+
+
 """
 """
 function raviart_thomas_space end
