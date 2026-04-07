@@ -56,7 +56,14 @@ GT.interpolate(g,V)
 GT.interpolate_free(g,V)
 GT.interpolate_dirichlet(g,V)
 
+V_on_Γ = GT.lagrange_space(Γ,4)
+uh_Γ = GT.undef_field(Float64,V_on_Γ)
 
+u_Γ = GT.analytical_field(sum,Γ)
+GT.interpolate!(u_Γ,uh_Γ)
+
+uh_diri = GT.zero_dirichlet_field(Float64,V)
+GT.interpolate_dirichlet!(uh_Γ,uh_diri)
 
 VxV = V × V
 
