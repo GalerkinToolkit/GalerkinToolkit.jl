@@ -254,7 +254,7 @@ function Makie.plot!(p::Makie_arrows2d{<:Tuple{<:GT.Plot,<:GT.NodeColor}})
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
     valid_attributes = Makie.shared_attributes(p,Makie.Arrows2D)
-    attrs_in = [:plt,:converted_2,:color]
+    attrs_in = [:plt,:converted_2,:color,:warp_by_scalar]
     attrs_out = [:coords,:vecs,:newcolor]
     map!(makie_arrows_impl,p.attributes,attrs_in,attrs_out)
     color = p.newcolor
@@ -276,14 +276,14 @@ function Makie.plot!(p::Makie_arrows3d{<:Tuple{<:GT.Plot,<:GT.NodeColor}})
     attrs_out = [:plt]
     map!(setup_plt_changes,p.attributes,attrs_in,attrs_out)
     valid_attributes = Makie.shared_attributes(p,Makie.Arrows2D)
-    attrs_in = [:plt,:converted_2,:color]
+    attrs_in = [:plt,:converted_2,:color,:warp_by_scalar]
     attrs_out = [:coords,:vecs,:newcolor]
     map!(makie_arrows_impl,p.attributes,attrs_in,attrs_out)
     color = p.newcolor
     Makie.arrows3d!(p,valid_attributes,p.coords,p.vecs;color)
 end
 
-function makie_arrows_impl(plt,vecs::GT.NodeColor,color)
+function makie_arrows_impl(plt,vecs::GT.NodeColor,color,warp_by_scalar)
     D = GT.num_ambient_dims(plt.mesh)
     x = GT.node_coordinates(plt.mesh)
     nnodes = length(x)
@@ -295,6 +295,11 @@ function makie_arrows_impl(plt,vecs::GT.NodeColor,color)
         error("not implemented")
     end
     node_to_vec = plt.node_data[vecs.name]
+    if length(zero(eltype(node_to_vec))) == 2 && warp_by_scalar !== nothing
+        node_to_vec = map(node_to_vec) do v
+            SVector(v[1],v[2],0*v[1])
+        end
+    end
     if isa(color,GT.NodeColor)
         color2 = plt.node_data[color.name]
     else

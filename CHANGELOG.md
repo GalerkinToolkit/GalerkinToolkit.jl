@@ -12,15 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Function `replace_free_values`.
 - Compatibility with `OrdinaryDiffEqCore` versions 2 and 3.
 
-## [0.6.2] - 2026-03-18
+## [0.6.2] - 2026-03-20
 
 ### Added
 
 - Key-word argument `group_name` to `GT.boundary`.
+- Interpolation of discrete fields on other discrete fields.
 
 ### Fixed
 
 - Bug when interpolating values on interface domains.
+- Bug in `GT.makie_arrows2d` and `GT.makie_arrows3d` when using `warp_by_scalar`.
 
 ## [0.6.1] - 2026-01-15
 

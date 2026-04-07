@@ -271,14 +271,32 @@ function boundary(mesh::AbstractMesh;
 end
 
 function boundary(domain::AbstractDomain;
+    mesh_id = objectid(mesh),
     group_name=nothing,
     group_names = (group_name !== nothing ? [group_boundary_faces!(domain;group_name)] : [group_boundary_faces!(domain)]),
-    kwargs...)
+    is_reference_domain=Val(false),
+    faces_around = nothing,
+    )
+
+    d = num_dims(domain) - 1
     mesh = GT.mesh(domain)
-    nfaces = num_faces(domain)
-    domain2 = boundary(mesh;group_names,kwargs...)
-    faces_around = boundary_faces_around(domain,domain2)
-    replace_faces_around(domain2,faces_around)
+    b_domain = mesh_domain(mesh;
+        mesh_id,
+        group_names,
+        faces_around,
+        num_dims=Val(val_parameter(d)),
+        is_reference_domain)
+    if faces_around === nothing
+        nfaces = num_faces(b_domain)
+        if d == num_dims(mesh) - 1
+            new_faces_around = FillArrays.Fill(1,nfaces)
+        else
+            new_faces_around = boundary_faces_around(domain,b_domain)
+        end
+        domain2 = replace_faces_around(b_domain,new_faces_around)
+    else
+        domain2 = b_domain
+    end
 end
 
 function boundary_faces_around(domain_D,domain_d)
