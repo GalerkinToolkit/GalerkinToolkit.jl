@@ -36,6 +36,11 @@ struct EachFace{A} <: AbstractType
     accessor::A
 end
 
+function replace_free_values(face::EachFace,fv)
+    accessor = replace_free_values(face.accessor,fv)
+    EachFace(accessor)
+end
+
 function tabulate(f,iter::EachFace)
     accessor = tabulate(f,iter.accessor)
     EachFace(accessor)
@@ -1382,6 +1387,16 @@ struct NewDiscreteFieldFace{A,B,C,D} <: AbstractFace
     field::B
     space_face::C
     workspace::D
+end
+
+function replace_free_values(face::NewDiscreteFieldFace,fv)
+    field = replace_free_values(face.field,fv)
+    NewDiscreteFieldFace(
+        face.loop_case,
+        field,
+        face.space_face,
+        face.workspace
+       )
 end
 
 function replace_workspace(a::NewDiscreteFieldFace,workspace)

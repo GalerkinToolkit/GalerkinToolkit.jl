@@ -114,6 +114,16 @@ struct DiscreteField{A,B,C,D,W} <: GT.AbstractField
     workspace::W
 end
 
+function replace_free_values(field::DiscreteField,fv)
+    DiscreteField(
+                  field.mesh,
+                  field.space,
+                  fv,
+                  field.dirichlet_values,
+                  field.workspace
+                 )
+end
+
 # term is defined in compiler.jl
 
 #Moved to CartesianProductSpace

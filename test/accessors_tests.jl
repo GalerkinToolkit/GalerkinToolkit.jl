@@ -153,6 +153,15 @@ uh_face = uh_faces[1]
 uh_points = GT.each_point(uh_face)
 uh_point = uh_points[1]
 @show GT.field(GT.value,uh_point)
+@test GT.field(GT.value,uh_point) + 1 ≈ 1
+
+fv = ones(Float64,GT.num_dofs(V))
+uh_faces = GT.replace_free_values(uh_faces,fv)
+uh_face = uh_faces[1]
+uh_points = GT.each_point(uh_face)
+uh_point = uh_points[1]
+@show GT.field(GT.value,uh_point)
+@test GT.field(GT.value,uh_point) ≈ 1
 
 ###f_l_x = GT.node_coordinate_face(mesh,2)
 ###@show f_l_x(2)(1)
