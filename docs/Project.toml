@@ -1,5 +1,4 @@
 [deps]
-DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterCitations = "daee34ce-89f3-4625-b898-19384cb65244"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
@@ -12,6 +11,7 @@ Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 Metis = "2679e427-3c69-5b7f-982b-ece356f1e94b"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 PartitionedSolvers = "11b65f7f-80ac-401b-9ef2-3db765482d62"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"

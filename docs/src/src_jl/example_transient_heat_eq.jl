@@ -18,7 +18,7 @@
 using LinearAlgebra
 import Gmsh
 import GalerkinToolkit as GT
-import DifferentialEquations
+import OrdinaryDiffEq
 import ForwardDiff
 import GLMakie as Makie
 import FileIO # hide
@@ -105,11 +105,11 @@ problem = GT.SciMLBase_ODEProblem(tspan,uh,m,r,j;dirichlet_dynamics!)
 
 #Selection and setup of the ODE solver
 dt = T/N
-solver = DifferentialEquations.QNDF(autodiff=false);
-initializealg=DifferentialEquations.NoInit()
+solver = OrdinaryDiffEq.QNDF(autodiff=false);
+initializealg=OrdinaryDiffEq.NoInit()
 adaptive=false
 save_on=false
-integrator = DifferentialEquations.init(
+integrator = OrdinaryDiffEq.init(
     problem,solver;initializealg,dt,adaptive,save_on)
 
 #Setup Makie scene

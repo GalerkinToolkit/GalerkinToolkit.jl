@@ -4,7 +4,7 @@ import Gmsh
 import GalerkinToolkit as GT
 import LinearSolve
 import NonlinearSolve
-import DifferentialEquations
+import OrdinaryDiffEq
 import ForwardDiff
 import WriteVTK
 using Test
@@ -86,9 +86,9 @@ tspan = (0.0,T)
 dt = T/N
 GT.interpolate_free!(u0,uh)
 @time prob = GT.SciMLBase_ODEProblem(tspan,uh,m,r,j;dirichlet_dynamics!)
-@time timestepper = DifferentialEquations.QNDF(autodiff=false);
-@time integrator = DifferentialEquations.init(
-    prob, timestepper; initializealg=DifferentialEquations.NoInit(),
+@time timestepper = OrdinaryDiffEq.QNDF(autodiff=false);
+@time integrator = OrdinaryDiffEq.init(
+    prob, timestepper; initializealg=OrdinaryDiffEq.NoInit(),
     dt,adaptive=false,save_on=false)
 
 plt = GT.plot(Ω)
@@ -110,7 +110,7 @@ WriteVTK.paraview_collection(file,plt) do pvd
 end
 
 # TODO We are solving a linear ode as a nonlinear one.
-# Is it possible to solve linear ODEs as linear ODEs with DifferentialEquations?
+# Is it possible to solve linear ODEs as linear ODEs with OrdinaryDiffEq?
 
 # Linear problem
 
