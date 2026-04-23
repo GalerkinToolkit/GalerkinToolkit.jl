@@ -1,7 +1,7 @@
 name = "GalerkinToolkit"
 uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
-authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 version = "0.6.3"
+authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
@@ -26,18 +26,18 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 OrdinaryDiffEqCore = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
-WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [extensions]
+GalerkinToolkitGmshExt = "Gmsh"
 GalerkinToolkitMakieExt = "Makie"
 GalerkinToolkitOrdinaryDiffEqCoreExt = "OrdinaryDiffEqCore"
-GalerkinToolkitWriteVTKExt = "WriteVTK"
 GalerkinToolkitSciMLBaseExt = "SciMLBase"
-GalerkinToolkitGmshExt = "Gmsh"
+GalerkinToolkitWriteVTKExt = "WriteVTK"
 
 [compat]
-AbstractTrees = "0.4" 
+AbstractTrees = "0.4"
 AutoHashEquals = "2"
 BlockArrays = "1"
 Combinatorics = "1"
@@ -53,7 +53,7 @@ Makie = "0.24"
 Metatheory = "2"
 Metis = "1"
 NonlinearSolve = "4"
-OrdinaryDiffEqCore = "1"
+OrdinaryDiffEqCore = "1, 4"
 PartitionedArrays = "0.5.4"
 PartitionedSolvers = "0.3"
 SciMLBase = "2"
@@ -63,15 +63,13 @@ WriteVTK = "1.21"
 julia = "1.10"
 
 [extras]
-Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
+Gmsh = "705231aa-382f-11e9-3f0c-b7cb4346fdeb"
 LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [targets]
-test = ["Test", "Gmsh", "GLMakie", "WriteVTK","LinearSolve","NonlinearSolve","OrdinaryDiffEq"]
-
-
+test = ["Test", "Gmsh", "GLMakie", "WriteVTK", "LinearSolve", "NonlinearSolve", "OrdinaryDiffEq"]
