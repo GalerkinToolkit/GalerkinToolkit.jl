@@ -1215,6 +1215,8 @@ function ast_constant_folding(ast)
                     lhs, rhs = args[2:3]
                     if (ast_is_number(lhs) && ast_is_number(rhs)) || (ast_is_nothing(lhs) && ast_is_nothing(rhs))
                         return lhs == rhs
+                    elseif lhs == rhs # if the symbol is the same
+                        return true
                     end
                 elseif args[1] == ast_leaf(:ifelse) 
                     if args[2] == true
