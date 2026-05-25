@@ -147,6 +147,16 @@ function ast_is_index(t)
     return (!ast_is_leaf(t)) && ast_head(t) == :ref
 end
 
+function ast_is_alloc(t) # TODO: check whether it is really needed
+    if t isa Expr && t.head === :call && length(ex.args) >= 1
+        callee = ex.args[1]
+        if callee === :zeros || callee === :alloc_zeros 
+            return true
+        end
+    end
+    return false
+end
+
 function ast_call(callee, args...)
     :($callee($(args...) ))
 end
@@ -1045,6 +1055,434 @@ function ast_array_aliasing(ast)
 
     expr = ast_array_aliasing_impl(ast)
 end
+
+
+
+
+
+
+
+
+
+# TODO: currently it can only identify 1D array allocation reuse.
+function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
+    loop_vars = [] # element: (var name, upperbound hash, upperbound)
+    loopvar_info = Dict() # key:var name  value: (var index, upperbound hash)
+    var_summary = Dict() 
+    hash_var = Dict()
+
+    new_array_alloc = Dict() # array symbol -> (shape, prototype)
+    new_array_active = Dict() # array symbol -> boolean activate flag 
+
+    # array reuse matching
+    name_arrayinfo = Dict() # name -> array info 
+    hash_arrayinfo = Dict() # reuse hash -> array info
+    # array info is a named tuple (;name, summary, index_placeholders, index_ranges, reuse_key)
+
+    undo_logs = [[]]
+
+
+
+    function subexpression_placeholder()
+        -1
+    end
+
+
+    function remap_summary(array, indices)
+        expr_hash, placeholders, bindings = array.summary
+        placeholders = copy(placeholders)
+        bindings = copy(bindings)
+
+        replacements = Dict()
+        for i in 1:length(indices) # assuming that the indices are correct and they are different. TODO: implement a deeper hashing by removing redundant placeholders in children.
+            index_expr = indices[i]
+            placeholder = array.index_placeholders[i]
+            range = array.index_ranges[i]
+            if !haskey(loopvar_info, index_expr)
+                return nothing
+            end
+            new_range = loopvar_info[index_expr][2]
+            if new_range != range
+                return nothing
+            end
+            binding = (index_expr, new_range)
+            bindings[placeholder] = binding
+        end
+
+        return (expr_hash, placeholders, bindings)
+    end
+
+
+    function summary_expr(node) # return hash, loopvar placeholders (ints) and bindings (tuples (loop var, upperbound hash))
+        if ast_is_leaf(node)
+            if haskey(var_summary, node)
+                return var_summary[node]
+            else # Not defined, use as constant symbol
+                summary = (hash(node), [], [])
+                var_summary[node] = summary
+                return summary
+            end
+        else # expression hash: 
+            #( template (head, placeholders...), 
+            #  list of loopvar placeholders,
+            #  children hash list, 
+            #  children placeholder lists with merged placeholders)
+
+            if ast_is_index(node)
+                base = ast_children(node)[1]
+                if ast_is_leaf(base) && haskey(name_arrayinfo, base)
+                    summary0 = remap_summary(name_arrayinfo[base], ast_children(node)[2:end])
+                    if summary0 !== nothing
+                        return summary0
+                    end
+                end
+            end
+
+            head = ast_head(node)
+            template_placeholders = []
+            loopvar_placeholders = []
+            hash_list = []
+            children_placeholders_list = []
+            binding_placeholder = Dict()
+            push!(template_placeholders, head)
+            for child in ast_children(node) # merge placeholder bindings
+                child_summary = summary_expr(child)
+                push!(hash_list, child_summary[1])
+
+                placeholder = if haskey(loopvar_info, child) # is a loopvar
+                    upperbound_hash = loopvar_info[child][2]
+                    binding = (child, upperbound_hash)
+                    if haskey(binding_placeholder, binding)
+                        binding_placeholder[binding]
+                    else
+                        new_placeholder = length(binding_placeholder)
+                        push!(loopvar_placeholders, new_placeholder)
+                        binding_placeholder[binding] = new_placeholder
+                        new_placeholder
+                    end
+                else
+                    subexpression_placeholder() # defined as -1 as placeholders for non-leaf subexpressions.
+                end
+                
+                child_placeholders = [] 
+                for child_binding in child_summary[3] # remap placeholders by bindings
+                    if haskey(binding_placeholder, child_binding) # reuse
+                        push!(child_placeholders, binding_placeholder[child_binding])
+                    else
+                        new_placeholder = length(binding_placeholder)
+                        push!(loopvar_placeholders, new_placeholder)
+                        binding_placeholder[child_binding] = new_placeholder
+                        push!(child_placeholders, new_placeholder)
+                    end
+                end
+                
+                push!(template_placeholders, placeholder)
+                push!(children_placeholders_list, child_placeholders)
+
+            end
+
+            placeholder_binding = Dict(value => key for (key, value) in binding_placeholder)
+            bindings = [placeholder_binding[p] for p in loopvar_placeholders]
+            node_hash = hash((template_placeholders, loopvar_placeholders, hash_list, children_placeholders_list))
+
+            summary =  (node_hash, loopvar_placeholders, bindings)
+            if ast_is_index(node) #TODO: handle array indexing
+                error("not implemented")
+            end
+            return summary
+        end
+    end
+
+    function hash_expr(node)
+        summary_expr(node)[1]
+    end
+    
+    # TODO: redo this pass
+    function summary_loop_range!(loop_var, loop_idx, upperbound)
+        upperbound_hash, placeholders, bindings = summary_expr(upperbound)
+        new_placeholder = length(placeholders)+1
+        placeholders2 = [placeholders..., new_placeholder]
+        bindings2 = [bindings..., loop_vars[loop_idx][1:2]]
+        hash2 = hash(([new_placeholder], placeholders2, [upperbound_hash], [placeholders]))
+        summary = (hash2, placeholders2, bindings2)
+        var_summary[loop_var] = summary
+        hash_var[hash2] = loop_var
+        summary
+    end
+
+    
+    function query_reuse_key(summary, mask) # TODO: optimize the performance with a trie-based searching.
+        index_placeholders = Int[]
+        index_ranges = []
+        expr_hash, placeholders, bindings = summary
+        for placeholder in 1:length(bindings)
+            if (mask & (2^(placeholder-1))) != 0
+                binding = bindings[placeholder]
+                loop_var, upperbound_hash = binding # 
+
+                push!(index_placeholders, placeholder)
+                push!(index_ranges, upperbound_hash)
+            end
+        end
+        return array_reuse_key(summary, index_placeholders, index_ranges)
+    end
+
+
+
+    function compatible_load_expr(array, summary)
+        if (array.summary[1] != summary[1]) || length(array.summary[3]) != length(summary[3])
+            return nothing
+        end
+        # array = (;name, summary, index_placeholders, index_ranges, reuse_key)
+
+        load_indices = []
+        array_placeholders_idx = Dict()
+        for i in 1:length(array.index_placeholders)
+            array_placeholders_idx[array.index_placeholders[i]] = i
+        end
+
+        for placeholder in 1:length(summary.bindings)
+            if haskey(array_placeholders_idx, placeholder)
+                range = array.index_ranges(array_placeholders_idx[placeholder])
+                binding = summary[3][placeholder]
+                if binding[2] != range || !haskey(loopvar_info, binding[1])
+                    return nothing
+                end
+                loop_var = binding[1]
+                push!(loop_indices, loop_var)
+
+            else
+                if array.summary[3][placeholder][1] != summary[3][placeholder][1]
+                    return nothing
+                end
+            end
+        end
+
+        return ast_index(array.name, load_indices...)
+    end
+
+    
+    function find_array_reuse(summary)
+        var_hash, placeholders, bindings = summary
+        nbindings = length(bindings)
+        result_load = nothing
+        result_array = nothing
+
+        for mask in 1:(2^nbindings)-1 # list all possible subset of loop var reuse
+            key = query_reuse_key(summary, mask)
+            if !haskey(hash_arrayinfo, key)
+                continue
+            end
+            array = hash_arrayinfo[key]
+            load = compatible_load_expr(array, summary)
+            if load === nothing
+                continue
+            end
+            result_load = load
+            result_array = array
+        end
+
+        if result_load === nothing
+            return nothing
+        end
+        array_name = result_array.name 
+        if haskey(new_array_active, array_name)
+            new_array_active[array_name] = true
+        end
+        activate_cache!(result_array)
+        return result_load
+    end
+
+    function rewrite_rhs(rhs)
+        summary = summary_expr(rhs)
+        if ast_is_leaf(rhs) 
+            return rhs, summary, false
+        end
+        load = find_array_reuse(summary) 
+        if load === nothing
+            return rhs, summary, false
+        else
+            return load, summary, true
+        end
+    end
+
+
+    function placeholder_for_loop_id(summary, var, upperbound_hash)
+        bindings = summary[3]
+        for i in 1:length(bindings)
+            var2, upperbound_hash2 = bindings[i]
+            if var == var2 && upperbound_hash == upperbound_hash2
+                return i
+            end
+        end
+        return nothing
+    end
+
+    function index_placeholders_for_lhs(lhs, summary)
+        placeholders = Int[]
+        ranges = []
+        for loopvar in ast_children(lhs)[2:end] # assuming that arrays are already unrolled
+            if !haskey(loopvar_info, loopvar)
+                return nothing
+            end
+            depth, upperbound_hash = loopvar_info[loopvar]
+            placeholder = placeholder_for_loop_id(summary, loopvar, upperbound_hash)
+            if placeholder === nothing
+                return nothing
+            end
+            push!(placeholders, placeholder)
+            push!(ranges, upperbound_hash)
+        end
+        return placeholders, ranges
+    end
+
+    function array_reuse_key(summary,
+                         index_placeholders::Vector{Int},
+                         index_ranges)
+        roles = Any[]
+        expr_hash, placeholders, bindings = summary
+        for placeholder in 1:length(placeholders)
+            position = findfirst(==(placeholder), index_placeholders)
+            if position === nothing
+                binding = bindings[placeholder]
+                push!(roles, (:fixed, binding))
+            else
+                push!(roles, (:indexed, index_ranges[position]))
+            end
+        end
+        return hash((:array_reuse, expr_hash, roles))
+    end
+
+    function register_array!(name::Symbol, summary,
+                         index_placeholders::Vector{Int},
+                         index_ranges)
+
+        old = get(name_arrayinfo, name, nothing)
+        if old !== nothing && get(hash_arrayinfo, old.reuse_key, nothing) === old
+            delete!(hash_arrayinfo, old.reuse_key)
+        end
+
+        reuse_key = array_reuse_key(summary, index_placeholders, index_ranges)
+        array = (;name, summary, index_placeholders, index_ranges, reuse_key)
+        name_arrayinfo[name] = array
+        hash_arrayinfo[reuse_key] = array
+        return array
+    end
+
+
+    function set_scalar!(var::Symbol, summary)
+        old = get(var_summary, var, nothing)
+        push!(undo_logs[end], (var, old))
+        push!(touched, var)
+        var_summary[var] = summary
+        return
+    end
+
+    function cache_scalar!(lhs::Symbol, rhs, summary, result_block)
+        if length(loop_vars) == 0
+            return
+        end
+
+        # TODO: now select the last variable, which is sufficient to optimize most our test cases. 
+        # Later we may extend it to multi-dimensional data reuse.
+        loop_var, upperbound_hash, upperbound = loop_vars[end] 
+
+        placeholder = placeholder_for_loop_id(summary, loop_var, upperbound_hash)
+        if placeholder === nothing # TODO: check hoisting before this, or otherwise it cannot find the correct dependency.
+            return
+        end
+
+        temp = fresh_cse_temp!(state)
+        var_count += 1
+        temp = ast_leaf(Symbol("cse_array_$var_count"))
+
+        new_array_active[temp] = false
+        new_array_alloc[temp] = ([upperbound], lhs)
+        cache_lhs = ast_index(temp, upperbound)
+        cache_rhs = lhs
+        cache_statement = ast_definition(cache_lhs, cache_rhs)
+        push!(result_block, cache_statement)
+
+        register_array!(temp, summary, Int[placeholder],
+                        [upperbound_hash])
+        return
+    end
+
+    function ast_array_cse_impl(node, result_block) # result block to append statements. we need to place additional statements to store intermediate results.
+        if ast_is_block(node)
+            new_children = []
+            for child in ast_children(node)
+                ast_array_cse_impl(child, new_children)
+            end
+            ast_replace_children(node, new_children...)
+        elseif ast_is_loop(node)
+            signature = ast_loop_signature(node)
+            loop_index = ast_loop_index(node)
+            upperbound = ast_loop_signature_upperbound(signature)
+            push!(loop_vars, (loop_index, hash_expr(upperbound), upperbound))
+            loopvar_info[loop_index] = (length(loop_vars), hash_expr(upperbound))
+            summary_loop_range!(loop_index, length(loop_vars), upperbound)
+            push!(undo_logs, [])
+            new_body = ast_array_cse_impl(ast_loop_body(node), result_block)
+
+
+            delete!(loopvar_info, loop_index)
+            pop!(loop_vars)
+            for (var, old) in reverse(undo_logs[end])
+                if old === nothing
+                    delete!(var_summary, var)
+                else
+                    var_summary[var] = old
+                end
+            end
+            pop!(undo_logs)
+            ast_for(signature, new_body)
+
+        elseif ast_is_definition(node)
+            lhs = ast_lhs(node)
+            rhs = ast_rhs(node)
+            rhs2, summary, reused = rewrite_rhs(rhs)
+            result = ast_replace_children(node, (lhs, rhs2))
+            push!(result_block, result)
+
+            if ast_is_leaf(lhs)
+                if !ast_is_alloc(rhs)
+                    set_scalar!(lhs, summary)
+                    if !reused
+                        cache_scalar!(lhs, rhs, summary, result_block)
+                    end
+                end
+            elseif ast_is_index(lhs)  &&  ast_is_leaf(ast_children(lhs)[1]) 
+                indexed = index_placeholders_for_lhs(lhs, summary)
+                if indexed !== nothing
+                    placeholders, ranges = indexed
+                    register_array!(ast_children(lhs)[1], summary, placeholders,
+                                    ranges)
+                end
+            end
+            return result
+
+        elseif ast_is_incremental(node)
+            # TODO: check whether the rhs can be reused, but currently in our test cases not needed.
+            push!(result_block, node)
+            node
+        else
+            # TODO: check other cases
+            push!(result_block, node)
+            node
+        end
+    end
+
+    result = []
+    # TODO: step 1 find data reuse
+    reused_ast = ast_array_cse_impl(ast, result)
+
+    # TODO: step 2: find prototype, place array allocation & remove unused arrays
+end
+
+
+
+
 
 
 function ast_flatten(ast, var_count_init = 0)

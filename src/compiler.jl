@@ -1786,18 +1786,34 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     expr10
 end
 
+# TODO: compare optimize with hoist only, but not tabulate
 
-function ast_optimize_3(expr, loop_var_range, options = nothing) # optimize steps with hoist only, but not tabulate
+# TODO: for ast optimzize order 3 and 4, include array cse
+function ast_optimize_3(expr, loop_var_range, options = nothing)
     # TODO: implement
-    expr
+    expr1 = ast_optimize(expr, loop_var_range, options)
+    
+    expr1 
+end
+
+function ast_optimize_4(expr, loop_var_range, options = nothing) 
+    # TODO: implement
+    expr1 = ast_optimize_2(expr, loop_var_range, options)
+    
+    expr1 
 end
 
 function ast_optimize_with_options(expr, loop_var_range, options)
-    if options === nothing || options.order == 1
-        ast_optimize(expr, loop_var_range, options)
-    elseif options.order == 2 
-        ast_optimize_2(expr, loop_var_range, options)
-    else # no optimize
+    order::Int = if options === nothing
+        1
+    else
+        options.order
+    end
+    orders = [ast_optimize, ast_optimize_2, ast_optimize_3, ast_optimize_4]
+    
+    if order >= 1 && order <= length(orders)
+        orders[order](expr, loop_var_range, options)
+    else
         expr
     end
 end
