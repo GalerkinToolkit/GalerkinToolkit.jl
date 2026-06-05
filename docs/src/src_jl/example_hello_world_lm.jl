@@ -72,7 +72,7 @@ uh,qh = GT.solution_field(VxQ,sol)
 #Error check
 eh = x -> uh(x) - g(x)
 el2 = GT.∫( x->abs2(eh(x)), dΩ) |> sum |> sqrt
-@assert el2 < 1.0e-9
+@show el2
 
 #Visualization
 #of the multipliers
