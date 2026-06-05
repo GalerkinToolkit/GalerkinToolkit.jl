@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1775663250040,
+  "lastUpdate": 1780655802009,
   "repoUrl": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl",
   "entries": {
     "Julia benchmark result": [
@@ -3314,6 +3314,36 @@ window.BENCHMARK_DATA = {
             "value": 896013295,
             "unit": "ns",
             "extra": "gctime=8100419.5\nmemory=320776164\nallocs=891344\nparams={\"evals\":1,\"evals_set\":false,\"gcsample\":false,\"gctrial\":true,\"memory_tolerance\":0.01,\"overhead\":0,\"samples\":10000,\"seconds\":5,\"time_tolerance\":0.05}"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "f.verdugo.rojano@vu.nl",
+            "name": "Francesc Verdugo",
+            "username": "fverdugo"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "712cf9e4e3642a6c0e4c5c349d1496ff53819175",
+          "message": "Merge pull request #279 from NLESC-HP2SIM/gpu\n\nAdd initial GPU implementation and performance benchmarks",
+          "timestamp": "2026-06-05T12:31:22+02:00",
+          "tree_id": "13e8853952eff0c7439e62b7235cb615d02749b9",
+          "url": "https://github.com/GalerkinToolkit/GalerkinToolkit.jl/commit/712cf9e4e3642a6c0e4c5c349d1496ff53819175"
+        },
+        "date": 1780655801636,
+        "tool": "julia",
+        "benches": [
+          {
+            "name": "poisson-hand/n=10",
+            "value": 927055117.5,
+            "unit": "ns",
+            "extra": "gctime=9438484.5\nmemory=320008212\nallocs=875347\nparams={\"evals\":1,\"evals_set\":false,\"gcsample\":false,\"gctrial\":true,\"memory_tolerance\":0.01,\"overhead\":0,\"samples\":10000,\"seconds\":5,\"time_tolerance\":0.05}"
           }
         ]
       }
