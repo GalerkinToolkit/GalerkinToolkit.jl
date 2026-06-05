@@ -20,6 +20,7 @@ import PartitionedSolvers as PS
 import PartitionedSolvers: update
 import AutoHashEquals
 import AbstractTrees
+import Adapt
 
 import ForwardDiff: gradient, jacobian
 
@@ -40,5 +41,6 @@ include("compiler.jl")
 include("visualization.jl")
 include("passes.jl")
 include("constraints.jl")
+include("gpu.jl")
 
 end # module

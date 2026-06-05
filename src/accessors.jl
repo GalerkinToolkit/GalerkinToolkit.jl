@@ -1358,19 +1358,25 @@ function shape_functions(f,a::SpaceFace{AtSkeleton})
     end
 end
 
-function map_shape_function(::typeof(GT.value),space,dof,mesh_face,sref)
+function map_shape_function(::Val{:value},space,dof,mesh_face,sref)
     sref
 end
 
-@inline function map_shape_function(::typeof(ForwardDiff.gradient),space,dof,mesh_face,sref)
+function map_shape_function(::Val{:gradient},space,dof,mesh_face,sref)
     J = jacobian(mesh_face)
     sphys = transpose(J)\sref
 end
 
-function map_shape_function(::typeof(ForwardDiff.jacobian),space,dof,mesh_face,sref)
+function map_shape_function(::Val{:jacobian},space,dof,mesh_face,sref)
     J = coordinate(ForwardDiff.jacobian,mesh_face)
     sphys = sref/J
 end
+
+shape_function_to_val(::typeof(GT.value)) = Val(:value)
+shape_function_to_val(::typeof(ForwardDiff.gradient)) = Val(:gradient)
+shape_function_to_val(::typeof(ForwardDiff.jacobian)) = Val(:jacobian)
+
+map_shape_function(f,space,dof,mesh_face,sref) = map_shape_function(shape_function_to_val(f),space,dof,mesh_face,sref)
 
 function weight(a::SpaceFace)
     (;mesh_face) = a
