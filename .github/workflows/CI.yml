@@ -6,6 +6,9 @@ on:
     tags: '*'
   pull_request:
 
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }} 
+
 concurrency:
   # Skip intermediate builds: always.
   # Cancel intermediate builds: only if it is a pull request build.
@@ -75,8 +78,8 @@ jobs:
         run: |
           echo "All test jobs have been successful"
 
-  docs:
-    name: Documentation
+  docs_no_media:
+    name: Documentation (no media build)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,6 +89,14 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/julia-buildpkg@v1
+      - name: Attempt to load docs media cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/work/GalerkinToolkit.jl/GalerkinToolkit.jl/docs/src/src_jl/
+          fail-on-cache-miss: true
+          key: docs-media-cache-${{ env.BRANCH_NAME }}
+          restore-keys: |
+            docs-media-cache-${{ github.event.repository.default_branch }}
       - name: Prepare environment for xvfb
         run: |
           sudo apt-get update
@@ -97,12 +108,12 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()
             Pkg.build("GLMakie")'
-      - name: Build and deploy
+      - name: Build and deploy docs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: |
-          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make.jl")'
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24' julia --project=docs -e 'include("docs/make_with_media.jl")'
 
   benchmark:
     name: Run performance regression tests
@@ -159,7 +170,7 @@ jobs:
   copybenchmarks:
     name: Copy benchmark results to gh-pages
     if: github.ref == 'refs/heads/main'
-    needs: [benchmark, docs]
+    needs: [benchmark, docs_no_media]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -84,6 +84,20 @@ julia> include("docs/media.jl")
 
 The output documentation is not exactly the same as the generated with the standard build method, but it is good enough for development.
 
+## Automated documentation build
+
+The documentation is built automatically using two GitHub Actions workflows:
+1. [docsmedia](.github/workflows/build_media.yml) to build the figures
+2. [docs_no_media](.github/workflows/CI.yml) to build the documentation, after the figures have been built
+
+Due to the very long time needed to build the figures, the output of step 1 is stored in a cache with key `docs-media-cache`. This step must either be tiggered manually (via workflow dispatch) if a rebuild is necessary, or it should run automatically once a week (Monday, midnight).
+
+Step 2 is a much faster workflow and is triggered automatically upon each push. It will fail under two conditions:
+1. If the `docs-media-cache` does not exist
+2. If there have been new code examples added, such that there is no corresponding image in the cache.
+
+In either case, you should trigger the `docsmedia` job to rebuild the cache, and then rerun the `docs_no_media` job.
+
 ## Performance Benchmarks
 
 There is a benchmark suite defined in `GalerkinToolkitExamples/benchmarks`. This uses [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) to perform the timings
@@ -94,3 +108,6 @@ Graphs of performance changes over time (per commit hash) can then be viewed her
 The github action can be configured (in `.github/workflows/CI.yml`, job `benchmark`) to fail if the performance change is beyond a given threshold. Look for the `alert-threshold:` and `fail-on-alert:` keys.
 
 More benchmarks can be added (or existing ones modified) in `GalerkinToolkitExamples/benchmarks/run_benchmarks.jl`.
+
+
+

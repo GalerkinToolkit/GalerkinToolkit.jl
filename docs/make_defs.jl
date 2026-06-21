@@ -22,22 +22,35 @@ function media()
     end
 end
 
+function preprocess(contents)
+    @show typeof(contents), length(contents)
+    new_lines = map(eachline(IOBuffer(contents))) do line
+        if  ! endswith(line,"# hide")
+            newline = line * "\n"
+        else
+            newline = ""
+        end
+    end
+    join(new_lines)
+end
+
 function main(;debug=false)
 
     if debug
+        mkpath(src_md)
         for file_png in filter(f->f[end-3:end]==".png" || f[end-3:end]==".gif" ,readdir(src_jl))
             cp(joinpath(src_jl,file_png),joinpath(src_md,file_png),force=true)
         end
     else
         rm(src_md,force=true,recursive=true)
+        mkpath(src_md)
     end
-    mkpath(src_md)
 
     codefence = "```julia" => "```"
     for file_jl in filter(f->f[end-2:end]==".jl",readdir(src_jl))
         f = joinpath(src_jl,file_jl)
         if debug
-            Literate.markdown(f,src_md;codefence)
+            Literate.markdown(f,src_md;codefence,preprocess)
         else
             Literate.markdown(f,src_md)
         end
