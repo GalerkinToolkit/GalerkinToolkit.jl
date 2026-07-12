@@ -1,7 +1,7 @@
 name = "GalerkinToolkit"
 uuid = "5e3ba9c4-dd81-444d-b69a-0e7bd7bf60a4"
-authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 version = "0.6.3"
+authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
@@ -48,7 +48,7 @@ FillArrays = "1"
 ForwardDiff = "0.10, 1"
 Gmsh = "0.3"
 IterativeSolvers = "0.9"
-LinearSolve = "3"
+LinearSolve = "3, 5"
 MPI = "0.20"
 MacroTools = "0.3, 0.4, 0.5"
 Makie = "0.24"
