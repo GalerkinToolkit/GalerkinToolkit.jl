@@ -1058,7 +1058,68 @@ end
 
 
 
+# normal LICM, used for ablation test
+function normal_licm(a) # assuming that the input is a code block
+    symbol_depth = Dict() # symbol -> largest depth of dependencies
+    loopvar_depth = Dict() # loop var -> largest depth of dependencies
 
+    function get_depth(ast)
+        if ast_is_leaf(ast)
+          if haskey(symbol_depth, ast)
+            return  symbol_depth[ast]
+          else
+            return 0
+          end
+        else
+            return max(map(get_depth, ast_children(ast))...)
+        end
+    end
+
+    out = []
+    push!(out, [])
+
+    function normal_licm_impl!(ast)
+        if ast_is_block(ast) # is a block (entry point)
+            for stmt in ast_children(ast)
+                normal_licm_impl!(stmt)
+            end
+        elseif ast_is_loop(ast)  # is a for loop (hoist)
+            push!(out, [])
+            loop_stmt_block = ast_loop_body(ast)
+            signature = ast_loop_signature(ast)
+            depth = length(loopvar_depth) + 1
+            loopvar = ast_loop_index(ast)
+            loopvar_depth[loopvar] = depth
+            symbol_depth[loopvar] = depth
+
+            for stmt in ast_children(loop_stmt_block) 
+                normal_licm_impl!(stmt)
+            end
+            # create loop. if empty then remove the entire loop
+            if length(out[end]) > 0
+                push!(out[end-1], ast_for(signature, ast_block(out[end]) ))
+            end
+            pop!(out)
+            delete!(loopvar_depth, loopvar)
+        else # otherwise we do not optimize 
+            # update dependencies for all assignments
+            if ast_is_definition(ast) && ast_is_leaf(ast_children(ast)[1]) 
+                lhs, rhs = ast_lhs(ast), ast_rhs(ast)
+                depth = if ast_is_alloc(ast)
+                    length(loopvar_depth)
+                else
+                    get_depth(rhs)
+                end
+                symbol_depth[lhs] = depth
+                push!(out[depth+1], ast)
+            else
+                push!(out[end], ast)
+            end
+        end
+    end
+    normal_licm_impl!(a)
+    ast_block(out[1])
+end
 
 
 

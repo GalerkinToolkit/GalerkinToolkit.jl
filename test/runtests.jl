@@ -19,6 +19,7 @@ using Test
     @testset "Problems" begin include("problems_tests.jl") end
     @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
+    @testset "Passes" begin include("passes_tests.jl") end
     @testset "Issue 224" begin include("issue_224.jl") end
     @testset "Issue 230" begin include("issue_230.jl") end
 end
