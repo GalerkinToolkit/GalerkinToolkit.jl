@@ -37,7 +37,7 @@ const EVALUATED_EXPRS = Dict{Expr,Any}()
 
 function evaluate(expr,captured_data)
     if !haskey(EVALUATED_EXPRS,expr)
-        EVALUATED_EXPRS[expr] = eval(expr)
+        EVALUATED_EXPRS[expr] = eval(:(@fastmath $expr))
     end
     f1 = EVALUATED_EXPRS[expr]
     f2 = Base.invokelatest(f1, captured_data...)
