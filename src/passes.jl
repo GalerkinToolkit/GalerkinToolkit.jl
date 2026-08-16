@@ -148,8 +148,8 @@ function ast_is_index(t)
 end
 
 function ast_is_alloc(t) # TODO: check whether it is really needed
-    if t isa Expr && t.head === :call && length(ex.args) >= 1
-        callee = ex.args[1]
+    if t isa Expr && t.head === :call && length(t.args) >= 1
+        callee = t.args[1]
         if callee === :zeros || callee === :alloc_zeros 
             return true
         end
@@ -1140,7 +1140,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     hash_arrayinfo = Dict() # reuse hash -> array info
     # array info is a named tuple (;name, summary, index_placeholders, index_ranges, reuse_key)
 
-    undo_logs = [[]]
+    undo_logs = [[]] # TODO: use another flag for undo logs. now it uses nothing to label undo.
 
 
 
@@ -1247,9 +1247,9 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             node_hash = hash((template_placeholders, loopvar_placeholders, hash_list, children_placeholders_list))
 
             summary =  (node_hash, loopvar_placeholders, bindings)
-            if ast_is_index(node) #TODO: handle array indexing
-                error("not implemented")
-            end
+            # if ast_is_index(node) #TODO: handle array indexing
+            #     error("not implemented")
+            # end
             return summary
         end
     end
@@ -1302,15 +1302,15 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             array_placeholders_idx[array.index_placeholders[i]] = i
         end
 
-        for placeholder in 1:length(summary.bindings)
+        for placeholder in 1:length(summary[3])
             if haskey(array_placeholders_idx, placeholder)
-                range = array.index_ranges(array_placeholders_idx[placeholder])
+                range = array.index_ranges[array_placeholders_idx[placeholder]]
                 binding = summary[3][placeholder]
                 if binding[2] != range || !haskey(loopvar_info, binding[1])
                     return nothing
                 end
                 loop_var = binding[1]
-                push!(loop_indices, loop_var)
+                push!(load_indices, loop_var)
 
             else
                 if array.summary[3][placeholder][1] != summary[3][placeholder][1]
@@ -1350,7 +1350,6 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         if haskey(new_array_active, array_name)
             new_array_active[array_name] = true
         end
-        activate_cache!(result_array)
         return result_load
     end
 
@@ -1434,7 +1433,6 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     function set_scalar!(var::Symbol, summary)
         old = get(var_summary, var, nothing)
         push!(undo_logs[end], (var, old))
-        push!(touched, var)
         var_summary[var] = summary
         return
     end
@@ -1453,7 +1451,6 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             return
         end
 
-        temp = fresh_cse_temp!(state)
         var_count += 1
         temp = ast_leaf(Symbol("cse_array_$var_count"))
 
@@ -1471,11 +1468,12 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
 
     function ast_array_cse_impl(node, result_block) # result block to append statements. we need to place additional statements to store intermediate results.
         if ast_is_block(node)
-            new_children = []
             for child in ast_children(node)
-                ast_array_cse_impl(child, new_children)
+                ast_array_cse_impl(child, result_block)
             end
-            ast_replace_children(node, new_children...)
+            # result = ast_replace_children(node, new_children...)
+            # push!(result_block, result)
+            # result
         elseif ast_is_loop(node)
             signature = ast_loop_signature(node)
             loop_index = ast_loop_index(node)
@@ -1484,7 +1482,9 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             loopvar_info[loop_index] = (length(loop_vars), hash_expr(upperbound))
             summary_loop_range!(loop_index, length(loop_vars), upperbound)
             push!(undo_logs, [])
-            new_body = ast_array_cse_impl(ast_loop_body(node), result_block)
+            body_block = []
+            ast_array_cse_impl(ast_loop_body(node), body_block)
+            new_body = ast_block(body_block)
 
 
             delete!(loopvar_info, loop_index)
@@ -1497,13 +1497,14 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
                 end
             end
             pop!(undo_logs)
-            ast_for(signature, new_body)
+            result = ast_for(signature, new_body)
+            push!(result_block, result)
 
         elseif ast_is_definition(node)
             lhs = ast_lhs(node)
             rhs = ast_rhs(node)
             rhs2, summary, reused = rewrite_rhs(rhs)
-            result = ast_replace_children(node, (lhs, rhs2))
+            result = ast_replace_children(node, lhs, rhs2)
             push!(result_block, result)
 
             if ast_is_leaf(lhs)
@@ -1521,24 +1522,26 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
                                     ranges)
                 end
             end
-            return result
 
         elseif ast_is_incremental(node)
             # TODO: check whether the rhs can be reused, but currently in our test cases not needed.
             push!(result_block, node)
-            node
         else
             # TODO: check other cases
             push!(result_block, node)
-            node
         end
     end
 
-    result = []
+    t = []
     # TODO: step 1 find data reuse
-    reused_ast = ast_array_cse_impl(ast, result)
+    ast_array_cse_impl(ast, t)
+
+    reused_ast = ast_block(t)
 
     # TODO: step 2: find prototype, place array allocation & remove unused arrays
+
+    # TODO: return ast and var count
+    reused_ast, var_count
 end
 
 
