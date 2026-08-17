@@ -157,6 +157,35 @@ function ast_is_alloc(t) # TODO: check whether it is really needed
     return false
 end
 
+function ast_alloc(a, T, length...)
+    a_str = string(a)
+    :(alloc_zeros($a_str, $T, $(length...)))
+end
+
+function ast_typeof(t)
+    :(typeof($t))
+end
+
+function ast_proto(t)
+    :(zero($t))
+end
+
+function ast_is_typeof(t)
+    return ast_is_call(t) && ast_children(t)[1] == :typeof
+end
+
+function ast_alloc_type(t)
+    @assert ast_is_alloc(t)
+    children = ast_children(t)
+    callee = children[1]
+    if callee === :zeros
+        # TODO: assuming explicit data types. or otherwise we need to use Float64
+        return children[2]
+    else #if callee === :alloc_zeros
+        return children[3]
+    end
+end
+
 function ast_call(callee, args...)
     :($callee($(args...) ))
 end
@@ -368,12 +397,17 @@ end
 
 
 
+# TODO: reuse existing variables for prototypes before all loops (in our cases all statements outside the loops comes before the first loop). This can also be done with cse, a separate pass.
 function ast_proto_block(ast, var_count = 0)
-    # TODO: remove dead code, including mem allocs.
+    # TODO: remove dead code, including mem allocs. (implemented in dce)
     block = ast_block()
     var_proto = Dict()
-    loop_indices = Set()
 
+    # handle allocs in proto block 
+    # We do not alloc arrays in prototype vars, but save the type of the array and use the type directly.
+    # also we don't need a prototype for array updates and just reuse the array.
+    array_proto = Dict() 
+    loop_indices = Set()
     loop_var_proto = ast_leaf(1)
 
     function new_var_proto()
@@ -396,10 +430,14 @@ function ast_proto_block(ast, var_count = 0)
             else
                 return node
             end
+        elseif ast_is_index(node) && haskey(array_proto, ast_children(node)[1])
+            return array_proto[ast_children(node)[1]]
         else
             new_children = map(replace_loop_var, ast_children(node))
             return ast_replace_children(node, new_children...)
         end
+
+        
     end
     
     function ast_proto_block_impl(node)
@@ -411,8 +449,19 @@ function ast_proto_block(ast, var_count = 0)
             ast_proto_block_impl(ast_loop_body(node))
             pop!(loop_indices, loop_index)
         elseif ast_is_definition(node)
-            new_stmt = replace_loop_var(node)
-            ast_block_append_statements!(block, new_stmt)
+            if ast_is_index(ast_lhs(node)) # lhs is not a leaf
+                # pass
+            elseif ast_is_alloc(ast_rhs(node))
+                type = ast_alloc_type(ast_rhs(node))
+                proto = ast_proto(type)
+                new_lhs = new_var_proto()
+                array_proto[ast_lhs] = new_lhs
+                new_stmt = ast_definition(new_lhs, proto)
+                ast_block_append_statements!(block, new_stmt)
+            else
+                new_stmt = replace_loop_var(node)
+                ast_block_append_statements!(block, new_stmt)
+            end
         end
         
     end
@@ -586,12 +635,12 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
     function ast_tabulate_alloc_block(var_shape, var_proto)
         block = ast_block()
         var_shape_sorted = sort(collect(var_shape), by=x -> string(first(x)))
-        zeros_ast = ast_leaf(:zeros)
-        typeof_ast = ast_leaf(:typeof)
+        # zeros_ast = ast_leaf(:zeros)
         for (var, shape) in var_shape_sorted
-            proto = var_proto[var]
-            proto_ast = ast_call(typeof_ast, proto)
-            rhs_ast = ast_call(zeros_ast, proto_ast, shape...)
+            proto = var_proto[var] 
+            proto_ast = ast_typeof(proto)
+            # rhs_ast = ast_call(zeros_ast, proto_ast, shape...)
+            rhs_ast = ast_alloc(var, proto_ast, shape...)
             stmt_ast = ast_definition(var, rhs_ast)
             ast_block_append_statements!(block, stmt_ast)
         end
@@ -1126,6 +1175,7 @@ end
 
 
 # TODO: currently it can only identify 1D array allocation reuse.
+# a normal cse & dce is required for the prototype (so we don't need to enter the loops). We can do it outside the function
 function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     loop_vars = [] # element: (var name, upperbound hash, upperbound)
     loopvar_info = Dict() # key:var name  value: (var index, upperbound hash)
@@ -1258,7 +1308,6 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         summary_expr(node)[1]
     end
     
-    # TODO: redo this pass
     function summary_loop_range!(loop_var, loop_idx, upperbound)
         upperbound_hash, placeholders, bindings = summary_expr(upperbound)
         new_placeholder = length(placeholders)+1
@@ -1524,24 +1573,89 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             end
 
         elseif ast_is_incremental(node)
-            # TODO: check whether the rhs can be reused, but currently in our test cases not needed.
-            push!(result_block, node)
+            # check whether the rhs can be reused. In most use cases it is not needed.
+            lhs = ast_lhs(node)
+            rhs = ast_rhs(node)
+            rhs2, summary, reused = rewrite_rhs(rhs)
+            result = ast_replace_children(node, lhs, rhs2)
+            push!(result_block, result)
         else
             # TODO: check other cases
             push!(result_block, node)
         end
     end
 
-    t = []
-    # TODO: step 1 find data reuse
-    ast_array_cse_impl(ast, t)
+    t1 = []
+    # step 1 find data reuse
+    ast_array_cse_impl(ast, t1)
 
-    reused_ast = ast_block(t)
+    reused_ast = ast_block(t1)
 
-    # TODO: step 2: find prototype, place array allocation & remove unused arrays
+    # step 2: find prototype, place array allocation & remove unused arrays
+    
+
+    # find prototype: the allocation block, the var => proto map, and update var count
+    proto_block, var_proto, var_count = ast_proto_block(reused_ast, var_count)
+
+    t2 = []
+    alloc_placed = false
+    function alloc_and_cleanup(node, result_block)
+        if ast_is_block(node)
+            for child in ast_children(node)
+                alloc_and_cleanup(child, result_block)
+            end
+        elseif ast_is_loop(node)
+            signature = ast_loop_signature(node)
+            body_block = []
+            place_alloc = !alloc_placed
+            alloc_placed = true
+
+            if place_alloc
+                # place all proto
+                append!(result_block, ast_children(proto_block))
+
+                # place allocations
+                for (array_name, is_active) in new_array_active
+                    if is_active
+                        dims, protovar = new_array_alloc[array_name]
+                        proto = var_proto[protovar]
+                        type_proto = ast_typeof(proto)
+                        alloc_call = ast_alloc(array_name, type_proto, dims...)
+                        alloc_statement = ast_definition(array_name, alloc_call)
+                        push!(result_block, alloc_statement)
+                    end
+                end
+            end
+
+            alloc_and_cleanup(ast_loop_body(node), body_block)
+            new_body = ast_block(body_block)
+            result = ast_for(signature, new_body)
+            push!(result_block, result)
+
+        elseif ast_is_definition(node)
+            # remove unused arrays
+            lhs = ast_lhs(node)
+            rhs = ast_rhs(node)
+            if ast_is_index(lhs) && ast_is_leaf(ast_children(lhs)[1])
+                var = ast_children(lhs)[1]
+                if haskey(new_array_active, var) && new_array_active[var] == false # remove unused arrays
+                    return
+                end
+            end
+            push!(result_block, node)
+
+        elseif ast_is_incremental(node)
+            push!(result_block, node)
+        else
+            push!(result_block, node)
+        end
+    end
+
+    alloc_and_cleanup(reused_ast, t2)
+    reused_ast2 = ast_block(t2)
 
     # TODO: return ast and var count
-    reused_ast, var_count
+    reused_ast2, var_count
 end
 
 
@@ -1643,7 +1757,7 @@ end
 
 
 
-
+# TODO: also, apply the rule zero(typeof(a)) = a (if it is only used for array alloc), typeof(zero(a)) = a for prototyping in normal constant folding. This will make the code clean (but it has only a minor effect in the performance)
 # assuming the blocks are all integers and masks are all integer comparisons (==)
 function ast_constant_folding(ast)
     # TODO: add rule: a[?] += 0 => remove stmt 

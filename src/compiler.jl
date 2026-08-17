@@ -1826,12 +1826,45 @@ function ast_optimize_3(expr, loop_var_range, options = nothing)
     expr9
 end
 
-# TODO: include array cse
+# include array cse in addition to ast_optimize_4
 function ast_optimize_4(expr, loop_var_range, options = nothing) 
-    # TODO: implement
-    expr1 = ast_optimize_2(expr, loop_var_range, options)
+    expr2 = ast_loop_unroll(expr) |> ast_constant_folding
+
+    expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
+    var_count = 0
+
+    expr4, var_count = ast_flatten(expr3, var_count)
+    expr4
+
+    expr5 = ast_array_unroll(expr4)
+
+          
+    expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
     
-    expr1 
+    # expr6
+
+    expr7 = ast_remove_dead_code(expr6)
+
+    if options === nothing || options.topological_sort == true
+        expr8 = ast_topological_sort(expr7)
+        expr8, var_count = ast_flatten(expr8, var_count)
+        expr8 = ast_topological_sort(expr8)
+    else
+        expr8 = expr7
+    end
+    
+    if options === nothing || options.array_aliasing == true
+        expr9 = ast_array_aliasing(expr8) 
+    else
+        expr9 = expr8
+    end
+
+    expr9 = ast_remove_dead_code(expr9)
+
+    expr10, var_count = ast_array_cse(expr9, var_count)
+    
+    expr10 |> GT.ast_topological_sort |> GT.ast_remove_dead_code
+    
 end
 
 function ast_optimize_with_options(expr, loop_var_range, options)
