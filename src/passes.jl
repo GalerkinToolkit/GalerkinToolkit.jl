@@ -1504,8 +1504,8 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         temp = ast_leaf(Symbol("cse_array_$var_count"))
 
         new_array_active[temp] = false
-        new_array_alloc[temp] = ([upperbound], lhs)
-        cache_lhs = ast_index(temp, upperbound)
+        new_array_alloc[temp] = ([(loop_var, upperbound)], lhs)
+        cache_lhs = ast_index(temp, loop_var)
         cache_rhs = lhs
         cache_statement = ast_definition(cache_lhs, cache_rhs)
         push!(result_block, cache_statement)
@@ -1619,8 +1619,18 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
                     if is_active
                         dims, protovar = new_array_alloc[array_name]
                         proto = var_proto[protovar]
+                        # TODO: find the correct loop length
+                        dims2 = map(dims) do (loopvar, upperbound)
+                            if ast_is_number(upperbound)
+                                upperbound
+                            elseif haskey(loop_var_maxlength, loopvar)
+                                loop_var_maxlength[loopvar]
+                            else
+                                var_proto[upperbound] # TODO: maybe incorrect, but it is never used
+                            end
+                        end
                         type_proto = ast_typeof(proto)
-                        alloc_call = ast_alloc(array_name, type_proto, dims...)
+                        alloc_call = ast_alloc(array_name, type_proto, dims2...)
                         alloc_statement = ast_definition(array_name, alloc_call)
                         push!(result_block, alloc_statement)
                     end

@@ -1861,7 +1861,7 @@ function ast_optimize_4(expr, loop_var_range, options = nothing)
 
     expr9 = ast_remove_dead_code(expr9)
 
-    expr10, var_count = ast_array_cse(expr9, var_count)
+    expr10, var_count = ast_array_cse(expr9, var_count, loop_var_range)
     
     expr10 |> GT.ast_topological_sort |> GT.ast_remove_dead_code
     
