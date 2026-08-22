@@ -1701,7 +1701,7 @@ end
 
 
 
-function ast_optimize(expr, loop_var_range, options = nothing)
+function ast_optimize_1(expr, loop_var_range, options = nothing)
     # unroll -> flatten -> array_unroll -> tabulate -> topological_sort -> array_aliasing 
     # do not remove: unroll -> array_unroll,  remove_dead_code, flatten
     expr2 = ast_loop_unroll(expr) |> ast_constant_folding
@@ -1741,11 +1741,49 @@ function ast_optimize(expr, loop_var_range, options = nothing)
 end
 
 
+function ast_optimize_5(expr, loop_var_range, options = nothing)
+    var_count = 0
+    
+    expr2_pre, var_count = ast_flatten(expr, var_count)
+
+    expr2 = ast_topological_sort(expr2_pre) 
+
+    expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
+    
+    expr4 = ast_loop_unroll(expr3)  |> ast_array_unroll |> ast_constant_folding
+
+    expr5 = ast_loop_unroll(expr4)  |> ast_array_unroll |> ast_constant_folding
+    
+    # remove dead code twice. this is important because we have ifelse statements flattened
+    expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
+
+
+    expr7 = if options === nothing || options.topological_sort == true
+        expr7_temp = ast_topological_sort(expr6)
+        expr7_temp, var_count = ast_array_cse(expr7_temp, var_count, loop_var_range)
+        expr7_temp
+    else
+        expr6
+    end
+
+    expr8 = if options === nothing || options.array_aliasing == true
+        ast_array_aliasing(expr7)
+    else
+        expr7
+    end
+
+    expr8 = ast_remove_dead_code(expr8)
+
+    expr8
+end
+
 
 function ast_optimize_2(expr, loop_var_range, options = nothing)
     var_count = 0
     
-    expr2, var_count = ast_flatten(expr, var_count)
+    expr2_pre, var_count = ast_flatten(expr, var_count)
+
+    expr2 = ast_topological_sort(expr2_pre) 
 
     expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
     
@@ -1776,7 +1814,9 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
 
     expr10 = expr9 |> ast_constant_folding 
     expr10 = if options === nothing || options.topological_sort == true
-        ast_topological_sort(expr10)
+        expr10_temp = ast_topological_sort(expr10)
+        expr10_temp, var_count = ast_array_cse(expr10_temp, var_count, loop_var_range)
+        expr10_temp
     else
         expr10
     end
@@ -1873,7 +1913,7 @@ function ast_optimize_with_options(expr, loop_var_range, options)
     else
         options.order
     end
-    orders = [ast_optimize, ast_optimize_2, ast_optimize_3, ast_optimize_4]
+    orders = [ast_optimize_1, ast_optimize_2, ast_optimize_3, ast_optimize_4, ast_optimize_5]
     
     if order >= 1 && order <= length(orders)
         orders[order](expr, loop_var_range, options)

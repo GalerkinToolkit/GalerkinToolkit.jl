@@ -1988,11 +1988,10 @@ function ast_loop_unroll(ast)
     ast_loop_unroll_impl(ast)
 end
 
-# TODO: a[1] -> a_1
+# scalar replacement: a[1] -> a_1
 function ast_array_unroll(ast)
     array_def = Dict() # the last n elements represent the array shape
     array_unroll_indices = Dict()
-    alloc_funcs = Set(map(ast_leaf, [:alloc_zeros, :zeros])) # TODO: decouple
     array_unroll_vars = Dict()
 
     function identify_array_unrolls(node)
@@ -2007,7 +2006,7 @@ function ast_array_unroll(ast)
             else
                 array_unroll_indices[var] = unroll_mask
             end
-        elseif ast_is_definition(node) && ast_is_call(ast_rhs(node)) && (ast_children(ast_rhs(node))[1] in alloc_funcs)
+        elseif ast_is_definition(node) && ast_is_call(ast_rhs(node)) && ast_is_alloc(ast_rhs(node))
             # definition of arrays. assuming that the last n args represent the array shape
             lhs = ast_lhs(node)
             array_def[lhs] = ast_rhs(node) 
