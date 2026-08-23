@@ -677,6 +677,7 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
     ast_block_append_statements!(result, ast_children(loop)...)
 
 
+    # result, var_count = ast_flatten(result, var_count) # we may include non-3ac expressions with prototypes, so we need to flatten it again to ensure that the result expression is in 3ac-like format
     return result, var_count
 end 
 
@@ -1108,7 +1109,7 @@ end
 
 
 # normal LICM, used for ablation test
-function normal_licm(a) # assuming that the input is a code block
+function ast_normal_licm(a) # assuming that the input is a code block
     symbol_depth = Dict() # symbol -> largest depth of dependencies
     loopvar_depth = Dict() # loop var -> largest depth of dependencies
 
@@ -1612,7 +1613,21 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
 
             if place_alloc
                 # place all proto
-                append!(result_block, ast_children(proto_block))
+                # TODO: replace proto of newly allocated arrays. We still need to check whether depth=1 is enough for the prototype update
+                for stmt in ast_children(proto_block)
+                    if ast_is_definition(stmt) && ast_is_index(ast_rhs(stmt))
+                        lhs, rhs = ast_children(stmt)
+                        a = ast_children(rhs)[1]
+                        if haskey(new_array_active, a) && new_array_active[a]
+                            _, protovar = new_array_alloc[a]
+                            proto = var_proto[protovar]
+                            new_stmt = ast_definition(lhs, proto)
+                            push!(result_block, new_stmt)
+                            continue
+                        end
+                    end
+                    push!(result_block, stmt)
+                end
 
                 # place allocations
                 for (array_name, is_active) in new_array_active
@@ -1672,7 +1687,7 @@ end
 
 
 
-
+# TODO: cannot handle alloc well. 
 function ast_flatten(ast, var_count_init = 0)
     # TODO: split flatten and topo sort?
     # in a compiler workflow, we need to allocate new variables with incremental id

@@ -1741,51 +1741,34 @@ function ast_optimize_1(expr, loop_var_range, options = nothing)
 end
 
 
-function ast_optimize_5(expr, loop_var_range, options = nothing)
-    var_count = 0
-    
-    expr2_pre, var_count = ast_flatten(expr, var_count)
-
-    expr2 = ast_topological_sort(expr2_pre) 
-
-    expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
-    
-    expr4 = ast_loop_unroll(expr3)  |> ast_array_unroll |> ast_constant_folding
-
-    expr5 = ast_loop_unroll(expr4)  |> ast_array_unroll |> ast_constant_folding
-    
-    # remove dead code twice. this is important because we have ifelse statements flattened
-    expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
-
-
-    expr7 = if options === nothing || options.topological_sort == true
-        expr7_temp = ast_topological_sort(expr6)
-        expr7_temp, var_count = ast_array_cse(expr7_temp, var_count, loop_var_range)
-        expr7_temp
-    else
-        expr6
-    end
-
-    expr8 = if options === nothing || options.array_aliasing == true
-        ast_array_aliasing(expr7)
-    else
-        expr7
-    end
-
-    expr8 = ast_remove_dead_code(expr8)
-
-    expr8
-end
-
-
 function ast_optimize_2(expr, loop_var_range, options = nothing)
     var_count = 0
-    
+    apply_cse = ( options === nothing || !haskey(options, :topological_sort) || (haskey(options, :topological_sort) &&  options.topological_sort == true) )
+    licm_option = if options === nothing || !haskey(options, :licm) || (haskey(options, :licm) &&  options.licm == "binomial") 
+        "binomial"
+    elseif (haskey(options, :licm) &&  options.licm == "basic")
+        "basic"
+    else
+        "none"
+    end
+
     expr2_pre, var_count = ast_flatten(expr, var_count)
 
-    expr2 = ast_topological_sort(expr2_pre) 
+    expr2 = if apply_cse
+        ast_topological_sort(expr2_pre)    
+    else
+        expr2_pre
+    end
 
-    expr3, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
+    expr3 = if licm_option == "binomial"
+        expr3_temp, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
+        expr3_temp
+    elseif licm_option == "basic"
+        ast_normal_licm(expr2)
+    else
+        expr2
+    end
+    
     
     expr4 = ast_loop_unroll(expr3)  |> ast_array_unroll |> ast_constant_folding
 
@@ -1795,25 +1778,25 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
 
 
-    expr7 = if options === nothing || options.topological_sort == true
-        ast_topological_sort(expr6)
+    expr7 = if apply_cse
+        expr6 |> ast_topological_sort |> ast_array_aliasing
     else
         expr6
     end
 
-    expr8 = if options === nothing || options.array_aliasing == true
-        ast_array_aliasing(expr7)
-    else
-        expr7
-    end
+    # expr8 = if options === nothing || (haskey(options, :array_aliasing) && options.array_aliasing == true)
+    #     ast_array_aliasing(expr7)
+    # else
+    #     expr7
+    # end
 
-    expr8 = ast_remove_dead_code(expr8)
+    expr8 = ast_remove_dead_code(expr7)
 
     expr9, var_count = ast_flatten(expr8, var_count) 
     # expr9, var_count = ast_tabulate(expr9, var_count, loop_var_range) 
 
     expr10 = expr9 |> ast_constant_folding 
-    expr10 = if options === nothing || options.topological_sort == true
+    expr10 = if apply_cse
         expr10_temp = ast_topological_sort(expr10)
         expr10_temp, var_count = ast_array_cse(expr10_temp, var_count, loop_var_range)
         expr10_temp
@@ -1840,7 +1823,7 @@ function ast_optimize_3(expr, loop_var_range, options = nothing)
 
     expr5 = ast_array_unroll(expr4)
 
-    expr6 = normal_licm(expr5)
+    expr6 = ast_normal_licm(expr5)
     # expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
     
     # expr6
@@ -1913,7 +1896,7 @@ function ast_optimize_with_options(expr, loop_var_range, options)
     else
         options.order
     end
-    orders = [ast_optimize_1, ast_optimize_2, ast_optimize_3, ast_optimize_4, ast_optimize_5]
+    orders = [ast_optimize_1, ast_optimize_2, ast_optimize_3, ast_optimize_4]
     
     if order >= 1 && order <= length(orders)
         orders[order](expr, loop_var_range, options)
