@@ -1,4 +1,11 @@
 module PassesTests
+# TODO: We can also improve this in a new work 
+# we can place the array cse into licm: 
+# weak LICM keeping arrays
+# -> array cse supporting multi-dim arrays (hashing with placeholders for loop var)
+# -> partial scalar replacement using the LCA to find out the minimum dimension needed for each array
+# for the placeholders we need to sort them in the DFS order in the AST. It is like creating a function creating new dummy variables.
+# 
 
 import GalerkinToolkit as GT
 using Test
