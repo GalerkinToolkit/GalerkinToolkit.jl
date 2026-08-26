@@ -51,7 +51,7 @@ original_expr = quote
         s
     end
 
-optimized_expr = GT.normal_licm(original_expr)
+optimized_expr = GT.ast_normal_licm(original_expr)
 s1 = eval(original_expr)
 origin_counts = NORMAL_PASS_COUNTS
 NORMAL_PASS_COUNTS = Dict()
