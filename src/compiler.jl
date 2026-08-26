@@ -1751,7 +1751,10 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     else
         "none"
     end
+    apply_array_cse = !( options === nothing || !haskey(options, :array_cse) || (haskey(options, :array_cse) &&  options.array_cse == false) )
 
+
+    # preprocessing passes
     expr2_pre, var_count = ast_flatten(expr, var_count)
 
     expr2 = if apply_cse
@@ -1760,6 +1763,7 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
         expr2_pre
     end
 
+    # LICM pass
     expr3 = if licm_option == "binomial"
         expr3_temp, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
         expr3_temp
@@ -1774,10 +1778,11 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
 
     expr5 = ast_loop_unroll(expr4)  |> ast_array_unroll |> ast_constant_folding
     
-    # remove dead code twice. this is important because we have ifelse statements flattened
+    # remove dead code twice. this is important because we have ifelse statements flattened. Theoretically this is one pass, but practically works in 3 steps.
     expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
 
 
+    # The general CSE pass till the end: which includes a basic CSE and array-based reusing.
     expr7 = if apply_cse
         expr6 |> ast_topological_sort |> ast_array_aliasing
     else
@@ -1798,7 +1803,10 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     expr10 = expr9 |> ast_constant_folding 
     expr10 = if apply_cse
         expr10_temp = ast_topological_sort(expr10)
-        expr10_temp, var_count = ast_array_cse(expr10_temp, var_count, loop_var_range)
+        if apply_array_cse
+            expr10_temp, var_count = ast_array_cse(expr10_temp, var_count, loop_var_range)
+            expr10_temp = ast_topological_sort(expr10_temp)
+        end
         expr10_temp
     else
         expr10

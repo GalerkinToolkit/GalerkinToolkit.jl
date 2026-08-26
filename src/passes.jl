@@ -1184,7 +1184,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     hash_var = Dict()
 
     new_array_alloc = Dict() # array symbol -> (shape, prototype)
-    new_array_active = Dict() # array symbol -> boolean activate flag 
+    new_array_active = Dict() # array symbol -> boolean activate flag. TODO: this can be extended to the status of each depdendency for multi-dim cases.
 
     # array reuse matching
     name_arrayinfo = Dict() # name -> array info 
@@ -1192,6 +1192,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     # array info is a named tuple (;name, summary, index_placeholders, index_ranges, reuse_key)
 
     undo_logs = [[]] # TODO: use another flag for undo logs. now it uses nothing to label undo.
+    delay_cache_scalar = [[]]
 
 
 
@@ -1397,10 +1398,15 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             return nothing
         end
         array_name = result_array.name 
-        if haskey(new_array_active, array_name)
+        
+        if haskey(new_array_alloc, array_name)
+            if !haskey(new_array_active, array_name) # check incomplete arrays
+                return nothing
+            end
             new_array_active[array_name] = true
         end
         return result_load
+        
     end
 
     function rewrite_rhs(rhs)
@@ -1504,8 +1510,12 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         var_count += 1
         temp = ast_leaf(Symbol("cse_array_$var_count"))
 
-        new_array_active[temp] = false
+        # delay the scalar cache at the end of the current loop. 
+        # This is needed to eliminate false optimizations that reuse data while the array is not complete.
+        # TODO: also support muli-dim cases. This is hard but required for more general cases (other than FEM) 
+        # new_array_active[temp] = false
         new_array_alloc[temp] = ([(loop_var, upperbound)], lhs)
+        push!(delay_cache_scalar[end], temp)
         cache_lhs = ast_index(temp, loop_var)
         cache_rhs = lhs
         cache_statement = ast_definition(cache_lhs, cache_rhs)
@@ -1532,6 +1542,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             loopvar_info[loop_index] = (length(loop_vars), hash_expr(upperbound))
             summary_loop_range!(loop_index, length(loop_vars), upperbound)
             push!(undo_logs, [])
+            push!(delay_cache_scalar, [])
             body_block = []
             ast_array_cse_impl(ast_loop_body(node), body_block)
             new_body = ast_block(body_block)
@@ -1546,7 +1557,11 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
                     var_summary[var] = old
                 end
             end
+            for var in delay_cache_scalar[end]
+                new_array_active[var] = false
+            end
             pop!(undo_logs)
+            pop!(delay_cache_scalar)
             result = ast_for(signature, new_body)
             push!(result_block, result)
 
