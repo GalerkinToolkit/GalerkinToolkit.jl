@@ -694,3 +694,12 @@ Intermediate
 """
 function reference_topologies end
 
+
+abstract type AbstractBackend end
+
+struct CPUBackend <: AbstractBackend end
+struct CUDABackend <: AbstractBackend end
+
+abstract type AbstractLayout end
+struct CPULayout <: AbstractLayout end
+struct GPULayout <: AbstractLayout end

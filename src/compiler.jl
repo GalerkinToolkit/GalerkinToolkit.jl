@@ -479,6 +479,7 @@ function expression(term::WeightTerm)
     D = term.D
     J = :(jacobian_accessor($quadrature, $(Val(D)))($face, 1)($point))
     :(weight_accessor($quadrature)($face)($point, $J) )
+    # weight_expression(quadrature, face, point, J)
 end
 
 function form_argument_quantity(space::AbstractSpace,arg,the_field=1)

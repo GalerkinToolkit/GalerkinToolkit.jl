@@ -665,3 +665,13 @@ face_reference_id(q::MeshQuadrature) = q.face_reference_id
 reference_quadratures(q::MeshQuadrature) = q.reference_quadratures
 
 
+# TODO: locate the computation of gradients. Now we only have coordinates and weights here
+# TODO: build it on the GPU directly
+struct QuadratureIntegrationData{L,A}
+    layout::L
+    reference_gradients::A
+end
+
+# assuming that there is only 1 element type in the mesh. Maybe we need to remove this layer of abstraction of MeshQuadrature and FaceQuadrature
+function quadrature_integration_data(q::AbstractQuadrature)
+end
