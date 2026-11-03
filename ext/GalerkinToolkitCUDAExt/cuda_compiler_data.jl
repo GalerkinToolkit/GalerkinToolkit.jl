@@ -1,0 +1,1 @@
+# TODO: implement Adapt functions for all types, and decide whether the data fit in constant cache

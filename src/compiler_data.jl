@@ -1,0 +1,233 @@
+# TODO: check topologies
+# TODO: reuse data for multiple kernels, including boundary/skeleon and integration over the same domain but different element types
+# TODO: can we fix some tpyes to reduce compilation time?
+# TODO: is the GPU layout really GPU friendly? other libraries like cuda-dolfinx and firedrake uses the original layout and load them into private/shared memory
+struct MeshIntegrationData{L,A,B,C,D}
+    layout::L # CPULayout or GPULayout
+    node_coordinates::A # cpu layout: Vector{StaticArraysCore.SVector{d, Float64}} indexed by node_coordinates[node]
+                        # gpu layout: Matrix{Float64}  indexed by node_coordinates[node, d]
+    face_nodes::B # cpu layout: Vector{StaticArray{}} indexed by  face_nodes[face][node]
+                  # gpu layout: Matrix{}  indexed by face_nodes[face, node]
+    reference_gradients::C # cpu layout: Matrix{StaticArraysCore.SVector{d, Float64}}   indexed by reference_gradients[node, point] 
+                           # we don't have a gpu layout for this, as it is usually on the constant memory
+                           # TODO: if simplex: only store 1 quadrature point
+    reference_weights::D # Vector{Float64}   indexed by  reference_weights[point]
+end
+
+node_coordinates(a::MeshIntegrationData) = a.node_coordinates
+face_nodes(a::MeshIntegrationData) = a.face_nodes
+reference_gradients(a::MeshIntegrationData) = a.reference_gradients
+reference_weights(a::MeshIntegrationData) = a.reference_weights
+
+# lower the mesh to plain arrays with a fixed data layout
+function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
+    # TODO: get a subset, like boundary, dimension (now we assume that it is complexified), etc.
+    dom = GT.domain(Q)
+    d = num_dims(dom)
+    D = num_dims(mesh)
+    node_coordinates = GT.node_coordinates(mesh)
+    layout = CPULayout() # TODO: build the function on the GPU or with GPU layout directly 
+    face_nodes = GT.face_nodes(mesh, d)  
+
+    reference_ids = face_reference_id(mesh)
+    rid = reference_ids[d+1][1] # assuming that there is only 1 element type in the mesh or the selected subset.
+    @assert all(x -> x == rid, reference_ids[d+1]) 
+    # Maybe we need to remove this layer of abstraction of MeshQuadrature and FaceQuadrature
+    
+    # remove jagged array. use the same array size for all
+    
+    static_face_nodes = SVector{length(first(face_nodes))}.(face_nodes)
+
+
+    # gradients tabulation from the reference accessors. 
+    # TODO: check correctness. Also check the number of quadrature points / DOFs per simplex element
+    ref_quadrature = reference_quadratures(Q)[rid]
+    reference_weights = weights(ref_quadrature)
+    point_to_x = coordinates(ref_quadrature)
+    
+    # m2 = GT.mesh(domain(Q))
+    # space = mesh_space(m2,Val(D))
+
+    # m2 = GT.mesh(domain(Q))
+    # space = mesh_space(m2,Val(2))
+
+    # mesh_domain = GT.mesh_domain(m; num_dims=Val(D))
+    # space = mesh_space(m,D)
+    # refface = reference_spaces(space)[rid]
+    refface = reference_spaces(mesh, Val(D))[rid]
+    reference_gradients = collect(permutedims(tabulator(refface)(ForwardDiff.gradient,point_to_x), (2, 1))) 
+
+    MeshIntegrationData(layout, node_coordinates, static_face_nodes, reference_gradients, reference_weights)
+end
+
+
+# check whether it is possible to load the layout and type to the GPU, although these are only used for construction and type inference
+struct SpaceIntegrationData{F,A}
+    # layout::L # CPULayout or GPULayout
+    tabulate_function::F # tabulated functions over the reference element. maybe not needed
+    # type::Type{T} # element type of the CPU tabulation, including its static shape
+    reference_tabulator::A # layout: Matrix{T}   indexed by reference_gradients[dof, point] 
+end
+
+
+
+
+function space_integration_data(f, V::AbstractSpace, Q::AbstractQuadrature)
+    dom = GT.domain(Q)
+    mesh = GT.mesh(dom)
+    d = num_dims(dom)
+
+    reference_ids = face_reference_id(mesh)
+    rid = reference_ids[d+1][1] # assuming that there is only 1 element type in the mesh or the selected subset.
+    @assert all(x -> x == rid, reference_ids[d+1]) 
+    
+
+    # tabulation from the reference accessors. 
+    ref_quadrature = reference_quadratures(Q)[rid]
+    # reference_weights = weights(ref_quadrature)
+    point_to_x = coordinates(ref_quadrature)
+    refface = reference_spaces(V)[rid]
+    reference_tabulator = collect(permutedims(tabulator(refface)(f,point_to_x), (2, 1))) 
+
+    SpaceIntegrationData(f, reference_tabulator)
+end
+
+
+# View packed StaticArrays as scalars without copying. Flatten all static
+# dimensions into one component axis, including single-component/empty arrays.
+function integration_scalar_view(values::AbstractArray{T}) where {T<:StaticArray}
+    reshape(reinterpret(eltype(T), vec(values)), length(T), size(values)...)
+end
+
+integration_gpu_layout(values::AbstractArray) = permutedims(values, (2, 1))
+
+function integration_gpu_layout(values::AbstractArray{T}) where {T<:StaticArray}
+    scalars = integration_scalar_view(values)
+    permutedims(scalars, reverse(ntuple(identity, ndims(scalars))))
+end
+
+function integration_cpu_layout(values::AbstractArray, ::Type{T}) where {T}
+    permutedims(values, (2, 1))
+end
+
+function integration_cpu_layout(values::AbstractArray, ::Type{T}) where {T<:StaticArray}
+    # Allocate the final packed buffer and permute directly into its scalar view.
+    # Reinterpreting an intermediate permutation would leave a wrapper instead
+    # of the plain arrays expected by the CPU layout.
+    result = Array{T}(undef, reverse(Base.front(size(values))))
+    permutedims!(integration_scalar_view(result), values,
+        reverse(ntuple(identity, ndims(values))))
+    result
+end
+
+# function to_layout(data::SpaceIntegrationData, layout)
+#     if isa(layout, GPULayout) && isa(data.layout, CPULayout)
+#         reference_tabulator = integration_gpu_layout(data.reference_tabulator)
+#     elseif isa(layout, CPULayout) && isa(data.layout, GPULayout)
+#         reference_tabulator = integration_cpu_layout(data.reference_tabulator, data.type)
+#     else
+#         return data
+#     end
+#     SpaceIntegrationData(layout, data.tabulate_function, data.type, reference_tabulator)
+# end
+
+function to_layout(data::MeshIntegrationData, layout)
+    if isa(layout, GPULayout) && isa(data.layout, CPULayout)
+        node_coordinates = integration_gpu_layout(data.node_coordinates)
+        face_nodes = integration_gpu_layout(data.face_nodes)
+        # reference_gradients = integration_gpu_layout(data.reference_gradients)
+    elseif isa(layout, CPULayout) && isa(data.layout, GPULayout)
+        # We assume that the mesh data are always vectors (dimension >= 2)
+        coordinates_type = SVector{size(data.node_coordinates, 2), eltype(data.node_coordinates)}
+        nodes_type = SVector{size(data.face_nodes, 2), eltype(data.face_nodes)}
+        node_coordinates = integration_cpu_layout(data.node_coordinates, coordinates_type)
+        face_nodes = integration_cpu_layout(data.face_nodes, nodes_type)
+        # gradients_type = SVector{size(data.reference_gradients, 3), eltype(data.reference_gradients)}
+        # reference_gradients = integration_cpu_layout(data.reference_gradients, gradients_type)
+    else
+        return data
+    end
+    # Weights already have the same contiguous layout on both sides, and all threads may load the same reference data point at a time.
+    MeshIntegrationData(layout, node_coordinates, face_nodes, data.reference_gradients, data.reference_weights)
+end
+
+
+# TODO: expressions to be moved into compiler.jl when it is stable
+# TODO: test the expressions against existing accessors
+
+# TODO: remove this when we can evaluate code in GT. This is only used for external debugs
+function _GT_debug_eval(expr)
+    eval(expr)
+end
+
+# Di,Dj: 2 jacobian matrix dims; z: zero scalar value of the matrix;
+# nlnodes: number of local nodes; lnode_to_node: local node to global node
+# node_to_x: global node to coordinate; lnode_s: tabulated gradient
+
+
+
+function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false)
+    # copied from another file. maybe we want to change it later to have a faster jacobian computation
+    result = Expr(:block)
+    symbols = []
+    for j in 1:Dj
+        for i in 1:Di 
+            v = Symbol("j$i$j")
+            push!(symbols, v)
+            push!(result.args, :($v=$z))
+        end
+    end
+    
+    body = []
+    push!(body, :(node = lnode_to_node[lnode]))
+    push!(body, :(x = node_to_x[node]))
+    push!(body, :(s = lnode_s(lnode)))
+    for i in 1:Di
+        for j in 1:Dj
+            v = Symbol("j$i$j")
+            push!(body, :($v += x[$i] * s[$j]))
+        end
+    end
+
+    loop = quote
+        for lnode in 1:$nlnodes
+            $(body...)
+        end
+    end
+
+    push!(result.args, loop)
+    push!(result.args, :(SMatrix{$Di, $Dj}($(symbols...))) )
+    result
+
+    :((lnode_to_node, node_to_x, lnode_s) -> begin
+        $result
+    end
+    )
+end
+
+# Here we only define the code generation for CPUs. TODO: for GPUs, we need to design data collectors from global memory to local/shared mem
+function jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr) 
+    # mesh, quadrature rule (FaceQuadrature), 4 symbols for mesh, quadrature, face (the element) id, quadrature point id
+    data_expr = :(mesh_integration_data($mesh_expr, $Q_expr)) # TODO: add GPU convertion and hoist out the precomputation to CPU
+    lnode_to_node_expr = :(face_nodes($data_expr)[$f_expr])
+    node_to_x_expr = :(node_coordinates($data_expr))
+    lnode_s_expr = :(reference_gradients($data_expr))
+
+    z = zero(eltype(first(GT.node_coordinates(mesh))))
+    z_element = zero(eltype(z))
+    dom = GT.domain(Q)
+    d = num_dims(dom)
+    face_nodes = GT.face_nodes(mesh, d)
+    Di = length(z)
+    Dj = d
+
+    nlnodes = length(first(face_nodes))
+    jacobian_sum_function = jacobian_sum_function_expr(Di, Dj, z_element, nlnodes; is_simplex=false)
+    :(($jacobian_sum_function)($lnode_to_node_expr, $node_to_x_expr, $lnode_s_expr))
+
+
+
+end
+
+function weight_expr(mesh, Q, f, q) # mesh, quadrature rule (FaceQuadrature), face (the element) id, quadrature point id
+end

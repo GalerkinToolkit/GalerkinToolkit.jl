@@ -1293,15 +1293,3 @@ function map_parts(f,args...)
     map(f,map(partition,args)...)
 end
 
-
-# TODO: build it on the GPU directly
-struct MeshIntegrationData{L,A,B}
-    layout::L
-    coordinates::A
-    ids::B
-end
-
-# lower the mesh to plain arrays with a fixed data layout
-function mesh_integration_data(m::AbstractMesh)
-
-end
