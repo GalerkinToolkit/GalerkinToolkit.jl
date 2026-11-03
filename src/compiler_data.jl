@@ -71,7 +71,7 @@ struct SpaceIntegrationData{F,A}
 end
 
 
-
+reference_tabulator(a::SpaceIntegrationData) = a.reference_tabulator
 
 function space_integration_data(f, V::AbstractSpace, Q::AbstractQuadrature)
     dom = GT.domain(Q)
@@ -199,7 +199,8 @@ function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false) # TODO
     push!(result.args, loop)
     push!(result.args, :(SMatrix{$Di, $Dj}($(symbols...))) )
     result
-
+    
+    # TODO: check acceleratedkernels. How does it port customized functions to GPUs?
     :((lnode_to_node, node_to_x, lnode_s, point) -> begin
         $result
     end
@@ -276,4 +277,41 @@ function weight_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr) # mesh, quadrat
     change_of_measure = change_of_measure_expr(J_expr, Di, Dj)
 
     :($change_of_measure * $rw_expr)
+end
+
+
+function modif_expr(func::typeof(ForwardDiff.gradient), v_expr, invJ_expr)
+    :(transpose($invJ_expr) * $v_epxr)
+end
+
+function modif_expr(func::typeof(ForwardDiff.jacobian), v_expr, invJ_expr)
+    :($v_expr*$invJ_expr)
+end
+
+function modif_expr(func::typeof(value), v_expr, invJ_expr)
+    v_expr
+end
+
+# tabulate function (can be gradient, value, etc.), space, quadrature rule, face id, quadrature point id, dof id
+function shape_function_expr(func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr, q_expr, i_expr) 
+    # mesh_data_expr = :(mesh_integration_data($mesh_expr, $Q_expr))
+    space_data_expr = :(space_integration_data($func, $V_expr, $Q_expr))
+    v_expr = :(reference_tabulator($space_data_expr)[i_expr, q_expr])
+
+    J_expr = jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
+    z = zero(eltype(GT.node_coordinates(mesh)))
+    d = num_dims(dom)
+    Di = length(z)
+    Dj = d
+
+    # TODO: implement also for untabulated functions (without space_data_expr) 
+    # TODO: (can we process external functions on GPUs?)
+
+    # TODO: implement adjugate(J)^T * (1/det(J)). Check whether inlined functions are efficient (does it reuse d-1 determinants across adjugate and determinant?)
+    invJ_expr = :(transpose(inv($J_expr)))
+
+    # TODO: review the correctness of modifiers
+    
+    modif_epxr(func, v_expr, invJ_expr)
+
 end
