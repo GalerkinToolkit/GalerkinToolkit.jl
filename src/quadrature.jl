@@ -1,6 +1,25 @@
 
 outer(a,b) = a*transpose(b)
 
+
+function change_of_measure(J::AbstractMatrix)
+    if size(J, 1) == size(J, 2)
+        return abs(det(J))
+    end
+    sqrt(det(transpose(J)*J))
+end
+
+@inline function change_of_measure(J::StaticMatrix{M,N,T}) where {M,N,T}
+    if M == N
+        return abs(det(J))
+    elseif M == 3 && N == 2
+        # Surface area is the length of the column cross product. A square
+        # root is still needed, but forming and taking det(J'J) is avoided.
+        return norm(cross(J[:,1], J[:,2]))
+    end
+    sqrt(det(transpose(J)*J))
+end
+
 function change_of_measure(J)
     sqrt(det(transpose(J)*J))
 end

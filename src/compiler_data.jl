@@ -20,6 +20,7 @@ reference_gradients(a::MeshIntegrationData) = a.reference_gradients
 reference_weights(a::MeshIntegrationData) = a.reference_weights
 
 # lower the mesh to plain arrays with a fixed data layout
+# TODO: support the boundary/skeleton, and reuse the memory.
 function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
     # TODO: get a subset, like boundary, dimension (now we assume that it is complexified), etc.
     dom = GT.domain(Q)
@@ -166,7 +167,7 @@ end
 
 
 
-function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false)
+function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false) # TODO: implement for simplex elements
     # copied from another file. maybe we want to change it later to have a faster jacobian computation
     result = Expr(:block)
     symbols = []
@@ -181,7 +182,7 @@ function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false)
     body = []
     push!(body, :(node = lnode_to_node[lnode]))
     push!(body, :(x = node_to_x[node]))
-    push!(body, :(s = lnode_s(lnode)))
+    push!(body, :(s = lnode_s[lnode, point]))
     for i in 1:Di
         for j in 1:Dj
             v = Symbol("j$i$j")
@@ -199,7 +200,7 @@ function jacobian_sum_function_expr(Di, Dj, z, nlnodes; is_simplex=false)
     push!(result.args, :(SMatrix{$Di, $Dj}($(symbols...))) )
     result
 
-    :((lnode_to_node, node_to_x, lnode_s) -> begin
+    :((lnode_to_node, node_to_x, lnode_s, point) -> begin
         $result
     end
     )
@@ -213,7 +214,7 @@ function jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
     node_to_x_expr = :(node_coordinates($data_expr))
     lnode_s_expr = :(reference_gradients($data_expr))
 
-    z = zero(eltype(first(GT.node_coordinates(mesh))))
+    z = zero(eltype(GT.node_coordinates(mesh)))
     z_element = zero(eltype(z))
     dom = GT.domain(Q)
     d = num_dims(dom)
@@ -223,11 +224,56 @@ function jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
 
     nlnodes = length(first(face_nodes))
     jacobian_sum_function = jacobian_sum_function_expr(Di, Dj, z_element, nlnodes; is_simplex=false)
-    :(($jacobian_sum_function)($lnode_to_node_expr, $node_to_x_expr, $lnode_s_expr))
-
-
+    # we place the generated jacobian function into a lambda expression
+    # so that we can hoist the entire function out later for GPUs and remove redundancies if 2 lambdas are literally the same.
+    :(($jacobian_sum_function)($lnode_to_node_expr, $node_to_x_expr, $lnode_s_expr, $q_expr))
 
 end
 
-function weight_expr(mesh, Q, f, q) # mesh, quadrature rule (FaceQuadrature), face (the element) id, quadrature point id
+
+function change_of_measure_expr(J, Di, Dj)
+    if Di == Dj
+        return :(abs(det($J)))
+    elseif Di == 3 && Dj == 2
+        return :(norm(cross($J[:,1], $J[:,2]))) # Note: Julia col-major
+    else
+        return :(sqrt(det(transpose($J)*$J)))
+    end
+    # potential optimization for 4x3, but we don't implement this.  
+    # elseif M == 4 && N == 3
+    #     # Cauchy-Binet: the squared volume is the sum of squared 3x3
+    #     # minors. Reuse the six 2x2 minors of the first two columns.
+    #     a12 = J[1,1]*J[2,2] - J[2,1]*J[1,2]
+    #     a13 = J[1,1]*J[3,2] - J[3,1]*J[1,2]
+    #     a14 = J[1,1]*J[4,2] - J[4,1]*J[1,2]
+    #     a23 = J[2,1]*J[3,2] - J[3,1]*J[2,2]
+    #     a24 = J[2,1]*J[4,2] - J[4,1]*J[2,2]
+    #     a34 = J[3,1]*J[4,2] - J[4,1]*J[3,2]
+    #     minors = SVector(
+    #         J[1,3]*a23 - J[2,3]*a13 + J[3,3]*a12,
+    #         J[1,3]*a24 - J[2,3]*a14 + J[4,3]*a12,
+    #         J[1,3]*a34 - J[3,3]*a14 + J[4,3]*a13,
+    #         J[2,3]*a34 - J[3,3]*a24 + J[4,3]*a23)
+    #     return norm(minors)
+    # end
+end
+
+function weight_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr) # mesh, quadrature rule (FaceQuadrature), face (the element) id, quadrature point id
+    data_expr = :(mesh_integration_data($mesh_expr, $Q_expr))
+    rw_expr = :(reference_weights($data_expr)[$q_expr])
+
+    dom = GT.domain(Q)
+    if is_reference_domain(dom)
+        return rw_expr
+    end
+
+    J_expr = jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
+    z = zero(eltype(GT.node_coordinates(mesh)))
+    d = num_dims(dom)
+    Di = length(z)
+    Dj = d
+
+    change_of_measure = change_of_measure_expr(J_expr, Di, Dj)
+
+    :($change_of_measure * $rw_expr)
 end
