@@ -158,6 +158,78 @@ end
     end
 end
 
+@testset "Jacobian pseudoinverses" begin
+    for (M, N) in ((2, 1), (3, 1), (3, 2)), T in (Float32, Float64), sample in 1:4
+        J = SMatrix{M,N,T}(ntuple(k -> T(sin(k + sample) +
+            (mod1(k,M) == cld(k,M) ? 2 : 0)), M*N))
+        expected = pinv(J)
+        for matrix in (J, MMatrix{M,N,T}(J), SizedMatrix{M,N}(Matrix(J)))
+            actual = @inferred GT.jacobian_pinv(matrix)
+            @test actual isa SMatrix{N,M,T}
+            @test actual ≈ expected
+            @test actual * matrix ≈ SMatrix{N,N,T}(I)
+            projector = matrix * actual
+            @test projector ≈ transpose(projector)
+        end
+    end
+
+    # Nearly parallel columns whose Gram determinant rounds to zero.
+    for T in (Float32, Float64)
+        delta = T === Float32 ? T(1e-4) : T(1e-9)
+        J = SMatrix{3,2,T}(1, 0, 0, 1, delta, 0)
+        actual = GT.jacobian_pinv(J)
+        @test actual ≈ pinv(J)
+        @test actual * J ≈ SMatrix{2,2,T}(I)
+    end
+
+    # Other shapes and complex matrices retain the general pseudoinverse.
+    for (M, N, T) in ((4, 2, Float64), (3, 0, Float32), (2, 3, Float64), (3, 2, ComplexF64))
+        J = SMatrix{M,N,T}(ntuple(k -> T(sin(k) +
+            (mod1(k,M) == cld(k,M) ? 2 : 0)) +
+            (T <: Complex ? T(0.2im*cos(k)) : zero(T)), M*N))
+        @test GT.jacobian_pinv(J) ≈ pinv(J)
+    end
+end
+
+@testset "Shape function expressions" begin
+    base_mesh = GT.cartesian_mesh((0, 2, 0, 3), (2, 1); boundary=false)
+    for embedded in (false, true)
+        coordinates = map(GT.node_coordinates(base_mesh)) do x
+            y = SVector(2x[1] + 0.3x[2] + 0.1x[1]*x[2], -0.2x[1] + 1.5x[2])
+            embedded ? SVector(y[1], y[2], 0.4x[1] + 0.5x[2]) : y
+        end
+        mesh = GT.replace_node_coordinates(base_mesh, coordinates)
+        quadrature = GT.quadrature(GT.interior(mesh), 4)
+        npoints = GT.num_points(only(GT.reference_quadratures(quadrature)))
+        for is_reference in (false, true)
+            domain = GT.interior(mesh; is_reference_domain=is_reference)
+            scalar_space = GT.lagrange_space(domain, 1)
+            vector_space = GT.lagrange_space(domain, 1; tensor_size=Val((2,)))
+            for (func, space) in ((GT.value, scalar_space), (ForwardDiff.gradient, scalar_space),
+                                  (GT.value, vector_space), (ForwardDiff.jacobian, vector_space))
+                accessor = GT.shape_function_accessor(func, space, quadrature)
+                ndofs = GT.num_dofs(only(GT.reference_spaces(space)))
+                expression = GT.shape_function_expr(func, mesh, space, quadrature,
+                    :(meshes_arg[1]), :(spaces_arg[1]), :(quadratures_arg[1]),
+                    :(face_arg + 1), :(point_arg + 1), :(dof_arg + 1))
+                compute = GT._GT_debug_eval(:((meshes_arg, spaces_arg, quadratures_arg,
+                    face_arg, point_arg, dof_arg) -> $expression))
+                for face in GT.faces(GT.domain(quadrature))
+                    expected_point = accessor(face)
+                    for point in 1:npoints
+                        expected = expected_point(point)
+                        for dof in 1:ndofs
+                            actual = Base.invokelatest(compute, (mesh,), (space,), (quadrature,),
+                                face-1, point-1, dof-1)
+                            @test actual ≈ expected(dof)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 @testset "Change of measure expressions" begin
     shapes = ((0, 0), (1, 0), (3, 0), (1, 1), (2, 1), (2, 2), (3, 1), (3, 2), (3, 3))
     for (M, N) in shapes

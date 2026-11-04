@@ -280,8 +280,92 @@ function weight_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr) # mesh, quadrat
 end
 
 
+@inline function adjugate(J::StaticMatrix{1,1,T}) where {T}
+    SMatrix{1,1,T}(one(T))
+end
+
+@inline function adjugate(J::StaticMatrix{2,2,T}) where {T}
+    SMatrix{2,2,T}(J[2,2], -J[2,1], -J[1,2], J[1,1])
+end
+
+@inline function adjugate(J::StaticMatrix{3,3,T}) where {T}
+    c11 = J[2,2]*J[3,3] - J[2,3]*J[3,2]
+    c12 = J[2,3]*J[3,1] - J[2,1]*J[3,3]
+    c13 = J[2,1]*J[3,2] - J[2,2]*J[3,1]
+    c21 = J[1,3]*J[3,2] - J[1,2]*J[3,3]
+    c22 = J[1,1]*J[3,3] - J[1,3]*J[3,1]
+    c23 = J[1,2]*J[3,1] - J[1,1]*J[3,2]
+    c31 = J[1,2]*J[2,3] - J[1,3]*J[2,2]
+    c32 = J[1,3]*J[2,1] - J[1,1]*J[2,3]
+    c33 = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+    SMatrix{3,3,T}(c11, c12, c13, c21, c22, c23, c31, c32, c33)
+end
+
+@inline function adjugate(J::StaticMatrix{N,N,T}) where {N,T}
+    indices = SVector{N}(1:N)
+    entries = ntuple(Val(N*N)) do k
+        i = mod1(k, N)
+        j = cld(k, N)
+        rows = StaticArrays.deleteat(indices, j)
+        cols = StaticArrays.deleteat(indices, i)
+        cofactor = det(J[rows, cols])
+        isodd(i + j) ? -cofactor : cofactor
+    end
+    SMatrix{N,N,T}(entries)
+end
+
+# For real full-column-rank geometry Jacobians, J^+ = (J^T J)^(-1) J^T.
+# Here J^+ denotes the Moore-Penrose pseudoinverse and J^T the transpose.
+# These explicit formulas assume full rank and do not truncate singular values.
+@inline function jacobian_pinv(J::StaticMatrix{2,1,T}) where T
+    # Curve: J = a, s = a^T a, and J^+ = a^T * (1/s).
+    a1 = J[1,1]
+    a2 = J[2,1]
+    r = inv(a1*a1 + a2*a2)
+    SMatrix{1,2}(a1*r, a2*r)
+end
+
+@inline function jacobian_pinv(J::StaticMatrix{3,1,T}) where T
+    # Curve: J = a, s = a^T a, and J^+ = a^T * (1/s).
+    a1 = J[1,1]
+    a2 = J[2,1]
+    a3 = J[3,1]
+    r = inv(a1*a1 + a2*a2 + a3*a3)
+    SMatrix{1,3}(a1*r, a2*r, a3*r)
+end
+
+@inline function jacobian_pinv(J::StaticMatrix{3,2,T}) where T
+    # Surface: J = [a b], n = a x b, s = n^T n = det(J^T J), q = n * (1/s).
+    # J^+ has rows (b x q)^T and (q x a)^T; x denotes the cross product.
+    # Scaling the shared normal first costs 24 multiplies, 11 adds/subtracts,
+    # and one division in total. The integration measure is sqrt(s).
+    a1 = J[1,1]
+    a2 = J[2,1]
+    a3 = J[3,1]
+    b1 = J[1,2]
+    b2 = J[2,2]
+    b3 = J[3,2]
+    n1 = a2*b3 - a3*b2
+    n2 = a3*b1 - a1*b3
+    n3 = a1*b2 - a2*b1
+    r = inv(n1*n1 + n2*n2 + n3*n3)
+    q1 = n1*r
+    q2 = n2*r
+    q3 = n3*r
+    u1 = b2*q3 - b3*q2
+    u2 = b3*q1 - b1*q3
+    u3 = b1*q2 - b2*q1
+    v1 = q2*a3 - q3*a2
+    v2 = q3*a1 - q1*a3
+    v3 = q1*a2 - q2*a1
+    SMatrix{2,3}(u1, v1, u2, v2, u3, v3)
+end
+
+@inline jacobian_pinv(J::StaticMatrix) = pinv(J)
+
+# TODO: unroll modif, determinant, transpose, adjugate ... later
 function modif_expr(func::typeof(ForwardDiff.gradient), v_expr, invJ_expr)
-    :(transpose($invJ_expr) * $v_epxr)
+    :(transpose($invJ_expr) * $v_expr)
 end
 
 function modif_expr(func::typeof(ForwardDiff.jacobian), v_expr, invJ_expr)
@@ -296,22 +380,27 @@ end
 function shape_function_expr(func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr, q_expr, i_expr) 
     # mesh_data_expr = :(mesh_integration_data($mesh_expr, $Q_expr))
     space_data_expr = :(space_integration_data($func, $V_expr, $Q_expr))
-    v_expr = :(reference_tabulator($space_data_expr)[i_expr, q_expr])
+    v_expr = :(reference_tabulator($space_data_expr)[$i_expr, $q_expr])
+
+    if is_reference_domain(GT.domain(V)) || func === value
+        return v_expr
+    end
 
     J_expr = jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
     z = zero(eltype(GT.node_coordinates(mesh)))
-    d = num_dims(dom)
+    d = num_dims(GT.domain(V))
     Di = length(z)
     Dj = d
 
     # TODO: implement also for untabulated functions (without space_data_expr) 
     # TODO: (can we process external functions on GPUs?)
 
-    # TODO: implement adjugate(J)^T * (1/det(J)). Check whether inlined functions are efficient (does it reuse d-1 determinants across adjugate and determinant?)
-    invJ_expr = :(transpose(inv($J_expr)))
+    invJ_expr = if Di == Dj # inv(J) = adj(J)/det(J) for square matrices
+        :(adjugate($J_expr) * inv(det($J_expr)))
+    else
+        :(jacobian_pinv($J_expr))
+    end
 
-    # TODO: review the correctness of modifiers
-    
-    modif_epxr(func, v_expr, invJ_expr)
+    modif_expr(func, v_expr, invJ_expr)
 
 end
