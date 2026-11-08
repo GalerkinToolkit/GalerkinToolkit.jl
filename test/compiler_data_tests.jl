@@ -230,6 +230,189 @@ end
     end
 end
 
+@testset "General reference shape expressions" begin
+    for simplex in (false, true)
+        mesh = GT.cartesian_mesh((0, 2, 0, 3), (2, 1); simplexify=simplex, boundary=false)
+        domain = GT.interior(mesh; is_reference_domain=true)
+        # Reference evaluation also accepts a quadrature on the physical domain.
+        quadrature = GT.quadrature(GT.interior(mesh), 4)
+        points = GT.coordinates(only(GT.reference_quadratures(quadrature)))
+        scalar_space = GT.lagrange_space(domain, 2)
+        vector_space = GT.lagrange_space(domain, 2; tensor_size=Val((2,)))
+        square_value = (s, x) -> s(x)^2
+        operators = (
+            ((s, x) -> ForwardDiff.gradient(s, x), scalar_space),
+            (ForwardDiff.hessian, scalar_space),
+            ((s, x) -> tr(ForwardDiff.hessian(s, x)), scalar_space),
+            (square_value, scalar_space),
+            ((s, x) -> s(x + SVector(0.05, -0.03)), scalar_space),
+            ((s, x) -> tr(ForwardDiff.jacobian(s, x)), vector_space),
+            ((s, x) -> sum(abs2, s(x)), vector_space),
+        )
+        for (func, space) in operators
+            # The untabulated accessor applies func to the complete shape.
+            accessor = GT.shape_function_accessor_reference(func, space)
+            ndofs = GT.num_dofs(only(GT.reference_spaces(space)))
+            data = GT.space_integration_data(func, space, quadrature)
+            @test data.tabulate_function === func
+            @test size(data.reference_tabulator) == (ndofs, length(points))
+            for point in eachindex(points), dof in 1:ndofs
+                @test data.reference_tabulator[dof,point] ≈ accessor(1)(dof)(points[point])
+            end
+            expression = GT.shape_function_expr(func, mesh, space, quadrature,
+                :(meshes_arg[1]), :(spaces_arg[1]), :(quadratures_arg[1]),
+                :(face_arg + 1), :(point_arg + 1), :(dof_arg + 1))
+            compute = GT._GT_debug_eval(:((meshes_arg, spaces_arg, quadratures_arg,
+                face_arg, point_arg, dof_arg) -> $expression))
+            for face in GT.faces(domain), (point, dof) in ((1, 1), (lastindex(points), ndofs))
+                actual = Base.invokelatest(compute, (mesh,), (space,), (quadrature,),
+                    face-1, point-1, dof-1)
+                @test actual ≈ data.reference_tabulator[dof,point]
+            end
+        end
+
+        # Tabulated values provide an independent reference for nonlinear evaluation.
+        reference_space = only(GT.reference_spaces(scalar_space))
+        values = GT.tabulator(reference_space)(GT.value, points)
+        squared = GT.space_integration_data(square_value, scalar_space, quadrature)
+        @test squared.reference_tabulator ≈ permutedims(values .^ 2)
+
+        # A prepared table is a snapshot; changed parameters require rebuilding it.
+        scale = Ref(2.0)
+        calls = Ref(0)
+        func = (s, x) -> begin
+            calls[] += 1
+            scale[] * s(x)^2
+        end
+        data = GT.space_integration_data(func, scalar_space, quadrature)
+        @test calls[] == length(values)
+        @test data.reference_tabulator[1,1] ≈ 2values[1,1]^2
+        scale[] = 3.0
+        @test data.reference_tabulator[1,1] ≈ 2values[1,1]^2
+        refreshed = GT.space_integration_data(func, scalar_space, quadrature)
+        @test refreshed.reference_tabulator[1,1] ≈ 3values[1,1]^2
+        @test calls[] == 2length(values)
+        calls[] = 0
+        expression = GT.shape_function_expr(func, mesh, scalar_space, quadrature,
+            :mesh_arg, :space_arg, :quadrature_arg, :face_arg, :point_arg, :dof_arg)
+        compute = GT._GT_debug_eval(:((mesh_arg, space_arg, quadrature_arg,
+            face_arg, point_arg, dof_arg) -> $expression))
+        @test calls[] == 0
+        @test Base.invokelatest(compute, mesh, scalar_space, quadrature, 1, 1, 1) ≈ 3values[1,1]^2
+        @test calls[] == length(values)
+    end
+end
+
+@testset "General physical shape expressions" begin
+    for dim in 1:3, simplex in (false, true)
+        box = ntuple(i -> isodd(i) ? 0 : 2, 2dim)
+        cells = ntuple(i -> i == 1 ? 2 : 1, dim)
+        base_mesh = GT.cartesian_mesh(box, cells; simplexify=simplex, boundary=false)
+        A = SMatrix{dim,dim,Float64}(ntuple(dim*dim) do k
+            i, j = mod1(k, dim), cld(k, dim)
+            i == j ? (i == 1 ? -1.5 : 1.2) : 0.1(i+j)
+        end)
+        b = SVector{dim,Float64}(0.5i for i in 1:dim)
+        # Each cell is affine, with different scaling along the first axis.
+        coordinates = map(GT.node_coordinates(base_mesh)) do x
+            A * setindex(x, x[1] + 0.15x[1]^2, 1) + b
+        end
+        mesh = GT.replace_node_coordinates(base_mesh, coordinates)
+        domain = GT.interior(mesh)
+        # More quadrature points than geometry nodes exercise the tabulation axes.
+        quadrature = GT.quadrature(domain, 4)
+        points = GT.coordinates(only(GT.reference_quadratures(quadrature)))
+        scalar_space = GT.lagrange_space(domain, 2)
+        vector_space = GT.lagrange_space(domain, 2; tensor_size=Val((dim,)))
+        scalar_values = GT.shape_function_accessor(GT.value, scalar_space, quadrature)
+        scalar_gradients = GT.shape_function_accessor(ForwardDiff.gradient, scalar_space, quadrature)
+        vector_values = GT.shape_function_accessor(GT.value, vector_space, quadrature)
+        vector_jacobians = GT.shape_function_accessor(ForwardDiff.jacobian, vector_space, quadrature)
+        jacobians = GT.jacobian_accessor(quadrature)
+        physical_map = GT.physical_map_accessor(GT.value, mesh, Val(dim))
+        reference_space = only(GT.reference_spaces(scalar_space))
+        reference_hessians = GT.tabulator(reference_space)(ForwardDiff.hessian, points)
+        reference_shapes = GT.shape_functions(reference_space)
+        shift = SVector{dim,Float64}(0.03i for i in 1:dim)
+        operators = (
+            ((s, x) -> s(x), scalar_space, :value),
+            ((s, x) -> ForwardDiff.gradient(s, x), scalar_space, :gradient),
+            (ForwardDiff.hessian, scalar_space, :hessian),
+            ((s, x) -> tr(ForwardDiff.hessian(s, x)), scalar_space, :laplacian),
+            ((s, x) -> s(x)^2 + sum(x), scalar_space, :nonlinear),
+            ((s, x) -> s(x + shift), scalar_space, :shifted),
+            ((s, x) -> ForwardDiff.jacobian(s, x), vector_space, :jacobian),
+            ((s, x) -> tr(ForwardDiff.jacobian(s, x)), vector_space, :divergence),
+            ((s, x) -> sum(abs2, s(x)), vector_space, :vector_nonlinear),
+        )
+        for (func, space, kind) in operators
+            ndofs = GT.num_dofs(only(GT.reference_spaces(space)))
+            expression = GT.shape_function_expr(func, mesh, space, quadrature,
+                :(meshes_arg[1]), :(spaces_arg[1]), :(quadratures_arg[1]),
+                :(face_arg + 1), :(point_arg + 1), :(dof_arg + 1))
+            compute = GT._GT_debug_eval(:((meshes_arg, spaces_arg, quadratures_arg,
+                face_arg, point_arg, dof_arg) -> $expression))
+            for face in GT.faces(domain), point in unique((1, lastindex(points)))
+                invJ = inv(jacobians(face)(point))
+                x = physical_map(face)(points[point])
+                for dof in 1:ndofs
+                    expected = if kind === :value
+                        scalar_values(face)(point)(dof)
+                    elseif kind === :gradient
+                        scalar_gradients(face)(point)(dof)
+                    elseif kind === :hessian || kind === :laplacian
+                        H = transpose(invJ) * reference_hessians[point,dof] * invJ
+                        kind === :hessian ? H : tr(H)
+                    elseif kind === :nonlinear
+                        scalar_values(face)(point)(dof)^2 + sum(x)
+                    elseif kind === :shifted
+                        reference_shapes[dof](points[point] + invJ*shift)
+                    elseif kind === :jacobian
+                        vector_jacobians(face)(point)(dof)
+                    elseif kind === :divergence
+                        tr(vector_jacobians(face)(point)(dof))
+                    else
+                        sum(abs2, vector_values(face)(point)(dof))
+                    end
+                    actual = Base.invokelatest(compute, (mesh,), (space,), (quadrature,),
+                        face-1, point-1, dof-1)
+                    @test actual ≈ expected atol=1e-12
+                end
+            end
+        end
+    end
+
+    # Face arguments are global mesh IDs, including for a domain subset.
+    subset_mesh = GT.cartesian_mesh((0, 2, 0, 1), (2, 1); boundary=false)
+    GT.group_faces(subset_mesh, 2)["selected_cell"] = Int32[2]
+    subset_domain = GT.interior(subset_mesh; group_names=["selected_cell"])
+    subset_quadrature = GT.quadrature(subset_domain, 2)
+    subset_space = GT.lagrange_space(subset_domain, 2)
+    subset_points = GT.coordinates(only(GT.reference_quadratures(subset_quadrature)))
+    subset_values = GT.space_integration_data(GT.value, subset_space, subset_quadrature)
+    phi = GT.physical_map_accessor(GT.value, subset_mesh, Val(2))(2)
+    func = (s, x) -> s(x)^2 + sum(x)
+    expression = GT.shape_function_expr(func, subset_mesh, subset_space, subset_quadrature,
+        :mesh_arg, :space_arg, :quadrature_arg, :face_arg, :point_arg, :dof_arg)
+    compute = GT._GT_debug_eval(:((mesh_arg, space_arg, quadrature_arg,
+        face_arg, point_arg, dof_arg) -> $expression))
+    for point in eachindex(subset_points), dof in axes(subset_values.reference_tabulator, 1)
+        expected = subset_values.reference_tabulator[dof,point]^2 + sum(phi(subset_points[point]))
+        @test Base.invokelatest(compute, subset_mesh, subset_space, subset_quadrature,
+            2, point, dof) ≈ expected
+    end
+
+    # The general callable fallback currently requires full-dimensional geometry.
+    base_mesh = GT.cartesian_mesh((0, 1, 0, 1), (1, 1); boundary=false)
+    embedded = GT.replace_node_coordinates(base_mesh,
+        [SVector(x[1], x[2], 0.3x[1]) for x in GT.node_coordinates(base_mesh)])
+    quadrature = GT.quadrature(GT.interior(embedded), 2)
+    space = GT.lagrange_space(GT.interior(embedded), 2)
+    @test_throws ArgumentError GT.shape_function_expr(ForwardDiff.hessian,
+        embedded, space, quadrature, :mesh_arg, :space_arg, :quadrature_arg,
+        :face_arg, :point_arg, :dof_arg)
+end
+
 @testset "Change of measure expressions" begin
     shapes = ((0, 0), (1, 0), (3, 0), (1, 1), (2, 1), (2, 2), (3, 1), (3, 2), (3, 3))
     for (M, N) in shapes
