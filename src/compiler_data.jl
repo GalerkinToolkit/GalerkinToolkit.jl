@@ -103,6 +103,41 @@ function space_integration_data(f, V::AbstractSpace, Q::AbstractQuadrature)
 end
 
 
+# DOFData preserves the global DOFs per face.
+# TODO: review dofs_expr for boundary and skeleton. Now the global dof accessing for interior is clear.
+struct DOFData{A}
+    face_dofs::A
+end
+
+DOFData(space::AbstractSpace) = DOFData(face_dofs(space))
+face_dofs(data::DOFData) = data.face_dofs
+
+function dofs_expr(space, integration_domain, space_expr, domain_expr, face_expr, face_around_expr)
+    D = num_dims(space)
+    d = num_dims(integration_domain)
+    mesh_face_expr = :(GT.faces($domain_expr)[$face_expr])
+    cell_expr = if d == D
+        mesh_face_expr
+    else
+        incidence_expr = :(face_incidence(topology(GT.mesh($space_expr)), $d, $D))
+        selected_side = if d+1 == D && faces_around(integration_domain) !== nothing
+            :(GT.faces_around($domain_expr)[$face_expr])
+        else
+            face_around_expr
+        end
+        :($incidence_expr[$mesh_face_expr][$selected_side])
+    end
+    :(face_dofs(DOFData($space_expr))[$cell_expr])
+end
+
+function field_dofs_expr(space, integration_domain, space_expr, domain_expr, field_expr, face_expr, face_around_expr)
+    expressions = ntuple(num_fields(space)) do field
+        dofs_expr(GT.field(space,field), integration_domain, :(GT.field($space_expr,$field)),
+            domain_expr, face_expr, face_around_expr)
+    end
+    :(($(expressions...),)[$field_expr])
+end
+
 # View packed StaticArrays as scalars without copying. Flatten all static
 # dimensions into one component axis, including single-component/empty arrays.
 function integration_scalar_view(values::AbstractArray{T}) where {T<:StaticArray}

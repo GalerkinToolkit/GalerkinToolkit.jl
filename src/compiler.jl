@@ -1466,8 +1466,10 @@ function expression(term::VectorAssemblyTerm)
     # For uniform reference elements and quadrature rules, these are exact counts.
     npoints = max_num_points(prototype(term.quadrature))
     field_ndofs = map(max_num_reference_dofs,fields(prototype(term.space)))
+    dofs = field_dofs_expr(prototype(term.space), GT.domain(prototype(term.quadrature)),
+        space, :(GT.domain($quadrature)), field, face, face_around)
     body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars;
-        npoints, field_ndofs)
+        npoints, field_ndofs, dofs)
 
     loop_var_range = Dict(dof => maximum(field_ndofs))
 
@@ -1512,8 +1514,14 @@ function expression(term::MatrixAssemblyTerm)
     npoints = max_num_points(prototype(term.quadrature))
     field_ndofs_trial = map(max_num_reference_dofs,fields(prototype(term.space_trial)))
     field_ndofs_test = map(max_num_reference_dofs,fields(prototype(term.space_test)))
+    integration_domain = GT.domain(prototype(term.quadrature))
+    domain_expr = :(GT.domain($quadrature))
+    dofs_trial = field_dofs_expr(prototype(term.space_trial), integration_domain,
+        space_trial, domain_expr, field_trial, face, face_around_trial)
+    dofs_test = field_dofs_expr(prototype(term.space_test), integration_domain,
+        space_test, domain_expr, field_test, face, face_around_test)
     body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars;
-        npoints, field_ndofs_trial, field_ndofs_test)
+        npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test)
     # rewrite
 
     loop_var_range = Dict(dof_trial => maximum(field_ndofs_trial),
@@ -2007,7 +2015,7 @@ end
 # TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
 # then use consistent unqualified getter expressions in the compiler.
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings;
-    npoints, field_ndofs_trial, field_ndofs_test)
+    npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2088,8 +2096,8 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
                         for $face_around_test_symbol in 1:n_faces_around_test_contribute
                             GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
-                                                GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol),
-                                                GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol),
+                                                $dofs_test,
+                                                $dofs_trial,
                                                 $field_test_symbol,$field_trial_symbol)
                         end
                     end
@@ -2109,7 +2117,7 @@ end
 # TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
 # then use consistent unqualified getter expressions in the compiler.
 function generate_vector_assembly_template(term, field_n_faces_around, dependencies, bindings;
-    npoints, field_ndofs)
+    npoints, field_ndofs, dofs)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2165,7 +2173,7 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 n_faces_around_contribute = $field_n_faces_around[$field_symbol]
                 for $face_around_symbol in 1:n_faces_around_contribute
                     GT.contribute!($alloc,be[$face_around_symbol, $field_symbol],
-                                        GT.dofs_accessor(GT.field($space,$field_symbol),domain)($face,$face_around_symbol),
+                                        $dofs,
                                         $field_symbol)
                 end
 
