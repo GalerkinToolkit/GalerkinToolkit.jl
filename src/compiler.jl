@@ -439,11 +439,23 @@ function replace_dependencies(term::CoordinateTerm,dependencies)
     CoordinateTerm(dependencies)
 end
 
+# Keep shared dependencies identical and independent of assembly-local names.
+function integration_mesh_expr(quadrature)
+    :(GT.mesh(GT.domain($quadrature)))
+end
+
+function integration_face_expr(quadrature,face)
+    :(GT.faces(GT.domain($quadrature))[$face])
+end
+
 # Not clear if this can contain statements or not
 # Not clear if this is even needed for DLS terms
 function expression(term::CoordinateTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    :( coordinate_accessor($quadrature)($face)($point) )
+    Q = prototype(first(term.dependencies))
+    mesh = integration_mesh_expr(quadrature)
+    mesh_face = integration_face_expr(quadrature,face)
+    coordinate_expr(Q,mesh,quadrature,mesh_face,point)
 end
 
 function weight_quantity(quadrature)
@@ -476,10 +488,11 @@ end
 
 function expression(term::WeightTerm)
     (quadrature,face,point) = map(expression,term.dependencies)
-    D = term.D
-    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, 1)($point))
-    :(weight_accessor($quadrature)($face)($point, $J) )
-    # weight_expression(quadrature, face, point, J)
+    Q = prototype(first(term.dependencies))
+    mesh = GT.mesh(GT.domain(Q))
+    mesh_expr = integration_mesh_expr(quadrature)
+    mesh_face = integration_face_expr(quadrature,face)
+    weight_expr(mesh,Q,mesh_expr,quadrature,mesh_face,point)
 end
 
 function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
@@ -538,7 +551,19 @@ end
 
 function prototype(term::FormArgumentTerm)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(prototype,dependencies(term))
-    prototype(form_argument_accessor(space,domain,1))
+    mesh_face = first(GT.faces(domain))
+    rid = face_reference_id(space)[mesh_face]
+    shape = first(shape_functions(reference_spaces(space)[rid]))
+    if !is_reference_domain(GT.domain(space))
+        mesh = GT.mesh(GT.domain(space))
+        d = num_dims(GT.domain(space))
+        geometry_rid = face_reference_id(mesh,d)[mesh_face]
+        geometry_space = reference_spaces(mesh,Val(d))[geometry_rid]
+        nodes = GT.face_nodes(mesh,d)[mesh_face]
+        xi0 = zero(first(node_coordinates(geometry_space)))
+        shape = physical_shape_function(shape,shape_functions(geometry_space),node_coordinates(mesh),nodes,xi0)
+    end
+    form_argument_function(f,shape,true)
 end
 
 function dependencies(term::FormArgumentTerm)
@@ -557,8 +582,12 @@ end
 
 function expression(term::FormArgumentTerm)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,term.dependencies)
-    # TODO: not tabulated. we need another solution to tabulate it or this cannot be tabulated anyway
-    :(form_argument_accessor($f,$space,$domain,$the_field)($face,$the_face_around)($dof,$field,$face_around))
+    V = prototype(term.dependencies[2])
+    mesh_expr = :(GT.mesh(GT.domain($space)))
+    mesh_face = :(GT.faces($domain)[$face])
+    shape = shape_function_expr(V,mesh_expr,space,mesh_face,dof)
+    mask = :(($face_around == $the_face_around) & ($field == $the_field))
+    :(form_argument_function($f,$shape,$mask))
 end
 
 #function optimize(term::CallTerm{<:FormArgumentTerm,<:Tuple{<:CoordinateTerm}})
@@ -691,7 +720,8 @@ function prototype(term::TabulatedTerm)
 end
 
 function expression(term::TabulatedTerm)
-    expression_TabulatedTerm(term.parent,expression(term.quadrature),expression(term.point))
+    # Prototypes retain code generation metadata after parameterization and capture.
+    expression_TabulatedTerm(term.parent,expression(term.quadrature),expression(term.point),prototype(term.quadrature))
 end
 
 function prototype_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
@@ -718,14 +748,18 @@ end
 #    prototype(discrete_field_accessor(f,uh,quadrature))
 #end
 
-function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point)
-    form_arg = parent
-    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = map(expression,form_arg.dependencies)
-    D = parent.D
-    J = :(jacobian_accessor($quadrature, $(Val(D)))($face, $the_face_around)($point))
-    # TODO: inline form Accessor. How can we know whether it is physical or reference?
-    form_argument_accessor_term(f,space,quadrature,the_field, face,the_face_around, point,J, dof,field,face_around, parent.is_reference, parent.integral_type)
-    # :(form_argument_accessor($f,$space,$quadrature,$the_field)($face,$the_face_around)($point, $J)($dof,$field,$face_around))
+function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point,Q)
+    (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(parent)
+    V = prototype(space)
+    func = prototype(f)
+    mesh = GT.mesh(GT.domain(Q))
+    mesh_expr = integration_mesh_expr(quadrature)
+    mesh_face = integration_face_expr(quadrature,expression(face))
+    shape = shape_function_expr(func,mesh,V,Q,mesh_expr,expression(space),quadrature,
+        mesh_face,point,expression(dof))
+    mask = :(($(expression(face_around)) == $(expression(the_face_around))) &&
+        ($(expression(field)) == $(expression(the_field))))
+    :(ifelse($mask,$shape,zero($shape)))
 end
 
 #function expression(term::TabulatedTerm{<:FormArgumentTerm})
@@ -739,6 +773,7 @@ end
 function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     form_arg = parent
     (f,uh,domain,face,face_around) = map(expression,form_arg.dependencies)
+    # TODO: access it in another way, but maybe keep it later
     :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
@@ -834,7 +869,7 @@ end
 #end
 
 function optimize_CallTerm_LeafTerm(
-    ::typeof(ForwardDiff.jacobian),callee::LeafTerm,v::PhysicalMapTerm,coords::CoordinateTerm)
+    func,callee::LeafTerm,v::PhysicalMapTerm,coords::CoordinateTerm)
     (quadrature,face,point) = map(optimize,dependencies(coords))
     (f,mesh,vD,face) = dependencies(v)
     new_deps = (callee,mesh,vD,face)
@@ -854,7 +889,15 @@ end
 
 function prototype_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
     (f,mesh,vD,face) = map(prototype,dependencies(parent))
-    prototype(physical_map_accessor(f,quadrature,vD))
+    if f === value || f === ForwardDiff.jacobian
+        return prototype(physical_map_accessor(f,quadrature,vD))
+    end
+    rid = first(face_reference_id(quadrature))
+    xi = first(coordinates(reference_quadratures(quadrature)[rid]))
+    reference_functions = shape_functions(reference_spaces(mesh,vD)[rid])
+    mesh_face = first(faces(domain(quadrature)))
+    nodes = GT.face_nodes(mesh,vD)[mesh_face]
+    evaluate_physical_map(f,reference_functions,node_coordinates(mesh),nodes,xi)
 end
 
 #function prototype(term::TabulatedTerm{<:PhysicalMapTerm})
@@ -864,9 +907,14 @@ end
 #    prototype(physical_map_accessor(f,quadrature,vD))
 #end
 
-function expression_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point)
-    (f,mesh,vD,face) = map(expression,parent.dependencies)
-    :(physical_map_accessor($f,$quadrature,$vD)($face)($point))
+function expression_TabulatedTerm(parent::PhysicalMapTerm,quadrature,point,Q)
+    (f,mesh,vD,face) = dependencies(parent)
+    func = prototype(f)
+    geometry = prototype(mesh)
+    mesh_expr = expression(mesh)
+    mesh_face = integration_face_expr(quadrature,expression(face))
+    # This is just a wrapper to hide lambda functions if the function is not tabulated.
+    physical_map_expr(func,geometry,Q,mesh_expr,quadrature,mesh_face,point;func_expr=expression(f))
 end
 
 #
@@ -996,6 +1044,7 @@ end
 
 function expression_TabulatedTerm(parent::UnitNormalTerm,quadrature,point)
     (face,the_face_around) = map(expression,dependencies(parent))
+    # TODO: access it in another way, but implement it later for DG
     :(unit_normal_accessor($quadrature)($face,$the_face_around)($point))
 end
 
@@ -1049,7 +1098,12 @@ function face_quantity(data,mesh::AbstractMesh,vd;reference=Val(false))
     end
 end
 
-#TODO: code generation
+function expression_TabulatedTerm(parent,quadrature,point,Q)
+    expression_TabulatedTerm(parent,quadrature,point)
+end
+
+# TODO: work on ScalarAssemblyTerm, SampleTerm, FaceContributionTerm, ... after the matrix and vector assembly is done
+# Later we need to review the testing for the older version
 function generate_assemble_scalar(contribution::DomainContribution;parameters=())
     term_0 = write_assemble_scalar(contribution)
     term_1 = optimize(term_0)
@@ -1409,12 +1463,13 @@ function expression(term::VectorAssemblyTerm)
     # body_bitmap = generate_vector_assembly_loop_body_bitmap(term.field_n_faces_around, expr_L_bitmap, (space, quadrature, alloc), loop_vars)
     # expr = :($alloc_arg -> $body_bitmap)
 
-    body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars)
+    # For uniform reference elements and quadrature rules, these are exact counts.
+    npoints = max_num_points(prototype(term.quadrature))
+    field_ndofs = map(max_num_reference_dofs,fields(prototype(term.space)))
+    body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars;
+        npoints, field_ndofs)
 
-    nfields = length(term.field_n_faces_around)
-    ndofs = [:(GT.max_num_reference_dofs(GT.field($space,$i))) for i in 1:nfields]
-
-    loop_var_range = Dict(dof => :(max($(ndofs...),)) )
+    loop_var_range = Dict(dof => maximum(field_ndofs))
 
     body_optimized = ast_optimize_with_options(body, loop_var_range, options)
     expr = :($alloc_arg->$body_optimized)
@@ -1453,16 +1508,16 @@ function expression(term::MatrixAssemblyTerm)
 
     # V3: split
     # generate loops for term
-    body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars)
+    # For uniform reference elements and quadrature rules, these are exact counts.
+    npoints = max_num_points(prototype(term.quadrature))
+    field_ndofs_trial = map(max_num_reference_dofs,fields(prototype(term.space_trial)))
+    field_ndofs_test = map(max_num_reference_dofs,fields(prototype(term.space_test)))
+    body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars;
+        npoints, field_ndofs_trial, field_ndofs_test)
     # rewrite
 
-    nfields_trial = length(term.field_n_faces_around_trial)
-    nfields_test = length(term.field_n_faces_around_test)
-    ndofs_test = [:(GT.max_num_reference_dofs(GT.field($space_test,$i))) for i in 1:nfields_test]
-    ndofs_trial = [:(GT.max_num_reference_dofs(GT.field($space_trial,$i))) for i in 1:nfields_trial]
-
-    loop_var_range = Dict(dof_trial => :(max($(ndofs_trial...),)), 
-                            dof_test => :(max($(ndofs_test...),)))
+    loop_var_range = Dict(dof_trial => maximum(field_ndofs_trial),
+                         dof_test => maximum(field_ndofs_test))
 
     body_optimized = ast_optimize_with_options(body, loop_var_range, options)
     # display(body_optimized)
@@ -1601,12 +1656,15 @@ function statements_expr(node)
     scope_rank[root] = 0
     hash_expr = Dict{UInt, Any}()
     scope_block = Dict(root=>Expr(:block))
+    has_local_statements(node) = node isa Expr &&
+        (node.head === :(=) || (node.head === :block && any(has_local_statements,node.args)))
     function visit(node, depth = 0) # if the terms here are immutable (no terms "appended" after construction) then we can assume there is no graph cycle
         hash = Base.hash(node)
         if haskey(hash_scope, hash)
             return [hash_scope[hash]]
         end
-        if node isa Symbol || node isa Number || node isa Function || node isa Nothing || node isa Val
+        is_global_reference = node isa Expr && node.head === :. && node.args[1] === :GT
+        if node isa Symbol || node isa Number || node isa Function || node isa Nothing || node isa Val || is_global_reference
             scopes = [root]
             hash_expr[hash] = node
             hash_scope[hash] = root 
@@ -1644,6 +1702,27 @@ function statements_expr(node)
             elseif node.head === :(->)
                 body = node.args[2]
                 args = (node.args[1] isa Expr) ? node.args[1].args : (node.args[1], )
+                # Generated geometry kernels have local assignments and loops.
+                # Preserve their bodies and track only captures for hoisting.
+                if has_local_statements(body)
+                    locals = Set{Symbol}(args)
+                    MacroTools.prewalk(body) do child
+                        if child isa Expr && child.head === :(=) && child.args[1] isa Symbol
+                            push!(locals,child.args[1])
+                        end
+                        child
+                    end
+                    scopes = [root]
+                    MacroTools.prewalk(body) do child
+                        if child isa Symbol && !(child in locals) && haskey(hash_scope,Base.hash(child))
+                            push!(scopes,hash_scope[Base.hash(child)])
+                        end
+                        child
+                    end
+                    hash_scope[hash] = argmax(x->scope_level[x],scopes)
+                    hash_expr[hash] = node
+                    return unique(scopes)
+                end
                 block = Expr(:block)
 
                 scope = (length(args) > 0) ? args[1] : gensym()
@@ -1695,8 +1774,18 @@ function statements_expr(node)
 
     end
 
-    visit(node)
-    scope_block[root]
+    # The outer lambda binds captured data and owns all hoisted temporaries.
+    capture_args,capture_body = node.args
+    capture_symbols = capture_args isa Expr ? capture_args.args : (capture_args,)
+    for capture_arg in capture_symbols
+        capture_hash = Base.hash(capture_arg)
+        hash_expr[capture_hash] = capture_arg
+        hash_scope[capture_hash] = root
+    end
+    visit(capture_body)
+    root_block = scope_block[root]
+    push!(root_block.args,hash_expr[Base.hash(capture_body)])
+    Expr(:(->),capture_args,root_block)
 end
 
 
@@ -1915,7 +2004,10 @@ function ast_optimize_with_options(expr, loop_var_range, options)
 end
 
 
-function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings)
+# TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
+# then use consistent unqualified getter expressions in the compiler.
+function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings;
+    npoints, field_ndofs_trial, field_ndofs_test)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -1931,13 +2023,14 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
 
     field_n_faces_around_trial = :(($(field_n_faces_around_trial...), ))
     field_n_faces_around_test = :(($(field_n_faces_around_test...), ))
+    field_ndofs_trial = :(($(field_ndofs_trial...), ))
+    field_ndofs_test = :(($(field_ndofs_test...), ))
 
     assignment = quote
         domain = GT.domain($quadrature)
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(domain)
-        face_npoints = GT.num_points_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
         for $field_trial_symbol in 1:$nfields_trial 
@@ -1948,14 +2041,13 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     for $face_around_test_symbol in 1:n_faces_around_test_init
                         var_str_init = "be_for_$($field_test_symbol)_$($field_trial_symbol)_$($face_around_test_symbol)_$($face_around_trial_symbol)"
                         be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol] = 
-                            alloc_zeros(var_str_init, T, GT.max_num_reference_dofs(GT.field($space_test,$field_test_symbol)),GT.max_num_reference_dofs(GT.field($space_trial,$field_trial_symbol)))
+                            alloc_zeros(var_str_init, T, $field_ndofs_test[$field_test_symbol], $field_ndofs_trial[$field_trial_symbol])
                     end
                 end
             end
         end
 
         for $face = 1:nfaces
-            npoints = face_npoints($face)
             for $field_trial_symbol in 1:$nfields_trial
                 n_faces_around_trial_zero = $field_n_faces_around_trial[$field_trial_symbol]
                 for $field_test_symbol in 1:$nfields_test
@@ -1968,17 +2060,15 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                 end
             end
 
-            for $point in 1:npoints
+            for $point in 1:$npoints
                 for $field_trial_symbol in 1:$nfields_trial
                     n_faces_around_trial = $field_n_faces_around_trial[$field_trial_symbol]
                     for $field_test_symbol in 1:$nfields_test
                         n_faces_around_test = $field_n_faces_around_test[$field_test_symbol]
                         for $face_around_trial_symbol in 1:n_faces_around_trial
-                            dofs_trial = GT.dofs_accessor(GT.field($space_trial,$field_trial_symbol),domain)($face,$face_around_trial_symbol)
-                            ndofs_trial = length(dofs_trial)
+                            ndofs_trial = $field_ndofs_trial[$field_trial_symbol]
                             for $face_around_test_symbol in 1:n_faces_around_test
-                                dofs_test = GT.dofs_accessor(GT.field($space_test,$field_test_symbol),domain)($face,$face_around_test_symbol)
-                                ndofs_test = length(dofs_test)
+                                ndofs_test = $field_ndofs_test[$field_test_symbol]
                                 for $dof_trial in 1:ndofs_trial
                                     for $dof_test in 1:ndofs_test
                                         v = $term
@@ -2016,7 +2106,10 @@ end
 
 
 
-function generate_vector_assembly_template(term, field_n_faces_around, dependencies, bindings)
+# TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
+# then use consistent unqualified getter expressions in the compiler.
+function generate_vector_assembly_template(term, field_n_faces_around, dependencies, bindings;
+    npoints, field_ndofs)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2029,13 +2122,13 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
     max_face_around = max(field_n_faces_around...)
 
     field_n_faces_around = :(($(field_n_faces_around...), ))
+    field_ndofs = :(($(field_ndofs...), ))
 
     assignment = quote
         domain = GT.domain($quadrature)
         T = eltype($alloc)
         z = zero(T)
         nfaces = GT.num_faces(domain)
-        face_npoints = GT.num_points_accessor($quadrature)
 
         be = alloc_zeros("be",Any, $max_face_around, $nfields)
         for $field_symbol in 1:$nfields
@@ -2043,12 +2136,11 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
             for $face_around_symbol in 1:n_faces_around_init
                 var_str_init = "be_for_$($field_symbol)_$($face_around_symbol)"
                 be[$face_around_symbol, $field_symbol] = 
-                    alloc_zeros(var_str_init, T, GT.max_num_reference_dofs(GT.field($space,$field_symbol)) )
+                    alloc_zeros(var_str_init, T, $field_ndofs[$field_symbol])
             end
         end
 
         for $face = 1:nfaces
-            npoints = face_npoints($face)
             for $field_symbol in 1:$nfields
                 n_faces_around_zero = $field_n_faces_around[$field_symbol]
                 for $face_around_symbol in 1:n_faces_around_zero
@@ -2056,12 +2148,11 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
                 end
             end
 
-            for $point in 1:npoints
+            for $point in 1:$npoints
                 for $field_symbol in 1:$nfields
                     n_faces_around = $field_n_faces_around[$field_symbol]
                     for $face_around_symbol in 1:n_faces_around
-                        dofs = GT.dofs_accessor(GT.field($space,$field_symbol),domain)($face,$face_around_symbol)
-                        ndofs = length(dofs)
+                        ndofs = $field_ndofs[$field_symbol]
                         for $dof in 1:ndofs
                             v = $term
                             be[$face_around_symbol, $field_symbol][$dof] += v
