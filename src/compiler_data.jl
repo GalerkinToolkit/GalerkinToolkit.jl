@@ -36,7 +36,10 @@ function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
     # Maybe we need to remove this layer of abstraction of MeshQuadrature and FaceQuadrature
     
     # remove jagged array. use the same array size for all
-    
+    # NOTE: The runtime node count makes the result type uninferred here.
+    # Cached assembly performs this packing once during setup; the resulting
+    # Vector{SVector{N,Ti}} is concrete and captured by the specialized kernel,
+    # keeping this uncertainty out of the assembly loops.
     static_face_nodes = SVector{length(first(face_nodes))}.(face_nodes)
 
 
@@ -60,6 +63,24 @@ function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
 
     MeshIntegrationData(layout, node_coordinates, static_face_nodes, reference_gradients, reference_weights)
 end
+
+
+# Domain-local integration face -> mesh face ID, shared without copying.
+struct DomainIntegrationData{F}
+    domain_faces::F
+end
+
+domain_integration_data(domain) = DomainIntegrationData(GT.faces(domain))
+domain_faces(data::DomainIntegrationData) = data.domain_faces
+
+
+# Prepared only by expressions that need higher-dimensional incident cells.
+struct FaceIncidenceData{A}
+    face_cells::A
+end
+
+face_incidence_data(mesh, d, D) = FaceIncidenceData(face_incidence(topology(mesh), d, D))
+face_cells(data::FaceIncidenceData) = data.face_cells
 
 
 # check whether it is possible to load the layout and type to the GPU, although these are only used for construction and type inference
@@ -112,30 +133,37 @@ end
 DOFData(space::AbstractSpace) = DOFData(face_dofs(space))
 face_dofs(data::DOFData) = data.face_dofs
 
-function dofs_expr(space, integration_domain, space_expr, domain_expr, face_expr, face_around_expr)
+function dofs_expr(space, integration_domain, space_expr, mesh_expr, face_expr, face_around_expr)
     D = num_dims(space)
     d = num_dims(integration_domain)
-    mesh_face_expr = :(GT.faces($domain_expr)[$face_expr])
     cell_expr = if d == D
-        mesh_face_expr
+        face_expr
     else
-        incidence_expr = :(face_incidence(topology(GT.mesh($space_expr)), $d, $D))
-        selected_side = if d+1 == D && faces_around(integration_domain) !== nothing
-            :(GT.faces_around($domain_expr)[$face_expr])
-        else
-            face_around_expr
-        end
-        :($incidence_expr[$mesh_face_expr][$selected_side])
+        incidence_expr = :(face_cells(face_incidence_data($mesh_expr, $d, $D)))
+        :($incidence_expr[$face_expr][$face_around_expr])
     end
     :(face_dofs(DOFData($space_expr))[$cell_expr])
 end
 
-function field_dofs_expr(space, integration_domain, space_expr, domain_expr, field_expr, face_expr, face_around_expr)
+function field_dofs_expr(space, integration_domain, space_expr, quadrature_expr, field_expr, face_expr, face_around_expr)
+    mesh_expr = integration_mesh_expr(quadrature_expr)
+    mesh_face_expr = integration_face_expr(quadrature_expr,face_expr)
     expressions = ntuple(num_fields(space)) do field
-        dofs_expr(GT.field(space,field), integration_domain, :(GT.field($space_expr,$field)),
-            domain_expr, face_expr, face_around_expr)
+        field_space = GT.field(space,field)
+        side_expr = integration_side_expr(field_space,integration_domain,quadrature_expr,face_expr,face_around_expr)
+        dofs_expr(field_space, integration_domain, :(GT.field($space_expr,$field)),
+            mesh_expr, mesh_face_expr, side_expr)
     end
     :(($(expressions...),)[$field_expr])
+end
+
+function integration_side_expr(space, integration_domain, quadrature_expr, face_expr, side_expr)
+    d = num_dims(integration_domain)
+    D = num_dims(space)
+    if d+1 == D && faces_around(integration_domain) !== nothing
+        return :(GT.faces_around(GT.domain($quadrature_expr))[$face_expr])
+    end
+    side_expr
 end
 
 # View packed StaticArrays as scalars without copying. Flatten all static

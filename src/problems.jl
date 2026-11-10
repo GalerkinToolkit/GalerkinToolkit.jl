@@ -124,6 +124,49 @@ function Base.:/(int::Integral,v::Number)
     (1/v)*int
 end
 
+# Keep generated closures and immutable allocation arguments inside a mutable
+# runner, so only its reference crosses the latest-world boundary.
+mutable struct AssemblyRunner{F,A}
+    prepare::F
+    argument::A
+end
+
+function (runner::AssemblyRunner)(parameters::P) where P
+    kernel = runner.prepare(parameters...)
+    kernel(runner.argument)
+    nothing
+end
+
+# Store scalar results instead of boxing them on return from invokelatest.
+mutable struct ScalarAssemblyRunner{F,T}
+    prepare::F
+    init::T
+    result::T
+end
+
+ScalarAssemblyRunner(prepare,init) = ScalarAssemblyRunner(prepare,init,init)
+
+function (runner::ScalarAssemblyRunner)(parameters::P) where P
+    kernel = runner.prepare(parameters...)
+    runner.result = kernel(runner.init)
+    nothing
+end
+
+function run_assembly!(runner,parameters)
+    Base.invokelatest(runner,parameters)
+    nothing
+end
+
+function run_assembly!(runner::AssemblyRunner{F,A},argument::A,parameters) where {F,A}
+    runner.argument = argument
+    run_assembly!(runner,parameters)
+end
+
+# Reusing a cache with a different output type needs a matching specialization.
+function run_assembly!(runner::AssemblyRunner,argument,parameters)
+    run_assembly!(AssemblyRunner(runner.prepare,argument),parameters)
+end
+
 # Sample on the quadrature points. This is needed to visualize fields
 
 function sample(f,quadrature::AbstractQuadrature;kwargs...)
@@ -152,18 +195,17 @@ function sample!(f,vals,quadrature::AbstractQuadrature;
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
     params_loop = generate_sample(f,quadrature;parameters)
-    loop! = Base.invokelatest(params_loop,parameters...)
-    Base.invokelatest(loop!,vals)
+    runner = AssemblyRunner(params_loop,vals)
+    run_assembly!(runner,parameters)
     if val_parameter(reuse)
-        vals, params_loop
+        vals, runner
     else
         vals
     end
 end
 
-function update_sample!(vals,params_loop;parameters=())
-    loop! = Base.invokelatest(params_loop,parameters...)
-    Base.invokelatest(loop!,vals)
+function update_sample!(vals,runner;parameters=())
+    run_assembly!(runner,vals,parameters)
     vals
 end
 
@@ -173,14 +215,14 @@ function assemble_scalar(integral::Integral;
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
     contributions = GT.contributions(integral)
-    pairs = map(contributions) do contribution
+    loops = map(contributions) do contribution
         init = zero(prototype(contribution))
         params_loop = generate_assemble_scalar(contribution; parameters)
-        loop = Base.invokelatest(params_loop, parameters...)
-        (Base.invokelatest(loop, init), (params_loop, init))
+        runner = ScalarAssemblyRunner(params_loop,init)
+        run_assembly!(runner,parameters)
+        runner
     end
-    b = sum(first,pairs)
-    loops = map(last,pairs)
+    b = sum(runner -> runner.result,loops)
     if val_parameter(reuse)
         b, loops
     else
@@ -189,9 +231,9 @@ function assemble_scalar(integral::Integral;
 end
 
 function update_scalar(loops; parameters=())
-    sum(loops) do (params_loop, init)
-        loop = Base.invokelatest(params_loop,parameters...)
-        Base.invokelatest(loop,init)
+    sum(loops) do runner
+        run_assembly!(runner,parameters)
+        runner.result
     end
 end
 
@@ -204,18 +246,17 @@ function assemble_face_contribution!(face_to_val,contribution::DomainContributio
         reuse = isempty(parameters) ? Val(false) : Val(true),
     )
     params_loop = generate_assemble_face_contribution(contribution;parameters)
-    loop! = Base.invokelatest(params_loop,parameters...)
-    Base.invokelatest(loop!,face_to_val)
+    runner = AssemblyRunner(params_loop,face_to_val)
+    run_assembly!(runner,parameters)
     if val_parameter(reuse)
-        face_to_val, params_loop
+        face_to_val, runner
     else
         face_to_val
     end
 end
 
-function update_face_contribution!(face_to_val, params_loop;parameters=())
-    loop! = Base.invokelatest(params_loop,parameters...)
-    Base.invokelatest(loop!,face_to_val)
+function update_face_contribution!(face_to_val,runner;parameters=())
+    run_assembly!(runner,face_to_val,parameters)
     face_to_val
 end
 
@@ -252,10 +293,10 @@ function assemble_vector(f,::Type{T},space;
         nothing
     end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options)
-        loop! = Base.invokelatest(params_loop,parameters...)
-        Base.invokelatest(loop!,alloc)
-        params_loop
+        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options,allocation=alloc)
+        runner = AssemblyRunner(params_loop,alloc)
+        run_assembly!(runner,parameters)
+        runner
     end
     b, vector_cache = compress(alloc;reuse=Val(true))
     cache = (;loops,alloc,vector_cache)
@@ -269,9 +310,8 @@ end
 function update_vector!(b,cache;parameters=())
     (;loops,alloc,vector_cache) = cache
     reset!(alloc)
-    map(loops) do params_loop
-        loop! = Base.invokelatest(params_loop,parameters...)
-        Base.invokelatest(loop!,alloc)
+    for runner in loops
+        run_assembly!(runner,parameters)
     end
     compress!(alloc,b,vector_cache)
     b
@@ -328,10 +368,10 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
         nothing
     end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters, optimize_options)
-        loop! = Base.invokelatest(params_loop,parameters...)
-        Base.invokelatest(loop!,alloc)
-        params_loop
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=alloc)
+        runner = AssemblyRunner(params_loop,alloc)
+        run_assembly!(runner,parameters)
+        runner
     end
     b, matrix_cache = compress(alloc;reuse=Val(true))
     cache = (;loops,alloc,matrix_cache)
@@ -345,9 +385,8 @@ end
 function update_matrix!(A,cache;parameters=())
     (;loops,alloc,matrix_cache) = cache # TODO: names
     reset!(alloc)
-    for params_loop in loops 
-        loop! = Base.invokelatest(params_loop, parameters...)
-        Base.invokelatest(loop!, alloc)
+    for runner in loops
+        run_assembly!(runner,parameters)
     end
     compress!(alloc,A,matrix_cache)
     A

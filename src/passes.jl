@@ -1175,7 +1175,25 @@ end
 
 
 
-# TODO: currently it can only identify 1D array allocation reuse.
+# TODO: Extend scalar cache materialization to multiple dimensions. Existing
+# multidimensional arrays can already be reused, but cache_scalar! currently
+# materializes only the innermost loop dimension.
+#
+# The multi-dimensional pass should test the following extension:
+# - Collect all active loop bindings in an expression summary as cache dimensions,
+#   rather than selecting only the last loop. For example, f(i2,i4) inside four
+#   nested loops needs a 2D cache indexed by (i2,i4), not a full 4D cache.
+# - Register a virtual cache with its ordered placeholders, loop ranges, source
+#   scalar and allocation/store insertion points. Emit a typed allocation and
+#   producer stores only when a compatible consumer actually reuses the cache;
+#   otherwise emit no cache. Infer the element type from the computed source value.
+# - Match the expression template and indexed ranges, remapping consumer bindings
+#   into the cache's dimension order. Use unique loop identities for fixed
+#   dependencies, and expire the cache when any such dependency leaves scope.
+# - Make reuse available only after the complete indexed fill. Permuted loads
+#   must follow the placeholder-to-dimension mapping, without assuming algebraic
+#   symmetry. The experiment covered full 2D/3D/4D caches, partial dependency sets,
+#   multiple consumers and unused caches; these are useful future regression cases.
 # a normal cse & dce is required for the prototype (so we don't need to enter the loops). We can do it outside the function
 function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     loop_vars = [] # element: (var name, upperbound hash, upperbound)
@@ -1193,6 +1211,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
 
     undo_logs = [[]] # TODO: use another flag for undo logs. now it uses nothing to label undo.
     delay_cache_scalar = [[]]
+    array_scope_logs = [Set{Any}()] # tables expire with their innermost non-indexed dependency
 
 
 
@@ -1347,7 +1366,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         end
         # array = (;name, summary, index_placeholders, index_ranges, reuse_key)
 
-        load_indices = []
+        load_indices = Vector{Any}(undef,length(array.index_placeholders))
         array_placeholders_idx = Dict()
         for i in 1:length(array.index_placeholders)
             array_placeholders_idx[array.index_placeholders[i]] = i
@@ -1361,7 +1380,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
                     return nothing
                 end
                 loop_var = binding[1]
-                push!(load_indices, loop_var)
+                load_indices[array_placeholders_idx[placeholder]] = loop_var
 
             else
                 if array.summary[3][placeholder][1] != summary[3][placeholder][1]
@@ -1482,6 +1501,18 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         array = (;name, summary, index_placeholders, index_ranges, reuse_key)
         name_arrayinfo[name] = array
         hash_arrayinfo[reuse_key] = array
+        fixed_depth = 0
+        for placeholder in eachindex(summary[3])
+            if !(placeholder in index_placeholders)
+                dependency = summary[3][placeholder][1]
+                if haskey(loopvar_info,dependency)
+                    fixed_depth = max(fixed_depth,loopvar_info[dependency][1])
+                end
+            end
+        end
+        if fixed_depth > 0
+            push!(array_scope_logs[fixed_depth+1],array)
+        end
         return array
     end
 
@@ -1543,10 +1574,20 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             summary_loop_range!(loop_index, length(loop_vars), upperbound)
             push!(undo_logs, [])
             push!(delay_cache_scalar, [])
+            push!(array_scope_logs, Set{Any}())
             body_block = []
             ast_array_cse_impl(ast_loop_body(node), body_block)
             new_body = ast_block(body_block)
 
+            for array in array_scope_logs[end]
+                if get(name_arrayinfo,array.name,nothing) === array
+                    delete!(name_arrayinfo,array.name)
+                end
+                if get(hash_arrayinfo,array.reuse_key,nothing) === array
+                    delete!(hash_arrayinfo,array.reuse_key)
+                end
+            end
+            pop!(array_scope_logs)
 
             delete!(loopvar_info, loop_index)
             pop!(loop_vars)
@@ -2306,3 +2347,334 @@ end
 # array unroll: treat this as an expression (we cannot do this. a[i, j] = f(i, j) -> b = a[i, j], b = f(i, j). we need to identify constant array indexing)
 
 # TODO: other aliasing optimizations (a[i] = f(i), b[j] = f(j) -> b === a) (a[i] = f1(i) / f2, b = f1(j) / f2 -> b = a[j])
+
+
+# =============================================================================
+# End of existing code. AI-generated compiler passes follow.
+# =============================================================================
+
+"""
+    ast_initialization_code_motion(ast)
+
+Move straight-line initialization from an assembly kernel into its captured-data
+or parameter wrapper. The input consists of three nested lambdas: captured data,
+parameters, and the assembly argument. Captured data stay fixed; parameter-based
+initialization is refreshed whenever the parameter wrapper is called.
+
+Assigned expressions are pure by contract, except for template mutators. Effect
+statements and mutable-content reads remain in the kernel. Scratch allocations
+may be retained because their users overwrite them or explicitly clear them;
+existing guards and resets are preserved, and no resets are added.
+"""
+function ast_initialization_code_motion(ast)
+    descriptor_functions = (typeof, eltype, length, size, ndims, axes)
+    buffer_functions = (alloc_zeros, zeros)
+    mutating_functions = (fill!, copyto!, setindex!, mul!, reset!, contribute!)
+
+    is_name(node) = ast_is_leaf(node) && ast_leaf_value(node) isa Symbol
+    is_form(node,head) = !is_name(node) && ast_head(node) === head
+    is_update(node) = ast_is_incremental(node) || is_form(node,:(-=))
+    update_lhs(node) = ast_is_incremental(node) ? ast_lhs(node) : first(ast_children(node))
+    update_rhs(node) = ast_is_incremental(node) ? ast_rhs(node) : last(ast_children(node))
+
+    function block_statements(node)
+        local statements = Any[]
+        function visit(node)
+            if ast_is_block(node)
+                foreach(visit,ast_children(node))
+            elseif !(ast_leaf_value(node) isa LineNumberNode)
+                push!(statements,node)
+            end
+        end
+        visit(node)
+        statements
+    end
+
+    function wrapper_lambda(node)
+        local statements = block_statements(node)
+        if length(statements) != 1 || !is_form(only(statements),:(->))
+            throw(ArgumentError("Expected captured-argument, parameter, and assembly lambdas"))
+        end
+        only(statements)
+    end
+
+    function argument_names(node)
+        is_name(node) && return Symbol[ast_leaf_value(node)]
+        if is_form(node,:tuple)
+            return reduce(vcat,map(argument_names,ast_children(node));init=Symbol[])
+        elseif is_form(node,:(::)) || is_form(node,:...)
+            return argument_names(first(ast_children(node)))
+        end
+        Symbol[]
+    end
+
+    # Julia constant lookup is kept local; traversal and rewriting use AST APIs.
+    function constant_value(node,bound,aliases)
+        local value, children, property, mod, name
+        value = ast_leaf_value(node)
+        if is_name(node)
+            haskey(aliases,value) && return aliases[value]
+            if !(value in bound) && isdefined(GT,value) && isconst(GT,value)
+                return getfield(GT,value)
+            end
+        elseif value isa GlobalRef
+            isconst(value.mod,value.name) && return getfield(value.mod,value.name)
+        elseif value isa QuoteNode
+            return value.value
+        elseif is_form(node,:.)
+            children = ast_children(node)
+            property = ast_leaf_value(children[2])
+            if property isa QuoteNode
+                mod = constant_value(first(children),bound,aliases)
+                name = property.value
+                if mod isa Module && isdefined(mod,name) && isconst(mod,name)
+                    return getfield(mod,name)
+                end
+            end
+        elseif ast_is_leaf(node)
+            return value
+        end
+        nothing
+    end
+
+    function array_root(node)
+        is_name(node) && return ast_leaf_value(node)
+        if ast_is_index(node) || is_form(node,:.)
+            return array_root(first(ast_children(node)))
+        end
+        nothing
+    end
+
+    captured = wrapper_lambda(ast)
+    parameters = wrapper_lambda(last(ast_children(captured)))
+    kernel = wrapper_lambda(last(ast_children(parameters)))
+    captured_names = argument_names(first(ast_children(captured)))
+    parameter_names = argument_names(first(ast_children(parameters)))
+    allocation_names = argument_names(first(ast_children(kernel)))
+    kernel_body = last(ast_children(kernel))
+    statements = block_statements(kernel_body)
+    # Rebuild from the original block when available, preserving its AST type.
+    make_block(statements) = ast_is_block(kernel_body) ?
+        ast_replace_children(kernel_body,statements...) : ast_block(statements)
+
+    definitions = Dict{Symbol,Int}()
+    mutated = Set{Symbol}()
+    direct_aliases = Pair{Symbol,Symbol}[]
+    assignments = Pair{Symbol,Any}[]
+    calls = Tuple{Any,Bool}[]
+    function collect_bindings(node;value_context=false)
+        local children, lhs, rhs, name, root, arg
+        ast_is_leaf(node) && return
+        is_form(node,:(->)) && return
+        children = ast_children(node)
+        if ast_is_definition(node) || is_update(node)
+            lhs = ast_is_definition(node) ? ast_lhs(node) : update_lhs(node)
+            rhs = ast_is_definition(node) ? ast_rhs(node) : update_rhs(node)
+            if is_name(lhs)
+                name = ast_leaf_value(lhs)
+                definitions[name] = get(definitions,name,0)+1
+                if ast_is_definition(node)
+                    push!(assignments,name=>rhs)
+                    is_name(rhs) && push!(direct_aliases,name=>ast_leaf_value(rhs))
+                end
+            else
+                root = array_root(lhs)
+                root === nothing || push!(mutated,root)
+            end
+            collect_bindings(rhs;value_context=true)
+            return
+        elseif ast_is_call(node)
+            push!(calls,(node,value_context))
+            for arg in children
+                collect_bindings(arg;value_context=true)
+            end
+            return
+        elseif is_form(node,:if) || is_form(node,:while)
+            collect_bindings(first(children);value_context=true)
+            foreach(collect_bindings,children[2:end])
+            return
+        elseif is_form(node,:return) || ast_is_index(node) ||
+               ast_head(node) in (:tuple,:curly,:string,:.,:parameters,:kw)
+            for arg in children
+                collect_bindings(arg;value_context=true)
+            end
+            return
+        end
+        foreach(collect_bindings,children)
+    end
+    foreach(collect_bindings,statements)
+
+    bound = Set(vcat(captured_names,parameter_names,allocation_names,collect(keys(definitions))))
+    # Recognize mutators even when a preceding pass assigned their callee.
+    effect_aliases = Dict{Symbol,Any}()
+    for (name,rhs) in assignments
+        get(definitions,name,0) == 1 || continue
+        constant = constant_value(rhs,bound,effect_aliases)
+        constant === nothing || (effect_aliases[name] = constant)
+    end
+    for (call,value_context) in calls
+        children = ast_children(call)
+        callee = constant_value(first(children),bound,effect_aliases)
+        known_mutator = callee in mutating_functions
+        if known_mutator || !value_context
+            # Template mutators write their first argument. Other effect
+            # statements conservatively mark every argument as mutable.
+            targets = known_mutator ? children[2:min(2,length(children))] : children[2:end]
+            for target in targets
+                root = array_root(target)
+                root === nothing || push!(mutated,root)
+            end
+        end
+    end
+    changed = true
+    while changed
+        changed = false
+        for (alias_name,source_name) in direct_aliases
+            if (alias_name in mutated || source_name in mutated) && !(alias_name in mutated && source_name in mutated)
+                push!(mutated,alias_name,source_name)
+                changed = true
+            end
+        end
+    end
+
+    scopes = Dict{Symbol,Int}(name=>0 for name in captured_names)
+    merge!(scopes,Dict(name=>1 for name in parameter_names),Dict(name=>2 for name in allocation_names))
+    aliases = Dict{Symbol,Any}()
+    buffers = Set{Symbol}()
+    resolve(node) = constant_value(node,bound,aliases)
+    function has_mutable_contents(node)
+        is_name(node) && return ast_leaf_value(node) in mutated || ast_leaf_value(node) in buffers
+        any(has_mutable_contents,ast_children(node))
+    end
+    function scope(node)
+        local name, children, callee, level, arg, dependency, safe, base
+        if is_name(node)
+            name = ast_leaf_value(node)
+            return get(scopes,name,name in bound || resolve(node) === nothing ? 2 : 0),true
+        elseif ast_is_call(node)
+            children = ast_children(node)
+            callee = resolve(first(children))
+            callee in mutating_functions && return 2,false
+            level = 0
+            for arg in children
+                dependency,safe = scope(arg)
+                safe || return 2,false
+                level = max(level,dependency)
+            end
+            if !(callee in descriptor_functions) && any(has_mutable_contents,children[2:end])
+                level = 2
+            end
+            return level,true
+        elseif is_form(node,:.)
+            base = first(ast_children(node))
+            dependency,safe = scope(base)
+            return has_mutable_contents(base) ? (2,safe) : (dependency,safe)
+        elseif ast_is_index(node) || ast_head(node) in (:tuple,:curly,:string)
+            children = ast_children(node)
+            level = 0
+            for arg in children
+                dependency,safe = scope(arg)
+                safe || return 2,false
+                level = max(level,dependency)
+            end
+            ast_is_index(node) && has_mutable_contents(first(children)) && (level = 2)
+            return level,true
+        elseif ast_is_leaf(node)
+            return 0,true
+        end
+        2,false
+    end
+    function buffer_allocation(node)
+        local callee
+        ast_is_call(node) || return false
+        callee = first(ast_children(node))
+        if ast_is_alloc(node) && is_name(callee) && !(ast_leaf_value(callee) in bound)
+            return true
+        end
+        # Function aliases and qualified allocation calls use constant lookup.
+        resolve(callee) in buffer_functions
+    end
+
+    # Keep the empty-domain protection around initialization as well as execution.
+    guard = nothing
+    guard_node = nothing
+    guard_scope = 0
+    if !isempty(statements) && is_form(first(statements),:if)
+        candidate = first(statements)
+        children = ast_children(candidate)
+        branch = block_statements(children[2])
+        if length(children) == 2 && length(branch) == 1 && is_form(only(branch),:return)
+            guard_scope,guard_safe = scope(first(children))
+            guard_safe && guard_scope < 2 || return ast
+            guard = first(children)
+            guard_node = candidate
+            popfirst!(statements)
+        end
+    end
+
+    setup = Any[]
+    refresh = Any[]
+    execution = Any[]
+    for (i,statement) in enumerate(statements)
+        if !(ast_is_definition(statement) && is_name(ast_lhs(statement)))
+            if ast_is_call(statement) || ast_is_definition(statement) || is_update(statement)
+                push!(execution,statement)
+                continue
+            else
+                append!(execution,statements[i:end])
+                break
+            end
+        end
+        binding = ast_leaf_value(ast_lhs(statement))
+        value_expr = ast_rhs(statement)
+        is_buffer = buffer_allocation(value_expr)
+        statement_scope,movable = scope(value_expr)
+        if !movable
+            scopes[binding] = 2
+            push!(execution,statement)
+            # Unsupported control flow prevents motion of the remaining code.
+            ast_is_call(value_expr) && continue
+            append!(execution,statements[i+1:end])
+            break
+        end
+        statement_scope = max(statement_scope,guard_scope)
+        get(definitions,binding,0) == 1 || (statement_scope = 2)
+        if binding in mutated && !is_buffer && !is_name(value_expr)
+            statement_scope = 2
+        end
+        scopes[binding] = statement_scope
+        if statement_scope < 2
+            push!(statement_scope == 0 ? setup : refresh,statement)
+            constant = resolve(value_expr)
+            constant === nothing || (aliases[binding] = constant)
+            if is_buffer || (is_name(value_expr) && ast_leaf_value(value_expr) in buffers)
+                push!(buffers,binding)
+            end
+        else
+            push!(execution,statement)
+        end
+    end
+
+    kernel_args = first(ast_children(kernel))
+    parameter_args = first(ast_children(parameters))
+    moved_kernel = ast_replace_children(kernel,kernel_args,make_block(execution))
+    push!(refresh,moved_kernel)
+    noop_kernel = ast_replace_children(kernel,kernel_args,make_block(Any[ast_leaf(nothing)]))
+    parameter_body = guard !== nothing && guard_scope == 1 ?
+        ast_replace_children(guard_node,guard,noop_kernel,make_block(refresh)) : make_block(refresh)
+    moved_parameters = ast_replace_children(parameters,parameter_args,parameter_body)
+    push!(setup,moved_parameters)
+    captured_body = guard !== nothing && guard_scope == 0 ?
+        ast_replace_children(guard_node,guard,ast_replace_children(parameters,parameter_args,noop_kernel),make_block(setup)) : make_block(setup)
+    ast_replace_children(captured,first(ast_children(captured)),captured_body)
+end
+
+# Suggestions for later interface consolidation (existing interfaces unchanged):
+# - Add shared lambda/argument and branch/return queries and reconstruction.
+# - Add an update interface covering -= as well as the current += predicate.
+# - Add a backend constant-resolution hook for symbols, quoted values and module
+#   fields, so this pass need not know Julia's GlobalRef and QuoteNode types.
+# - Add block construction with an AST exemplar for bodies without an existing
+#   block. Here, rebuilding the kernel's block already preserves custom AST types.
+
+# End of AI-generated compiler passes.

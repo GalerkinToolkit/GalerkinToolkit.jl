@@ -37,12 +37,28 @@ scaled_map_operator(scale) = (phi,xi) -> scale*sum(abs2,phi(xi))
             @test any(dof -> dof < 0,Iterators.flatten(GT.face_dofs(data)))
         end
         for domain in (selected,skeleton,boundary,second_side)
-            expr = GT.dofs_expr(V,domain,:V,:domain,:face,:side)
+            expr = GT.dofs_expr(V,domain,:V,:mesh,:face,:side)
             @test !occursin("dofs_accessor",string(expr))
-            kernel = GT.evaluate(:((V,domain) -> ((face,side) -> $expr)),(V,domain))
+            needs_incidence = GT.num_dims(domain) < GT.num_dims(V)
+            @test occursin("face_incidence_data",string(expr)) == needs_incidence
+            if needs_incidence
+                incidence = GT.face_incidence_data(mesh,GT.num_dims(domain),GT.num_dims(V))
+                @test GT.face_cells(incidence) === GT.face_incidence(GT.topology(mesh),GT.num_dims(domain),GT.num_dims(V))
+            end
+            kernel = GT.evaluate(:((V,mesh) -> ((face,side) -> $expr)),(V,mesh))
+            Q = GT.quadrature(domain,4)
+            domain_data = GT.domain_integration_data(domain)
+            @test GT.domain_faces(domain_data) === GT.faces(domain)
+            @test fieldnames(typeof(domain_data)) == (:domain_faces,)
+            field_expr = GT.field_dofs_expr(V,domain,:V,:Q,1,:face,:side)
+            @test !occursin("GT.faces(",string(field_expr))
+            field_kernel = GT.evaluate(:((V,Q) -> ((face,side) -> $field_expr)),(V,Q))
             expected = GT.dofs_accessor(V,domain)
             for face in 1:GT.num_faces(domain), side in 1:2
-                @test Base.invokelatest(kernel,face,side) == expected(face,side)
+                selected_side = GT.faces_around(domain) === nothing ? side : GT.faces_around(domain)[face]
+                mesh_face = GT.faces(domain)[face]
+                @test Base.invokelatest(kernel,mesh_face,selected_side) == expected(face,side)
+                @test Base.invokelatest(field_kernel,face,side) == expected(face,side)
             end
         end
     end
@@ -210,11 +226,15 @@ end
     integral = a(GT.form_argument_quantity(V,2),GT.form_argument_quantity(V,1))
     contribution = only(GT.contributions(integral))
     Q = GT.quadrature(contribution)
-    term = GT.optimize(GT.write_assemble_matrix(contribution,V,V))
+    A,cache = GT.assemble_matrix(a,Float64,V,V;reuse=Val(true),assembly_method=(;))
+    term = GT.optimize(GT.write_assemble_matrix(contribution,V,V;allocation=cache.alloc))
     captured,data = GT.capture(GT.parametrize(term))
     assembly = captured.body.body
+    @test GT.prototype(assembly.alloc) === cache.alloc
+    @test !any(value -> value === cache.alloc,data)
     expr = GT.expression(assembly.term)
-    constructors = Dict(:mesh_integration_data => Expr[], :space_integration_data => Expr[], :DOFData => Expr[])
+    constructors = Dict(:mesh_integration_data => Expr[], :space_integration_data => Expr[],
+        :DOFData => Expr[], :domain_integration_data => Expr[], :face_incidence_data => Expr[])
     callables = GT.JacobianSumCallable[]
     function collect_constructors(node)
         node isa Expr || return
@@ -230,6 +250,8 @@ end
     @test count(value -> value === Q,data) == 1
     @test GT.expression(assembly.space_trial) == GT.expression(assembly.space_test)
     @test length(unique(constructors[:mesh_integration_data])) == 1
+    @test length(unique(constructors[:domain_integration_data])) == 1
+    @test isempty(constructors[:face_incidence_data])
     @test length(unique(constructors[:space_integration_data])) == 1
     @test length(unique(callables)) == 1
     @test only(unique(callables)) === GT.JacobianSumCallable{3,3,0.0,8,false}()
@@ -249,6 +271,8 @@ end
     @test !occursin("num_points_accessor",string(assembly_expr))
     @test !occursin("max_num_reference_dofs",string(assembly_expr))
     @test !occursin("dofs_accessor",string(assembly_expr))
+    @test !occursin("face_incidence_data",string(assembly_expr))
+    @test !occursin("eltype(alloc)",string(assembly_expr))
     @test length(unique(constructors[:DOFData])) == 1
 
     # Assemble the independent reference with the existing accessor kernels.
@@ -270,13 +294,24 @@ end
             end
         end
     end
-    A,cache = GT.assemble_matrix(a,Float64,V,V;reuse=Val(true),assembly_method=(;))
     @test size(A) == (125,125)
     @test Matrix(A) ≈ expected rtol=1e-12 atol=1e-13
     @test norm(A-A',Inf) < 1e-11
     @test norm(A*ones(size(A,2)),Inf) < 1e-11
+    kernel = Base.invokelatest(only(cache.loops).prepare)
+    element_buffers = [getfield(kernel,name) for name in fieldnames(typeof(kernel))
+        if getfield(kernel,name) isa Matrix{Float64}]
+    @test length(element_buffers) == 1
     GT.update_matrix!(A,cache)
     @test Matrix(A) ≈ expected rtol=1e-12 atol=1e-13
+    updated_kernel = Base.invokelatest(only(cache.loops).prepare)
+    @test any(name -> getfield(updated_kernel,name) === only(element_buffers),fieldnames(typeof(updated_kernel)))
+
+    A32,cache32 = GT.assemble_matrix(a,Float32,V,V;reuse=Val(true),assembly_method=(;))
+    @test eltype(A32) === Float32
+    @test Matrix(A32) ≈ expected rtol=2e-6 atol=2e-6
+    GT.update_matrix!(A32,cache32)
+    @test Matrix(A32) ≈ expected rtol=2e-6 atol=2e-6
 end
 
 @testset "Metadata loop bounds for mixed DG fields" begin
@@ -322,13 +357,20 @@ end
     # Vector templates use the same metadata bounds without quadrature accessors.
     l = v -> GT.∫(x -> v[1](x)+v[2](x),measure)
     vector_contribution = only(GT.contributions(l(GT.form_argument_quantity(test,1))))
-    vector_term = GT.optimize(GT.write_assemble_vector(vector_contribution,test))
+    b,cache = GT.assemble_vector(l,Float32,test;reuse=Val(true),assembly_method=(;))
+    vector_term = GT.optimize(GT.write_assemble_vector(vector_contribution,test;allocation=cache.alloc))
     captured,_ = GT.capture(GT.parametrize(vector_term))
     vector_expr = GT.expression(captured)
     @test !occursin("num_points_accessor",string(vector_expr))
     @test !occursin("max_num_reference_dofs",string(vector_expr))
     @test !occursin("dofs_accessor",string(vector_expr))
     @test occursin("DOFData",string(vector_expr))
+    @test !occursin("eltype(alloc)",string(vector_expr))
+    @test eltype(b) === Float32
+    @test sum(b) ≈ 2prod((2,1))
+    expected_b = copy(b)
+    GT.update_vector!(b,cache)
+    @test b ≈ expected_b
 end
 
 end

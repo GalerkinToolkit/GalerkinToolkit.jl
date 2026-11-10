@@ -445,7 +445,8 @@ function integration_mesh_expr(quadrature)
 end
 
 function integration_face_expr(quadrature,face)
-    :(GT.faces(GT.domain($quadrature))[$face])
+    data_expr = :(domain_integration_data(GT.domain($quadrature)))
+    :(domain_faces($data_expr)[$face])
 end
 
 # Not clear if this can contain statements or not
@@ -1128,19 +1129,20 @@ function write_assemble_scalar(contribution::DomainContribution)
 end
 
 
-function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing)
-    term_0 = write_assemble_vector(contribution,space; optimize_options)
+function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing)
+    term_0 = write_assemble_vector(contribution,space; optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    f = evaluate(expr_0,captured_data)
+    expr_1 = ast_initialization_code_motion(expr_0)
+    f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
     f
 end
 
-function write_assemble_vector(contribution::DomainContribution,space::AbstractSpace;optimize_options=nothing)
+function write_assemble_vector(contribution::DomainContribution,space::AbstractSpace;optimize_options=nothing,allocation=nothing)
     quadrature = GT.quadrature(contribution)
     domain = GT.domain(quadrature)
     arity = Val(1)
@@ -1149,27 +1151,28 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
     space_term = leaf_term(space)
     quadrature_term = leaf_term(quadrature)
     alloc_arg = :alloc
-    alloc = leaf_term(alloc_arg)
+    alloc = leaf_term(alloc_arg;prototype=allocation === nothing ? alloc_arg : allocation)
 
     field_n_faces_around = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space)]
 
-    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around, optimize_options)
+    VectorAssemblyTerm(term,space_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around,optimize_options)
 end
 
 
-function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing)
-    term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options)
+function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing)
+    term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    f = evaluate(expr_0,captured_data)
+    expr_1 = ast_initialization_code_motion(expr_0)
+    f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
     f
 end
 
-function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;optimize_options=nothing)
+function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;optimize_options=nothing,allocation=nothing)
     quadrature = GT.quadrature(contribution)
     domain = GT.domain(quadrature)
     arity = Val(2)
@@ -1179,7 +1182,7 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     space_test_term = leaf_term(space_test)
     quadrature_term = leaf_term(quadrature)
     alloc_arg = :alloc
-    alloc = leaf_term(alloc_arg)
+    alloc = leaf_term(alloc_arg;prototype=allocation === nothing ? alloc_arg : allocation)
 
     field_n_faces_around_trial = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space_trial)]
     field_n_faces_around_test = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space_test)]
@@ -1467,9 +1470,11 @@ function expression(term::VectorAssemblyTerm)
     npoints = max_num_points(prototype(term.quadrature))
     field_ndofs = map(max_num_reference_dofs,fields(prototype(term.space)))
     dofs = field_dofs_expr(prototype(term.space), GT.domain(prototype(term.quadrature)),
-        space, :(GT.domain($quadrature)), field, face, face_around)
+        space, quadrature, field, face, face_around)
+    alloc_prototype = prototype(term.alloc)
+    scalar_type = alloc_prototype isa Symbol ? nothing : eltype(alloc_prototype)
     body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars;
-        npoints, field_ndofs, dofs)
+        npoints, field_ndofs, dofs, scalar_type)
 
     loop_var_range = Dict(dof => maximum(field_ndofs))
 
@@ -1515,13 +1520,14 @@ function expression(term::MatrixAssemblyTerm)
     field_ndofs_trial = map(max_num_reference_dofs,fields(prototype(term.space_trial)))
     field_ndofs_test = map(max_num_reference_dofs,fields(prototype(term.space_test)))
     integration_domain = GT.domain(prototype(term.quadrature))
-    domain_expr = :(GT.domain($quadrature))
     dofs_trial = field_dofs_expr(prototype(term.space_trial), integration_domain,
-        space_trial, domain_expr, field_trial, face, face_around_trial)
+        space_trial, quadrature, field_trial, face, face_around_trial)
     dofs_test = field_dofs_expr(prototype(term.space_test), integration_domain,
-        space_test, domain_expr, field_test, face, face_around_test)
+        space_test, quadrature, field_test, face, face_around_test)
+    alloc_prototype = prototype(term.alloc)
+    scalar_type = alloc_prototype isa Symbol ? nothing : eltype(alloc_prototype)
     body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars;
-        npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test)
+        npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test, scalar_type)
     # rewrite
 
     loop_var_range = Dict(dof_trial => maximum(field_ndofs_trial),
@@ -2015,7 +2021,7 @@ end
 # TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
 # then use consistent unqualified getter expressions in the compiler.
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings;
-    npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test)
+    npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test, scalar_type=nothing)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2034,11 +2040,12 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
     field_ndofs_trial = :(($(field_ndofs_trial...), ))
     field_ndofs_test = :(($(field_ndofs_test...), ))
 
+    domain_data_expr = :(domain_integration_data(GT.domain($quadrature)))
+    scalar_type_expr = scalar_type === nothing ? :(eltype($alloc)) : scalar_type
     assignment = quote
-        domain = GT.domain($quadrature)
-        T = eltype($alloc)
+        T = $scalar_type_expr
         z = zero(T)
-        nfaces = GT.num_faces(domain)
+        nfaces = length(domain_faces($domain_data_expr))
 
         be = alloc_zeros("be",Any, $max_face_around_test, $max_face_around_trial, $nfields_test, $nfields_trial)
         for $field_trial_symbol in 1:$nfields_trial 
@@ -2117,7 +2124,7 @@ end
 # TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
 # then use consistent unqualified getter expressions in the compiler.
 function generate_vector_assembly_template(term, field_n_faces_around, dependencies, bindings;
-    npoints, field_ndofs, dofs)
+    npoints, field_ndofs, dofs, scalar_type=nothing)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2132,11 +2139,12 @@ function generate_vector_assembly_template(term, field_n_faces_around, dependenc
     field_n_faces_around = :(($(field_n_faces_around...), ))
     field_ndofs = :(($(field_ndofs...), ))
 
+    domain_data_expr = :(domain_integration_data(GT.domain($quadrature)))
+    scalar_type_expr = scalar_type === nothing ? :(eltype($alloc)) : scalar_type
     assignment = quote
-        domain = GT.domain($quadrature)
-        T = eltype($alloc)
+        T = $scalar_type_expr
         z = zero(T)
-        nfaces = GT.num_faces(domain)
+        nfaces = length(domain_faces($domain_data_expr))
 
         be = alloc_zeros("be",Any, $max_face_around, $nfields)
         for $field_symbol in 1:$nfields

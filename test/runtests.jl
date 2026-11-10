@@ -18,6 +18,7 @@ using Test
     @testset "Compiler" begin include("compiler_tests.jl") end
     @testset "Compiler data" begin include("compiler_data_tests.jl") end
     @testset "Problems" begin include("problems_tests.jl") end
+    @testset "Problem runners" begin include("problems_runner_tests.jl") end
     @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
     @testset "Passes" begin include("passes_tests.jl") end
