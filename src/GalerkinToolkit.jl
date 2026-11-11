@@ -41,5 +41,6 @@ include("compiler_data.jl")
 include("compiler.jl")
 include("visualization.jl")
 include("passes.jl")
+include("precompile.jl")
 
 end # module
