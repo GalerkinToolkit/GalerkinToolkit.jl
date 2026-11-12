@@ -1782,17 +1782,15 @@ function ast_flatten(ast, var_count_init = 0)
             # TODO: do we need to flatten loop ranges?
             ast_block_append_statements!(block, expr)
             return expr
-        elseif ast_is_definition(node) # TODO: this is not correct for general cases. when a = c and b = c appear in 2 loop levels, we cannot refer that
+        elseif ast_is_definition(node)
             lhs, rhs = ast_children(node)
             new_rhs = ast_flatten_impl!(rhs, block, expr_var, 1)
-            if ast_is_leaf(new_rhs) && ast_is_leaf(lhs)
-                expr_var[lhs] = new_rhs
-                return new_rhs
-            else
-                expr = ast_replace_children(node, lhs, new_rhs)
-                ast_block_append_statements!(block, expr)
-                return lhs
-            end
+            # Keep leaf definitions: expr_var is local to a statement, so deleting
+            # them would leave later statements and loop bodies with unbound names.
+            # Alias elimination belongs to ast_constant_folding.
+            expr = ast_replace_children(node, lhs, new_rhs)
+            ast_block_append_statements!(block, expr)
+            return lhs
         elseif ast_is_incremental(node) # statements, assuming that we do not need to optimize the lhs as everything will be indexed by the loop vars directly.
             # the rhs is a depth-1 expression, or otherwise flatten it
             lhs, rhs = ast_children(node)
@@ -2138,7 +2136,7 @@ function ast_array_unroll(ast)
                 for i in CartesianIndices((ranges...,))
                     suffices = ["_$(i[j])" for j in 1:length(unrolled_max_indices)]
                     lhs_str = ast_string(lhs)
-                    new_lhs_str = string(lhs_str, reverse(suffices)...)
+                    new_lhs_str = string(lhs_str, suffices...)
                     new_lhs = ast_leaf(Symbol(new_lhs_str))
                     stmt = ast_definition(new_lhs, new_rhs)
                     ast_block_append_statements!(result, stmt)

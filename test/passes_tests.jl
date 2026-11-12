@@ -603,3 +603,80 @@ end
 end # module InitializationCodeMotionASTTests
 
 # End of AI-generated initialization code motion tests.
+
+module FlattenDefinitionTests
+
+using Test
+import GalerkinToolkit as GT
+
+@testset "Flatten preserves definitions across statements and loops" begin
+    evaluate = code -> Base.invokelatest(Core.eval(@__MODULE__,:(() -> $code)))
+    for scalar_type in (Float32,Float64), type_expr in (nameof(scalar_type),scalar_type)
+        original = Base.remove_linenums!(quote
+            T = $type_expr
+            N = 3
+            result = zeros(T,N)
+            for i in 1:N
+                S = T
+                value = S(i)
+                for j in 1:2
+                    result[i] += value
+                end
+            end
+            return result
+        end)
+        flattened,_ = GT.ast_flatten(original)
+        @test evaluate(flattened) == evaluate(original)
+        @test eltype(evaluate(flattened)) === scalar_type
+    end
+
+    # Copy assignments must keep their value when their source is reassigned.
+    original = Base.remove_linenums!(quote
+        source = 2
+        saved = source
+        source = 5
+        result = zeros(Int,2)
+        result[1] = saved
+        result[2] = source
+        return result
+    end)
+    flattened,_ = GT.ast_flatten(original)
+    @test evaluate(flattened) == evaluate(original) == [2,5]
+end
+
+end # module FlattenDefinitionTests
+
+module PartialArrayUnrollTests
+
+using Test
+import GalerkinToolkit as GT
+
+@testset "Partial array unrolling preserves dimension order" begin
+    evaluate = code -> Base.invokelatest(Core.eval(@__MODULE__,:(() -> $code)))
+    for (nj,nk) in ((1,3),(2,3))
+        original = Base.remove_linenums!(quote
+            n = 11
+            cache = zeros(Float64,n,$nj,$nk)
+            total = 0.0
+            for j in 1:$nj
+                for k in 1:$nk
+                    for i in 1:n
+                        cache[i,j,k] = 100i+10j+k
+                    end
+                end
+            end
+            for j in 1:$nj
+                for k in 1:$nk
+                    for i in 1:n
+                        total += cache[i,j,k]
+                    end
+                end
+            end
+            return total
+        end)
+        optimized = GT.ast_array_unroll(GT.ast_loop_unroll(original))
+        @test evaluate(optimized) == evaluate(original)
+    end
+end
+
+end # module PartialArrayUnrollTests

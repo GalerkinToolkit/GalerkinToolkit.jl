@@ -373,4 +373,24 @@ end
     @test b ≈ expected_b
 end
 
+@testset "Order 2 preserves the inlined assembly scalar type" begin
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=false)
+    omega = GT.interior(mesh)
+    for k in (1,2)
+        measure = GT.measure(omega,2*k)
+        V = GT.lagrange_space(omega,k)
+        a = (u,v) -> GT.∫(x -> dot(ForwardDiff.gradient(u,x),ForwardDiff.gradient(v,x)),measure)
+        expected = Matrix(GT.assemble_matrix(a,Float64,V,V;assembly_method=(;)))
+        for T in (Float32,Float64), array_cse in (false,true)
+            options = (;order=2,array_cse,topological_sort=true,array_aliasing=true,licm="binomial")
+            A,cache = GT.assemble_matrix(a,T,V,V;reuse=Val(true),assembly_method=(;),optimize_options=options)
+            tolerance = T === Float32 ? 2e-6 : 1e-12
+            @test eltype(A) === T
+            @test Matrix(A) ≈ expected rtol=tolerance atol=tolerance
+            GT.update_matrix!(A,cache;parameters=())
+            @test Matrix(A) ≈ expected rtol=tolerance atol=tolerance
+        end
+    end
+end
+
 end
