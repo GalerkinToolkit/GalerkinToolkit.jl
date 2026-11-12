@@ -32,9 +32,14 @@ scaled_map_operator(scale) = (phi,xi) -> scale*sum(abs2,phi(xi))
         V = GT.lagrange_space(omega,2;continuous=Val(continuous),
             dirichlet_boundary=continuous ? boundary : nothing)
         data = GT.DOFData(V)
-        @test GT.face_dofs(data) === GT.face_dofs(V)
+        dofs = GT.face_dofs(V)
+        matrix = GT.face_dofs(data)
+        @test matrix isa Matrix{eltype(dofs.data)}
+        @test size(matrix) == (length(first(dofs)),length(dofs))
+        @test vec(matrix) == dofs.data
+        @test Base.mightalias(matrix,dofs.data)
         if continuous
-            @test any(dof -> dof < 0,Iterators.flatten(GT.face_dofs(data)))
+            @test any(dof -> dof < 0,matrix)
         end
         for domain in (selected,skeleton,boundary,second_side)
             expr = GT.dofs_expr(V,domain,:V,:mesh,:face,:side)

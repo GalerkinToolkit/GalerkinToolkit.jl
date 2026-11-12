@@ -67,7 +67,8 @@ end
 
 # Domain-local integration face -> mesh face ID, shared without copying.
 struct DomainIntegrationData{F}
-    domain_faces::F
+    domain_faces::F # Integer vector returned by GT.faces(domain), typically Vector{Ti}.
+                    # [domain_face] -> global mesh face ID; aliases the domain's array.
 end
 
 domain_integration_data(domain) = DomainIntegrationData(GT.faces(domain))
@@ -76,7 +77,9 @@ domain_faces(data::DomainIntegrationData) = data.domain_faces
 
 # Prepared only by expressions that need higher-dimensional incident cells.
 struct FaceIncidenceData{A}
-    face_cells::A
+    face_cells::A # CPU: typically JaggedArray{Ti,Tp}, with integer IDs Ti and row pointers Tp.
+                  # [mesh_face][side] -> incident D-dimensional mesh cell ID.
+                  # Aliases the topology's d-face-to-D-cell incidence array.
 end
 
 face_incidence_data(mesh, d, D) = FaceIncidenceData(face_incidence(topology(mesh), d, D))
@@ -124,13 +127,20 @@ function space_integration_data(f, V::AbstractSpace, Q::AbstractQuadrature)
 end
 
 
-# DOFData preserves the global DOFs per face.
+# DOFData preserves the global DOFs per face, assuming uniform DOF counts.
 # TODO: review dofs_expr for boundary and skeleton. Now the global dof accessing for interior is clear.
 struct DOFData{A}
-    face_dofs::A
+    face_dofs::A # CPU: Matrix{Ti}, with integer DOF IDs Ti and one contiguous column per cell.
+                 # [local_dof,mesh_cell] -> global DOF ID within this field's space.
+                 # Positive IDs index free DOFs; negative IDs encode Dirichlet DOFs.
+                 # Shares the space's packed face_dofs.data buffer without copying DOF IDs.
 end
 
-DOFData(space::AbstractSpace) = DOFData(face_dofs(space))
+function DOFData(space::AbstractSpace)
+    dofs = face_dofs(space)
+    ndofs = isempty(dofs) ? 0 : length(first(dofs))
+    DOFData(reshape(dofs.data,ndofs,length(dofs)))
+end
 face_dofs(data::DOFData) = data.face_dofs
 
 function dofs_expr(space, integration_domain, space_expr, mesh_expr, face_expr, face_around_expr)
@@ -142,7 +152,7 @@ function dofs_expr(space, integration_domain, space_expr, mesh_expr, face_expr, 
         incidence_expr = :(face_cells(face_incidence_data($mesh_expr, $d, $D)))
         :($incidence_expr[$face_expr][$face_around_expr])
     end
-    :(face_dofs(DOFData($space_expr))[$cell_expr])
+    :(view(face_dofs(DOFData($space_expr)),:,$cell_expr))
 end
 
 function field_dofs_expr(space, integration_domain, space_expr, quadrature_expr, field_expr, face_expr, face_around_expr)
