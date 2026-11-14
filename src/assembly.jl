@@ -68,6 +68,8 @@ function allocate_vector_barrier!(counter,nfaces,fields_i,field_face_dofs_i,free
     counter
 end
 
+# TODO: allocate the matrix on GPUs directly
+# TODO: generate code for allocation
 function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace,domains::AbstractDomain...;
         free_or_dirichlet = (FREE,FREE),
         assembly_method = (;),
@@ -86,17 +88,16 @@ function allocate_matrix(::Type{T},space_i::AbstractSpace,space_j::AbstractSpace
     fields_i = ntuple(identity,num_fields(space_i))
     fields_j = ntuple(identity,num_fields(space_j))
     args = (domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
-    allocate_matrix_barrier!(counter, args...)
+    allocate_matrix_sparsity!(method,counter,args...)
     alloc_0 = allocate(counter)
     alloc = if (alloc_0 isa CachedCSCCounterStep1) || (alloc_0 isa MonolithicAssemblyCounter) # TODO: make it more general
-        allocate_matrix_barrier!(alloc_0, args...)
-        alloc_1 = allocate(alloc_0)
-        allocate_matrix_barrier!(alloc_1, args...)
-        finalize(alloc_1)
+        allocate_matrix_sparsity!(method,alloc_0,args...)
+        allocate_matrix_from_sparsity(method,alloc_0,args)
     else 
         alloc_0
     end
-    MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
+    malloc = MatrixAllocation(alloc,free_or_dirichlet,dof_maps)
+    prepare_matrix_allocation(method,malloc,space_i,space_j,domains)
 end
 
 function allocate_matrix_barrier!(counter, domains, space_i, space_j, fields_i, fields_j, free_or_diri_i, free_or_diri_j, dof_map_i, dof_map_j)
@@ -728,10 +729,7 @@ function contribute!(counter::CachedCSCCounterStep2,v,i,j,field_i,field_j)
 end
 
 
-function allocate(counter::CachedCSCCounterStep1)
-    Ti = counter.index_type
-    T = eltype(counter.matrix_type)
-    nrows = counter.nrows
+function compact_csc_structure!(counter::CachedCSCCounterStep1)
     ncols = counter.ncols
     colnnz = counter.colnnz
     colptr = counter.colptr
@@ -752,8 +750,17 @@ function allocate(counter::CachedCSCCounterStep1)
     end
     length_to_ptrs!(colptr)
     nnz = colptr[end]-1
-    # nnz = k
     resize!(rowval,nnz)
+    counter
+end
+
+function allocate(counter::CachedCSCCounterStep1)
+    compact_csc_structure!(counter)
+    Ti = counter.index_type
+    T = eltype(counter.matrix_type)
+    nrows,ncols = counter.nrows,counter.ncols
+    colptr,rowval = counter.colptr,counter.rowval
+    nnz = length(rowval)
     nzval = zeros(T,nnz)
     cache_p = Vector{Ti}(undef, counter.cache_count[])
     reset!(counter)
@@ -880,6 +887,489 @@ function compress!(alloc::Union{CSCAllocation, CachedCSCAllocation},A::SparseMat
         copyto!(A.nzval,alloc.nzval)
     end
     A
+end
+
+##############################################################################
+
+
+## Element-indexed CSC assembly and direct vector assembly
+
+"""
+    element_csc_assembly()
+
+Sequential matrix assembly with domain-local element-indexed CSC positions. Select
+`monolithic_assembly(element_csc_assembly())` through the existing
+`assembly_method.matrix` option of `allocate_matrix`.
+The existing assembly methods and defaults are kept for comparison.
+"""
+element_csc_assembly() = ElementCSCAssembly()
+
+struct ElementCSCAssembly <: AbstractType end
+
+struct ElementCSCDomainCache{Ti} <: AbstractType
+    positions::Matrix{Ti}     # [local entry, domain-local entity]
+    block_offsets::Matrix{Ti} # Zero-based [row field, column field]; -1 omits a pair.
+    block_sizes::Array{Ti,3}   # [dimension, row field, column field]
+end
+
+struct ElementCSCMatrixAllocation{Tv,Ti,C} <: AbstractType
+    nrows::Int
+    ncols::Int
+    colptr::Vector{Ti}
+    rowval::Vector{Ti}
+    nzval::Vector{Tv}
+    domain_caches::C # Tuple of ElementCSCDomainCache, in allocation argument order.
+end
+
+# A numeric argument for one domain's kernel. Only the selected lookup and the
+# shared values are reachable; no domain, mesh, other caches, or CSC graph.
+struct ElementCSCDomainAllocation{Tv,Ti} <: AbstractType
+    nzval::Vector{Tv}
+    cache::ElementCSCDomainCache{Ti}
+end
+
+Base.eltype(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation}) = eltype(alloc.nzval)
+
+# Branch from the shared symbolic CSC builder before creating its flat cache.
+function counter(::ElementCSCAssembly,::Type{T},dofs_i,dofs_j;kwargs...) where T
+    counter(csc_assembly(),T,dofs_i,dofs_j;kwargs...)
+end
+
+allocate_matrix_sparsity!(method,counter,args...) = allocate_matrix_barrier!(counter,args...)
+
+function allocate_matrix_sparsity!(method::MonolithicAssembly,counter,args...)
+    allocate_matrix_sparsity!(method.method,counter,args...)
+end
+
+# These temporary tuples alias existing numeric buffers. They never become
+# part of the matrix allocation, and do not create accessor closures or copy DOFs.
+function element_csc_dof_arrays(space,domain)
+    dofs = face_dofs(space)
+    d,D = num_dims(domain),num_dims(space)
+    incidence = d == D ? nothing : face_incidence(topology(mesh(space)),d,D)
+    selected_sides = d+1 == D ? faces_around(domain) : nothing
+    (;dofs=dofs.data,dof_ptrs=dofs.ptrs,domain_faces=faces(domain),selected_sides,
+        cells=incidence === nothing ? nothing : incidence.data,
+        cell_ptrs=incidence === nothing ? nothing : incidence.ptrs)
+end
+
+function element_csc_num_sides(data,face)
+    (data.cell_ptrs === nothing || data.selected_sides !== nothing) && return 1
+    mesh_face = data.domain_faces[face]
+    Int(data.cell_ptrs[mesh_face+1]-data.cell_ptrs[mesh_face])
+end
+
+function element_csc_dof_range(data,face,side)
+    mesh_face = data.domain_faces[face]
+    cell = if data.cell_ptrs === nothing
+        mesh_face
+    else
+        physical_side = data.selected_sides === nothing ? side : data.selected_sides[face]
+        data.cells[Int(data.cell_ptrs[mesh_face])+physical_side-1]
+    end
+    Int(data.dof_ptrs[cell]):Int(data.dof_ptrs[cell+1])-1
+end
+
+function allocate_matrix_sparsity!(::ElementCSCAssembly,counter,domains,space_i,space_j,
+        fields_i,fields_j,free_i,free_j,map_i,map_j)
+    do_loop(counter) || return counter
+    for domain in domains
+        rows = map(field->element_csc_dof_arrays(GT.field(space_i,field),domain),fields_i)
+        columns = map(field->element_csc_dof_arrays(GT.field(space_j,field),domain),fields_j)
+        allocate_element_csc_sparsity!(counter,num_faces(domain),rows,columns,
+            fields_i,fields_j,free_i,free_j,map_i,map_j)
+    end
+    counter
+end
+
+function allocate_element_csc_sparsity!(counter,nfaces,rows,columns,fields_i,fields_j,
+        free_i,free_j,map_i,map_j)
+    for face in 1:nfaces, field_j in fields_j, field_i in fields_i
+        row_data,column_data = rows[field_i],columns[field_j]
+        for side_j in 1:element_csc_num_sides(column_data,face),
+            side_i in 1:element_csc_num_sides(row_data,face)
+            row_range = element_csc_dof_range(row_data,face,side_i)
+            column_range = element_csc_dof_range(column_data,face,side_j)
+            for pj in column_range
+                column = column_data.dofs[pj]
+                skip_dof(column,free_j) && continue
+                for pi in row_range
+                    row = row_data.dofs[pi]
+                    skip_dof(row,free_i) && continue
+                    contribute!(counter,nothing,map_i(row),map_j(column),field_i,field_j)
+                end
+            end
+        end
+    end
+    counter
+end
+
+function allocate_matrix_from_sparsity(method,counter,args)
+    alloc = allocate(counter)
+    allocate_matrix_barrier!(alloc,args...)
+    finalize(alloc)
+end
+
+function allocate_matrix_from_sparsity(method::MonolithicAssembly,counter,args)
+    allocate_matrix_from_sparsity(method.method,counter,args)
+end
+
+function allocate_matrix_from_sparsity(::ElementCSCAssembly,counter,args)
+    domains,space_i,space_j = args[1],args[2],args[3]
+    entity_counts = map(num_faces,domains)
+    element_csc_matrix_allocation(counter,num_fields(space_i),num_fields(space_j),entity_counts)
+end
+
+prepare_matrix_allocation(method,malloc,space_i,space_j,domains) = malloc
+
+function prepare_matrix_allocation(method::MonolithicAssembly,malloc,space_i,space_j,domains)
+    prepare_matrix_allocation(method.method,malloc,space_i,space_j,domains)
+end
+
+function prepare_matrix_allocation(::ElementCSCAssembly,malloc,space_i,space_j,domains)
+    storage = element_csc_matrix_storage(malloc.allocation)
+    caches = map(storage.domain_caches,domains) do cache,domain
+        rows = map(space->element_csc_dof_arrays(space,domain),fields(space_i))
+        columns = map(space->element_csc_dof_arrays(space,domain),fields(space_j))
+        entries_per_element = prepare_element_csc_domain_blocks!(malloc,cache,space_i,space_j,domain,rows,columns)
+        nentities = num_faces(domain)
+        checked_element_csc_position_count(eltype(cache.positions),0,(entries_per_element,nentities))
+        prepared = ElementCSCDomainCache(zeros(eltype(cache.positions),entries_per_element,nentities),
+            cache.block_offsets,cache.block_sizes)
+        precompute_element_csc_positions!(malloc,prepared,domain,rows,columns)
+        prepared
+    end
+    allocation = with_element_csc_domain_caches(malloc.allocation,caches)
+    MatrixAllocation(allocation,malloc.free_or_dirichlet,malloc.dof_maps)
+end
+
+function element_csc_matrix_allocation(csc::CachedCSCCounterStep1,ni,nj,entity_counts::Tuple)
+    compact_csc_structure!(csc)
+    T = eltype(csc.matrix_type)
+    Ti = eltype(csc.rowval)
+    caches = map(entity_counts) do nentities
+        ElementCSCDomainCache(zeros(Ti,0,nentities),fill(-one(Ti),ni,nj),zeros(Ti,4,ni,nj))
+    end
+    ElementCSCMatrixAllocation(csc.nrows,csc.ncols,csc.colptr,csc.rowval,
+        zeros(T,length(csc.rowval)),caches)
+end
+
+function element_csc_matrix_allocation(counter::MonolithicAssemblyCounter,ni,nj,entity_counts::Tuple)
+    MonolithicAssemblyAllocation(element_csc_matrix_allocation(counter.counter,ni,nj,entity_counts),
+        counter.offsets,counter.block_mask)
+end
+
+element_csc_matrix_storage(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation}) = alloc
+element_csc_matrix_storage(alloc::MonolithicAssemblyAllocation) = element_csc_matrix_storage(alloc.allocation)
+
+function with_element_csc_domain_caches(alloc::ElementCSCMatrixAllocation,caches)
+    ElementCSCMatrixAllocation(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval,caches)
+end
+
+function with_element_csc_domain_caches(alloc::MonolithicAssemblyAllocation,caches)
+    MonolithicAssemblyAllocation(with_element_csc_domain_caches(alloc.allocation,caches),
+        alloc.offsets,alloc.block_mask)
+end
+
+is_element_csc_allocation(alloc) = false
+is_element_csc_allocation(::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation}) = true
+is_element_csc_allocation(alloc::MonolithicAssemblyAllocation) = is_element_csc_allocation(alloc.allocation)
+
+"""
+    element_csc_domain(alloc::MatrixAllocation, domain_id)
+
+Select the cache for the `domain_id`-th domain supplied to `allocate_matrix`.
+The returned MatrixAllocation is a numeric scatter argument sharing the global
+values. Use domain-local entity and side indices with it; reset/compress the
+parent allocation. The original six-argument contribution uses the parent.
+"""
+function element_csc_domain(malloc::MatrixAllocation,domain_id::Integer)
+    allocation = element_csc_domain_allocation(malloc.allocation,domain_id)
+    MatrixAllocation(allocation,malloc.free_or_dirichlet,malloc.dof_maps)
+end
+
+function element_csc_domain_allocation(alloc::ElementCSCMatrixAllocation,domain_id)
+    ElementCSCDomainAllocation(alloc.nzval,alloc.domain_caches[domain_id])
+end
+
+function element_csc_domain_allocation(alloc::MonolithicAssemblyAllocation,domain_id)
+    MonolithicAssemblyAllocation(element_csc_domain_allocation(alloc.allocation,domain_id),
+        alloc.offsets,alloc.block_mask)
+end
+
+# The legacy methods retain the same runner argument and generated call.
+function matrix_assembly_contribution_allocation(malloc::MatrixAllocation,domain_id)
+    is_element_csc_allocation(malloc.allocation) ? element_csc_domain(malloc,domain_id) : malloc
+end
+
+function element_csc_block_enabled(alloc::ElementCSCMatrixAllocation,field_i,field_j)
+    field_i == field_j == 1 ||
+        throw(ArgumentError("Wrap element_csc_assembly() in monolithic_assembly() for multiple fields"))
+    true
+end
+
+element_csc_block_enabled(alloc::MonolithicAssemblyAllocation,field_i,field_j) = alloc.block_mask[field_i,field_j]
+
+function element_csc_has_selected_dofs(data,face,free_or_dirichlet)
+    for side in 1:element_csc_num_sides(data,face), p in element_csc_dof_range(data,face,side)
+        skip_dof(data.dofs[p],free_or_dirichlet) || return true
+    end
+    false
+end
+
+function checked_element_csc_position_count(::Type{Ti},npositions,shape) where Ti
+    nblock = 1
+    for dimension in shape
+        nblock = Base.Checked.checked_mul(nblock,dimension)
+    end
+    total = Base.Checked.checked_add(npositions,nblock)
+    total <= typemax(Ti) || throw(OverflowError(
+        "Element CSC position count $total does not fit index_type=$Ti; use index_type=Int64."))
+    total
+end
+
+function prepare_element_csc_domain_blocks!(malloc,cache,space_i,space_j,domain,rows,columns)
+    alloc = malloc.allocation
+    spaces_i,spaces_j = fields(space_i),fields(space_j)
+    free_i,free_j = malloc.free_or_dirichlet
+    entries_per_element = 0
+    for field_j in 1:num_fields(space_j), field_i in 1:num_fields(space_i)
+        element_csc_block_enabled(alloc,field_i,field_j) || continue
+        nr = max_num_reference_dofs(spaces_i[field_i])
+        nc = max_num_reference_dofs(spaces_j[field_j])
+        # Counts are local to the integration view. A selected physical side 2
+        # has one local side; the incidence buffers resolve the physical side.
+        nsi = max_num_faces_around(GT.domain(spaces_i[field_i]),domain)
+        nsj = max_num_faces_around(GT.domain(spaces_j[field_j]),domain)
+        shape = (nr,nc,nsi,nsj)
+        for d in 1:4
+            cache.block_sizes[d,field_i,field_j] = shape[d]
+        end
+        # Omit pairs with no accepted contribution anywhere on this domain.
+        # Otherwise every entity has the same layout, including zero slots for
+        # constrained DOFs. No per-entity offset or compaction map is retained.
+        active = any(1:num_faces(domain)) do face
+            element_csc_has_selected_dofs(rows[field_i],face,free_i) &&
+                element_csc_has_selected_dofs(columns[field_j],face,free_j)
+        end
+        active || continue
+        total = checked_element_csc_position_count(eltype(cache.positions),entries_per_element,shape)
+        cache.block_offsets[field_i,field_j] = entries_per_element
+        entries_per_element = total
+    end
+    entries_per_element
+end
+
+function precompute_element_csc_positions!(malloc,cache,domain,rows,columns)
+    alloc = malloc.allocation
+    free_i,free_j = malloc.free_or_dirichlet
+    map_i,map_j = malloc.dof_maps
+    for field_j in eachindex(columns), field_i in eachindex(rows)
+        offset = cache.block_offsets[field_i,field_j]
+        offset == -one(offset) && continue
+        row_data,column_data = rows[field_i],columns[field_j]
+        shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(4))
+        indices = LinearIndices(shape)
+        for face in 1:num_faces(domain)
+            nsi,nsj = element_csc_num_sides(row_data,face),element_csc_num_sides(column_data,face)
+            nsi <= shape[3] && nsj <= shape[4] ||
+                throw(DimensionMismatch("Incident side counts exceed the precomputed block dimensions"))
+            for side_j in 1:nsj, side_i in 1:nsi
+                row_range = element_csc_dof_range(row_data,face,side_i)
+                column_range = element_csc_dof_range(column_data,face,side_j)
+                for (j,pj) in enumerate(column_range), (i,pi) in enumerate(row_range)
+                    row,column = row_data.dofs[pi],column_data.dofs[pj]
+                    skip_dof(row,free_i) && continue
+                    skip_dof(column,free_j) && continue
+                    index = indices[i,j,side_i,side_j]
+                    cache.positions[offset+index,face] = element_csc_matrix_position(alloc,
+                        map_i(row),map_j(column),field_i,field_j)
+                end
+            end
+        end
+    end
+    malloc
+end
+
+function element_csc_matrix_position(alloc::ElementCSCMatrixAllocation,i,j,field_i,field_j)
+    @boundscheck @assert field_i == field_j == 1
+    pini,pend = Int(alloc.colptr[j]),Int(alloc.colptr[j+1])-1
+    p = searchsortedfirst(alloc.rowval,i,pini,pend,Base.Order.Forward)
+    p <= pend && alloc.rowval[p] == i ||
+        throw(ArgumentError("Contribution is outside the allocated CSC structure"))
+    p
+end
+
+function element_csc_matrix_position(alloc::MonolithicAssemblyAllocation,i,j,field_i,field_j)
+    offsets_i,offsets_j = alloc.offsets
+    element_csc_matrix_position(alloc.allocation,i+offsets_i[field_i],j+offsets_j[field_j],1,1)
+end
+
+"""
+    contribute_element!(alloc::MatrixAllocation, values, field_i, field_j, element, side_i=1, side_j=1)
+
+Scatter a local matrix through element CSC positions without global DOF IDs.
+Element and side indices are local to the selected domain. Constrained entries
+are encoded by zero positions; field-pair offsets and dimensions are shared.
+"""
+function contribute_element!(malloc::MatrixAllocation,vals,field_i,field_j,
+        face::Integer,side_i::Integer=1,side_j::Integer=1)
+    contribute_element!(malloc,malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+end
+
+function contribute_element!(malloc,alloc::MonolithicAssemblyAllocation,vals,
+        field_i,field_j,face,side_i,side_j)
+    if alloc.block_mask[field_i,field_j]
+        contribute_element!(malloc,alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    end
+    malloc
+end
+
+function contribute_element!(malloc,alloc::ElementCSCMatrixAllocation,vals,
+        field_i,field_j,face,side_i,side_j)
+    length(alloc.domain_caches) == 1 || throw(ArgumentError(
+        "Select a domain cache with element_csc_domain(alloc,domain_id) before indexed scatter."))
+    contribute_element_csc!(malloc,alloc.nzval,only(alloc.domain_caches),vals,
+        field_i,field_j,face,side_i,side_j)
+end
+
+function contribute_element!(malloc,alloc::ElementCSCDomainAllocation,vals,
+        field_i,field_j,face,side_i,side_j)
+    contribute_element_csc!(malloc,alloc.nzval,alloc.cache,vals,
+        field_i,field_j,face,side_i,side_j)
+end
+
+function contribute_element_csc!(malloc,nzval,cache,vals,field_i,field_j,face,side_i,side_j)
+    base = element_csc_contribution_base(cache,field_i,field_j,side_i,side_j)
+    contribute_element_csc_base!(malloc,nzval,cache,vals,field_i,field_j,face,base)
+end
+
+function element_csc_single_domain_cache(alloc::ElementCSCMatrixAllocation)
+    length(alloc.domain_caches) == 1 || throw(ArgumentError(
+        "Select a domain cache with element_csc_domain(alloc,domain_id) before indexed scatter."))
+    only(alloc.domain_caches)
+end
+
+element_csc_single_domain_cache(alloc::ElementCSCDomainAllocation) = alloc.cache
+
+# The field/side part is independent of the element. Code generation evaluates
+# it from a known prototype; computed-base calls evaluate it at runtime.
+function element_csc_contribution_base(cache::ElementCSCDomainCache,field_i,field_j,side_i,side_j)
+    offset = cache.block_offsets[field_i,field_j]
+    offset == -one(offset) && return -1
+    shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(4))
+    Int(offset)+LinearIndices(shape)[1,1,side_i,side_j]-1
+end
+
+function contribute_element_csc_base!(malloc,nzval,cache,vals,field_i,field_j,face,base)
+    base == -1 && return malloc
+    shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(2))
+    contribute_element_csc_block!(malloc,nzval,cache.positions,vals,face,base,shape)
+end
+
+# Generated literal calls carry their selected field's capacity and base, so
+# neither field IDs nor a runtime mask/metadata lookup is needed for scatter.
+function contribute_element_block!(malloc::MatrixAllocation,vals,face::Integer,
+        base::Integer,nrows::Integer,ncols::Integer)
+    base == -1 && return malloc
+    alloc = element_csc_matrix_storage(malloc.allocation)
+    cache = element_csc_single_domain_cache(alloc)
+    contribute_element_csc_block!(malloc,alloc.nzval,cache.positions,vals,face,Int(base),(Int(nrows),Int(ncols)))
+end
+
+function contribute_element_csc_block!(malloc,nzval,positions,vals,face,base,shape)
+    ndims(vals) == 2 || throw(DimensionMismatch("Element values must be a matrix"))
+    Base.require_one_based_indexing(vals)
+    size(vals,1) <= shape[1] && size(vals,2) <= shape[2] ||
+        throw(DimensionMismatch("Local DOF counts exceed the precomputed block dimensions"))
+    # Validate the complete local block once. Together with the value-capacity
+    # checks above this proves every position lookup in the entry loop is valid.
+    @boundscheck begin
+        block_size = Base.Checked.checked_mul(shape[1],shape[2])
+        block_start = Base.Checked.checked_add(base,1)
+        block_end = Base.Checked.checked_add(base,block_size)
+        checkbounds(positions,block_start:block_end,face)
+    end
+    position_base = base+(face-1)*size(positions,1)
+    indices = LinearIndices(shape)
+    for j in axes(vals,2), i in axes(vals,1)
+        p = @inbounds positions[position_base+indices[i,j]]
+        if p != 0
+            nzval[p] += vals[i,j]
+        end
+    end
+    malloc
+end
+
+# The original six-argument coordinate interface remains on the parent.
+function contribute!(alloc::ElementCSCMatrixAllocation,v,i,j,field_i,field_j)
+    p = element_csc_matrix_position(alloc,i,j,field_i,field_j)
+    alloc.nzval[p] += v
+    alloc
+end
+
+function reset!(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation})
+    fill!(alloc.nzval,zero(eltype(alloc)))
+    alloc
+end
+
+function compress(alloc::ElementCSCMatrixAllocation;reuse=Val(false))
+    A = SparseMatrixCSC(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval)
+    val_parameter(reuse) ? (A,nothing) : A
+end
+
+function compress!(alloc::ElementCSCMatrixAllocation,A::SparseMatrixCSC,cache)
+    if A.nzval !== alloc.nzval
+        copyto!(A.nzval,alloc.nzval)
+    end
+    A
+end
+
+"""
+    direct_vector_assembly()
+
+Sequential updates directly into a dense vector. Select
+`monolithic_assembly(direct_vector_assembly())` with `assembly_method.vector`.
+"""
+direct_vector_assembly() = DirectVectorAssembly()
+
+struct DirectVectorAssembly <: AbstractType end
+
+struct DirectVectorAllocation{T} <: AbstractType
+    vector::Vector{T}
+end
+
+Base.eltype(alloc::DirectVectorAllocation) = eltype(alloc.vector)
+
+function counter(::DirectVectorAssembly,::Type{T},dofs_i;
+                 eltype=T,index_type=Int32,vector_type=Vector{eltype}) where T
+    vector_type <: Vector || throw(ArgumentError("Direct vector assembly requires a dense Vector"))
+    DirectVectorAllocation(zeros(Base.eltype(vector_type),length(dofs_i)))
+end
+
+do_loop(::DirectVectorAllocation) = false
+allocate(alloc::DirectVectorAllocation) = alloc
+
+function contribute!(alloc::DirectVectorAllocation,v,i,field_i)
+    @boundscheck @assert field_i == 1
+    alloc.vector[i] += v
+    alloc
+end
+
+function reset!(alloc::DirectVectorAllocation)
+    fill!(alloc.vector,zero(eltype(alloc)))
+    alloc
+end
+
+function compress(alloc::DirectVectorAllocation;reuse=Val(false))
+    val_parameter(reuse) ? (alloc.vector,nothing) : alloc.vector
+end
+
+function compress!(alloc::DirectVectorAllocation,b::Vector,cache)
+    if b !== alloc.vector
+        copyto!(b,alloc.vector)
+    end
+    b
 end
 
 

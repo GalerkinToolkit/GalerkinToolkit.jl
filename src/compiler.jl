@@ -1519,21 +1519,23 @@ function expression(term::MatrixAssemblyTerm)
     npoints = max_num_points(prototype(term.quadrature))
     field_ndofs_trial = map(max_num_reference_dofs,fields(prototype(term.space_trial)))
     field_ndofs_test = map(max_num_reference_dofs,fields(prototype(term.space_test)))
-    integration_domain = GT.domain(prototype(term.quadrature))
-    dofs_trial = field_dofs_expr(prototype(term.space_trial), integration_domain,
-        space_trial, quadrature, field_trial, face, face_around_trial)
-    dofs_test = field_dofs_expr(prototype(term.space_test), integration_domain,
-        space_test, quadrature, field_test, face, face_around_test)
     alloc_prototype = prototype(term.alloc)
     scalar_type = alloc_prototype isa Symbol ? nothing : eltype(alloc_prototype)
+    element_values = :(be[$face_around_test,$face_around_trial,$field_test,$field_trial])
+    contribution = matrix_contribution_expr(alloc_prototype,element_values,
+        (prototype(term.space_trial),prototype(term.space_test),prototype(term.quadrature)),
+        (space_trial,space_test,quadrature,alloc),loop_vars)
     body = generate_matrix_assembly_template(term2, term.field_n_faces_around_trial, term.field_n_faces_around_test, (space_trial, space_test, quadrature, alloc), loop_vars;
-        npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test, scalar_type)
+        npoints, field_ndofs_trial, field_ndofs_test, scalar_type, contribution)
     # rewrite
 
     loop_var_range = Dict(dof_trial => maximum(field_ndofs_trial),
                          dof_test => maximum(field_ndofs_test))
 
     body_optimized = ast_optimize_with_options(body, loop_var_range, options)
+    if alloc_prototype isa MatrixAllocation && is_element_csc_allocation(alloc_prototype.allocation)
+        body_optimized = substitute_element_csc_contribution_bases(body_optimized,alloc_prototype)
+    end
     # display(body_optimized)
     expr = quote 
         $alloc_arg -> begin
@@ -1544,6 +1546,91 @@ function expression(term::MatrixAssemblyTerm)
         end
     end
     expr
+end
+
+function matrix_contribution_expr(alloc_prototype,values,prototypes,dependencies,bindings)
+    space_trial,space_test,quadrature,alloc = dependencies
+    face,point,field_trial,field_test,side_trial,side_test,dof_trial,dof_test = bindings
+    if alloc_prototype isa MatrixAllocation && is_element_csc_allocation(alloc_prototype.allocation)
+        return :(GT.contribute_element!($alloc,$values,$field_test,$field_trial,
+            $face,$side_test,$side_trial))
+    end
+    # Build coordinate dependencies only for methods that consume them. Unknown
+    # allocation prototypes retain the original contribution/collector interface.
+    trial_prototype,test_prototype,quadrature_prototype = prototypes
+    integration_domain = GT.domain(quadrature_prototype)
+    columns = field_dofs_expr(trial_prototype,integration_domain,
+        space_trial,quadrature,field_trial,face,side_trial)
+    rows = field_dofs_expr(test_prototype,integration_domain,
+        space_test,quadrature,field_test,face,side_test)
+    :(GT.contribute!($alloc,$values,$rows,$columns,$field_test,$field_trial))
+end
+
+function literal_element_csc_contribution_layout(alloc_prototype,field_i,field_j,side_i,side_j)
+    alloc_prototype isa MatrixAllocation || return nothing
+    is_element_csc_allocation(alloc_prototype.allocation) || return nothing
+    all(x->x isa Integer,(field_i,field_j)) || return nothing
+    alloc = alloc_prototype.allocation
+    while alloc isa MonolithicAssemblyAllocation
+        checkbounds(Bool,alloc.block_mask,field_i,field_j) || return nothing
+        alloc.block_mask[field_i,field_j] || return (-1,0,0)
+        alloc = alloc.allocation
+    end
+    cache = if alloc isa ElementCSCMatrixAllocation
+        length(alloc.domain_caches) == 1 || return nothing
+        only(alloc.domain_caches)
+    elseif alloc isa ElementCSCDomainAllocation
+        alloc.cache
+    else
+        return nothing
+    end
+    checkbounds(Bool,cache.block_offsets,field_i,field_j) || return nothing
+    checkbounds(Bool,cache.block_sizes,4,field_i,field_j) || return nothing
+    shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(4))
+    # An unfinished symbolic allocation has no shape metadata yet. Do not bake
+    # its placeholder offset into a kernel that may later receive prepared data.
+    all(d->d > 0,shape) || return nothing
+    offset = cache.block_offsets[field_i,field_j]
+    offset == -one(offset) && return (-1,shape[1],shape[2])
+    all(x->x isa Integer,(side_i,side_j)) || return nothing
+    1 <= side_i <= shape[3] && 1 <= side_j <= shape[4] || return nothing
+    nentries = size(cache.positions,1)
+    0 <= offset <= nentries || return nothing
+    # Check that the packed block fits without overflowing a dimension product.
+    remaining = nentries-Int(offset)
+    for dimension in shape
+        remaining = div(remaining,dimension)
+    end
+    remaining > 0 || return nothing
+    base = element_csc_contribution_base(cache,field_i,field_j,side_i,side_j)
+    (base,shape[1],shape[2])
+end
+
+function substitute_element_csc_contribution_bases(body,alloc_prototype=nothing)
+    # Only scalar integers enter the expression. Reusing a specialized kernel
+    # requires the prototype's field/side packing, even when allocation types match.
+    function visit(node)
+        node isa Expr || return node
+        if node.head == :call && first(node.args) == :(GT.contribute_element!) && length(node.args) == 8
+            _,alloc,values,field_i,field_j,element,side_i,side_j = node.args
+            if all(x->x isa Integer,(field_i,field_j))
+                layout = literal_element_csc_contribution_layout(alloc_prototype,field_i,field_j,side_i,side_j)
+                if layout !== nothing
+                    base,nrows,ncols = layout
+                    base == -1 && return nothing
+                    return :(GT.contribute_element_block!($alloc,$values,$element,$base,$nrows,$ncols))
+                end
+            end
+        end
+        # An unresolved active call keeps its seven arguments. A known-disabled
+        # field pair can be removed even when the side IDs remain dynamic.
+        args = map(visit,node.args)
+        if node.head == :block
+            args = [new for (old,new) in zip(node.args,args) if !(new === nothing && old !== nothing)]
+        end
+        Expr(node.head,args...)
+    end
+    visit(body)
 end
 
 function scalar_assembly_loop(face_point_v,init,quadrature)
@@ -2004,7 +2091,7 @@ end
 
 function ast_optimize_with_options(expr, loop_var_range, options)
     order::Int = if options === nothing
-        1
+        4
     else
         options.order
     end
@@ -2021,7 +2108,7 @@ end
 # TODO: Rename template locals such as `domain` to avoid shadowing getter functions,
 # then use consistent unqualified getter expressions in the compiler.
 function generate_matrix_assembly_template(term, field_n_faces_around_trial, field_n_faces_around_test, dependencies, bindings;
-    npoints, field_ndofs_trial, field_ndofs_test, dofs_trial, dofs_test, scalar_type=nothing)
+    npoints, field_ndofs_trial, field_ndofs_test, contribution, scalar_type=nothing)
     # expr_L: a list of block in the order of (global, face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
     # dependencies: (space_trial, space_test, quadrature, alloc)
     # bindings: (face, point, field_trial, field_test, face_around_trial, face_around_test, dof_trial, dof_test)
@@ -2102,10 +2189,7 @@ function generate_matrix_assembly_template(term, field_n_faces_around_trial, fie
                     n_faces_around_test_contribute = $field_n_faces_around_test[$field_test_symbol]
                     for $face_around_trial_symbol in 1:n_faces_around_trial_contribute
                         for $face_around_test_symbol in 1:n_faces_around_test_contribute
-                            GT.contribute!($alloc,be[$face_around_test_symbol, $face_around_trial_symbol, $field_test_symbol, $field_trial_symbol],
-                                                $dofs_test,
-                                                $dofs_trial,
-                                                $field_test_symbol,$field_trial_symbol)
+                            $contribution
                         end
                     end
                 end

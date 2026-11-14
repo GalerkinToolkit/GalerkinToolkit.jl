@@ -367,9 +367,10 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     else
         nothing
     end
-    loops = map(contributions) do contribution
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=alloc)
-        runner = AssemblyRunner(params_loop,alloc)
+    loops = map(contributions,ntuple(identity,length(contributions))) do contribution,domain_id
+        domain_alloc = matrix_assembly_contribution_allocation(alloc,domain_id)
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=domain_alloc)
+        runner = AssemblyRunner(params_loop,domain_alloc)
         run_assembly!(runner,parameters)
         runner
     end

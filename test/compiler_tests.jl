@@ -58,12 +58,15 @@ scaled_map_operator(scale) = (phi,xi) -> scale*sum(abs2,phi(xi))
             field_expr = GT.field_dofs_expr(V,domain,:V,:Q,1,:face,:side)
             @test !occursin("GT.faces(",string(field_expr))
             field_kernel = GT.evaluate(:((V,Q) -> ((face,side) -> $field_expr)),(V,Q))
+            side_expr = GT.integration_side_expr(V,domain,:Q,:face,:side)
+            side_kernel = GT.evaluate(:((Q,) -> ((face,side) -> $side_expr)),(Q,))
             expected = GT.dofs_accessor(V,domain)
             for face in 1:GT.num_faces(domain), side in 1:2
                 selected_side = GT.faces_around(domain) === nothing ? side : GT.faces_around(domain)[face]
                 mesh_face = GT.faces(domain)[face]
                 @test Base.invokelatest(kernel,mesh_face,selected_side) == expected(face,side)
                 @test Base.invokelatest(field_kernel,face,side) == expected(face,side)
+                @test Base.invokelatest(side_kernel,face,side) == selected_side
             end
         end
     end
