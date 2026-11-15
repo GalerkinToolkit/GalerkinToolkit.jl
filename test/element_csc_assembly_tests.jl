@@ -193,12 +193,28 @@ end
         fill!(other.nzval,0)
         GT.compress!(alloc,other,nothing)
         @test other == A
-        @test_throws BoundsError GT.contribute_element!(alloc,values[1],1,1,9)
         @test_throws BoundsError GT.contribute_element!(alloc,values[1],1,1,1,2,1)
-        @test_throws DimensionMismatch GT.contribute_element!(alloc,zeros(T,(k+1)^3+1,1),1,1,1)
-        @test_throws DimensionMismatch GT.contribute_element!(alloc,zeros(T,1),1,1,1)
-        @test_throws BoundsError GT.contribute_element_block!(alloc,values[1],1,
-            size(domain_cache(alloc).positions,1),(k+1)^3,(k+1)^3)
+    end
+end
+
+@testset "Element CSC block capacity and padded stride" begin
+    # A partial rectangular block must retain its cached row capacity and the
+    # full element-column stride. The second value has a skipped position.
+    positions = reshape(Int32.(1:90),30,3)
+    positions[5,2] = 0
+    cache = GT.ElementCSCDomainCache(positions,zeros(Int32,1,1),
+        reshape(Int32[4,5,1,1],4,1,1))
+    nzval = zeros(90)
+    argument = GT.MatrixAllocation(GT.ElementCSCDomainAllocation(nzval,cache),
+        (GT.FREE,GT.FREE),(identity,identity))
+    values = reshape(Float64.(1:6),2,3)
+    expected = zeros(90)
+    expected[[34,38,39,42,43]] = [1,3,4,5,6]
+    @test GT.contribute_element_block!(argument,values,2,3,4,5) === argument
+    @test nzval == expected
+    for empty_values in (zeros(0,3),zeros(2,0))
+        GT.contribute_element_block!(argument,empty_values,2,3,4,5)
+        @test nzval == expected
     end
 end
 
@@ -679,9 +695,6 @@ GT.is_element_csc_allocation(::OpaqueElementCSCPrototype) = true
     @test all(call->call.args[end-1:end] == [4,4],literal_calls)
     @test isempty(contribution_calls(prepared,"GT.element_csc_contribution_base"))
     @test isempty(contribution_calls(prepared,"GT.contribute_element!"))
-    @test_throws BoundsError GT.contribute_element_block!(argument,zeros(1,2),1,0,Int32(1<<30),Int32(4))
-    @test_throws OverflowError GT.contribute_element_block!(argument,zeros(1,1),1,0,typemax(Int),2)
-    @test_throws OverflowError GT.contribute_element_block!(argument,zeros(1,2),1,2,typemax(Int)÷2,2)
     @test GT.substitute_element_csc_contribution_bases(raw) == raw
     @test GT.substitute_element_csc_contribution_bases(raw,:alloc) == raw
     opaque = GT.MatrixAllocation(OpaqueElementCSCPrototype(),argument.free_or_dirichlet,argument.dof_maps)

@@ -1211,6 +1211,8 @@ end
 Scatter a local matrix through element CSC positions without global DOF IDs.
 Element and side indices are local to the selected domain. Constrained entries
 are encoded by zero positions; field-pair offsets and dimensions are shared.
+Values must be a one-based matrix fitting the selected block, with valid element
+and side indices. The entry scatter uses `@inbounds` without runtime validation.
 """
 function contribute_element!(malloc::MatrixAllocation,vals,field_i,field_j,
         face::Integer,side_i::Integer=1,side_j::Integer=1)
@@ -1278,22 +1280,11 @@ function contribute_element_block!(malloc::MatrixAllocation,vals,face::Integer,
 end
 
 function contribute_element_csc_block!(malloc,nzval,positions,vals,face,base,shape)
-    ndims(vals) == 2 || throw(DimensionMismatch("Element values must be a matrix"))
-    Base.require_one_based_indexing(vals)
-    size(vals,1) <= shape[1] && size(vals,2) <= shape[2] ||
-        throw(DimensionMismatch("Local DOF counts exceed the precomputed block dimensions"))
-    # Validate the complete local block once. Together with the value-capacity
-    # checks above this proves every position lookup in the entry loop is valid.
-    @boundscheck begin
-        block_size = Base.Checked.checked_mul(shape[1],shape[2])
-        block_start = Base.Checked.checked_add(base,1)
-        block_end = Base.Checked.checked_add(base,block_size)
-        checkbounds(positions,block_start:block_end,face)
-    end
+    # Generated callers supply valid one-based values and a precomputed layout.
     position_base = base+(face-1)*size(positions,1)
     indices = LinearIndices(shape)
-    for j in axes(vals,2), i in axes(vals,1)
-        p = @inbounds positions[position_base+indices[i,j]]
+    @inbounds for j in axes(vals,2), i in axes(vals,1)
+        p = positions[position_base+indices[i,j]]
         if p != 0
             nzval[p] += vals[i,j]
         end
