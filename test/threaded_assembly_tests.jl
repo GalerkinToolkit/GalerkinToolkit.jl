@@ -242,6 +242,45 @@ end
     workspace_tests()
 end
 
+@testset "Fixed workspace factories are defined in initialization" begin
+    expr = :((input,) -> ((scale,) -> ((output,worker) -> begin
+        scratch = alloc_zeros("scratch",Float64,2)
+        alias = scratch
+        for element in GT.assembly_element_range(worker)
+            fill!(alias,scale*input[element])
+            output[element] = sum(alias)
+        end
+        nothing
+    end)))
+    moved = GT.ast_initialization_code_motion(expr;workspaces=true)
+    initialization = GT.ast_children(last(GT.ast_children(moved)))
+    factory_definitions = filter(initialization) do statement
+        GT.ast_is_definition(statement) && GT.ast_head(GT.ast_rhs(statement)) === :(->)
+    end
+    @test length(factory_definitions) == 1
+    factory_name = GT.ast_lhs(only(factory_definitions))
+    parameter_body = last(GT.ast_children(last(initialization)))
+    prepared_expr = last(GT.ast_children(parameter_body))
+    @test last(GT.ast_children(prepared_expr)) === factory_name
+
+    input = [1.0,2.0,3.0]
+    prepare = GT.evaluate(moved,(input,))
+    prepared = Base.invokelatest(prepare,2.0)
+    updated = Base.invokelatest(prepare,3.0)
+    workspace = Base.invokelatest(prepared.workspace_factory,nothing)
+    other = Base.invokelatest(updated.workspace_factory,nothing)
+    @test !Base.mightalias(only(workspace),only(other))
+    @test Base.invokelatest(updated.workspace_factory,workspace) === workspace
+    output = zeros(3)
+    worker = GT.AssemblyWorker(1,1,3,Val(:contiguous))
+    Base.invokelatest(prepared.kernel,output,workspace,worker)
+    @test output == 4input
+    Base.invokelatest(updated.kernel,output,workspace,worker)
+    @test output == 6input
+    Base.invokelatest(prepared.kernel,output,workspace,worker)
+    @test output == 4input
+end
+
 @testset "Empty-domain guards and changing workspace types" begin
     expr = :((input,) -> ((n,T) -> ((output,worker) -> begin
         if n == 0

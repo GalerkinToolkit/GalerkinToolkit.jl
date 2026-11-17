@@ -2722,7 +2722,7 @@ function ast_initialization_code_motion(ast; workspaces=false)
     parameter_args = first(ast_children(parameters))
     if workspaces
         return ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execution,
-            workspace_buffers,guard,guard_node,guard_scope)
+            workspace_buffers,scopes,guard,guard_node,guard_scope)
     end
     moved_kernel = ast_replace_children(kernel,kernel_args,make_block(execution))
     push!(refresh,moved_kernel)
@@ -2740,9 +2740,11 @@ end
 Split marked assembly buffers from shared initialization. Called after ordinary
 initialization placement; `alloc_zeros`/recognized `zeros` sites are the private
 buffer contract. No captured-data graph is copied.
+Factories depending only on captured initialization are defined once there;
+parameter-dependent workspace initialization retains its parameter scope.
 """
 function ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execution,
-        buffer_names,guard,guard_node,guard_scope)
+        buffer_names,scopes,guard,guard_node,guard_scope)
     private_names = Set{Symbol}()
     private_setup = Any[]
     function uses_private(node)
@@ -2787,6 +2789,14 @@ function ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execut
     end
     push!(factory_body,:(GT.reuse_assembly_workspace($previous,($(buffers...),))))
     factory = Expr(:(->),previous,Expr(:block,factory_body...))
+    fixed_factory = all(private_setup) do statement
+        ast_is_definition(statement) && get(scopes,ast_leaf_value(ast_lhs(statement)),2) == 0
+    end
+    if fixed_factory
+        factory_name = ast_leaf(gensym(:workspace_factory))
+        push!(shared_setup,ast_definition(factory_name,factory))
+        factory = factory_name
+    end
     old_args = first(ast_children(kernel))
     args = old_args isa Symbol ? Any[old_args] : old_args.args
     new_args = Expr(:tuple,first(args),workspace,args[2:end]...)
