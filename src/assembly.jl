@@ -1292,6 +1292,63 @@ function contribute_element_csc_block!(malloc,nzval,positions,vals,face,base,sha
     malloc
 end
 
+"""
+    contribute_element_atomic!(alloc::MatrixAllocation, values, field_i, field_j, element, side_i=1, side_j=1)
+
+Element CSC contribution with atomic additions. Uses the same domain-local
+indices, block layout, and valid-input contract as `contribute_element!`.
+Complete all concurrent contributions before resetting or compressing the matrix.
+"""
+function contribute_element_atomic!(malloc::MatrixAllocation,vals,field_i,field_j,
+        face::Integer,side_i::Integer=1,side_j::Integer=1)
+    contribute_element_atomic!(malloc,malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+end
+
+function contribute_element_atomic!(malloc,alloc::MonolithicAssemblyAllocation,vals,
+        field_i,field_j,face,side_i,side_j)
+    if alloc.block_mask[field_i,field_j]
+        contribute_element_atomic!(malloc,alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    end
+    malloc
+end
+
+function contribute_element_atomic!(malloc,
+        alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation},vals,
+        field_i,field_j,face,side_i,side_j)
+    cache = element_csc_single_domain_cache(alloc)
+    base = element_csc_contribution_base(cache,field_i,field_j,side_i,side_j)
+    base == -1 && return malloc
+    shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(2))
+    contribute_element_csc_block_atomic!(malloc,alloc.nzval,cache.positions,vals,face,base,shape)
+end
+
+"""
+    contribute_element_block_atomic!(alloc::MatrixAllocation, values, element, base, nrows, ncols)
+
+Atomic counterpart of the prepared element CSC block contribution. The base
+and row/column capacities use the existing zero-based block layout.
+"""
+function contribute_element_block_atomic!(malloc::MatrixAllocation,vals,face::Integer,
+        base::Integer,nrows::Integer,ncols::Integer)
+    base == -1 && return malloc
+    alloc = element_csc_matrix_storage(malloc.allocation)
+    cache = element_csc_single_domain_cache(alloc)
+    contribute_element_csc_block_atomic!(malloc,alloc.nzval,cache.positions,vals,face,
+        Int(base),(Int(nrows),Int(ncols)))
+end
+
+function contribute_element_csc_block_atomic!(malloc,nzval,positions,vals,face,base,shape)
+    position_base = base+(face-1)*size(positions,1)
+    indices = LinearIndices(shape)
+    @inbounds for j in axes(vals,2), i in axes(vals,1)
+        p = positions[position_base+indices[i,j]]
+        if p != 0
+            Atomix.@atomic :monotonic nzval[p] += vals[i,j]
+        end
+    end
+    malloc
+end
+
 # The original six-argument coordinate interface remains on the parent.
 function contribute!(alloc::ElementCSCMatrixAllocation,v,i,j,field_i,field_j)
     p = element_csc_matrix_position(alloc,i,j,field_i,field_j)
@@ -1332,6 +1389,10 @@ end
 
 Base.eltype(alloc::DirectVectorAllocation) = eltype(alloc.vector)
 
+is_direct_vector_allocation(::Any) = false
+is_direct_vector_allocation(::DirectVectorAllocation) = true
+is_direct_vector_allocation(alloc::MonolithicAssemblyAllocation) = is_direct_vector_allocation(alloc.allocation)
+
 function counter(::DirectVectorAssembly,::Type{T},dofs_i;
                  eltype=T,index_type=Int32,vector_type=Vector{eltype}) where T
     vector_type <: Vector || throw(ArgumentError("Direct vector assembly requires a dense Vector"))
@@ -1344,6 +1405,37 @@ allocate(alloc::DirectVectorAllocation) = alloc
 function contribute!(alloc::DirectVectorAllocation,v,i,field_i)
     @boundscheck @assert field_i == 1
     alloc.vector[i] += v
+    alloc
+end
+
+"""
+    contribute_atomic!(alloc::VectorAllocation, values, dofs, field=1)
+
+Direct vector contribution with atomic additions, retaining the existing DOF
+selection, field offsets, and masks. Reset/compress outside concurrent updates.
+"""
+function contribute_atomic!(malloc::VectorAllocation,vals,dofs_i,field_i=1)
+    free_or_diri_i = malloc.free_or_dirichlet
+    map_i = malloc.dof_map
+    alloc = malloc.allocation
+    @inbounds for i in eachindex(dofs_i)
+        dof_i = dofs_i[i]
+        skip_dof(dof_i,free_or_diri_i) && continue
+        contribute_atomic!(alloc,vals[i],map_i(dof_i),field_i)
+    end
+    nothing
+end
+
+function contribute_atomic!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
+    if alloc.block_mask[field_i]
+        offsets_i, = alloc.offsets
+        contribute_atomic!(alloc.allocation,v,offsets_i[field_i]+i,1)
+    end
+    alloc
+end
+
+function contribute_atomic!(alloc::DirectVectorAllocation,v,i,field_i)
+    @inbounds Atomix.@atomic :monotonic alloc.vector[i] += v
     alloc
 end
 

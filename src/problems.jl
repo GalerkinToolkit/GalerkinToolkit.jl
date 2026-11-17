@@ -124,6 +124,79 @@ function Base.:/(int::Integral,v::Number)
     (1/v)*int
 end
 
+"""
+    AbstractAssemblyExecution
+
+Execution policy for matrix/vector assembly, independent of the storage method. 
+"""
+abstract type AbstractAssemblyExecution <: AbstractType end
+
+"""
+    SerialExecution()
+
+Sequential assembly using the selected storage method. This is the default.
+"""
+struct SerialExecution <: AbstractAssemblyExecution end
+
+
+# TODO: Support other assembly methods for multithreading.
+# Matrix storage currently needs `element_csc_assembly()`; vector storage needs `direct_vector_assembly()`. 
+"""
+    CPUThreadedExecution(; workers=Threads.nthreads(), distribution=:contiguous)
+
+CPU assembly with one reusable workspace per logical worker and atomic global
+updates. `workers` is the number of tasks, capped at the number of elements;
+it does not change Julia's thread pool. `distribution` is `:contiguous` or
+`:cyclic`, specialized through the policy type. 
+
+Hardware properties and GPU launch settings belong to their own backend's
+policy/descriptor when needed, rather than fields shared by every backend.
+"""
+struct CPUThreadedExecution{Distribution} <: AbstractAssemblyExecution
+    workers::Int
+    function CPUThreadedExecution{D}(workers::Integer) where D
+        workers > 0 || throw(ArgumentError("workers must be positive"))
+        D in (:contiguous,:cyclic) || throw(ArgumentError("distribution must be :contiguous or :cyclic"))
+        new{D}(Int(workers))
+    end
+end
+
+CPUThreadedExecution(;workers=Threads.nthreads(),distribution=:contiguous) =
+    CPUThreadedExecution{distribution}(workers)
+
+assembly_uses_workers(::SerialExecution) = false
+assembly_uses_workers(::CPUThreadedExecution) = true
+
+"""
+    AssemblyWorker(id, count, nelements, Val(distribution))
+
+Compact logical worker coordinates passed to a generated assembly kernel.
+`id` is one-based and independent of the CPU thread that runs the task. The
+caller supplies valid coordinates. All fields are integers; a device launcher
+can use Int32 coordinates and its global work-item ID without CPU APIs.
+"""
+struct AssemblyWorker{Distribution,I<:Integer}
+    id::I
+    count::I
+    nelements::I
+end
+
+AssemblyWorker(id::I,count::I,nelements::I,::Val{D}) where {D,I<:Integer} =
+    AssemblyWorker{D,I}(id,count,nelements)
+
+@inline function assembly_element_range(worker::AssemblyWorker{:contiguous,I}) where I
+    # Give the first remainder workers one extra element. Products stay within
+    # nelements, including when a device uses Int32 coordinates.
+    width,remainder = divrem(worker.nelements,worker.count)
+    before = worker.id-one(I)
+    lo = before*width+min(before,remainder)+one(I)
+    hi = worker.id*width+min(worker.id,remainder)
+    lo:hi
+end
+
+@inline assembly_element_range(worker::AssemblyWorker{:cyclic}) =
+    worker.id:worker.count:worker.nelements
+
 # Keep generated closures and immutable allocation arguments inside a mutable
 # runner, so only its reference crosses the latest-world boundary.
 mutable struct AssemblyRunner{F,A}
@@ -135,6 +208,156 @@ function (runner::AssemblyRunner)(parameters::P) where P
     kernel = runner.prepare(parameters...)
     kernel(runner.argument)
     nothing
+end
+
+# The generated kernel closes over shared inputs. Only marked allocation sites
+# belong to its workspace; the factory reuses those arrays between updates.
+struct PreparedElementAssembly{K,F}
+    kernel::K
+    workspace_factory::F
+end
+
+@inline reuse_assembly_buffer(::Nothing,slot,allocator,args...) = allocator(args...)
+
+@inline function reuse_assembly_buffer(previous::Tuple,slot,allocator,args...)
+    slot > length(previous) && return allocator(args...)
+    reuse_assembly_buffer(previous[slot],allocator,args...)
+end
+
+@inline function reuse_assembly_buffer(buffer,::typeof(zeros),::Type{T},dims::Integer...) where T
+    eltype(buffer) === T && size(buffer) == dims ? buffer : zeros(T,dims...)
+end
+
+@inline reuse_assembly_buffer(buffer,allocator,args...) = allocator(args...)
+@inline reuse_assembly_workspace(previous,current) = current
+@inline reuse_assembly_workspace(previous::Tuple,current::Tuple) = previous === current ? previous : current
+
+mutable struct AssemblyWorkerBatch{K,F,A}
+    kernel::K
+    factory::F
+    argument::A
+end
+
+mutable struct AssemblyWorkerRecord{B,C}
+    batch::B
+    worker::C
+    # Host-side state can change type with the parameters. The worker enters
+    # a function barrier before preparing scratch and running the kernel.
+    workspace::Any
+end
+
+mutable struct ThreadedAssemblyRunner{F,A,E}
+    prepare::F
+    argument::A
+    execution::E
+    nelements::Int
+    nworkers::Int
+    # Parameter updates can change scratch types. A function barrier keeps this
+    # host-side state out of the specialized element kernel.
+    workspaces::Any
+    worker_records::Any
+    tasks::Vector{Task}
+end
+
+function ThreadedAssemblyRunner(prepare,argument,nelements,execution::CPUThreadedExecution)
+    nworkers = min(nelements,execution.workers)
+    ThreadedAssemblyRunner(prepare,argument,execution,Int(nelements),nworkers,
+        nothing,nothing,Vector{Task}(undef,nworkers))
+end
+
+assembly_runner(::SerialExecution,prepare,argument,nelements) = AssemblyRunner(prepare,argument)
+assembly_runner(execution::CPUThreadedExecution,prepare,argument,nelements) =
+    ThreadedAssemblyRunner(prepare,argument,nelements,execution)
+
+@inline previous_assembly_workspace(::Nothing,id) = nothing
+@inline previous_assembly_workspace(workspaces,id) = workspaces[id]
+
+@inline assembly_workspace_pool(previous::Vector{W},workspace::W,n) where W = previous
+@inline assembly_workspace_pool(previous,workspace::W,n) where W = Vector{W}(undef,n)
+
+function collect_assembly_workspaces(previous,first_workspace::W,records) where W
+    workspaces = assembly_workspace_pool(previous,first_workspace,length(records))
+    workspaces[1] = first_workspace
+    for id in 2:length(records)
+        workspaces[id] = records[id].workspace::W
+    end
+    workspaces
+end
+
+function collect_assembly_workspaces(previous::Vector{W},records) where W
+    first_workspace = first(records).workspace
+    first_workspace isa W || return collect_assembly_workspaces(previous,first_workspace,records)
+    for id in eachindex(records)
+        previous[id] = records[id].workspace::W
+    end
+    previous
+end
+
+collect_assembly_workspaces(previous,records) =
+    collect_assembly_workspaces(previous,first(records).workspace,records)
+
+@inline function assembly_worker_records(records,kernel::K,factory::F,argument::A,previous,
+        ::CPUThreadedExecution{D},nelements,nworkers) where {K,F,A,D}
+    B = AssemblyWorkerBatch{K,F,A}
+    R = AssemblyWorkerRecord{B,AssemblyWorker{D,Int}}
+    if records isa Vector{R}
+        batch = first(records).batch
+        batch.kernel = kernel
+        batch.factory = factory
+        batch.argument = argument
+        return records
+    end
+    batch = AssemblyWorkerBatch(kernel,factory,argument)
+    [AssemblyWorkerRecord(batch,AssemblyWorker(id,nworkers,nelements,Val(D)),
+        previous_assembly_workspace(previous,id)) for id in 1:nworkers]
+end
+
+function run_element_worker!(record::AssemblyWorkerRecord)
+    run_element_worker!(record,record.workspace)
+end
+
+function run_element_worker!(record::AssemblyWorkerRecord,previous)
+    batch = record.batch
+    workspace = batch.factory(previous)
+    batch.kernel(batch.argument,workspace,record.worker)
+    workspace === previous || (record.workspace = workspace)
+    nothing
+end
+
+function run_element_workers!(records,tasks)
+    @sync for id in eachindex(records)
+        record = records[id]
+        tasks[id] = Threads.@spawn run_element_worker!($record)
+    end
+    nothing
+end
+
+function (runner::ThreadedAssemblyRunner)(parameters::P) where P
+    runner.nworkers == 0 && return nothing
+    runner.workspaces = prepare_element_ranges!(runner,parameters,runner.workspaces)
+    nothing
+end
+
+function prepare_element_ranges!(runner::ThreadedAssemblyRunner,parameters::P,previous) where P
+    # Specialize on the cached record type before refreshing shared closures.
+    prepare_element_ranges!(runner,parameters,previous,runner.worker_records)
+end
+
+function prepare_element_ranges!(runner::ThreadedAssemblyRunner{F,A,CPUThreadedExecution{D}},
+        parameters::P,previous,records) where {F,A,D,P}
+    prepared = runner.prepare(parameters...)
+    if runner.nworkers == 1
+        workspace = prepared.workspace_factory(previous_assembly_workspace(previous,1))
+        prepared.kernel(runner.argument,workspace,AssemblyWorker(1,1,runner.nelements,Val(D)))
+        workspaces = assembly_workspace_pool(previous,workspace,1)
+        workspaces[1] = workspace
+        return workspaces
+    end
+    records = assembly_worker_records(records,prepared.kernel,prepared.workspace_factory,
+        runner.argument,previous,runner.execution,runner.nelements,runner.nworkers)
+    runner.worker_records = records
+    run_element_workers!(records,runner.tasks)
+    collect_assembly_workspaces(previous,records)
 end
 
 # Store scalar results instead of boxing them on return from invokelatest.
@@ -275,26 +498,39 @@ end
 
 # 1-forms
 
+"""
+    assemble_vector(f, T, space; execution=SerialExecution(), kwargs...)
+
+Assemble a linear form. `execution` selects hardware execution and scheduling;
+`assembly_method.vector` independently selects the output storage/update method.
+Use `CPUThreadedExecution(workers=n, distribution=:contiguous)` for threaded
+direct-vector assembly. `reuse=Val(true)` returns an update cache.
+"""
 function assemble_vector(f,::Type{T},space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
+    execution::AbstractAssemblyExecution = SerialExecution(),
     kwargs...
     ) where T
 
+    threaded = assembly_uses_workers(execution)
     arg = 1
     dv = form_argument_quantity(space,arg)
     integral = f(dv)
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
     alloc = allocate_vector(T,space,domains...;kwargs...)
+    if threaded && !is_direct_vector_allocation(alloc.allocation)
+        throw(ArgumentError("threaded vector assembly requires direct_vector_assembly()"))
+    end
     optimize_options = if haskey(kwargs, :optimize_options)
         kwargs[:optimize_options]
     else
         nothing
     end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options,allocation=alloc)
-        runner = AssemblyRunner(params_loop,alloc)
+        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options,allocation=alloc,workspaces=threaded)
+        runner = assembly_runner(execution,params_loop,alloc,num_faces(GT.domain(contribution)))
         run_assembly!(runner,parameters)
         runner
     end
@@ -349,11 +585,22 @@ end
 
 # 2-forms
 
+"""
+    assemble_matrix(f, T, trial_space, test_space; execution=SerialExecution(), kwargs...)
+
+Assemble a bilinear form. `execution` selects hardware execution and scheduling;
+`assembly_method.matrix` independently selects the output storage/update method.
+For example, combine `execution=CPUThreadedExecution(workers=n)` with
+`assembly_method=(;matrix=element_csc_assembly())`. Sequential execution remains
+the default. `reuse=Val(true)` returns a cache for `update_matrix!`.
+"""
 function assemble_matrix(f,::Type{T},trial_space,test_space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
+    execution::AbstractAssemblyExecution = SerialExecution(),
     kwargs...
     ) where T
+    threaded = assembly_uses_workers(execution)
     arg_test = 1
     arg_trial = 2
     du = form_argument_quantity(trial_space,arg_trial)
@@ -362,6 +609,9 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
     alloc = allocate_matrix(T,test_space,trial_space,domains...;kwargs...)
+    if threaded && !is_element_csc_allocation(alloc.allocation)
+        throw(ArgumentError("threaded matrix assembly requires element_csc_assembly()"))
+    end
     optimize_options = if haskey(kwargs, :optimize_options)
         kwargs[:optimize_options]
     else
@@ -369,8 +619,8 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     end
     loops = map(contributions,ntuple(identity,length(contributions))) do contribution,domain_id
         domain_alloc = matrix_assembly_contribution_allocation(alloc,domain_id)
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=domain_alloc)
-        runner = AssemblyRunner(params_loop,domain_alloc)
+        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=domain_alloc,workspaces=threaded)
+        runner = assembly_runner(execution,params_loop,domain_alloc,num_faces(GT.domain(contribution)))
         run_assembly!(runner,parameters)
         runner
     end

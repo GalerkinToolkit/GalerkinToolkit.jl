@@ -1129,13 +1129,14 @@ function write_assemble_scalar(contribution::DomainContribution)
 end
 
 
-function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing)
+function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
     term_0 = write_assemble_vector(contribution,space; optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    expr_1 = ast_initialization_code_motion(expr_0)
+    workspaces && (expr_0 = ast_element_range_assembly(expr_0,bindings(term_1)[2]))
+    expr_1 = ast_initialization_code_motion(expr_0;workspaces)
     f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
@@ -1159,13 +1160,14 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
 end
 
 
-function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing)
+function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
     term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    expr_1 = ast_initialization_code_motion(expr_0)
+    workspaces && (expr_0 = ast_element_range_assembly(expr_0,bindings(term_1)[2]))
+    expr_1 = ast_initialization_code_motion(expr_0;workspaces)
     f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
@@ -1656,6 +1658,10 @@ function alloc_zeros(symbol, args...)
     else
         zeros(args...)
     end
+end
+
+@inline function reuse_assembly_buffer(buffer,::typeof(alloc_zeros),name,::Type{T},dims::Integer...) where T
+    eltype(buffer) === T && size(buffer) == dims ? buffer : alloc_zeros(name,T,dims...)
 end
 
 #for op in (:+,:-,:*,:/,:\,:^)

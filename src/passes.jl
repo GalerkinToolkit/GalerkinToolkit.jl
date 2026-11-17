@@ -2352,6 +2352,69 @@ end
 # =============================================================================
 
 """
+    ast_element_range_assembly(ast, element)
+
+Add a worker argument to an assembly kernel, select its domain-local element
+range, and use atomic contributions to its global allocation. The input has
+three nested lambdas for captured data, parameters, and the allocation.
+
+Traversal and construction use the existing AST interfaces.
+"""
+function ast_element_range_assembly(ast,element)
+    function wrapper_lambda(node)
+        statements = Any[]
+        function collect_statements(node)
+            if ast_is_block(node)
+                foreach(collect_statements,ast_children(node))
+            elseif !(ast_leaf_value(node) isa LineNumberNode)
+                push!(statements,node)
+            end
+        end
+        collect_statements(node)
+        only(statements)
+    end
+    same_reference(a,b) = isequal(ast_leaf_value(a),ast_leaf_value(b))
+    captured_args,captured_body = ast_children(ast)
+    parameters = wrapper_lambda(captured_body)
+    parameter_args,parameter_body = ast_children(parameters)
+    kernel = wrapper_lambda(parameter_body)
+    allocation_arg,body = ast_children(kernel)
+    worker = ast_leaf(gensym(:worker))
+    range_callee = ast_leaf(:(GT.assembly_element_range))
+    atomic_calls = map(((:(GT.contribute!),:(GT.contribute_atomic!)),
+        (:(GT.contribute_element!),:(GT.contribute_element_atomic!)),
+        (:(GT.contribute_element_block!),:(GT.contribute_element_block_atomic!)))) do (callee,atomic)
+        ast_leaf(callee) => ast_leaf(atomic)
+    end
+    function visit(node)
+        ast_is_leaf(node) && return node
+        if ast_is_loop(node)
+            signature = ast_loop_signature(node)
+            if ast_is_definition(signature) &&
+                    ast_leaf_value(ast_lhs(signature)) === ast_leaf_value(element)
+                range = ast_call(range_callee,worker)
+                signature = ast_replace_children(signature,ast_lhs(signature),range)
+                return ast_replace_children(node,signature,visit(ast_loop_body(node)))
+            end
+        elseif ast_is_call(node)
+            children = ast_children(node)
+            if length(children) > 1 && same_reference(children[2],allocation_arg)
+                for (callee,atomic) in atomic_calls
+                    if same_reference(first(children),callee)
+                        return ast_replace_children(node,atomic,map(visit,children[2:end])...)
+                    end
+                end
+            end
+        end
+        ast_replace_children(node,map(visit,ast_children(node))...)
+    end
+    kernel_args = ast_expr(:tuple,allocation_arg,worker)
+    ranged = ast_replace_children(kernel,kernel_args,visit(body))
+    ast_replace_children(ast,captured_args,
+        ast_replace_children(parameters,parameter_args,ranged))
+end
+
+"""
     ast_initialization_code_motion(ast)
 
 Move straight-line initialization from an assembly kernel into its captured-data
@@ -2364,7 +2427,7 @@ statements and mutable-content reads remain in the kernel. Scratch allocations
 may be retained because their users overwrite them or explicitly clear them;
 existing guards and resets are preserved, and no resets are added.
 """
-function ast_initialization_code_motion(ast)
+function ast_initialization_code_motion(ast; workspaces=false)
     descriptor_functions = (typeof, eltype, length, size, ndims, axes)
     buffer_functions = (alloc_zeros, zeros)
     mutating_functions = (fill!, copyto!, setindex!, mul!, reset!, contribute!)
@@ -2613,6 +2676,7 @@ function ast_initialization_code_motion(ast)
     setup = Any[]
     refresh = Any[]
     execution = Any[]
+    workspace_buffers = Set{Symbol}()
     for (i,statement) in enumerate(statements)
         if !(ast_is_definition(statement) && is_name(ast_lhs(statement)))
             if ast_is_call(statement) || ast_is_definition(statement) || is_update(statement)
@@ -2643,6 +2707,7 @@ function ast_initialization_code_motion(ast)
         scopes[binding] = statement_scope
         if statement_scope < 2
             push!(statement_scope == 0 ? setup : refresh,statement)
+            workspaces && is_buffer && push!(workspace_buffers,binding)
             constant = resolve(value_expr)
             constant === nothing || (aliases[binding] = constant)
             if is_buffer || (is_name(value_expr) && ast_leaf_value(value_expr) in buffers)
@@ -2655,6 +2720,10 @@ function ast_initialization_code_motion(ast)
 
     kernel_args = first(ast_children(kernel))
     parameter_args = first(ast_children(parameters))
+    if workspaces
+        return ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execution,
+            workspace_buffers,guard,guard_node,guard_scope)
+    end
     moved_kernel = ast_replace_children(kernel,kernel_args,make_block(execution))
     push!(refresh,moved_kernel)
     noop_kernel = ast_replace_children(kernel,kernel_args,make_block(Any[ast_leaf(nothing)]))
@@ -2667,12 +2736,76 @@ function ast_initialization_code_motion(ast)
     ast_replace_children(captured,first(ast_children(captured)),captured_body)
 end
 
-# Suggestions for later interface consolidation (existing interfaces unchanged):
-# - Add shared lambda/argument and branch/return queries and reconstruction.
-# - Add an update interface covering -= as well as the current += predicate.
-# - Add a backend constant-resolution hook for symbols, quoted values and module
-#   fields, so this pass need not know Julia's GlobalRef and QuoteNode types.
-# - Add block construction with an AST exemplar for bodies without an existing
-#   block. Here, rebuilding the kernel's block already preserves custom AST types.
+"""
+Split marked assembly buffers from shared initialization. Called after ordinary
+initialization placement; `alloc_zeros`/recognized `zeros` sites are the private
+buffer contract. No captured-data graph is copied.
+"""
+function ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execution,
+        buffer_names,guard,guard_node,guard_scope)
+    private_names = Set{Symbol}()
+    private_setup = Any[]
+    function uses_private(node)
+        node isa Symbol && return node in private_names
+        node isa Expr || return false
+        node.head === :quote && return false
+        any(uses_private,node.args)
+    end
+    function split_initialization(statements)
+        shared = Any[]
+        for statement in statements
+            binding = statement isa Expr && statement.head === :(=) &&
+                first(statement.args) isa Symbol ? first(statement.args) : nothing
+            rhs = binding === nothing ? statement : last(statement.args)
+            if binding in buffer_names || uses_private(rhs)
+                push!(private_setup,statement)
+                binding === nothing || push!(private_names,binding)
+            else
+                push!(shared,statement)
+            end
+        end
+        shared
+    end
+    shared_setup = split_initialization(setup)
+    shared_refresh = split_initialization(refresh)
+    workspace = gensym(:workspace)
+    previous = gensym(:previous_workspace)
+    factory_body = Any[]
+    kernel_setup = Any[]
+    buffers = Symbol[]
+    for statement in private_setup
+        if statement isa Expr && statement.head === :(=) && first(statement.args) in buffer_names
+            binding,allocation = statement.args
+            push!(buffers,binding)
+            slot = length(buffers)
+            push!(factory_body,:($binding = GT.reuse_assembly_buffer($previous,$slot,$(allocation.args...))))
+            push!(kernel_setup,:($binding = $workspace[$slot]))
+        else
+            push!(factory_body,statement)
+            push!(kernel_setup,statement)
+        end
+    end
+    push!(factory_body,:(GT.reuse_assembly_workspace($previous,($(buffers...),))))
+    factory = Expr(:(->),previous,Expr(:block,factory_body...))
+    old_args = first(ast_children(kernel))
+    args = old_args isa Symbol ? Any[old_args] : old_args.args
+    new_args = Expr(:tuple,first(args),workspace,args[2:end]...)
+    worker_kernel = Expr(:(->),new_args,Expr(:block,kernel_setup...,execution...))
+    prepared = :(GT.PreparedElementAssembly($worker_kernel,$factory))
+    noop_kernel = Expr(:(->),new_args,:(nothing))
+    noop = :(GT.PreparedElementAssembly($noop_kernel, _ -> ()))
+    parameter_args = first(ast_children(parameters))
+    parameter_body = Expr(:block,shared_refresh...,prepared)
+    if guard !== nothing && guard_scope == 1
+        parameter_body = Expr(:if,guard,noop,parameter_body)
+    end
+    moved_parameters = ast_replace_children(parameters,parameter_args,parameter_body)
+    captured_body = Expr(:block,shared_setup...,moved_parameters)
+    if guard !== nothing && guard_scope == 0
+        captured_body = Expr(:if,guard,ast_replace_children(parameters,parameter_args,noop),captured_body)
+    end
+    ast_replace_children(captured,first(ast_children(captured)),captured_body)
+end
+
 
 # End of AI-generated compiler passes.

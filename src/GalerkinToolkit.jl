@@ -6,6 +6,7 @@ using StaticArrays
 using LinearAlgebra
 import LinearAlgebra
 import ForwardDiff
+import Atomix
 using Gmsh
 import PartitionedArrays as PA
 using PartitionedArrays
@@ -14,7 +15,6 @@ using FillArrays
 using Combinatorics
 using SparseArrays
 using Metis
-using Metatheory
 using AutoHashEquals: @auto_hash_equals
 import MacroTools
 import PartitionedSolvers as PS

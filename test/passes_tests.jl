@@ -511,74 +511,49 @@ end
     @test calls[] == 1
 end
 
-end
-
-
-module InitializationCodeMotionASTTests
-
-using Test
-import GalerkinToolkit as GT
-
-# A second AST representation exercises the pass through the existing interfaces.
-struct MotionNode
-    head::Symbol
-    children::Vector{Any}
-end
-struct MotionName
-    name::Symbol
-end
-
-GT.ast_head(node::MotionNode) = node.head
-GT.ast_children(node::MotionNode) = node.children
-GT.ast_is_leaf(::MotionNode) = false
-GT.ast_is_definition(node::MotionNode) = GT.ast_head(node) === :(=)
-GT.ast_is_incremental(node::MotionNode) = GT.ast_head(node) === :(+=)
-GT.ast_is_call(node::MotionNode) = GT.ast_head(node) === :call
-GT.ast_is_block(node::MotionNode) = GT.ast_head(node) === :block
-GT.ast_is_loop(node::MotionNode) = GT.ast_head(node) === :for
-GT.ast_is_index(node::MotionNode) = GT.ast_head(node) === :ref
-GT.ast_is_alloc(node::MotionNode) = GT.ast_is_call(node) &&
-    GT.ast_leaf_value(first(GT.ast_children(node))) in (:zeros,:alloc_zeros)
-GT.ast_lhs(node::MotionNode) = first(GT.ast_children(node))
-GT.ast_rhs(node::MotionNode) = last(GT.ast_children(node))
-GT.ast_replace_children(node::MotionNode,children...) = MotionNode(GT.ast_head(node),Any[children...])
-GT.ast_head(node::MotionName) = node.name
-GT.ast_leaf_value(node::MotionName) = node.name
-
-motion_ast(node::Expr) = MotionNode(node.head,Any[motion_ast(child) for child in node.args])
-motion_ast(node::Symbol) = MotionName(node)
-motion_ast(node) = node
-motion_expr(node::MotionNode) = Expr(GT.ast_head(node),map(motion_expr,GT.ast_children(node))...)
-motion_expr(node::MotionName) = GT.ast_leaf_value(node)
-motion_expr(node) = node
-
-@testset "Initialization code motion through AST interfaces" begin
-    expr = :((values,) -> ((scale,) -> (output -> begin
-        if length(values) == 0
-            return
+@testset "Element range assembly" begin
+    original = :((input,other) -> begin
+        (scale,) -> begin
+            alloc -> begin
+                for face in 1:length(input)
+                    for point in 1:2
+                        input[face] += scale*point
+                    end
+                    GT.contribute!(alloc,input[face],input[face],1)
+                    GT.contribute_element!(alloc,input[face],1,1,face,2,1)
+                    GT.contribute_element_block!(alloc,input[face],face,0,2,2)
+                    GT.contribute!(other,input[face],input[face],1)
+                    contribute!(alloc,input[face],input[face],1)
+                end
+            end
         end
-        scratch = alloc_zeros("scratch",Float64,2)
-        fixed = sum(values)
-        coefficient = scale*fixed
-        fill!(scratch,coefficient)
-        copyto!(output,scratch)
-    end)))
-    input = motion_ast(Base.remove_linenums!(deepcopy(expr)))
-    moved = GT.ast_initialization_code_motion(input)
-    @test moved isa MotionNode
-    @test isequal(motion_expr(moved),GT.ast_initialization_code_motion(Base.remove_linenums!(deepcopy(expr))))
-    params = GT.evaluate(motion_expr(moved),([1.0,2.0],))
-    output = zeros(2)
-    kernel = Base.invokelatest(params,2.0)
-    Base.invokelatest(kernel,output)
-    @test output == [6,6]
-    updated = Base.invokelatest(params,3.0)
-    @test getfield(updated,:scratch) === getfield(kernel,:scratch)
-    Base.invokelatest(updated,output)
-    @test output == [9,9]
-    empty_params = GT.evaluate(motion_expr(moved),(Float64[],))
-    Base.invokelatest(Base.invokelatest(empty_params,2.0),output)
-    @test output == [9,9]
+    end)
+    expected_kernel = :((alloc,worker) -> begin
+        for face in GT.assembly_element_range(worker)
+            for point in 1:2
+                input[face] += scale*point
+            end
+            GT.contribute_atomic!(alloc,input[face],input[face],1)
+            GT.contribute_element_atomic!(alloc,input[face],1,1,face,2,1)
+            GT.contribute_element_block_atomic!(alloc,input[face],face,0,2,2)
+            GT.contribute!(other,input[face],input[face],1)
+            contribute!(alloc,input[face],input[face],1)
+        end
+    end)
+    expected = Expr(:(->),Expr(:tuple,:input,:other),
+        Expr(:(->),Expr(:tuple,:scale),expected_kernel))
+    function normalize_worker(expr)
+        parameters = last(expr.args)
+        kernel = last(parameters.args)
+        worker = last(first(kernel.args).args)
+        visit(node) = node === worker ? :worker :
+            node isa Expr ? Expr(node.head,map(visit,node.args)...) : node
+        Base.remove_linenums!(visit(expr))
+    end
+    original_copy = deepcopy(original)
+    ranged = GT.ast_element_range_assembly(original,:face)
+    @test isequal(normalize_worker(ranged),Base.remove_linenums!(deepcopy(expected)))
+    @test isequal(original,original_copy)
 end
 
 @testset "Allocation names may be shadowed by parameters" begin
@@ -600,7 +575,7 @@ end
     @test calls[] == 2
 end
 
-end # module InitializationCodeMotionASTTests
+end # module InitializationCodeMotionTests
 
 # End of AI-generated initialization code motion tests.
 

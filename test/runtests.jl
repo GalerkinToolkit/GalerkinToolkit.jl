@@ -22,6 +22,8 @@ using Test
     @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
     @testset "Element CSC assembly" begin include("element_csc_assembly_tests.jl") end
+    @testset "Atomic assembly" begin include("atomic_assembly_tests.jl") end
+    @testset "Threaded assembly" begin include("threaded_assembly_tests.jl") end
     @testset "Passes" begin include("passes_tests.jl") end
     @testset "Issue 224" begin include("issue_224.jl") end
     @testset "Issue 230" begin include("issue_230.jl") end
