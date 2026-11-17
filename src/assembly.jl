@@ -159,10 +159,18 @@ struct VectorAllocation{A,B,C} <: AbstractType
     dof_map::C
 end
 
+Adapt.@adapt_structure MatrixAllocation
+
 const AssemblyAllocation = Union{VectorAllocation,MatrixAllocation}
 
 Base.eltype(alloc::AssemblyAllocation) = eltype(alloc.allocation)
 
+"""
+    contribute!(allocation, values, dofs...)
+
+Accumulate contributions in place. All contribution methods, including sparsity
+counters and atomic/element-indexed variants, return `nothing`.
+"""
 function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1)
     free_or_diri_i  = malloc.free_or_dirichlet
     map_i = malloc.dof_map
@@ -175,6 +183,7 @@ function contribute!(malloc::VectorAllocation,vals,dofs_i,field_i=1)
         end
         contribute!(alloc,vals[i],map_i(dof_i),field_i)
     end
+    nothing
 end
 
 function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field_j=1)
@@ -196,6 +205,7 @@ function contribute!(malloc::MatrixAllocation,vals,dofs_i,dofs_j,field_i=1,field
             contribute!(alloc,vals[i,j],map_i(dof_i),map_j(dof_j),field_i,field_j)
         end
     end
+    nothing
 end
 
 function reset!(malloc::AssemblyAllocation)
@@ -344,7 +354,7 @@ function contribute!(counter::MonolithicAssemblyCounter,v,i,field_i)
         i2 = offsets_i[field_i]+i
         contribute!(counter.counter,v,i2,1)
     end
-    counter
+    nothing
 end
 
 function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j)
@@ -354,7 +364,7 @@ function contribute!(counter::MonolithicAssemblyCounter,v,i,j,field_i,field_j)
         j2 = offsets_j[field_j]+j
         contribute!(counter.counter,v,i2,j2,1,1)
     end
-    counter
+    nothing
 end
 
 function allocate(mcounter::MonolithicAssemblyCounter)
@@ -380,6 +390,8 @@ struct MonolithicAssemblyAllocation{A,B,C} <: AbstractType
     block_mask::C
 end
 
+Adapt.@adapt_structure MonolithicAssemblyAllocation
+
 Base.eltype(alloc::MonolithicAssemblyAllocation) = eltype(alloc.allocation)
 
 function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
@@ -388,7 +400,7 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
         i2 = offsets_i[field_i]+i
         contribute!(alloc.allocation,v,i2,1)
     end
-    alloc
+    nothing
 end
 
 function reset!(alloc::MonolithicAssemblyAllocation)
@@ -403,7 +415,7 @@ function contribute!(alloc::MonolithicAssemblyAllocation,v,i,j,field_i,field_j)
         j2 = offsets_j[field_j]+j
         contribute!(alloc.allocation,v,i2,j2,1,1)
     end
-    alloc
+    nothing
 end
 
 function compress(malloc::MonolithicAssemblyAllocation;reuse=Val(true))
@@ -466,7 +478,7 @@ function contribute!(counter::COOVectorCounter,v,i,field_i)
     @boundscheck @assert length(i) == 1
     @boundscheck @assert field_i == 1
     counter.nnz[] += 1
-    counter
+    nothing
 end
 
 function contribute!(counter::COOMatrixCounter,v,i,j,field_i,field_j)
@@ -476,7 +488,7 @@ function contribute!(counter::COOMatrixCounter,v,i,j,field_i,field_j)
     @boundscheck @assert field_i == 1
     @boundscheck @assert field_j == 1
     counter.nnz[] += 1
-    counter
+    nothing
 end
 
 function allocate(counter::COOVectorCounter)
@@ -530,7 +542,7 @@ function contribute!(alloc::COOVectorAllocation,v,i,field_i)
     n = alloc.counter.nnz[]
     alloc.I[n] = i
     alloc.V[n] = v
-    alloc
+    nothing
 end
 
 function contribute!(alloc::COOMatrixAllocation,v,i,j,field_i,field_j)
@@ -543,7 +555,7 @@ function contribute!(alloc::COOMatrixAllocation,v,i,j,field_i,field_j)
     alloc.I[n] = i
     alloc.J[n] = j
     alloc.V[n] = v
-    alloc
+    nothing
 end
 
 function compress(alloc::COOVectorAllocation;reuse=Val(false))
@@ -655,7 +667,7 @@ function contribute!(counter::CSCCounter,v,i,j,field_i,field_j)
     @boundscheck @assert field_i == 1
     @boundscheck @assert field_j == 1
     counter.colnnz[j] += 1
-    counter
+    nothing
 end
 
 function allocate(counter::CSCCounter)
@@ -709,7 +721,7 @@ function contribute!(counter::CachedCSCCounterStep1,v,i,j,field_i,field_j)
         # skip
     end
     counter.cache_count[] += 1
-    counter
+    nothing
 end
 
 
@@ -725,7 +737,7 @@ function contribute!(counter::CachedCSCCounterStep2,v,i,j,field_i,field_j)
     cache_id = counter.cache_id[]+1
     counter.cache_p[cache_id] = p
     counter.cache_id[] = cache_id
-    counter
+    nothing
 end
 
 
@@ -810,7 +822,7 @@ function contribute!(alloc::CachedCSCAllocation,v,i,j,field_i,field_j)
     p = alloc.cache_p[cache_id]
     alloc.nzval[p] += v 
     alloc.cache_id[] = cache_id
-    alloc
+    nothing
 end
 
 
@@ -843,7 +855,7 @@ function contribute!(alloc::CSCAllocation,v,i,j,field_i,field_j)
         # update existing entry
         alloc.nzval[p] += v 
     end
-    alloc
+    nothing
 end
 
 function compress(alloc::CachedCSCAllocation{Tv,Ti};reuse=Val(true)) where {Tv,Ti}
@@ -906,26 +918,75 @@ element_csc_assembly() = ElementCSCAssembly()
 
 struct ElementCSCAssembly <: AbstractType end
 
-struct ElementCSCDomainCache{Ti} <: AbstractType
-    positions::Matrix{Ti}     # [local entry, domain-local entity]
-    block_offsets::Matrix{Ti} # Zero-based [row field, column field]; -1 omits a pair.
-    block_sizes::Array{Ti,3}   # [dimension, row field, column field]
+struct ElementCSCDomainCache{Ti,P<:AbstractMatrix{Ti},O<:AbstractMatrix{Ti},S<:AbstractArray{Ti,3}} <: AbstractType
+    positions::P     # Logical [local entry, domain-local entity], in either layout.
+    block_offsets::O # Zero-based [row field, column field]; -1 omits a pair.
+    block_sizes::S   # [dimension, row field, column field]
 end
 
-struct ElementCSCMatrixAllocation{Tv,Ti,C} <: AbstractType
+struct ElementCSCMatrixAllocation{Tv,Ti,C,P<:AbstractVector{Ti},R<:AbstractVector{Ti},V<:AbstractVector{Tv}} <: AbstractType
     nrows::Int
     ncols::Int
-    colptr::Vector{Ti}
-    rowval::Vector{Ti}
-    nzval::Vector{Tv}
+    colptr::P
+    rowval::R
+    nzval::V
     domain_caches::C # Tuple of ElementCSCDomainCache, in allocation argument order.
 end
 
 # A numeric argument for one domain's kernel. Only the selected lookup and the
 # shared values are reachable; no domain, mesh, other caches, or CSC graph.
-struct ElementCSCDomainAllocation{Tv,Ti} <: AbstractType
-    nzval::Vector{Tv}
-    cache::ElementCSCDomainCache{Ti}
+struct ElementCSCDomainAllocation{Tv,Ti,V<:AbstractVector{Tv},C<:ElementCSCDomainCache{Ti}} <: AbstractType
+    nzval::V
+    cache::C
+end
+
+Adapt.@adapt_structure ElementCSCDomainCache
+Adapt.@adapt_structure ElementCSCMatrixAllocation
+Adapt.@adapt_structure ElementCSCDomainAllocation
+
+"""
+    to_layout(allocation, layout)
+
+Change only the element CSC position table's physical layout. Its logical indices
+remain `[local_entry, element]`. `EntryMajorLayout()` stores a transposed parent with
+contiguous elements for each local entry; `ElementMajorLayout()` stores contiguous local
+entries for each element. Other buffers are shared. Layout conversion is separate
+from device transfer: use `Adapt.adapt(CuArray, to_layout(allocation, EntryMajorLayout()))`
+to upload, then select domain arguments from the adapted parent to share values.
+"""
+function to_layout(cache::ElementCSCDomainCache,::EntryMajorLayout)
+    cache.positions isa Transpose && return cache
+    positions = transpose(permutedims(cache.positions))
+    ElementCSCDomainCache(positions,cache.block_offsets,cache.block_sizes)
+end
+
+function to_layout(cache::ElementCSCDomainCache,::ElementMajorLayout)
+    cache.positions isa Transpose || return cache
+    ElementCSCDomainCache(permutedims(parent(cache.positions)),cache.block_offsets,cache.block_sizes)
+end
+
+function to_layout(alloc::ElementCSCMatrixAllocation,layout::AbstractLayout)
+    caches = map(cache->to_layout(cache,layout),alloc.domain_caches)
+    caches === alloc.domain_caches && return alloc
+    ElementCSCMatrixAllocation(alloc.nrows,alloc.ncols,alloc.colptr,alloc.rowval,alloc.nzval,caches)
+end
+
+function to_layout(alloc::ElementCSCDomainAllocation,layout::AbstractLayout)
+    cache = to_layout(alloc.cache,layout)
+    cache === alloc.cache && return alloc
+    ElementCSCDomainAllocation(alloc.nzval,cache)
+end
+
+function to_layout(alloc::MonolithicAssemblyAllocation,layout::AbstractLayout)
+    allocation = to_layout(alloc.allocation,layout)
+    allocation === alloc.allocation && return alloc
+    MonolithicAssemblyAllocation(allocation,alloc.offsets,alloc.block_mask)
+end
+
+function to_layout(alloc::MatrixAllocation,layout::AbstractLayout)
+    allocation = to_layout(alloc.allocation,layout)
+    allocation === alloc.allocation && return alloc
+    MatrixAllocation(allocation,alloc.free_or_dirichlet,alloc.dof_maps)
 end
 
 Base.eltype(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation}) = eltype(alloc.nzval)
@@ -1213,37 +1274,42 @@ Element and side indices are local to the selected domain. Constrained entries
 are encoded by zero positions; field-pair offsets and dimensions are shared.
 Values must be a one-based matrix fitting the selected block, with valid element
 and side indices. The entry scatter uses `@inbounds` without runtime validation.
+All contribution methods mutate their storage and return `nothing`.
 """
-function contribute_element!(malloc::MatrixAllocation,vals,field_i,field_j,
+@inline function contribute_element!(malloc::MatrixAllocation,vals,field_i,field_j,
         face::Integer,side_i::Integer=1,side_j::Integer=1)
-    contribute_element!(malloc,malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    contribute_element!(malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    nothing
 end
 
-function contribute_element!(malloc,alloc::MonolithicAssemblyAllocation,vals,
+@inline function contribute_element!(alloc::MonolithicAssemblyAllocation,vals,
         field_i,field_j,face,side_i,side_j)
     if alloc.block_mask[field_i,field_j]
-        contribute_element!(malloc,alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+        contribute_element!(alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
     end
-    malloc
+    nothing
 end
 
-function contribute_element!(malloc,alloc::ElementCSCMatrixAllocation,vals,
+@inline function contribute_element!(alloc::ElementCSCMatrixAllocation,vals,
         field_i,field_j,face,side_i,side_j)
     length(alloc.domain_caches) == 1 || throw(ArgumentError(
         "Select a domain cache with element_csc_domain(alloc,domain_id) before indexed scatter."))
-    contribute_element_csc!(malloc,alloc.nzval,only(alloc.domain_caches),vals,
+    contribute_element_csc!(alloc.nzval,only(alloc.domain_caches),vals,
         field_i,field_j,face,side_i,side_j)
+    nothing
 end
 
-function contribute_element!(malloc,alloc::ElementCSCDomainAllocation,vals,
+@inline function contribute_element!(alloc::ElementCSCDomainAllocation,vals,
         field_i,field_j,face,side_i,side_j)
-    contribute_element_csc!(malloc,alloc.nzval,alloc.cache,vals,
+    contribute_element_csc!(alloc.nzval,alloc.cache,vals,
         field_i,field_j,face,side_i,side_j)
+    nothing
 end
 
-function contribute_element_csc!(malloc,nzval,cache,vals,field_i,field_j,face,side_i,side_j)
+@inline function contribute_element_csc!(nzval,cache,vals,field_i,field_j,face,side_i,side_j)
     base = element_csc_contribution_base(cache,field_i,field_j,side_i,side_j)
-    contribute_element_csc_base!(malloc,nzval,cache,vals,field_i,field_j,face,base)
+    contribute_element_csc_base!(nzval,cache,vals,field_i,field_j,face,base)
+    nothing
 end
 
 function element_csc_single_domain_cache(alloc::ElementCSCMatrixAllocation)
@@ -1263,33 +1329,42 @@ function element_csc_contribution_base(cache::ElementCSCDomainCache,field_i,fiel
     Int(offset)+LinearIndices(shape)[1,1,side_i,side_j]-1
 end
 
-function contribute_element_csc_base!(malloc,nzval,cache,vals,field_i,field_j,face,base)
-    base == -1 && return malloc
+@inline function contribute_element_csc_base!(nzval,cache,vals,field_i,field_j,face,base)
+    base == -1 && return nothing
     shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(2))
-    contribute_element_csc_block!(malloc,nzval,cache.positions,vals,face,base,shape)
+    contribute_element_csc_block!(nzval,cache.positions,vals,face,base,shape)
+    nothing
 end
 
 # Generated literal calls carry their selected field's capacity and base, so
 # neither field IDs nor a runtime mask/metadata lookup is needed for scatter.
-function contribute_element_block!(malloc::MatrixAllocation,vals,face::Integer,
+@inline function contribute_element_block!(malloc::MatrixAllocation,vals,face::Integer,
         base::Integer,nrows::Integer,ncols::Integer)
-    base == -1 && return malloc
+    base == -1 && return nothing
     alloc = element_csc_matrix_storage(malloc.allocation)
     cache = element_csc_single_domain_cache(alloc)
-    contribute_element_csc_block!(malloc,alloc.nzval,cache.positions,vals,face,Int(base),(Int(nrows),Int(ncols)))
+    contribute_element_csc_block!(alloc.nzval,cache.positions,vals,face,Int(base),(Int(nrows),Int(ncols)))
+    nothing
 end
 
-function contribute_element_csc_block!(malloc,nzval,positions,vals,face,base,shape)
+# Preserve contiguous linear addressing for ordinary CPU matrices. Device arrays
+# and transposed tables use logical indexing, specialized and inlined by type.
+@inline element_csc_position_base(positions::AbstractMatrix,face,base) = base
+@inline element_csc_position_base(positions::Matrix,face,base) = base+(face-1)*size(positions,1)
+@inline element_csc_position(positions::AbstractMatrix,entry,face) = @inbounds positions[entry,face]
+@inline element_csc_position(positions::Matrix,entry,face) = @inbounds positions[entry]
+
+@inline function contribute_element_csc_block!(nzval,positions,vals,face,base,shape)
     # Generated callers supply valid one-based values and a precomputed layout.
-    position_base = base+(face-1)*size(positions,1)
+    position_base = element_csc_position_base(positions,face,base)
     indices = LinearIndices(shape)
     @inbounds for j in axes(vals,2), i in axes(vals,1)
-        p = positions[position_base+indices[i,j]]
+        p = element_csc_position(positions,position_base+indices[i,j],face)
         if p != 0
             nzval[p] += vals[i,j]
         end
     end
-    malloc
+    nothing
 end
 
 """
@@ -1299,27 +1374,28 @@ Element CSC contribution with atomic additions. Uses the same domain-local
 indices, block layout, and valid-input contract as `contribute_element!`.
 Complete all concurrent contributions before resetting or compressing the matrix.
 """
-function contribute_element_atomic!(malloc::MatrixAllocation,vals,field_i,field_j,
+@inline function contribute_element_atomic!(malloc::MatrixAllocation,vals,field_i,field_j,
         face::Integer,side_i::Integer=1,side_j::Integer=1)
-    contribute_element_atomic!(malloc,malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    contribute_element_atomic!(malloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+    nothing
 end
 
-function contribute_element_atomic!(malloc,alloc::MonolithicAssemblyAllocation,vals,
+@inline function contribute_element_atomic!(alloc::MonolithicAssemblyAllocation,vals,
         field_i,field_j,face,side_i,side_j)
     if alloc.block_mask[field_i,field_j]
-        contribute_element_atomic!(malloc,alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
+        contribute_element_atomic!(alloc.allocation,vals,field_i,field_j,face,side_i,side_j)
     end
-    malloc
+    nothing
 end
 
-function contribute_element_atomic!(malloc,
-        alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation},vals,
+@inline function contribute_element_atomic!(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation},vals,
         field_i,field_j,face,side_i,side_j)
     cache = element_csc_single_domain_cache(alloc)
     base = element_csc_contribution_base(cache,field_i,field_j,side_i,side_j)
-    base == -1 && return malloc
+    base == -1 && return nothing
     shape = ntuple(d->Int(cache.block_sizes[d,field_i,field_j]),Val(2))
-    contribute_element_csc_block_atomic!(malloc,alloc.nzval,cache.positions,vals,face,base,shape)
+    contribute_element_csc_block_atomic!(alloc.nzval,cache.positions,vals,face,base,shape)
+    nothing
 end
 
 """
@@ -1328,32 +1404,36 @@ end
 Atomic counterpart of the prepared element CSC block contribution. The base
 and row/column capacities use the existing zero-based block layout.
 """
-function contribute_element_block_atomic!(malloc::MatrixAllocation,vals,face::Integer,
+@inline function contribute_element_block_atomic!(malloc::MatrixAllocation,vals,face::Integer,
         base::Integer,nrows::Integer,ncols::Integer)
-    base == -1 && return malloc
+    base == -1 && return nothing
     alloc = element_csc_matrix_storage(malloc.allocation)
     cache = element_csc_single_domain_cache(alloc)
-    contribute_element_csc_block_atomic!(malloc,alloc.nzval,cache.positions,vals,face,
+    contribute_element_csc_block_atomic!(alloc.nzval,cache.positions,vals,face,
         Int(base),(Int(nrows),Int(ncols)))
+    nothing
 end
 
-function contribute_element_csc_block_atomic!(malloc,nzval,positions,vals,face,base,shape)
-    position_base = base+(face-1)*size(positions,1)
+# Buffer-only kernel primitive: no allocation wrapper argument or aggregate
+# return slot. Callers handle disabled blocks (base == -1). Inlining also
+# avoids materializing the array descriptors at a device call boundary.
+@inline function contribute_element_csc_block_atomic!(nzval,positions,vals,face,base,shape)
+    position_base = element_csc_position_base(positions,face,base)
     indices = LinearIndices(shape)
     @inbounds for j in axes(vals,2), i in axes(vals,1)
-        p = positions[position_base+indices[i,j]]
+        p = element_csc_position(positions,position_base+indices[i,j],face)
         if p != 0
             Atomix.@atomic :monotonic nzval[p] += vals[i,j]
         end
     end
-    malloc
+    nothing
 end
 
 # The original six-argument coordinate interface remains on the parent.
 function contribute!(alloc::ElementCSCMatrixAllocation,v,i,j,field_i,field_j)
     p = element_csc_matrix_position(alloc,i,j,field_i,field_j)
     alloc.nzval[p] += v
-    alloc
+    nothing
 end
 
 function reset!(alloc::Union{ElementCSCMatrixAllocation,ElementCSCDomainAllocation})
@@ -1405,7 +1485,7 @@ allocate(alloc::DirectVectorAllocation) = alloc
 function contribute!(alloc::DirectVectorAllocation,v,i,field_i)
     @boundscheck @assert field_i == 1
     alloc.vector[i] += v
-    alloc
+    nothing
 end
 
 """
@@ -1431,12 +1511,12 @@ function contribute_atomic!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
         offsets_i, = alloc.offsets
         contribute_atomic!(alloc.allocation,v,offsets_i[field_i]+i,1)
     end
-    alloc
+    nothing
 end
 
 function contribute_atomic!(alloc::DirectVectorAllocation,v,i,field_i)
     @inbounds Atomix.@atomic :monotonic alloc.vector[i] += v
-    alloc
+    nothing
 end
 
 function reset!(alloc::DirectVectorAllocation)

@@ -21,6 +21,7 @@ using Test
     @testset "Problem runners" begin include("problems_runner_tests.jl") end
     @testset "ProblemsExt" begin include("problems_ext_tests.jl") end
     @testset "Assembly" begin include("assembly_tests.jl") end
+    @testset "Contribution contracts" begin include("contribution_tests.jl") end
     @testset "Element CSC assembly" begin include("element_csc_assembly_tests.jl") end
     @testset "Atomic assembly" begin include("atomic_assembly_tests.jl") end
     @testset "Threaded assembly" begin include("threaded_assembly_tests.jl") end

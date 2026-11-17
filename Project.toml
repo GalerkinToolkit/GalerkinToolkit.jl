@@ -5,6 +5,7 @@ authors = ["Francesc Verdugo <f.verdugo.rojano@vu.nl> and contributors"]
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 AutoHashEquals = "15f4f7f2-30c1-5605-9d31-71845cf9641f"
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
@@ -38,6 +39,7 @@ GalerkinToolkitWriteVTKExt = "WriteVTK"
 
 [compat]
 AbstractTrees = "0.4"
+Adapt = "4"
 Atomix = "1.7"
 AutoHashEquals = "2"
 BlockArrays = "1"

@@ -701,5 +701,9 @@ struct CPUBackend <: AbstractBackend end
 struct CUDABackend <: AbstractBackend end
 
 abstract type AbstractLayout end
-struct CPULayout <: AbstractLayout end
-struct GPULayout <: AbstractLayout end
+
+"""Store all local entries of an element contiguously, independently of the compute backend."""
+struct ElementMajorLayout <: AbstractLayout end
+
+"""Store the same local entry of consecutive elements contiguously, independently of the compute backend."""
+struct EntryMajorLayout <: AbstractLayout end

@@ -7,6 +7,7 @@ using LinearAlgebra
 import LinearAlgebra
 import ForwardDiff
 import Atomix
+import Adapt
 using Gmsh
 import PartitionedArrays as PA
 using PartitionedArrays

@@ -1,15 +1,15 @@
 # TODO: check topologies
 # TODO: reuse data for multiple kernels, including boundary/skeleon and integration over the same domain but different element types
 # TODO: can we fix some tpyes to reduce compilation time?
-# TODO: is the GPU layout really GPU friendly? other libraries like cuda-dolfinx and firedrake uses the original layout and load them into private/shared memory
+# TODO: choose layouts per kernel, including private/shared-memory staging.
 struct MeshIntegrationData{L,A,B,C,D}
-    layout::L # CPULayout or GPULayout
-    node_coordinates::A # cpu layout: Vector{StaticArraysCore.SVector{d, Float64}} indexed by node_coordinates[node]
-                        # gpu layout: Matrix{Float64}  indexed by node_coordinates[node, d]
-    face_nodes::B # cpu layout: Vector{StaticArray{}} indexed by  face_nodes[face][node]
-                  # gpu layout: Matrix{}  indexed by face_nodes[face, node]
-    reference_gradients::C # cpu layout: Matrix{StaticArraysCore.SVector{d, Float64}}   indexed by reference_gradients[node, point] 
-                           # we don't have a gpu layout for this, as it is usually on the constant memory
+    layout::L # ElementMajorLayout or EntryMajorLayout
+    node_coordinates::A # element-major: Vector{SVector}, indexed by node_coordinates[node]
+                        # entry-major: Matrix, indexed by node_coordinates[node, d]
+    face_nodes::B # element-major: Vector{SVector}, indexed by face_nodes[face][node]
+                  # entry-major: Matrix, indexed by face_nodes[face, node]
+    reference_gradients::C # Matrix{SVector}, indexed by reference_gradients[node, point]
+                           # Shared reference data keep their existing layout.
                            # TODO: if simplex: only store 1 quadrature point
     reference_weights::D # Vector{Float64}   indexed by  reference_weights[point]
 end
@@ -27,7 +27,7 @@ function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
     d = num_dims(dom)
     D = num_dims(mesh)
     node_coordinates = GT.node_coordinates(mesh)
-    layout = CPULayout() # TODO: build the function on the GPU or with GPU layout directly 
+    layout = ElementMajorLayout() # TODO: prepare the requested layout directly
     face_nodes = GT.face_nodes(mesh, d)  
 
     reference_ids = face_reference_id(mesh)
@@ -88,7 +88,7 @@ face_cells(data::FaceIncidenceData) = data.face_cells
 
 # check whether it is possible to load the layout and type to the GPU, although these are only used for construction and type inference
 struct SpaceIntegrationData{F,A}
-    # layout::L # CPULayout or GPULayout
+    # layout::L # ElementMajorLayout or EntryMajorLayout
     tabulate_function::F # tabulated functions over the reference element. maybe not needed
     # type::Type{T} # element type of the CPU tabulation, including its static shape
     reference_tabulator::A # layout: Matrix{T}   indexed by reference_gradients[dof, point] 
@@ -182,21 +182,21 @@ function integration_scalar_view(values::AbstractArray{T}) where {T<:StaticArray
     reshape(reinterpret(eltype(T), vec(values)), length(T), size(values)...)
 end
 
-integration_gpu_layout(values::AbstractArray) = permutedims(values, (2, 1))
+integration_entry_major_layout(values::AbstractArray) = permutedims(values, (2, 1))
 
-function integration_gpu_layout(values::AbstractArray{T}) where {T<:StaticArray}
+function integration_entry_major_layout(values::AbstractArray{T}) where {T<:StaticArray}
     scalars = integration_scalar_view(values)
     permutedims(scalars, reverse(ntuple(identity, ndims(scalars))))
 end
 
-function integration_cpu_layout(values::AbstractArray, ::Type{T}) where {T}
+function integration_element_major_layout(values::AbstractArray, ::Type{T}) where {T}
     permutedims(values, (2, 1))
 end
 
-function integration_cpu_layout(values::AbstractArray, ::Type{T}) where {T<:StaticArray}
+function integration_element_major_layout(values::AbstractArray, ::Type{T}) where {T<:StaticArray}
     # Allocate the final packed buffer and permute directly into its scalar view.
     # Reinterpreting an intermediate permutation would leave a wrapper instead
-    # of the plain arrays expected by the CPU layout.
+    # of the plain arrays expected by the element-major layout.
     result = Array{T}(undef, reverse(Base.front(size(values))))
     permutedims!(integration_scalar_view(result), values,
         reverse(ntuple(identity, ndims(values))))
@@ -204,10 +204,10 @@ function integration_cpu_layout(values::AbstractArray, ::Type{T}) where {T<:Stat
 end
 
 # function to_layout(data::SpaceIntegrationData, layout)
-#     if isa(layout, GPULayout) && isa(data.layout, CPULayout)
-#         reference_tabulator = integration_gpu_layout(data.reference_tabulator)
-#     elseif isa(layout, CPULayout) && isa(data.layout, GPULayout)
-#         reference_tabulator = integration_cpu_layout(data.reference_tabulator, data.type)
+#     if isa(layout, EntryMajorLayout) && isa(data.layout, ElementMajorLayout)
+#         reference_tabulator = integration_entry_major_layout(data.reference_tabulator)
+#     elseif isa(layout, ElementMajorLayout) && isa(data.layout, EntryMajorLayout)
+#         reference_tabulator = integration_element_major_layout(data.reference_tabulator, data.type)
 #     else
 #         return data
 #     end
@@ -215,18 +215,18 @@ end
 # end
 
 function to_layout(data::MeshIntegrationData, layout)
-    if isa(layout, GPULayout) && isa(data.layout, CPULayout)
-        node_coordinates = integration_gpu_layout(data.node_coordinates)
-        face_nodes = integration_gpu_layout(data.face_nodes)
-        # reference_gradients = integration_gpu_layout(data.reference_gradients)
-    elseif isa(layout, CPULayout) && isa(data.layout, GPULayout)
+    if isa(layout, EntryMajorLayout) && isa(data.layout, ElementMajorLayout)
+        node_coordinates = integration_entry_major_layout(data.node_coordinates)
+        face_nodes = integration_entry_major_layout(data.face_nodes)
+        # reference_gradients = integration_entry_major_layout(data.reference_gradients)
+    elseif isa(layout, ElementMajorLayout) && isa(data.layout, EntryMajorLayout)
         # We assume that the mesh data are always vectors (dimension >= 2)
         coordinates_type = SVector{size(data.node_coordinates, 2), eltype(data.node_coordinates)}
         nodes_type = SVector{size(data.face_nodes, 2), eltype(data.face_nodes)}
-        node_coordinates = integration_cpu_layout(data.node_coordinates, coordinates_type)
-        face_nodes = integration_cpu_layout(data.face_nodes, nodes_type)
+        node_coordinates = integration_element_major_layout(data.node_coordinates, coordinates_type)
+        face_nodes = integration_element_major_layout(data.face_nodes, nodes_type)
         # gradients_type = SVector{size(data.reference_gradients, 3), eltype(data.reference_gradients)}
-        # reference_gradients = integration_cpu_layout(data.reference_gradients, gradients_type)
+        # reference_gradients = integration_element_major_layout(data.reference_gradients, gradients_type)
     else
         return data
     end
