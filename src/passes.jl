@@ -1977,8 +1977,8 @@ end
 
 
 # assuming that the loop range of unrolled loops are all constant integers
-# unroll_loops: a set of unroll loop variables
-function ast_loop_unroll(ast)
+# Keep loops whose indices are in non_unroll_loop_vars, even with short literal bounds.
+function ast_loop_unroll(ast, non_unroll_loop_vars = ())
     MAX_UNROLL_SIZE = 10 # TODO: define the max loop length for unrolling. if not, we can do partial unrolling with it
     unroll_indices = []
     loop_var_unrolled_val = Dict()
@@ -2001,7 +2001,7 @@ function ast_loop_unroll(ast)
                 lhs = ast_lhs(node)
                 suffix = map(x -> "_$x", unroll_indices)
                 new_lhs_str = string(ast_string(lhs), suffix...)
-                new_lhs = Symbol(new_lhs_str)
+                new_lhs = ast_leaf(Symbol(new_lhs_str))
                 var_unrolled[lhs] = new_lhs
                 new_rhs = replace_var_unroll(ast_rhs(node))
                 ast_definition(new_lhs, new_rhs)
@@ -2023,9 +2023,9 @@ function ast_loop_unroll(ast)
             loop_signature = ast_loop_signature(node)
             body = ast_loop_body(node)
             range = ast_loop_signature_upperbound(node)
-            if ast_is_number(range) && ast_leaf_value(range) <= MAX_UNROLL_SIZE
+            if !(loop_var in non_unroll_loop_vars) &&
+                    ast_is_number(range) && ast_leaf_value(range) <= MAX_UNROLL_SIZE
                 result = ast_block()
-                @assert ast_is_number(range)
                 range = ast_leaf_value(range)
                 push!(unroll_indices, 1)
                 for i in 1:range 
@@ -2034,13 +2034,13 @@ function ast_loop_unroll(ast)
                     code = ast_loop_unroll_impl(body)
                     ast_block_append_statements!(result, ast_children(code)...)
                 end
+                delete!(loop_var_unrolled_val, loop_var)
                 pop!(unroll_indices)
                 return result
             else
                 push!(loop_vars, loop_var)
                 new_body = ast_loop_unroll_impl(body)
-                range = ast_children(loop_signature)[2]
-                new_range = ast_loop_unroll_impl(range)
+                new_range = ast_loop_unroll_impl(ast_rhs(loop_signature))
                 new_signature = ast_definition(loop_var, new_range)
                 pop!(loop_vars, loop_var)
                 ast_for(new_signature, new_body)

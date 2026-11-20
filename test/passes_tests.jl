@@ -644,6 +644,17 @@ module PartialArrayUnrollTests
 using Test
 import GalerkinToolkit as GT
 
+@testset "Loop unrolling honors explicit exclusions" begin
+    original = Base.remove_linenums!(quote
+        for q in 1:2
+            values[q] = q
+        end
+    end)
+    optimized = GT.ast_loop_unroll(original, Set([:q]))
+    @test any(node -> GT.ast_is_loop(node) && GT.ast_loop_index(node) == :q,
+        GT.ast_children(optimized))
+end
+
 @testset "Partial array unrolling preserves dimension order" begin
     evaluate = code -> Base.invokelatest(Core.eval(@__MODULE__,:(() -> $code)))
     for (nj,nk) in ((1,3),(2,3))

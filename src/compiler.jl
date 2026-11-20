@@ -1500,9 +1500,8 @@ function expression(term::VectorAssemblyTerm)
     body = generate_vector_assembly_template(term2, term.field_n_faces_around, (space, quadrature, alloc), loop_vars;
         npoints, field_ndofs, dofs, scalar_type)
 
-    loop_var_range = Dict(dof => maximum(field_ndofs))
-
-    body_optimized = ast_optimize_with_options(body, loop_var_range, options)
+    non_unroll_loop_vars = Set([point])
+    body_optimized = ast_optimize_with_options(body, non_unroll_loop_vars, options)
     expr = :($alloc_arg->$body_optimized)
 
     expr
@@ -1553,10 +1552,8 @@ function expression(term::MatrixAssemblyTerm)
         npoints, field_ndofs_trial, field_ndofs_test, scalar_type, contribution)
     # rewrite
 
-    loop_var_range = Dict(dof_trial => maximum(field_ndofs_trial),
-                         dof_test => maximum(field_ndofs_test))
-
-    body_optimized = ast_optimize_with_options(body, loop_var_range, options)
+    non_unroll_loop_vars = Set([point])
+    body_optimized = ast_optimize_with_options(body, non_unroll_loop_vars, options)
     if alloc_prototype isa MatrixAllocation && is_element_csc_allocation(alloc_prototype.allocation)
         body_optimized = substitute_element_csc_contribution_bases(body_optimized,alloc_prototype)
     end
@@ -1920,12 +1917,12 @@ end
 
 
 
-function ast_optimize_1(expr, loop_var_range, options = nothing)
+function ast_optimize_1(expr, non_unroll_loop_vars, options = nothing)
     # unroll -> flatten -> array_unroll -> tabulate -> topological_sort -> array_aliasing 
     # do not remove: unroll -> array_unroll,  remove_dead_code, flatten
-    expr2 = ast_loop_unroll(expr) |> ast_constant_folding
+    expr2 = ast_loop_unroll(expr, non_unroll_loop_vars) |> ast_constant_folding
 
-    expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
+    expr3 = ast_loop_unroll(expr2, non_unroll_loop_vars) |> ast_constant_folding
     var_count = 0
 
     expr4, var_count = ast_flatten(expr3, var_count)
@@ -1934,7 +1931,7 @@ function ast_optimize_1(expr, loop_var_range, options = nothing)
     expr5 = ast_array_unroll(expr4)
 
           
-    expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
+    expr6, var_count = ast_tabulate(expr5, var_count)
     
     # expr6
 
@@ -1960,7 +1957,7 @@ function ast_optimize_1(expr, loop_var_range, options = nothing)
 end
 
 
-function ast_optimize_2(expr, loop_var_range, options = nothing)
+function ast_optimize_2(expr, non_unroll_loop_vars, options = nothing)
     var_count = 0
     apply_cse = ( options === nothing || !haskey(options, :topological_sort) || (haskey(options, :topological_sort) &&  options.topological_sort == true) )
     licm_option = if options === nothing || !haskey(options, :licm) || (haskey(options, :licm) &&  options.licm == "binomial") 
@@ -1984,7 +1981,7 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
 
     # LICM pass
     expr3 = if licm_option == "binomial"
-        expr3_temp, var_count = ast_tabulate(expr2, var_count, loop_var_range) 
+        expr3_temp, var_count = ast_tabulate(expr2, var_count)
         expr3_temp
     elseif licm_option == "basic"
         ast_normal_licm(expr2)
@@ -1993,9 +1990,9 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     end
     
     
-    expr4 = ast_loop_unroll(expr3)  |> ast_array_unroll |> ast_constant_folding
+    expr4 = ast_loop_unroll(expr3, non_unroll_loop_vars) |> ast_array_unroll |> ast_constant_folding
 
-    expr5 = ast_loop_unroll(expr4)  |> ast_array_unroll |> ast_constant_folding
+    expr5 = ast_loop_unroll(expr4, non_unroll_loop_vars) |> ast_array_unroll |> ast_constant_folding
     
     # remove dead code twice. this is important because we have ifelse statements flattened. Theoretically this is one pass, but practically works in 3 steps.
     expr6 = ast_remove_dead_code(expr5) |> ast_constant_folding |> ast_remove_dead_code 
@@ -2017,13 +2014,12 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
     expr8 = ast_remove_dead_code(expr7)
 
     expr9, var_count = ast_flatten(expr8, var_count) 
-    # expr9, var_count = ast_tabulate(expr9, var_count, loop_var_range) 
 
     expr10 = expr9 |> ast_constant_folding 
     expr10 = if apply_cse
         expr10_temp = ast_topological_sort(expr10)
         if apply_array_cse
-            expr10_temp, var_count = ast_array_cse(expr10_temp, var_count, loop_var_range)
+            expr10_temp, var_count = ast_array_cse(expr10_temp, var_count)
             expr10_temp = ast_topological_sort(expr10_temp)
         end
         expr10_temp
@@ -2037,12 +2033,12 @@ function ast_optimize_2(expr, loop_var_range, options = nothing)
 end
 
 # compare optimize with hoist only, but not tabulate
-function ast_optimize_3(expr, loop_var_range, options = nothing)
+function ast_optimize_3(expr, non_unroll_loop_vars, options = nothing)
     # unroll -> flatten -> array_unroll -> tabulate -> topological_sort -> array_aliasing 
     # do not remove: unroll -> array_unroll,  remove_dead_code, flatten
-    expr2 = ast_loop_unroll(expr) |> ast_constant_folding
+    expr2 = ast_loop_unroll(expr, non_unroll_loop_vars) |> ast_constant_folding
 
-    expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
+    expr3 = ast_loop_unroll(expr2, non_unroll_loop_vars) |> ast_constant_folding
     var_count = 0
 
     expr4, var_count = ast_flatten(expr3, var_count)
@@ -2051,7 +2047,6 @@ function ast_optimize_3(expr, loop_var_range, options = nothing)
     expr5 = ast_array_unroll(expr4)
 
     expr6 = ast_normal_licm(expr5)
-    # expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
     
     # expr6
 
@@ -2077,10 +2072,10 @@ function ast_optimize_3(expr, loop_var_range, options = nothing)
 end
 
 # include array cse in addition to ast_optimize_4
-function ast_optimize_4(expr, loop_var_range, options = nothing) 
-    expr2 = ast_loop_unroll(expr) |> ast_constant_folding
+function ast_optimize_4(expr, non_unroll_loop_vars, options = nothing)
+    expr2 = ast_loop_unroll(expr, non_unroll_loop_vars) |> ast_constant_folding
 
-    expr3 = ast_loop_unroll(expr2) |> ast_constant_folding
+    expr3 = ast_loop_unroll(expr2, non_unroll_loop_vars) |> ast_constant_folding
     var_count = 0
 
     expr4, var_count = ast_flatten(expr3, var_count)
@@ -2089,7 +2084,7 @@ function ast_optimize_4(expr, loop_var_range, options = nothing)
     expr5 = ast_array_unroll(expr4)
 
           
-    expr6, var_count = ast_tabulate(expr5, var_count, loop_var_range) 
+    expr6, var_count = ast_tabulate(expr5, var_count)
     
     # expr6
 
@@ -2111,13 +2106,13 @@ function ast_optimize_4(expr, loop_var_range, options = nothing)
 
     expr9 = ast_remove_dead_code(expr9)
 
-    expr10, var_count = ast_array_cse(expr9, var_count, loop_var_range)
+    expr10, var_count = ast_array_cse(expr9, var_count)
     
     expr10 |> GT.ast_topological_sort |> GT.ast_remove_dead_code
     
 end
 
-function ast_optimize_with_options(expr, loop_var_range, options)
+function ast_optimize_with_options(expr, non_unroll_loop_vars, options)
     order::Int = if options === nothing
         4
     else
@@ -2126,7 +2121,7 @@ function ast_optimize_with_options(expr, loop_var_range, options)
     orders = [ast_optimize_1, ast_optimize_2, ast_optimize_3, ast_optimize_4]
     
     if order >= 1 && order <= length(orders)
-        orders[order](expr, loop_var_range, options)
+        orders[order](expr, non_unroll_loop_vars, options)
     else
         expr
     end

@@ -745,7 +745,7 @@ end
         (Vdg,Vdg,GT.measure(skeleton,2)),dependencies,bindings)
     body = GT.generate_matrix_assembly_template(:(1.0),[2],[2],dependencies,bindings;
         npoints=1,field_ndofs_trial=[4],field_ndofs_test=[4],scalar_type=Float64,contribution=call)
-    expr = GT.ast_optimize_with_options(body,Dict(:i=>4,:j=>4),nothing)
+    expr = GT.ast_optimize_with_options(body,Set([:point]),nothing)
     calls = contribution_calls(expr,"GT.contribute_element!")
     @test length(calls) == 4
     @test Set((call.args[end-1],call.args[end]) for call in calls) == Set(((1,1),(2,1),(1,2),(2,2)))
