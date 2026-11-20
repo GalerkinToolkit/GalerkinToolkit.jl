@@ -751,6 +751,16 @@ end
 
 function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point,Q)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(parent)
+    #= TODO: Re-enable lower-dimensional form argument tabulation.
+    if parent.D != num_dims(GT.domain(Q))
+        # Traces evaluate the basis and Jacobian of the selected incident cell.
+        f_expr,space_expr,face_expr,field_id,field_expr,dof_expr,side,side_expr =
+            map(expression,(f,space,face,the_field,field,dof,the_face_around,face_around))
+        J = :(jacobian_accessor($quadrature, $(Val(parent.D)))($face_expr,$side)($point))
+        return form_argument_accessor_term(f_expr,space_expr,quadrature,field_id,face_expr,
+            side,point,J,dof_expr,field_expr,side_expr,parent.is_reference,parent.integral_type)
+    end
+    =#
     V = prototype(space)
     func = prototype(f)
     mesh = GT.mesh(GT.domain(Q))
@@ -1135,7 +1145,10 @@ function generate_assemble_vector(contribution::DomainContribution,space::Abstra
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    workspaces && (expr_0 = ast_element_range_assembly(expr_0,bindings(term_1)[2]))
+    if workspaces
+        domain_face_symbol = bindings(term_1)[2]
+        expr_0 = ast_element_range_assembly(expr_0,domain_face_symbol)
+    end
     expr_1 = ast_initialization_code_motion(expr_0;workspaces)
     f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
@@ -1160,13 +1173,22 @@ function write_assemble_vector(contribution::DomainContribution,space::AbstractS
 end
 
 
-function generate_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
+function generate_assemble_matrix(execution::Union{SerialExecution,CPUThreadedExecution},
+        contribution,trial_space,test_space,prototype;parameters,optimize_options)
+    generate_assemble_matrix_impl(contribution,trial_space,test_space;
+        parameters,optimize_options,allocation=prototype,workspaces=assembly_uses_workers(execution))
+end
+
+function generate_assemble_matrix_impl(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
     term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
-    workspaces && (expr_0 = ast_element_range_assembly(expr_0,bindings(term_1)[2]))
+    if workspaces
+        domain_face_symbol = bindings(term_1)[2]
+        expr_0 = ast_element_range_assembly(expr_0,domain_face_symbol)
+    end
     expr_1 = ast_initialization_code_motion(expr_0;workspaces)
     f = evaluate(expr_1,captured_data)
     # expr_1 = statements_expr(expr_0)
@@ -1404,9 +1426,9 @@ function bindings(term::MatrixAssemblyTerm)
     index = term.index
     face = domain_face_index(index)
     point = point_index(index)
-    field_trial, field_test = field_index(index,1), field_index(index,2)
-    face_around_trial, face_around_test = face_around_index(index,1), face_around_index(index,2)
-    dof_trial, dof_test = dof_index(index,1), dof_index(index,2)
+    field_test, field_trial = field_index(index,1), field_index(index,2)
+    face_around_test, face_around_trial = face_around_index(index,1), face_around_index(index,2)
+    dof_test, dof_trial = dof_index(index,1), dof_index(index,2)
     (term.alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test)
 end
 

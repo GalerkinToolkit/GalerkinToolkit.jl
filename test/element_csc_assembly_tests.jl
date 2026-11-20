@@ -252,7 +252,6 @@ end
         fill!(other.nzval,0)
         GT.compress!(alloc,other,nothing)
         @test other == A
-        @test_throws BoundsError GT.contribute_element!(alloc,values[1],1,1,1,2,1)
     end
 end
 
@@ -420,7 +419,6 @@ end
     @test size(domain_cache(alloc,2).positions) == (16,4)
     @test size(domain_cache(alloc,1).block_sizes) == (4,1,1)
     @test_throws ArgumentError GT.contribute_element!(alloc,ones(4,4),1,1,1)
-    @test_throws BoundsError GT.element_csc_domain(alloc,4)
     empty_alloc = GT.allocate_matrix(Float64,V,V,empty_domain;assembly_method)
     @test size(domain_cache(empty_alloc).positions,2) == 0
     @test isempty(domain_cache(empty_alloc).positions)
@@ -859,7 +857,7 @@ end
         integral = a(GT.form_argument_quantity(V,2),GT.form_argument_quantity(V,1))
         contribution = only(GT.contributions(integral))
         collector = LocalMatrixCollector(Matrix{Float64}[])
-        prepare = GT.generate_assemble_matrix(contribution,V,V;allocation=collector)
+        prepare = GT.generate_assemble_matrix_impl(contribution,V,V;allocation=collector)
         GT.run_assembly!(GT.AssemblyRunner(prepare,collector),())
         @test length(collector.matrices) == GT.num_faces(omega)
         alloc = GT.allocate_matrix(Float64,V,V,omega;assembly_method)

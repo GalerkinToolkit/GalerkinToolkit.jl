@@ -127,7 +127,7 @@ end
 """
     AbstractAssemblyExecution
 
-Execution policy for matrix/vector assembly, independent of the storage method. 
+Execution policy for matrix/vector assembly, independent of the storage method.
 """
 abstract type AbstractAssemblyExecution <: AbstractType end
 
@@ -140,14 +140,14 @@ struct SerialExecution <: AbstractAssemblyExecution end
 
 
 # TODO: Support other assembly methods for multithreading.
-# Matrix storage currently needs `element_csc_assembly()`; vector storage needs `direct_vector_assembly()`. 
+# Matrix storage currently needs `element_csc_assembly()`; vector storage needs `direct_vector_assembly()`.
 """
     CPUThreadedExecution(; workers=Threads.nthreads(), distribution=:contiguous)
 
 CPU assembly with one reusable workspace per logical worker and atomic global
 updates. `workers` is the number of tasks, capped at the number of elements;
 it does not change Julia's thread pool. `distribution` is `:contiguous` or
-`:cyclic`, specialized through the policy type. 
+`:cyclic`, specialized through the policy type.
 
 Hardware properties and GPU launch settings belong to their own backend's
 policy/descriptor when needed, rather than fields shared by every backend.
@@ -166,6 +166,38 @@ CPUThreadedExecution(;workers=Threads.nthreads(),distribution=:contiguous) =
 
 assembly_uses_workers(::SerialExecution) = false
 assembly_uses_workers(::CPUThreadedExecution) = true
+
+"""
+    CUDAExecution(; threads=128)
+
+Single-GPU matrix assembly. Load CUDA and select `element_csc_assembly()` as
+the matrix storage method. Prepared numeric inputs and matrix storage persist
+in the assembly cache. Each GPU thread constructs its own scratch space.
+
+The variational form is compiled automatically for the GPU. Geometry and reference
+tabulations are prepared on the host and uploaded once during assembly setup.
+"""
+struct CUDAExecution <: AbstractAssemblyExecution
+    threads::Int
+    function CUDAExecution(;threads::Integer=128)
+        threads > 0 || throw(ArgumentError("threads must be positive"))
+        new(Int(threads))
+    end
+end
+
+assembly_uses_workers(::CUDAExecution) = false
+
+function validate_matrix_assembly(execution::AbstractAssemblyExecution)
+    throw(ArgumentError("No matrix assembly backend for $(typeof(execution)); load its extension"))
+end
+
+validate_matrix_assembly(::Union{SerialExecution,CPUThreadedExecution}) = nothing
+
+prepare_matrix_allocation(::Union{SerialExecution,CPUThreadedExecution},allocation) = allocation
+
+finish_matrix_assembly!(::AbstractAssemblyExecution) = nothing
+validate_matrix_parameters(::AbstractAssemblyExecution,parameters) = nothing
+validate_matrix_update(execution,parameters,cache) = validate_matrix_parameters(execution,parameters)
 
 """
     AssemblyWorker(id, count, nelements, Val(distribution))
@@ -593,13 +625,20 @@ Assemble a bilinear form. `execution` selects hardware execution and scheduling;
 For example, combine `execution=CPUThreadedExecution(workers=n)` with
 `assembly_method=(;matrix=element_csc_assembly())`. Sequential execution remains
 the default. `reuse=Val(true)` returns a cache for `update_matrix!`.
+
+For `CUDAExecution()`, select `assembly_method=(;matrix=element_csc_assembly())`.
+The form is compiled for CUDA automatically. Subsequent updates reuse the
+prepared numeric inputs and device matrix storage.
 """
 function assemble_matrix(f,::Type{T},trial_space,test_space;
     parameters = (),
     reuse = isempty(parameters) ? Val(false) : Val(true),
     execution::AbstractAssemblyExecution = SerialExecution(),
+    optimize_options = nothing,
     kwargs...
     ) where T
+    validate_matrix_assembly(execution)
+    validate_matrix_parameters(execution,parameters)
     threaded = assembly_uses_workers(execution)
     arg_test = 1
     arg_trial = 2
@@ -608,24 +647,24 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     integral = f(du,dv)
     contributions = GT.contributions(integral)
     domains = map(GT.domain,contributions)
-    alloc = allocate_matrix(T,test_space,trial_space,domains...;kwargs...)
+    host_alloc = allocate_matrix(T,test_space,trial_space,domains...;kwargs...)
+    alloc = prepare_matrix_allocation(execution,host_alloc)
     if threaded && !is_element_csc_allocation(alloc.allocation)
         throw(ArgumentError("threaded matrix assembly requires element_csc_assembly()"))
     end
-    optimize_options = if haskey(kwargs, :optimize_options)
-        kwargs[:optimize_options]
-    else
-        nothing
-    end
     loops = map(contributions,ntuple(identity,length(contributions))) do contribution,domain_id
         domain_alloc = matrix_assembly_contribution_allocation(alloc,domain_id)
-        params_loop = generate_assemble_matrix(contribution,trial_space,test_space;parameters,optimize_options,allocation=domain_alloc,workspaces=threaded)
+        prototype = alloc === host_alloc ? domain_alloc : matrix_assembly_contribution_allocation(host_alloc,domain_id)
+        params_loop = generate_assemble_matrix(execution,contribution,trial_space,test_space,
+            prototype;parameters,optimize_options)
         runner = assembly_runner(execution,params_loop,domain_alloc,num_faces(GT.domain(contribution)))
         run_assembly!(runner,parameters)
         runner
     end
     b, matrix_cache = compress(alloc;reuse=Val(true))
-    cache = (;loops,alloc,matrix_cache)
+    finish_matrix_assembly!(execution)
+    parameter_count = parameters isa Tuple ? length(parameters) : nothing
+    cache = (;loops,alloc,matrix_cache,execution,parameter_count)
     if val_parameter(reuse)
         b, cache
     else
@@ -634,12 +673,14 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
 end
 
 function update_matrix!(A,cache;parameters=())
-    (;loops,alloc,matrix_cache) = cache # TODO: names
+    (;loops,alloc,matrix_cache,execution) = cache
+    validate_matrix_update(execution,parameters,cache)
     reset!(alloc)
     for runner in loops
         run_assembly!(runner,parameters)
     end
     compress!(alloc,A,matrix_cache)
+    finish_matrix_assembly!(execution)
     A
 end
 

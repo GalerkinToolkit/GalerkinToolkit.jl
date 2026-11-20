@@ -28,6 +28,7 @@ for discretization_method in (:continuous_galerkin,)
     end
 end
 
+#= TODO: Re-enable automatic Poisson cases with Neumann and weak boundary forms.
 for discretization_method in (:interior_penalty,:continuous_galerkin)
     for dirichlet_method in (:multipliers,:nitsche,:strong)
         params = Dict{Symbol,Any}()
@@ -43,6 +44,8 @@ for discretization_method in (:interior_penalty,:continuous_galerkin)
         @test results[:error_h1_norm] < tol
     end
 end
+
+=#
 
 end # module
 

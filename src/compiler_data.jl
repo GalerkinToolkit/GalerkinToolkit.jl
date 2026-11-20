@@ -25,7 +25,6 @@ function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
     # TODO: get a subset, like boundary, dimension (now we assume that it is complexified), etc.
     dom = GT.domain(Q)
     d = num_dims(dom)
-    D = num_dims(mesh)
     node_coordinates = GT.node_coordinates(mesh)
     layout = ElementMajorLayout() # TODO: prepare the requested layout directly
     face_nodes = GT.face_nodes(mesh, d)  
@@ -49,16 +48,7 @@ function mesh_integration_data(mesh::AbstractMesh, Q::AbstractQuadrature)
     reference_weights = weights(ref_quadrature)
     point_to_x = coordinates(ref_quadrature)
     
-    # m2 = GT.mesh(domain(Q))
-    # space = mesh_space(m2,Val(D))
-
-    # m2 = GT.mesh(domain(Q))
-    # space = mesh_space(m2,Val(2))
-
-    # mesh_domain = GT.mesh_domain(m; num_dims=Val(D))
-    # space = mesh_space(m,D)
-    # refface = reference_spaces(space)[rid]
-    refface = reference_spaces(mesh, Val(D))[rid]
+    refface = reference_spaces(mesh, Val(d))[rid]
     reference_gradients = collect(permutedims(tabulator(refface)(ForwardDiff.gradient,point_to_x), (2, 1))) 
 
     MeshIntegrationData(layout, node_coordinates, static_face_nodes, reference_gradients, reference_weights)
@@ -142,6 +132,14 @@ function DOFData(space::AbstractSpace)
     DOFData(reshape(dofs.data,ndofs,length(dofs)))
 end
 face_dofs(data::DOFData) = data.face_dofs
+
+# Adapt prepared arrays without repacking or changing their layout. In particular,
+# element-major vectors/matrices of StaticArrays keep their isbits element types.
+# Reference tabulations are transferred as arrays, independently of their size.
+Adapt.@adapt_structure MeshIntegrationData
+Adapt.@adapt_structure DomainIntegrationData
+Adapt.@adapt_structure SpaceIntegrationData
+Adapt.@adapt_structure DOFData
 
 function dofs_expr(space, integration_domain, space_expr, mesh_expr, face_expr, face_around_expr)
     D = num_dims(space)

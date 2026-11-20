@@ -1065,11 +1065,7 @@ function ast_array_aliasing(ast)
 
             if last_array !== nothing
                 # if yes, have a new rhs (indexing an existing array, aliasing the array, or slicing with view(not sure whether that is needed))
-                new_node = if ast_is_definition(node) && ast_is_index(lhs)
-                    ast_definition(lhs, last_array) # TODO: array aliasing
-                else
-                    ast_definition(lhs, last_array)
-                end
+                new_node = ast_replace_children(node, lhs, last_array)
                 ast_array_replace(new_node)
             else # if not, update the function and args template (index positions)
                 if ast_is_definition(node) && ast_is_index(lhs)
@@ -1087,7 +1083,7 @@ function ast_array_aliasing(ast)
                         end
                     end
                     
-                    if length(loop_indices) >= length(indices)
+                    if length(loop_indices) > length(indices)
                         dealloc_symbol = loop_indices[end - length(indices)]
                         push!(loop_index_arrays[dealloc_symbol], (array_symbol, callee))
                     end
@@ -2427,7 +2423,7 @@ statements and mutable-content reads remain in the kernel. Scratch allocations
 may be retained because their users overwrite them or explicitly clear them;
 existing guards and resets are preserved, and no resets are added.
 """
-function ast_initialization_code_motion(ast; workspaces=false)
+function ast_initialization_code_motion(ast; workspaces=false, workspace_backend=nothing)
     descriptor_functions = (typeof, eltype, length, size, ndims, axes)
     buffer_functions = (alloc_zeros, zeros)
     mutating_functions = (fill!, copyto!, setindex!, mul!, reset!, contribute!)
@@ -2721,6 +2717,10 @@ function ast_initialization_code_motion(ast; workspaces=false)
     kernel_args = first(ast_children(kernel))
     parameter_args = first(ast_children(parameters))
     if workspaces
+        if workspace_backend !== nothing
+            return ast_assembly_workspaces(workspace_backend,captured,parameters,kernel,
+                setup,refresh,execution,workspace_buffers,scopes,guard,guard_node,guard_scope)
+        end
         return ast_assembly_workspaces(captured,parameters,kernel,setup,refresh,execution,
             workspace_buffers,scopes,guard,guard_node,guard_scope)
     end

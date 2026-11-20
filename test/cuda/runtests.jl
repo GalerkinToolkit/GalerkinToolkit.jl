@@ -182,3 +182,7 @@ end
         end
     end
 end
+
+include("compiler_data_tests.jl")
+include("poisson_numeric_tests.jl")
+include("execution_tests.jl")

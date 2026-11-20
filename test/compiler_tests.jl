@@ -330,10 +330,13 @@ end
     V2 = GT.lagrange_space(omega,2;continuous=Val(false))
     trial = GT.cartesian_product(V1,V2)
     test = trial
-    a = ((u1,u2),(v1,v2)) -> GT.∫(x -> (u1(x)+u2(x))*(v1(x)+v2(x)),measure)
+    a = ((u1,u2),(v1,v2)) -> GT.∫(x -> (u1(x)+2u2(x))*(v1(x)+3v2(x)),measure)
     integral = a(GT.form_argument_quantity(trial,2),GT.form_argument_quantity(test,1))
     contribution = only(GT.contributions(integral))
     Q = GT.quadrature(contribution)
+    matrix_term = GT.write_assemble_matrix(contribution,trial,test)
+    @test GT.bindings(matrix_term) == (:alloc,:domain_face,:point,:field_2,:field_1,
+        :face_around_2,:face_around_1,:dof_2,:dof_1)
 
     # The bounds must follow each field rather than the largest field.
     expected = zeros(GT.num_free_dofs(test),GT.num_free_dofs(trial))
@@ -355,7 +358,9 @@ end
             for j in eachindex(columns), i in eachindex(rows)
                 row = row_offsets[row_field]+rows[i]
                 column = column_offsets[column_field]+columns[j]
-                expected[row,column] += row_values(i)*column_values(j)*weight
+                row_factor = row_field == 1 ? 1 : 3
+                column_factor = column_field == 1 ? 1 : 2
+                expected[row,column] += row_factor*column_factor*row_values(i)*column_values(j)*weight
             end
         end
     end

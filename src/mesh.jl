@@ -1292,4 +1292,3 @@ end
 function map_parts(f,args...)
     map(f,map(partition,args)...)
 end
-

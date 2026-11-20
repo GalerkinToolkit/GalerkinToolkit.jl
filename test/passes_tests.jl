@@ -72,6 +72,24 @@ function array_cse_contains(node, expected)
     isequal(node,expected) || (node isa Expr && any(child -> array_cse_contains(child,expected),node.args))
 end
 
+@testset "Array aliasing with fully indexed fills" begin
+    original = Base.remove_linenums!(quote
+        cache = zeros(Float64,8)
+        result = 2.0
+        for i in 1:8
+            cache[i] = sin(i)
+        end
+        for j in 1:8
+            result += sin(j)
+        end
+        result
+    end)
+    optimized = GT.ast_array_aliasing(original)
+    evaluate = code -> Base.invokelatest(Core.eval(GT,:(() -> $code)))
+    @test array_cse_contains(optimized, :(result += cache[j]))
+    @test evaluate(optimized) == evaluate(original)
+end
+
 function check_array_cse(expr)
     original = Base.remove_linenums!(deepcopy(expr))
     optimized,_ = GT.ast_array_cse(original)
