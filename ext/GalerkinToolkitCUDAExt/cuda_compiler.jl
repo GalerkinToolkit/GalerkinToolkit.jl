@@ -47,8 +47,15 @@ end
 
 @inline function local_zeros(::Type{T},shape::Val) where T
     array = local_scratch(T,shape)
-    for i in 1:length(array)
-        @inbounds array[i] = zero(T)
+    fill!(array,zero(T))
+end
+
+@inline function Base.fill!(array::CUDAThreadLocalArray{T},value) where T
+    n = cuda_index_type(length(array))(length(array))
+    i = zero(n)
+    while i < n
+        i += one(i)
+        @inbounds array[Int(i)] = value
     end
     array
 end

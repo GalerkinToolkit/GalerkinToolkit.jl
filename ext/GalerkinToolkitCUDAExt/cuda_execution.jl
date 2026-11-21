@@ -28,20 +28,38 @@ function GT.assembly_runner(::GT.CUDAExecution,prepare,argument,nelements)
     throw(ArgumentError("CUDA vector assembly is not implemented"))
 end
 
-function cuda_assembly_kernel!(kernel,argument,data,parameters,nelements)
-    id = Int((blockIdx().x-1)*blockDim().x+threadIdx().x)
-    count = Int(blockDim().x*gridDim().x)
+struct CUDAAssemblyElementRange{I<:Integer}
+    first::I
+    stride::I
+    last::I
+end
+
+GT.assembly_element_range(elements::CUDAAssemblyElementRange) = elements
+
+@inline function Base.iterate(elements::CUDAAssemblyElementRange,element=elements.first)
+    element <= elements.last || return nothing
+    element, element + elements.stride
+end
+
+function cuda_assembly_kernel!(kernel,argument,data,parameters,nelements::I) where I<:Integer
+    threads = I(blockDim().x)
+    id = (I(blockIdx().x)-one(I))*threads + I(threadIdx().x)
+    stride = threads*I(gridDim().x)
     if id <= nelements
-        worker = GT.AssemblyWorker(id,count,nelements,Val(:cyclic))
-        @inline kernel(argument,data,worker,parameters)
+        elements = CUDAAssemblyElementRange(id,stride,nelements)
+        @inline kernel(argument,data,elements,parameters)
     end
     nothing
 end
 
 function (runner::CUDAAssemblyRunner)(parameters::Tuple)
     runner.nelements == 0 && return nothing
-    @cuda threads=runner.execution.threads blocks=cld(runner.nelements,runner.execution.threads) cuda_assembly_kernel!(
-        runner.kernel,runner.argument,runner.data,parameters,runner.nelements)
+    threads = runner.execution.threads
+    blocks = cld(runner.nelements,threads)
+    # Keep even the final grid-stride increment representable in the index type.
+    index_type = blocks <= div(typemax(Int32)-runner.nelements,threads) ? Int32 : Int
+    @cuda threads=threads blocks=blocks cuda_assembly_kernel!(
+        runner.kernel,runner.argument,runner.data,parameters,index_type(runner.nelements))
     nothing
 end
 

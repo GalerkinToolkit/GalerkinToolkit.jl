@@ -4,6 +4,7 @@ module GalerkinToolkitCUDAExt
 import GalerkinToolkit as GT
 import Adapt
 using CUDA
+using LinearAlgebra: Transpose
 using SparseArrays: nonzeros
 
 include("GalerkinToolkitCUDAExt/cuda_assembly.jl")

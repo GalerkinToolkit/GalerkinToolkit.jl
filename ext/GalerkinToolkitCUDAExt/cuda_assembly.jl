@@ -1,3 +1,109 @@
+# The prepared position table is read-only during device assembly.
+@inline function GT.element_csc_position(positions::CUDA.CuDeviceArray{Ti,2},entry,face) where Ti<:Integer
+    @inbounds CUDA.Const(positions)[entry,face]
+end
+
+const CUDAElementCSCPositions = Union{
+    CUDA.CuDeviceArray{<:Integer,2},
+    Transpose{<:Integer,<:CUDA.CuDeviceArray{<:Integer,2}},
+}
+
+@inline cuda_index_type(n) = n <= typemax(Int32) ? Int32 : Int
+
+@inline function cuda_scatter_lookup(positions::CUDA.CuDeviceArray,face,base,::Type{I}) where I
+    offset = (I(face)-one(I))*I(size(positions,1)) + I(base)
+    CUDA.Const(positions),offset,one(I)
+end
+
+@inline function cuda_scatter_lookup(positions::Transpose,face,base,::Type{I}) where I
+    data = parent(positions)
+    stride = I(size(data,1))
+    offset = I(face)-one(I) + I(base)*stride
+    CUDA.Const(data),offset,stride
+end
+
+@inline function GT.contribute_element_csc_block_atomic!(
+        nzval,positions::CUDAElementCSCPositions,vals,face,base,shape)
+    # A packed table can exceed Int32 even when all its stored slots fit.
+    if length(positions) <= typemax(Int32)
+        cuda_scatter_packed!(nzval,positions,vals,face,base,shape[1],Int32)
+    else
+        cuda_scatter_packed!(nzval,positions,vals,face,base,shape[1],Int)
+    end
+end
+
+# Generated CUDA calls select the lookup width from the prepared host table.
+@inline function cuda_contribute_element_block_atomic!(malloc,vals,face,base,nrows,ncols,::Type{I}) where I
+    base == -1 && return nothing
+    alloc = GT.element_csc_matrix_storage(malloc.allocation)
+    cache = GT.element_csc_single_domain_cache(alloc)
+    cuda_scatter_packed!(alloc.nzval,cache.positions,vals,face,base,nrows,I)
+end
+
+@inline function cuda_scatter_packed!(nzval,positions,vals,face,base,nrows,::Type{I}) where I
+    lookup,offset,stride = cuda_scatter_lookup(positions,face,base,I)
+    n = length(vals)
+    if I === Int32 && 32 <= n <= typemax(Int32) && size(vals,1) == nrows
+        cuda_scatter_batches!(nzval,lookup,vals,offset,stride,Int32(n))
+    elseif n <= typemax(Int32)
+        cuda_scatter_atomic!(nzval,lookup,vals,offset,stride,nrows,Int32)
+    else
+        cuda_scatter_atomic!(nzval,lookup,vals,offset,stride,nrows,Int)
+    end
+end
+
+@inline function cuda_scatter_batches!(nzval,lookup,vals,offset,stride,n)
+    width = Int32(32)
+    start = Int32(0)
+    while start <= n-width
+        cuda_scatter_batch!(nzval,lookup,vals,offset+start*stride,start,stride,Val(32))
+        start += width
+    end
+    @inbounds while start < n
+        slot = lookup[offset + start*stride + Int32(1)]
+        start += Int32(1)
+        if slot != 0
+            GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(start)]
+        end
+    end
+    nothing
+end
+
+@inline function cuda_scatter_batch!(nzval,lookup,vals,offset,start,stride,::Val{B}) where B
+    # Materialize this batch before the slot checks so the compiler can group its loads.
+    entries = GT.SVector{B}(ntuple(j -> (@inbounds vals[Int(start)+j]),Val(B)))
+    ntuple(Val(B)) do j
+        @inbounds begin
+            slot = lookup[offset + (Int32(j)-Int32(1))*stride + Int32(1)]
+            if slot != 0
+                GT.Atomix.@atomic :monotonic nzval[slot] += entries[j]
+            end
+        end
+        nothing
+    end
+    nothing
+end
+
+@inline function cuda_scatter_atomic!(nzval,lookup,vals,offset::I,stride::I,nrows,::Type{J}) where {I,J}
+    rows,cols = J(size(vals,1)),J(size(vals,2))
+    packed_rows = I(nrows)
+    col = zero(J)
+    @inbounds while col < cols
+        lookup_col = offset + I(col)*packed_rows*stride
+        tile_col = col*rows
+        row = zero(J)
+        while row < rows
+            slot = lookup[lookup_col + I(row)*stride + one(I)]
+            if slot != 0
+                GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(tile_col + row + one(J))]
+            end
+            row += one(J)
+        end
+        col += one(J)
+    end
+    nothing
+end
+
 # The output shares the numeric buffer used by all selected domain arguments.
 # Keep sparse construction on the host; only array storage lives on the device.
 @static if isdefined(CUDA,:cuSPARSE)
