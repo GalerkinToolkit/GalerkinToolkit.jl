@@ -415,7 +415,7 @@ function interpolate_impl!(
     f::AnalyticalField,
     u::DiscreteField,
     space::NedelecMeshSpace,
-    free_or_diri::FreeOrDirichlet;location=1)
+    free_or_diri::FreeOrDirichlet;location=nothing)
     is_piecewise(f) && throw(ArgumentError("Piecewise interpolation into Nédélec spaces is not implemented"))
     fun = f.definition
     free_vals = GT.free_values(u)
@@ -442,8 +442,9 @@ function interpolate_impl!(
                 free_or_diri == DIRICHLET && continue
             else
                 free_or_diri == FREE && continue
-                # A piecewise Dirichlet field writes only the DOFs of its own boundary piece.
-                dirichlet_dof_location[-dof] == location || continue
+                # A piece of a PiecewiseField (location given) writes only the DOFs of its own
+                # boundary piece; an ordinary field (location === nothing) writes all of them.
+                location === nothing || dirichlet_dof_location[-dof] == location || continue
             end
             na,nb = minmax(nodes[a],nodes[b])
             xa,xb = node_x[na],node_x[nb]

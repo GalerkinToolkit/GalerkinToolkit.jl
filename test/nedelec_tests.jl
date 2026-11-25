@@ -374,6 +374,67 @@ let
         dot(cs[location],node_x[nb]-node_x[na])
     end
     @test GT.dirichlet_values(uh) ≈ expected
+
+    # An ordinary (non-piecewise) field fills every Dirichlet piece.
+    c = SVector(2.0,3.0)
+    uh_all = GT.zero_field(Float64,V)
+    GT.dirichlet_values(uh_all) .= 123
+    GT.interpolate_dirichlet!(GT.analytical_field(x->c,Ω),uh_all)
+    @test GT.dirichlet_values(uh_all) ≈ [dot(c,node_x[nb]-node_x[na]) for (na,nb) in edges]
+end
+
+# 3D pieces that share edges: a shared edge belongs to the later piece. The expected
+# locations come from the face groups directly, not from dirichlet_dof_location.
+let
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
+    Ω = GT.interior(mesh)
+    names = ("2-face-1","2-face-3")
+    pieces = [GT.boundary(mesh;group_names=[name]) for name in names]
+    piece_edges = map(pieces) do Γ
+        edges = Set{Tuple{Int,Int}}()
+        for nodes in GT.face_nodes(mesh,2)[GT.faces(Γ)], i in 1:3, j in i+1:3
+            push!(edges,minmax(Int(nodes[i]),Int(nodes[j])))
+        end
+        edges
+    end
+    shared = intersect(piece_edges...)
+    @test !isempty(shared)
+    V = GT.nedelec_space(Ω,0;dirichlet_boundary=GT.piecewise_domain(pieces...))
+    edges = dirichlet_edges(V,mesh,3)
+    @test Set(edges) == union(piece_edges...)
+    expected_location = [edge in piece_edges[2] ? 2 : 1 for edge in edges]
+    @test GT.dirichlet_dof_location(V) == expected_location
+    cs = (SVector(1.0,-1.0,0.5),SVector(-2.0,0.25,3.0))
+    uh = GT.zero_field(Float64,V)
+    GT.interpolate_dirichlet!(GT.piecewise_field(map(c->GT.analytical_field(x->c,Ω),cs)...),uh)
+    node_x = GT.node_coordinates(mesh)
+    @test GT.dirichlet_values(uh) ≈ [dot(cs[l],node_x[nb]-node_x[na]) for ((na,nb),l) in zip(edges,expected_location)]
+    c = SVector(0.5,1.5,-1.0)
+    GT.interpolate_dirichlet!(GT.analytical_field(x->c,Ω),uh)
+    @test GT.dirichlet_values(uh) ≈ [dot(c,node_x[nb]-node_x[na]) for (na,nb) in edges]
+end
+
+# The compiler's untabulated (general-operator) helper agrees with the tabulated map.
+let
+    mesh = GT.cartesian_mesh((0,2,0,1,0,1),(2,2,2);simplexify=true)
+    Ω = GT.interior(mesh)
+    V = GT.nedelec_space(Ω,0)
+    fe = only(GT.reference_spaces(V))
+    shapes = GT.shape_functions(fe)
+    geometry = only(GT.reference_spaces(mesh,3))
+    node_x = GT.node_coordinates(mesh)
+    s_value = GT.shape_function_accessor(GT.value,V)
+    for cell in (1,GT.num_faces(Ω))
+        nodes = GT.face_nodes(mesh,3)[cell]
+        xc = sum(node_x[nodes])/4 + SVector(0.01,0.0,-0.01)
+        for dof in 1:6
+            sign = GT.nedelec_dof_signs(V)[dof,cell]
+            s = GT.physical_covariant_shape_function(shapes[dof],sign,GT.shape_functions(geometry),
+                node_x,nodes,zero(SVector{3,Float64}))
+            @test s(xc) ≈ s_value(cell)(dof)(xc)
+            @test ForwardDiff.jacobian(s,xc) ≈ GT.shape_function_accessor(ForwardDiff.jacobian,V)(cell)(dof)(xc)
+        end
+    end
 end
 
 # Unsupported uses raise errors instead of silently using the Lagrange map.
