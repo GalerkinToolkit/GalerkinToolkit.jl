@@ -559,11 +559,13 @@ for (D,mesh) in meshes_k, k in (1,2)
     @test tangential < 1e-10*max(1,total)
     @test total > 1e-3 # normal components do jump: the check is not vacuous
 
-    # A polynomial field of degree k (contained in NED_k) is reproduced exactly.
+    # A field of NED_k, including its top-degree part S_{k+1} (q(x)(-y,x) in 2D,
+    # x × (q(x) e₃) in 3D, q homogeneous of degree k), is reproduced exactly.
     a = SVector{D}(ntuple(i->0.3i-0.5,D))
     Bm = SMatrix{D,D}(ntuple(i->sin(1.3i),D*D))
     quadratic = x -> SVector{D}(ntuple(c->x[c]*x[mod1(c+1,D)]-0.5*x[1]^2,D))
-    ufun = k == 1 ? (x -> a + Bm*x) : (x -> a + Bm*x + quadratic(x))
+    top = D == 2 ? (x -> x[1]^k*SVector(-x[2],x[1])) : (x -> cross(x,SVector(0.0,0.0,x[1]^(k-1)*x[2])))
+    ufun = k == 1 ? (x -> a + Bm*x + top(x)) : (x -> a + Bm*x + quadratic(x) + 0.7*top(x))
     u = GT.analytical_field(ufun,Ω)
     curl_u = GT.analytical_field(x->curl(ForwardDiff.jacobian(ufun,x)),Ω)
     uh = GT.zero_field(Float64,V)
