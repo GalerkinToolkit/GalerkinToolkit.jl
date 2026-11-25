@@ -22,6 +22,8 @@ for D in (2,3)
     shapes = GT.shape_functions(fe)
     sigma = GT.dual_basis(fe)
     @test [sigma[i](shapes[j]) for i in 1:nedges, j in 1:nedges] ≈ Matrix(I,nedges,nedges) atol=1e-12
+    # The moments are linear (not conjugate-linear) in complex fields.
+    @test [sigma[i](x->im*shapes[j](x)) for i in 1:nedges, j in 1:nedges] ≈ im*Matrix(I,nedges,nedges) atol=1e-12
 
     # Tangential component of shape j along edge i is δ_ij at every point of the edge.
     cell_mesh = GT.mesh(geo)
@@ -87,14 +89,15 @@ function whitney_matrices(mesh,D,dof_to_edge)
     n = length(dof_to_edge)
     M = zeros(n,n)
     K = zeros(n,n)
+    G = zeros(n,n) # ∫ ∇φe : ∇φf, with ∇φ of edge (a,b) equal to ∇λb ∇λaᵀ - ∇λa ∇λbᵀ
     local_edges = D == 3 ? [(1,2),(1,3),(1,4),(2,3),(2,4),(3,4)] : [(1,2),(1,3),(2,3)]
     c = D == 3 ? 20 : 12 # ∫λiλj = |K|(1+δij)/((D+1)(D+2))
     for nodes in cell_nodes
         x = node_x[nodes]
         B = hcat([x[k+1]-x[1] for k in 1:D]...)
         vol = abs(det(B))/factorial(D)
-        G = inv(B) # rows are ∇λ_2,...,∇λ_{D+1}
-        ∇λ = vcat([-vec(sum(G,dims=1))],[G[k,:] for k in 1:D])
+        Binv = inv(B) # rows are ∇λ_2,...,∇λ_{D+1}
+        ∇λ = vcat([-vec(sum(Binv,dims=1))],[Binv[k,:] for k in 1:D])
         m(i,j) = vol*(1+(i==j))/c
         g(i,j) = dot(∇λ[i],∇λ[j])
         rot(i,j) = D == 3 ? 2*cross(∇λ[i],∇λ[j]) : 2*(∇λ[i][1]*∇λ[j][2]-∇λ[i][2]*∇λ[j][1])
@@ -107,10 +110,15 @@ function whitney_matrices(mesh,D,dof_to_edge)
         for (e,(a,b)) in enumerate(edges), (f,(p,q)) in enumerate(edges)
             M[dofs[e],dofs[f]] += m(a,p)*g(b,q) - m(a,q)*g(b,p) - m(b,p)*g(a,q) + m(b,q)*g(a,p)
             K[dofs[e],dofs[f]] += vol*dot(rot(a,b),rot(p,q))
+            Je = ∇λ[b]*∇λ[a]' - ∇λ[a]*∇λ[b]'
+            Jf = ∇λ[q]*∇λ[p]' - ∇λ[p]*∇λ[q]'
+            G[dofs[e],dofs[f]] += vol*sum(Je .* Jf)
         end
     end
-    M,K
+    M,K,G
 end
+
+frobenius(A,B) = sum(A .* B)
 
 # GT DOF -> global edge as a sorted node pair; each DOF must map to one edge.
 function dof_to_edge_map(V,mesh,D)
@@ -139,6 +147,21 @@ function dof_to_edge_map(V,mesh,D)
     @test all(assigned)
     @test allunique(dof_to_edge)
     dof_to_edge
+end
+
+# Dirichlet DOF -> global edge (sorted node pair).
+function dirichlet_edges(V,mesh,D)
+    fe = only(GT.reference_spaces(V))
+    edge_nodes = GT.face_nodes(GT.mesh(GT.domain(fe)),1)
+    cell_nodes = GT.face_nodes(mesh,D)
+    edges = Vector{Tuple{Int,Int}}(undef,GT.num_dirichlet_dofs(V))
+    for (cell,dofs) in enumerate(GT.face_dofs(V)), (ledge,(a,b)) in enumerate(edge_nodes)
+        dof = dofs[ledge]
+        dof < 0 || continue
+        nodes = cell_nodes[cell]
+        edges[-dof] = minmax(Int(nodes[a]),Int(nodes[b]))
+    end
+    edges
 end
 
 function gmsh_simplex_mesh(D,h)
@@ -172,11 +195,12 @@ for (D,mesh) in meshes
     signs = GT.nedelec_dof_signs(V)
     @test all(s -> s == 1 || s == -1,signs)
     dof_to_edge = dof_to_edge_map(V,mesh,D)
-    M_ref,K_ref = whitney_matrices(mesh,D,dof_to_edge)
+    M_ref,K_ref,G_ref = whitney_matrices(mesh,D,dof_to_edge)
 
     dΩ = GT.measure(Ω,2)
     m(u,v) = GT.∫(x->u(x)⋅v(x),dΩ)
     k(u,v) = GT.∫(x->GT.call(curl,ForwardDiff.jacobian(u,x))⋅GT.call(curl,ForwardDiff.jacobian(v,x)),dΩ)
+    g(u,v) = GT.∫(x->GT.call(frobenius,ForwardDiff.jacobian(u,x),ForwardDiff.jacobian(v,x)),dΩ)
     csc = (;matrix=GT.element_csc_assembly())
     for (execution,assembly_method) in ((GT.SerialExecution(),nothing),(GT.SerialExecution(),csc),(GT.CPUThreadedExecution(),csc))
         kwargs = assembly_method === nothing ? (;execution) : (;execution,assembly_method)
@@ -185,6 +209,8 @@ for (D,mesh) in meshes
         @test norm(Matrix(M)-M_ref,Inf) <= 1e-12*norm(M_ref,Inf)
         @test norm(Matrix(K)-K_ref,Inf) <= 1e-12*norm(K_ref,Inf)
     end
+    Gm = GT.assemble_matrix(g,Float64,V,V)
+    @test norm(Matrix(Gm)-G_ref,Inf) <= 1e-12*norm(G_ref,Inf)
 
     # Tangential Dirichlet: the closure edges of the boundary faces.
     Γ = GT.boundary(mesh)
@@ -198,6 +224,20 @@ for (D,mesh) in meshes
     MD = GT.assemble_matrix(m,Float64,VD,VD)
     @test size(MD) == (GT.num_free_dofs(VD),GT.num_free_dofs(VD))
     @test isposdef(Symmetric(Matrix(MD)))
+
+    # A selected part of the boundary: exactly the edges in the closure of its faces become Dirichlet DOFs.
+    group = D == 3 ? "2-face-1" : "1-face-1"
+    if haskey(GT.group_faces(mesh,D-1),group)
+        Γ1 = GT.boundary(mesh;group_names=[group])
+        V1 = GT.nedelec_space(Ω,0;dirichlet_boundary=Γ1)
+        expected = Set{Tuple{Int,Int}}()
+        for nodes in GT.face_nodes(mesh,D-1)[GT.faces(Γ1)], i in 1:length(nodes), j in i+1:length(nodes)
+            push!(expected,minmax(Int(nodes[i]),Int(nodes[j])))
+        end
+        @test !isempty(expected)
+        @test Set(dirichlet_edges(V1,mesh,D)) == expected
+        @test GT.num_dirichlet_dofs(V1) == length(expected)
+    end
 end
 
 # Exactness: a field in NED0 (constant + rotation) is interpolated exactly, so the
@@ -211,10 +251,12 @@ for (D,mesh) in meshes
         a = SVector(0.3,-1.2,0.7); b = SVector(1.1,0.4,-0.5)
         ufun = x -> a + cross(b,x)
         curl_u = 2*b
+        jac_u = SMatrix{3,3}(0,b[3],-b[2],-b[3],0,b[1],b[2],-b[1],0)
     else
         a = SVector(0.3,-1.2); b = 0.8
         ufun = x -> a + b*SVector(-x[2],x[1])
         curl_u = 2*b
+        jac_u = SMatrix{2,2}(0,b,-b,0)
     end
     u = GT.analytical_field(ufun,Ω)
     uh = GT.zero_field(Float64,V)
@@ -224,6 +266,37 @@ for (D,mesh) in meshes
     @test GT.assemble_scalar(GT.∫(x->GT.call(curl_error,GT.call(curl,ForwardDiff.jacobian(uh,x))),dΩ)) < 1e-22
     uh2 = GT.interpolate(u,V)
     @test GT.free_values(uh2) ≈ GT.free_values(uh)
+
+    # The same field through the space/field accessors (values and Jacobians at every quadrature point).
+    uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,ForwardDiff.jacobian),compute=(GT.coordinate,))
+    worst_value,worst_jac = 0.0,0.0
+    for face in GT.each_face(uh_dΩ), point in GT.each_point(face)
+        x = GT.coordinate(point)
+        worst_value = max(worst_value,norm(GT.field(GT.value,point)-ufun(x)))
+        worst_jac = max(worst_jac,norm(GT.field(ForwardDiff.jacobian,point)-jac_u))
+    end
+    @test worst_value < 1e-12
+    @test worst_jac < 1e-11
+
+    # Untabulated shape functions evaluated at physical points (cell centroids).
+    s_value = GT.shape_function_accessor(GT.value,V)
+    s_jac = GT.shape_function_accessor(ForwardDiff.jacobian,V)
+    cell_nodes = GT.face_nodes(mesh,D)
+    node_x = GT.node_coordinates(mesh)
+    for cell in (1,length(cell_nodes))
+        xc = sum(node_x[cell_nodes[cell]])/(D+1)
+        dofs = GT.face_dofs(V)[cell]
+        vals = GT.free_values(uh)[dofs]
+        @test sum(vals[i]*s_value(cell)(i)(xc) for i in eachindex(dofs)) ≈ ufun(xc)
+        @test sum(vals[i]*s_jac(cell)(i)(xc) for i in eachindex(dofs)) ≈ jac_u atol=1e-10
+    end
+
+    # Complex fields: the moments are complex-linear, so u + i u is reproduced exactly.
+    uc = GT.analytical_field(x->(1+2im)*ufun(x),Ω)
+    uhc = GT.zero_field(ComplexF64,V)
+    GT.interpolate!(uc,uhc)
+    @test GT.free_values(uhc) ≈ (1+2im)*GT.free_values(uh)
+    @test GT.assemble_scalar(GT.∫(x->norm(uc(x)-uhc(x))^2,dΩ)) < 1e-24
 
     # The same field through vector assembly: M x = b with b_i = ∫u⋅φi.
     m(u,v) = GT.∫(x->u(x)⋅v(x),dΩ)
@@ -283,6 +356,26 @@ for D in (2,3)
     @test rates_curl[end] > 0.85
 end
 
+# Piecewise Dirichlet data: each boundary piece receives the moments of its own field.
+let
+    mesh = GT.cartesian_mesh((0,1,0,1),(3,3);simplexify=true)
+    Ω = GT.interior(mesh)
+    pieces = [GT.boundary(mesh;group_names=[name]) for name in ("1-face-1","1-face-2")]
+    V = GT.nedelec_space(Ω,0;dirichlet_boundary=GT.piecewise_domain(pieces...))
+    cs = (SVector(1.0,1.0),SVector(3.0,-2.0))
+    u = GT.piecewise_field(map(c->GT.analytical_field(x->c,Ω),cs)...)
+    uh = GT.zero_field(Float64,V)
+    GT.interpolate_dirichlet!(u,uh)
+    locations = GT.dirichlet_dof_location(V)
+    @test sort(unique(locations)) == [1,2]
+    node_x = GT.node_coordinates(mesh)
+    edges = dirichlet_edges(V,mesh,2)
+    expected = map(edges,locations) do (na,nb),location
+        dot(cs[location],node_x[nb]-node_x[na])
+    end
+    @test GT.dirichlet_values(uh) ≈ expected
+end
+
 # Unsupported uses raise errors instead of silently using the Lagrange map.
 let
     mesh = GT.cartesian_mesh((0,1,0,1),(2,2);simplexify=true)
@@ -291,6 +384,11 @@ let
     dΩ = GT.measure(Ω,2)
     g(u,v) = GT.∫(x->ForwardDiff.gradient(u,x)⋅ForwardDiff.gradient(v,x),dΩ)
     @test_throws ArgumentError GT.assemble_matrix(g,Float64,V,V)
+    dΓ = GT.measure(GT.boundary(mesh),2)
+    @test_throws ArgumentError GT.assemble_matrix((u,v)->GT.∫(x->u(x)⋅v(x),dΓ),Float64,V,V)
+    # Curved (quadratic) triangles are rejected.
+    curved = GT.mesh_from_msh(joinpath(@__DIR__,"..","assets","higher_order_2D.msh"))
+    @test_throws ArgumentError GT.nedelec_space(GT.interior(curved),0)
 end
 
 end # module

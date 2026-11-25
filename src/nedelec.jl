@@ -24,7 +24,7 @@ orientation from the lower to the higher global node ID. A `dirichlet_boundary` 
 the edges in the closure of the given boundary faces become Dirichlet DOFs.
 
 Shape functions support `value` and `ForwardDiff.jacobian` (from which the curl follows). Trace (boundary or
-skeleton) integration of form arguments is not available on this branch for any space.
+skeleton) integration of Nédélec form arguments is not implemented and raises an error.
 
 # Level
 
@@ -96,7 +96,7 @@ function nedelec_setup(domain)
         xa,xb = node_x[a],node_x[b]
         t = xb - xa
         v -> sum(1:length(ss)) do k
-            ws[k]*dot(v(xa + ss[k]*t),t)
+            ws[k]*dot(t,v(xa + ss[k]*t)) # t is real: no conjugation of v
         end
     end
     primal_basis = nedelec_primal_basis(Val(D))
@@ -283,10 +283,17 @@ function physical_covariant_shape_function(s_ref, sign, geometry_functions, node
     function phi(xi)
         physical_map_value(xi, geometry_functions, node_x, nodes)
     end
-    inverse_phi = inv_map(phi, xi0)
+    affine_covariant_shape_function(s_ref, sign, phi, xi0)
+end
+
+# Nédélec spaces only accept affine cells, so the geometry map is inverted in
+# closed form, ξ = ξ0 + J⁻¹(x - φ(ξ0)). This is exact and, unlike a Newton
+# inverse, can be differentiated with ForwardDiff.
+function affine_covariant_shape_function(s_ref, sign, phi, xi0)
+    J = ForwardDiff.jacobian(phi, xi0)
+    x0 = phi(xi0)
     x -> begin
-        xi = inverse_phi(x)
-        J = ForwardDiff.jacobian(phi, xi)
+        xi = xi0 + J \ (x - x0)
         sign * (transpose(J) \ s_ref(xi))
     end
 end
@@ -358,6 +365,50 @@ function nedelec_shape_function_accessor_physical(f,space,measure)
     accessor(face_point_dof_s,prototype)
 end
 
+# Untabulated physical shape functions: x -> s J⁻ᵀ φ̂(ξ) with ξ = φ⁻¹(x) (affine cells).
+function shape_function_accessor_physical(f,space::NedelecMeshSpace)
+    domain = GT.domain(space)
+    D = num_dims(domain)
+    mesh = GT.mesh(domain)
+    face_dof_s_ref = shape_function_accessor_reference(value,space)
+    face_phi = physical_map_accessor(value,mesh,Val(D))
+    signs = nedelec_dof_signs(space)
+    x0 = zero(SVector{D,Float64})
+    s_ref0 = GT.prototype(face_dof_s_ref)
+    prototype = q->f(x->s_ref0(x),q)
+    function face_dof_s_phys(face,face_around=nothing)
+        phi = face_phi(face)
+        dof_s_ref = face_dof_s_ref(face)
+        function dof_s_phys(dof)
+            s_phys = affine_covariant_shape_function(dof_s_ref(dof),signs[dof,face],phi,x0)
+            x->f(s_phys,x)
+        end
+    end
+    accessor(face_dof_s_phys,prototype)
+end
+
+# Space and field accessors (space_accessor, field_accessor).
+nedelec_accessor_sign(space,::AnyIndex,mesh_accessor) = one(Int8)
+function nedelec_accessor_sign(space,dof::Integer,mesh_accessor)
+    cell = mesh_accessor.space_accessor.location.Dface
+    nedelec_dof_signs(space)[dof,cell]
+end
+
+function map_shape_function(::typeof(GT.value),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+    nedelec_accessor_sign(space,dof,mesh_accessor)*(transpose(J)\sref)
+end
+
+function map_shape_function(::typeof(ForwardDiff.jacobian),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
+    nedelec_accessor_sign(space,dof,mesh_accessor)*((transpose(J)\sref)/J)
+end
+
+function map_shape_function(::typeof(ForwardDiff.gradient),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+    throw(ArgumentError(
+        "Nédélec shape functions are vector-valued; use ForwardDiff.jacobian instead of ForwardDiff.gradient"))
+end
+
 # Interpolation: each global DOF is the tangential moment along its globally oriented edge.
 
 function interpolate_impl!(
@@ -378,6 +429,7 @@ function interpolate_impl!(
     Dface_to_dofs = face_dofs(space)
     Dface_to_ctype = face_reference_id(space)
     ctype_to_reffe = reference_spaces(space)
+    dirichlet_dof_location = GT.dirichlet_dof_location(space)
     s,w = gausslegendre(4)
     ss,ws = (s .+ 1) ./ 2, w ./ 2
     for Dface in faces(domain)
@@ -390,6 +442,8 @@ function interpolate_impl!(
                 free_or_diri == DIRICHLET && continue
             else
                 free_or_diri == FREE && continue
+                # A piecewise Dirichlet field writes only the DOFs of its own boundary piece.
+                dirichlet_dof_location[-dof] == location || continue
             end
             na,nb = minmax(nodes[a],nodes[b])
             xa,xb = node_x[na],node_x[nb]
