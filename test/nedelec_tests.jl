@@ -75,7 +75,8 @@ for D in (2,3)
     end
 end
 
-@test_throws ArgumentError GT.nedelec_space(GT.unit_simplex(Val(3)),1)
+@test_throws ArgumentError GT.nedelec_space(GT.unit_simplex(Val(3)),-1)
+@test_throws ArgumentError GT.nedelec_space(GT.unit_simplex(Val(3)),1.5)
 @test_throws ArgumentError GT.nedelec_space(GT.unit_n_cube(Val(3)),0)
 @test_throws ArgumentError GT.nedelec_space(GT.interior(GT.cartesian_mesh((0,1,0,1),(2,2))),0)
 
@@ -192,8 +193,9 @@ for (D,mesh) in meshes
     nedges = GT.num_faces(GT.topology(mesh),1)
     @test GT.num_free_dofs(V) == nedges
     @test GT.num_dirichlet_dofs(V) == 0
-    signs = GT.nedelec_dof_signs(V)
-    @test all(s -> s == 1 || s == -1,signs)
+    orientation = GT.nedelec_cell_orientation(V)
+    @test length(orientation) == GT.num_faces(mesh,D)
+    @test all(o -> 1 <= o <= factorial(D+1),orientation)
     dof_to_edge = dof_to_edge_map(V,mesh,D)
     M_ref,K_ref,G_ref = whitney_matrices(mesh,D,dof_to_edge)
 
@@ -315,13 +317,13 @@ end
 
 # Convergence: curl curl u + u = f with tangential Dirichlet data, manufactured solution.
 
-function solve_maxwell(D,n)
+function solve_maxwell(D,n;k=0)
     domain = D == 3 ? (0,1,0,1,0,1) : (0,1,0,1)
     mesh = GT.cartesian_mesh(domain,ntuple(_->n,D);simplexify=true)
     Ω = GT.interior(mesh)
     Γ = GT.boundary(mesh)
-    V = GT.nedelec_space(Ω,0;dirichlet_boundary=Γ)
-    dΩ = GT.measure(Ω,4)
+    V = GT.nedelec_space(Ω,k;dirichlet_boundary=Γ)
+    dΩ = GT.measure(Ω,2k+4)
     if D == 3
         ufun = x -> SVector(sinpi(x[2])*sinpi(x[3]),sinpi(x[1])*sinpi(x[3]),sinpi(x[1])*sinpi(x[2]))
         curlfun = x -> curl(ForwardDiff.jacobian(ufun,x))
@@ -414,27 +416,243 @@ let
     @test GT.dirichlet_values(uh) ≈ [dot(c,node_x[nb]-node_x[na]) for (na,nb) in edges]
 end
 
-# The compiler's untabulated (general-operator) helper agrees with the tabulated map.
+# The compiler's untabulated (general-operator) helper and the untabulated accessor
+# against the closed-form Whitney functions λa∇λb - λb∇λa, edge (a,b) with ascending
+# global node IDs.
 let
     mesh = GT.cartesian_mesh((0,2,0,1,0,1),(2,2,2);simplexify=true)
     Ω = GT.interior(mesh)
     V = GT.nedelec_space(Ω,0)
     fe = only(GT.reference_spaces(V))
-    shapes = GT.shape_functions(fe)
     geometry = only(GT.reference_spaces(mesh,3))
     node_x = GT.node_coordinates(mesh)
+    edge_nodes = GT.face_nodes(GT.mesh(GT.domain(fe)),1)
     s_value = GT.shape_function_accessor(GT.value,V)
-    for cell in (1,GT.num_faces(Ω))
+    s_jac = GT.shape_function_accessor(ForwardDiff.jacobian,V)
+    for cell in (1,7,GT.num_faces(Ω))
         nodes = GT.face_nodes(mesh,3)[cell]
-        xc = sum(node_x[nodes])/4 + SVector(0.01,0.0,-0.01)
+        x = node_x[nodes]
+        B = hcat([x[k+1]-x[1] for k in 1:3]...)
+        Binv = inv(B)
+        ∇λ = vcat([-vec(sum(Binv,dims=1))],[Binv[k,:] for k in 1:3])
+        λ(y) = (l = Binv*(y-x[1]); vcat(1-sum(l),l))
+        xc = sum(x)/4 + SVector(0.01,0.0,-0.01)
+        P = Int(GT.nedelec_cell_orientation(V)[cell])
         for dof in 1:6
-            sign = GT.nedelec_dof_signs(V)[dof,cell]
-            s = GT.physical_covariant_shape_function(shapes[dof],sign,GT.shape_functions(geometry),
-                node_x,nodes,zero(SVector{3,Float64}))
-            @test s(xc) ≈ s_value(cell)(dof)(xc)
-            @test ForwardDiff.jacobian(s,xc) ≈ GT.shape_function_accessor(ForwardDiff.jacobian,V)(cell)(dof)(xc)
+            a,b = edge_nodes[dof]
+            a,b = nodes[a] < nodes[b] ? (a,b) : (b,a)
+            whitney(y) = (l = λ(y); l[a]*∇λ[b] - l[b]*∇λ[a])
+            s = GT.physical_covariant_shape_function(GT.nedelec_oriented_shape_function(fe,dof,P),
+                GT.shape_functions(geometry),node_x,nodes,zero(SVector{3,Float64}))
+            @test s(xc) ≈ whitney(xc)
+            @test ForwardDiff.jacobian(s,xc) ≈ ∇λ[b]*∇λ[a]' - ∇λ[a]*∇λ[b]'
+            @test s_value(cell)(dof)(xc) ≈ whitney(xc)
+            @test s_jac(cell)(dof)(xc) ≈ ∇λ[b]*∇λ[a]' - ∇λ[a]*∇λ[b]'
         end
     end
+end
+
+# Higher orders.
+
+nedelec_dim(D,k) = D == 2 ? (k+1)*(k+3) : div((k+1)*(k+3)*(k+4),2)
+nedelec_interior_dim(D,k) = D == 2 ? k*(k+1) : div((k-1)*k*(k+1),2)
+
+# Reference element of order k: dimension, duality, ownership, and the orientation
+# matrices. For every vertex permutation P, the oriented function of a slot must be the
+# covariant push-forward, by the affine map R of the reference simplex with
+# R(v̂ᵢ) = v̂_{P[i]}, of the reference function on the entity that R maps to the slot's
+# entity (same own index). This is recomputed here from the entity vertex sets.
+for (D,ks) in ((2,0:3),(3,0:2)), k in ks
+    geo = GT.unit_simplex(Val(D))
+    fe = GT.nedelec_space(geo,k)
+    n = GT.num_dofs(fe)
+    @test n == nedelec_dim(D,k)
+    shapes = GT.shape_functions(fe)
+    sigma = GT.dual_basis(fe)
+    @test [sigma[i](shapes[j]) for i in 1:n, j in 1:n] ≈ Matrix(I,n,n) atol=1e-10
+    @test [sigma[i](x->im*shapes[j](x)) for i in 1:n, j in 1:n] ≈ im*Matrix(I,n,n) atol=1e-10
+    own = [GT.face_own_dofs(fe,d) for d in 0:D]
+    @test all(isempty,own[1])
+    @test all(dofs->length(dofs)==k+1,own[2])
+    if D == 3
+        @test all(dofs->length(dofs)==k*(k+1),own[3])
+        @test all(dofs->length(dofs)==3*(k+1)+k*(k+1),GT.face_dofs(fe,2))
+    end
+    @test length(only(own[D+1])) == nedelec_interior_dim(D,k)
+    @test sort(reduce(vcat,[reduce(vcat,dofs;init=Int32[]) for dofs in own])) == 1:n
+    @test only(GT.face_dofs(fe,D)) == 1:n
+    cell_mesh = GT.mesh(geo)
+    vertices = [SVector{D,Float64}(x) for x in GT.node_coordinates(cell_mesh)]
+    entity_nodes = [map(nodes->sort(Int.(collect(nodes))),GT.face_nodes(cell_mesh,d)) for d in 0:D]
+    perms = fe.workspace.orientation_permutations
+    @test length(perms) == factorial(D+1) && allunique(perms)
+    ξs = [SVector{D}(ntuple(i->0.13*i,D)),SVector{D}(ntuple(i->0.3-0.07i,D))]
+    worst = 0.0
+    for (P,perm) in enumerate(perms)
+        inverse = invperm(perm)
+        b = vertices[perm[1]]
+        Ainv = inv(hcat([vertices[perm[i+1]]-b for i in 1:D]...))
+        for d in 1:D, (entity,dofs) in enumerate(own[d+1]), (i,slot) in enumerate(dofs)
+            mapped = sort([inverse[v] for v in entity_nodes[d+1][entity]])
+            source = own[d+1][findfirst(==(mapped),entity_nodes[d+1])][i]
+            ψ = GT.nedelec_oriented_shape_function(fe,slot,P)
+            for ξ in ξs
+                expected = transpose(Ainv)*shapes[source](Ainv*(ξ-b))
+                worst = max(worst,norm(ψ(ξ)-expected))
+            end
+        end
+    end
+    @test worst < 1e-9
+    if k == 0
+        C = fe.workspace.orientation_matrices
+        @test all(P -> isdiag(C[:,:,P]) && all(c -> abs(abs(c)-1) < 1e-12,diag(C[:,:,P])),1:length(perms))
+    end
+end
+
+function sheared_simplex_mesh(D,n)
+    mesh = GT.cartesian_mesh(D == 3 ? (0,1,0,1,0,1) : (0,1,0,1),ntuple(_->n,D);simplexify=true)
+    GT.replace_node_coordinates(mesh,
+        [SVector{D}(ntuple(i->1.2x[i]+0.1(sum(x)-x[i]),D)) for x in GT.node_coordinates(mesh)])
+end
+
+# Tangential continuity of a discrete field with arbitrary DOF values, evaluated from
+# both cells at points of shared faces (edges in 2D); normal components may jump.
+function tangential_jumps(V,mesh,D;maxfaces=20)
+    node_x = GT.node_coordinates(mesh)
+    face_cells = GT.face_incidence(GT.topology(mesh),D-1,D)
+    face_nodes = GT.face_nodes(mesh,D-1)
+    cell_dofs = GT.face_dofs(V)
+    vals = [sin(1.7i)+0.3 for i in 1:GT.num_free_dofs(V)]
+    s = GT.shape_function_accessor(GT.value,V)
+    uh(cell,x) = sum(vals[dof]*s(cell)(i)(x) for (i,dof) in enumerate(cell_dofs[cell]))
+    weights = D == 3 ? ((1/3,1/3,1/3),(0.6,0.3,0.1),(0.1,0.2,0.7)) : ((0.5,0.5),(0.2,0.8),(0.9,0.1))
+    tangential,total,nchecked = 0.0,0.0,0
+    for (face,cells) in enumerate(face_cells)
+        length(cells) == 2 || continue
+        nchecked == maxfaces && break
+        nchecked += 1
+        xs = node_x[face_nodes[face]]
+        tangents = [xs[i+1]-xs[1] for i in 1:D-1]
+        for w in weights
+            x = sum(w[i]*xs[i] for i in 1:D)
+            jump = uh(cells[1],x)-uh(cells[2],x)
+            tangential = max(tangential,maximum(t->abs(dot(t,jump)),tangents))
+            total = max(total,norm(jump))
+        end
+    end
+    tangential,total,nchecked
+end
+
+meshes_k = [(2,sheared_simplex_mesh(2,2)),(2,gmsh_simplex_mesh(2,0.45)),
+            (3,sheared_simplex_mesh(3,2)),(3,gmsh_simplex_mesh(3,0.7))]
+
+for (D,mesh) in meshes_k, k in (1,2)
+    Ω = GT.interior(mesh)
+    V = GT.nedelec_space(Ω,k)
+    topo = GT.topology(mesh)
+    nedges,nfaces,ncells = GT.num_faces(topo,1),GT.num_faces(topo,2),GT.num_faces(topo,D)
+    expected = nedges*(k+1) + (D == 3 ? nfaces*k*(k+1) : 0) + ncells*nedelec_interior_dim(D,k)
+    @test GT.num_free_dofs(V) == expected
+
+    tangential,total,nchecked = tangential_jumps(V,mesh,D)
+    @test nchecked > 0
+    @test tangential < 1e-10*max(1,total)
+    @test total > 1e-3 # normal components do jump: the check is not vacuous
+
+    # A polynomial field of degree k (contained in NED_k) is reproduced exactly.
+    a = SVector{D}(ntuple(i->0.3i-0.5,D))
+    Bm = SMatrix{D,D}(ntuple(i->sin(1.3i),D*D))
+    quadratic = x -> SVector{D}(ntuple(c->x[c]*x[mod1(c+1,D)]-0.5*x[1]^2,D))
+    ufun = k == 1 ? (x -> a + Bm*x) : (x -> a + Bm*x + quadratic(x))
+    u = GT.analytical_field(ufun,Ω)
+    curl_u = GT.analytical_field(x->curl(ForwardDiff.jacobian(ufun,x)),Ω)
+    uh = GT.zero_field(Float64,V)
+    GT.interpolate!(u,uh)
+    dΩ = GT.measure(Ω,2k+2)
+    @test GT.assemble_scalar(GT.∫(x->norm(u(x)-uh(x))^2,dΩ)) < 1e-22
+    @test GT.assemble_scalar(GT.∫(x->norm(curl_u(x)-GT.call(curl,ForwardDiff.jacobian(uh,x)))^2,dΩ)) < 1e-18
+    uh_dΩ = GT.field_accessor(uh,dΩ;tabulate=(GT.value,ForwardDiff.jacobian),compute=(GT.coordinate,))
+    worst_value,worst_jac = 0.0,0.0
+    for face in GT.each_face(uh_dΩ), point in GT.each_point(face)
+        x = GT.coordinate(point)
+        worst_value = max(worst_value,norm(GT.field(GT.value,point)-ufun(x)))
+        worst_jac = max(worst_jac,norm(GT.field(ForwardDiff.jacobian,point)-ForwardDiff.jacobian(ufun,x)))
+    end
+    @test worst_value < 1e-10
+    @test worst_jac < 1e-9
+    m(u,v) = GT.∫(x->u(x)⋅v(x),dΩ)
+    l(v) = GT.∫(x->u(x)⋅v(x),dΩ)
+    M = GT.assemble_matrix(m,Float64,V,V)
+    @test M\GT.assemble_vector(l,Float64,V) ≈ GT.free_values(uh)
+    csc = (;matrix=GT.element_csc_assembly())
+    @test GT.assemble_matrix(m,Float64,V,V;execution=GT.CPUThreadedExecution(),assembly_method=csc) ≈ M
+
+    # Tangential Dirichlet: the DOFs of the closure of the boundary faces.
+    Γ = GT.boundary(mesh)
+    VD = GT.nedelec_space(Ω,k;dirichlet_boundary=Γ)
+    boundary_faces = GT.face_nodes(mesh,D-1)[GT.faces(Γ)]
+    boundary_edges = Set{Tuple{Int,Int}}()
+    for nodes in boundary_faces, i in 1:D, j in i+1:D
+        push!(boundary_edges,minmax(Int(nodes[i]),Int(nodes[j])))
+    end
+    expected_diri = length(boundary_edges)*(k+1) + (D == 3 ? length(boundary_faces)*k*(k+1) : 0)
+    @test GT.num_dirichlet_dofs(VD) == expected_diri
+    uhD = GT.zero_field(Float64,VD)
+    GT.interpolate!(u,uhD)
+    @test GT.assemble_scalar(GT.∫(x->norm(u(x)-uhD(x))^2,dΩ)) < 1e-22
+end
+
+# Discrete Maxwell eigenvalues with tangential Dirichlet walls (unit square and cube):
+# the kernel of the curl has the dimension of the gradients of the Lagrange space of
+# order k+1, and the first nonzero eigenvalues approach π²(m²+n²(+p²)).
+function maxwell_eigenvalues(D,n,k)
+    mesh = GT.cartesian_mesh(D == 3 ? (0,1,0,1,0,1) : (0,1,0,1),ntuple(_->n,D);simplexify=true)
+    Ω = GT.interior(mesh)
+    Γ = GT.boundary(mesh)
+    V = GT.nedelec_space(Ω,k;dirichlet_boundary=Γ)
+    dΩ = GT.measure(Ω,2k+2)
+    M = GT.assemble_matrix((u,v)->GT.∫(x->u(x)⋅v(x),dΩ),Float64,V,V)
+    K = GT.assemble_matrix((u,v)->GT.∫(x->GT.call(curl,ForwardDiff.jacobian(u,x))⋅GT.call(curl,ForwardDiff.jacobian(v,x)),dΩ),Float64,V,V)
+    λ = eigvals(Symmetric(Matrix(K)),Symmetric(Matrix(M)))
+    nkernel = GT.num_free_dofs(GT.lagrange_space(Ω,k+1;dirichlet_boundary=Γ))
+    λ,nkernel
+end
+
+for (D,n,k,exact) in ((2,4,1,π^2*[1,1,2,4,4]),(2,4,2,π^2*[1,1,2,4,4]),(3,2,1,π^2*[2,2,2,3,3]))
+    λ,nkernel = maxwell_eigenvalues(D,n,k)
+    zero_tol = 1e-8*maximum(λ)
+    @test count(<(zero_tol),λ) == nkernel
+    physical = filter(>=(zero_tol),λ)[1:length(exact)]
+    @test maximum(abs.(physical-exact)./exact) < (D == 3 ? 0.1 : 0.02)
+end
+
+# Convergence at rate k+1 for curl curl u + u = f with tangential Dirichlet data.
+for (D,k,ns) in ((2,1,(4,8,16)),(2,2,(4,8,16)),(3,1,(2,4,8)))
+    errors = [solve_maxwell(D,n;k) for n in ns]
+    rates_l2 = [log2(errors[i][1]/errors[i+1][1]) for i in 1:length(ns)-1]
+    rates_curl = [log2(errors[i][2]/errors[i+1][2]) for i in 1:length(ns)-1]
+    @test rates_l2[end] > k+1-0.15
+    @test rates_curl[end] > k+1-0.15
+end
+
+# Piecewise Dirichlet data at order 1: each Dirichlet DOF gets the value of its own
+# piece's field (compared with interpolating that field alone).
+let
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
+    Ω = GT.interior(mesh)
+    pieces = [GT.boundary(mesh;group_names=[name]) for name in ("2-face-1","2-face-3")]
+    V = GT.nedelec_space(Ω,1;dirichlet_boundary=GT.piecewise_domain(pieces...))
+    fields = (x->SVector(1.0+x[2],-x[1],0.5),x->SVector(-2.0,0.25*x[3],3.0+x[1]))
+    uh = GT.zero_field(Float64,V)
+    GT.interpolate_dirichlet!(GT.piecewise_field(map(f->GT.analytical_field(f,Ω),fields)...),uh)
+    alone = map(fields) do f
+        uhf = GT.zero_field(Float64,V)
+        GT.interpolate_dirichlet!(GT.analytical_field(f,Ω),uhf)
+        GT.dirichlet_values(uhf)
+    end
+    locations = GT.dirichlet_dof_location(V)
+    @test sort(unique(locations)) == [1,2]
+    @test GT.dirichlet_values(uh) ≈ [alone[l][i] for (i,l) in enumerate(locations)]
 end
 
 # Unsupported uses raise errors instead of silently using the Lagrange map.

@@ -12,15 +12,15 @@ curl(J::SMatrix{3,3}) = SVector(J[3,2]-J[2,3],J[1,3]-J[3,1],J[2,1]-J[1,2])
 curl(J::SMatrix{2,2}) = J[2,1]-J[1,2]
 
 @testset "Generated CUDA Nédélec matrices" begin
-    for dim in (2,3), dirichlet in (false,true)
+    for dim in (2,3), dirichlet in (false,true), k in (0,1,2)
         cells = dim == 3 ? (3,3,2) : (4,3)
         mesh = GT.cartesian_mesh(ntuple(i->isodd(i) ? 0 : 1,2dim),cells;simplexify=true)
         mesh = GT.replace_node_coordinates(mesh,
             [SVector{dim}(ntuple(i->1.2x[i]+0.1(sum(x)-x[i]),dim)) for x in GT.node_coordinates(mesh)])
         omega = GT.interior(mesh)
-        V = dirichlet ? GT.nedelec_space(omega,0;dirichlet_boundary=GT.boundary(mesh)) :
-            GT.nedelec_space(omega,0)
-        measure = GT.measure(omega,2)
+        V = dirichlet ? GT.nedelec_space(omega,k;dirichlet_boundary=GT.boundary(mesh)) :
+            GT.nedelec_space(omega,k)
+        measure = GT.measure(omega,2k+2)
         # curl-curl plus a parameterized mass term; the CPU references are fresh forms with the scale baked in.
         form(scale) = (u,v)->GT.∫(x->dot(GT.call(curl,ForwardDiff.jacobian(u,x)),GT.call(curl,ForwardDiff.jacobian(v,x)))+
             scale*dot(u(x),v(x)),measure)
@@ -40,11 +40,11 @@ curl(J::SMatrix{2,2}) = J[2,1]-J[1,2]
     end
 end
 
-@testset "Generated CUDA Nédélec mass matrix in single and double precision" begin
+@testset "Generated CUDA Nédélec mass matrix in single and double precision" for k in (0,1)
     mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
     omega = GT.interior(mesh)
-    V = GT.nedelec_space(omega,0)
-    measure = GT.measure(omega,2)
+    V = GT.nedelec_space(omega,k)
+    measure = GT.measure(omega,2k+2)
     a = (u,v)->GT.∫(x->dot(u(x),v(x)),measure)
     for T in (Float32,Float64)
         expected = GT.assemble_matrix(a,T,V,V)

@@ -1,16 +1,28 @@
-# Nédélec spaces of the first kind (H(curl)-conforming), lowest order, on simplices.
+# Nédélec spaces of the first kind (H(curl)-conforming) of any order on simplices.
 #
-# Reference element: one DOF per edge, the tangential moment
-#   σ_e(v) = ∫₀¹ v(x_a + s (x_b - x_a)) ⋅ (x_b - x_a) ds,
-# where (a,b) are the edge's vertices in the reference edge's node order.
-# The shape functions dual to these moments are the Whitney edge functions.
+# Reference element of order k (k = 0 is the lowest order), on the reference
+# triangle or tetrahedron:
+#   NED_k = P_k^D ⊕ S_{k+1},  S_{k+1} = {p ∈ homogeneous P_{k+1}^D : p⋅x = 0}.
+# Degrees of freedom, per entity, with the entity's vertices in ascending order:
+#   edge (a,b), t = x_b - x_a:        ∫₀¹ (v⋅t) Lⱼ(2s-1) ds (Legendre), j = 0..k
+#   face (a,b,c) (3D, k ≥ 1):         ∫ (v⋅tᵢ) u^α w^β dÂ, tᵢ ∈ {x_b-x_a, x_c-x_a}, α+β ≤ k-1
+#   interior (2D k ≥ 1, 3D k ≥ 2):    ∫ v⋅q, q monomial vectors of degree ≤ k-1 (2D) or ≤ k-2 (3D)
 #
-# Mesh space: each global edge is oriented from its lower to its higher global
-# node ID. A cell's shape function for local edge e is
-#   φ_e = s_e J⁻ᵀ φ̂_e,
-# with J the Jacobian of the geometry map and s_e = ±1 the agreement between the
-# local and global edge orientations. Jacobians transform as s_e J⁻ᵀ ∇̂φ̂_e J⁻¹,
-# which is exact for the affine (linear simplex) cells accepted here.
+# Mesh space and orientation: each cell is given a "sorted frame", the reference
+# map whose i-th reference vertex goes to the cell vertex with the i-th smallest
+# global node ID. In that frame every shared edge and face is seen with the same
+# vertex order from all cells that contain it, so the edge and face moments define
+# global DOFs with no signs or permutations. With φ the cell's geometry map and
+# R the affine map of the reference simplex such that φ∘R is the sorted frame,
+# the cell's shape function in local slot s is
+#   φ_s(x) = J⁻ᵀ ψᴾ_s(ξ),  ψᴾ_s(ξ) = A_R⁻ᵀ φ̂_{perm(s)}(R⁻¹ξ),  ξ = φ⁻¹(x),
+# (The primal basis is written in powers of x - c, c the centroid: the same space,
+# better conditioned at higher order.)
+# where perm(s) is the reference DOF of the sorted-frame entity that R maps to the
+# slot's entity. NED_k is invariant under such maps, so ψᴾ_s = Σⱼ Cᴾ[s,j] φ̂ⱼ with
+# a matrix Cᴾ precomputed for each of the (D+1)! vertex permutations P. At order
+# 0, Cᴾ is diagonal with entries ±1 (the classical edge signs). Jacobians transform
+# as J⁻ᵀ ∇̂ψᴾ J⁻¹, which is exact for the affine (linear simplex) cells accepted.
 
 """
     nedelec_space(domain::AbstractFaceDomain,order)
@@ -18,10 +30,11 @@
 
 Return the Nédélec space of the first kind (H(curl)-conforming) of the given `order` on `domain`.
 
-Only `order=0` (one DOF per edge, the lowest-order or Whitney element) on triangles and tetrahedra is implemented.
-The mesh version requires linear simplex geometry. Its shape functions use the covariant Piola map and the edge
-orientation from the lower to the higher global node ID. A `dirichlet_boundary` fixes the tangential trace: the DOFs of
-the edges in the closure of the given boundary faces become Dirichlet DOFs.
+`order=0` is the lowest-order (Whitney) element with one DOF per edge; order `k` contains the polynomials of degree
+`k` and has edge, face and interior moments. Implemented on triangles and tetrahedra. The mesh version requires linear
+simplex geometry. Its shape functions use the covariant Piola map, and each cell is oriented by the global node IDs
+of its vertices (see [`nedelec_cell_orientation`](@ref)). A `dirichlet_boundary` fixes the tangential trace: the DOFs
+of the edges and faces in the closure of the given boundary faces become Dirichlet DOFs.
 
 Shape functions support `value` and `ForwardDiff.jacobian` (from which the curl follows). Trace (boundary or
 skeleton) integration of Nédélec form arguments is not implemented and raises an error.
@@ -35,7 +48,8 @@ function nedelec_space end
 struct CovariantPiolaMap end
 
 function nedelec_check_order(order)
-    order == 0 || throw(ArgumentError("Only lowest-order Nédélec spaces (order=0) are implemented, got order=$order"))
+    (order isa Integer && order >= 0) || throw(ArgumentError(
+        "The order of a Nédélec space must be a non-negative integer, got order=$order"))
     nothing
 end
 
@@ -48,7 +62,7 @@ end
 function nedelec_space(domain::AbstractFaceDomain,order)
     nedelec_check_order(order)
     nedelec_check_geometry(domain)
-    workspace = nedelec_setup(domain)
+    workspace = nedelec_setup(domain,Int(order))
     NedelecFaceSpace(domain,order,workspace)
 end
 
@@ -60,49 +74,167 @@ end
 
 domain(fe::NedelecFaceSpace) = fe.domain
 order(fe::NedelecFaceSpace) = fe.order
-num_dofs(fe::NedelecFaceSpace) = length(fe.workspace.edge_nodes)
+num_dofs(fe::NedelecFaceSpace) = length(fe.workspace.dual_basis)
 primal_basis(fe::NedelecFaceSpace) = fe.workspace.primal_basis
 dual_basis(fe::NedelecFaceSpace) = fe.workspace.dual_basis
+shape_functions(fe::NedelecFaceSpace) = fe.workspace.shape_functions
 
-function nedelec_primal_basis(::Val{3})
-    # NED0 = P0³ ⊕ {b×x}: six functions.
-    e = (SVector(1.0,0.0,0.0),SVector(0.0,1.0,0.0),SVector(0.0,0.0,1.0))
-    constants = [x -> e[d] + zero(eltype(x))*x for d in 1:3]
-    rotations = [x -> cross(e[d],x) for d in 1:3]
-    vcat(constants,rotations)
+function tabulator(fe::NedelecFaceSpace)
+    primal_t = permutedims(fe.workspace.primal_basis)
+    B = fe.workspace.change_of_basis
+    (f,x) -> broadcast(f,primal_t,x)*B
 end
 
-function nedelec_primal_basis(::Val{2})
-    # NED0 = P0² ⊕ {b(-y,x)}: three functions.
-    [x -> SVector(one(eltype(x)),zero(eltype(x))),
-     x -> SVector(zero(eltype(x)),one(eltype(x))),
-     x -> SVector(-x[2],x[1])]
+# Exponent tuples of the monomials of total degree ≤ k (or == k) in D variables.
+function nedelec_exponents(D,k;homogeneous=false)
+    k < 0 && return NTuple{D,Int}[]
+    all = [Tuple(i) for i in CartesianIndices(ntuple(_->0:k,D))][:]
+    filter(e -> homogeneous ? sum(e) == k : sum(e) <= k, all)
 end
 
-function nedelec_edge_quadrature()
-    # Two Gauss-Legendre points on [0,1]: exact for the linear tangential traces of NED0.
-    s,w = gausslegendre(2)
-    (s .+ 1) ./ 2, w ./ 2
+@inline nedelec_monomial(e,x) = prod(ntuple(i->x[i]^e[i],length(e)))
+
+function nedelec_legendre(j,t)
+    p0,p1 = one(t),t
+    j == 0 && return p0
+    for n in 1:j-1
+        p0,p1 = p1,((2n+1)*t*p1-n*p0)/(n+1)
+    end
+    p1
 end
 
-function nedelec_setup(domain)
+function nedelec_unit_vector(::Val{D},d,m) where D
+    SVector{D}(ntuple(i -> i == d ? m : zero(m),Val(D)))
+end
+
+# Written in y = x - c: P_k and S_{k+1}(y) span NED_k for any shift c, because
+# S_{k+1}(x - c) - S_{k+1}(x) ⊂ P_k.
+function nedelec_primal_basis(::Val{D},k,c) where D
+    polynomials = Function[]
+    for d in 1:D, e in nedelec_exponents(D,k)
+        push!(polynomials,x->nedelec_unit_vector(Val(D),d,nedelec_monomial(e,x-c)))
+    end
+    rotations = Function[]
+    if D == 2
+        # S_{k+1} = {q(y)(-y₂,y₁) : q homogeneous of degree k}.
+        for e in nedelec_exponents(2,k;homogeneous=true)
+            push!(rotations,x->(y = x-c; nedelec_monomial(e,y)*SVector(-y[2],y[1])))
+        end
+    else
+        # S_{k+1} is spanned by x × (m e_d), m homogeneous of degree k; keep a
+        # linearly independent subset (integer coefficients over the monomials).
+        hom = nedelec_exponents(3,k+1;homogeneous=true)
+        position = Dict((c,e)=>i for (i,(c,e)) in enumerate(Iterators.product(1:3,hom)))
+        shift(e,j) = ntuple(i->e[i]+(i==j),3)
+        selected = zeros(Float64,0,length(position))
+        for e in nedelec_exponents(3,k;homogeneous=true), d in 1:3
+            coeffs = zeros(Float64,length(position))
+            # x × (m e_d) = (x2 v3 - x3 v2, x3 v1 - x1 v3, x1 v2 - x2 v1) with v = m e_d.
+            terms = d == 1 ? ((2,3,1),(3,2,-1)) : d == 2 ? ((1,3,-1),(3,1,1)) : ((1,2,1),(2,1,-1))
+            for (component,variable,sign) in terms
+                coeffs[position[(component,shift(e,variable))]] += sign
+            end
+            candidate = vcat(selected,coeffs')
+            if rank(candidate) > size(selected,1)
+                selected = candidate
+                push!(rotations,x->(y = x-c; cross(y,nedelec_unit_vector(Val(3),d,nedelec_monomial(e,y)))))
+            end
+        end
+    end
+    @assert length(rotations) == (D == 2 ? k+1 : (k+1)*(k+3))
+    vcat(polynomials,rotations)
+end
+
+function nedelec_setup(domain,k)
     D = num_dims(domain)
     cell_mesh = mesh(domain)
     node_x = node_coordinates(cell_mesh)
     @assert length(node_x) == D+1 # the reference simplex mesh has its vertices as nodes
-    edge_nodes = map(nodes->(Int(nodes[1]),Int(nodes[2])),face_nodes(cell_mesh,1))
-    ss,ws = nedelec_edge_quadrature()
-    dual_basis = map(edge_nodes) do (a,b)
-        xa,xb = node_x[a],node_x[b]
-        t = xb - xa
-        v -> sum(1:length(ss)) do k
-            ws[k]*dot(t,v(xa + ss[k]*t)) # t is real: no conjugation of v
+    # Entities by dimension, each with its vertices in ascending order.
+    entity_nodes = [map(nodes->sort(Int.(collect(nodes))),face_nodes(cell_mesh,d)) for d in 0:D]
+    dual_basis = Function[]
+    dof_entity = Tuple{Int,Int}[] # dof -> (dimension, entity)
+    # Edge moments.
+    s,w = gausslegendre(k+3)
+    ss,ws = (s .+ 1) ./ 2, w ./ 2
+    for (edge,(a,b)) in enumerate(entity_nodes[2]), j in 0:k
+        xa,t = node_x[a],node_x[b]-node_x[a]
+        push!(dual_basis,v -> sum(q -> ws[q]*dot(t,v(xa+ss[q]*t))*nedelec_legendre(j,2ss[q]-1),1:length(ss)))
+        push!(dof_entity,(1,edge))
+    end
+    # Face moments (3D).
+    if D == 3 && k >= 1
+        face_quadrature = quadrature(unit_simplex(Val(2)),2k+3)
+        uw,wf = coordinates(face_quadrature),weights(face_quadrature)
+        for (face,(a,b,c)) in enumerate(entity_nodes[3]), e in nedelec_exponents(2,k-1), i in 1:2
+            xa = node_x[a]
+            t1,t2 = node_x[b]-xa,node_x[c]-xa
+            t = i == 1 ? t1 : t2
+            push!(dual_basis,v -> sum(q -> wf[q]*dot(t,v(xa+uw[q][1]*t1+uw[q][2]*t2))*nedelec_monomial(e,uw[q]),
+                1:length(wf)))
+            push!(dof_entity,(2,face))
         end
     end
-    primal_basis = nedelec_primal_basis(Val(D))
-    @assert length(primal_basis) == length(dual_basis)
+    # Interior moments.
+    interior_degree = D == 2 ? k-1 : k-2
+    if interior_degree >= 0
+        cell_quadrature = quadrature(domain,2k+3)
+        xs,wc = coordinates(cell_quadrature),weights(cell_quadrature)
+        for e in nedelec_exponents(D,interior_degree), d in 1:D
+            push!(dual_basis,v -> sum(q -> wc[q]*v(xs[q])[d]*nedelec_monomial(e,xs[q]),1:length(wc)))
+            push!(dof_entity,(D,1))
+        end
+    end
+    centroid = sum(node_x)/length(node_x)
+    primal_basis = nedelec_primal_basis(Val(D),k,centroid)
+    ndofs = length(dual_basis)
+    expected = D == 2 ? (k+1)*(k+3) : div((k+1)*(k+3)*(k+4),2)
+    @assert length(primal_basis) == ndofs == expected
+    # Shape functions dual to the moments.
+    A = [dual_basis[i](primal_basis[j]) for i in 1:ndofs, j in 1:ndofs]
+    B = inv(A)
+    shape_functions = map(1:ndofs) do i
+        x -> sum(j -> B[j,i]*primal_basis[j](x),1:ndofs)
+    end
+    entity_dofs = [[Int32[] for _ in entity_nodes[d+1]] for d in 0:D]
+    for (dof,(d,entity)) in enumerate(dof_entity)
+        push!(entity_dofs[d+1][entity],dof)
+    end
     reference_topology = topology(domain)
-    (;edge_nodes,primal_basis,dual_basis,reference_topology)
+    workspace = (;entity_nodes,entity_dofs,dof_entity,primal_basis,dual_basis,shape_functions,
+        change_of_basis=B,reference_topology)
+    orientation = nedelec_orientation_matrices(D,node_x,workspace)
+    (;workspace...,orientation...)
+end
+
+# The matrices Cᴾ for every permutation P of the reference vertices (see the top of this file).
+function nedelec_orientation_matrices(D,node_x,ws)
+    (;entity_nodes,entity_dofs,dof_entity,dual_basis,primal_basis,change_of_basis) = ws
+    ndofs = length(dual_basis)
+    perms = [collect(p) for p in permutations(1:D+1)]
+    entity_index = [Dict(nodes=>entity for (entity,nodes) in enumerate(entity_nodes[d+1])) for d in 0:D]
+    own_index = zeros(Int,ndofs)
+    for d in 0:D, dofs in entity_dofs[d+1], (i,dof) in enumerate(dofs)
+        own_index[dof] = i
+    end
+    matrices = zeros(Float64,ndofs,ndofs,length(perms))
+    vertices = [SVector{D,Float64}(x) for x in node_x]
+    for (P,perm) in enumerate(perms)
+        inverse = invperm(perm)
+        b = vertices[perm[1]]
+        A = hcat(ntuple(i->vertices[perm[i+1]]-b,Val(D))...)
+        Ainv = inv(SMatrix{D,D}(A))
+        # G[j,i] = σ̂ⱼ(A⁻ᵀ pᵢ∘R⁻¹); the push-forward of φ̂_src = Σᵢ B[i,src] pᵢ has moments G*B[:,src].
+        G = [dual_basis[j](ξ -> transpose(Ainv)*primal_basis[i](Ainv*(ξ-b))) for j in 1:ndofs, i in 1:ndofs]
+        GB = G*change_of_basis
+        for slot in 1:ndofs
+            d,entity = dof_entity[slot]
+            sorted_nodes = sort([inverse[v] for v in entity_nodes[d+1][entity]])
+            source = entity_dofs[d+1][entity_index[d+1][sorted_nodes]][own_index[slot]]
+            matrices[slot,:,P] = GB[:,source]
+        end
+    end
+    (;orientation_permutations=perms,orientation_matrices=matrices)
 end
 
 function nedelec_num_face_permutations(fe::NedelecFaceSpace,d)
@@ -114,41 +246,31 @@ function nedelec_num_face_permutations(fe::NedelecFaceSpace,d)
     end
 end
 
-function face_own_dofs(fe::NedelecFaceSpace,d)
-    nfaces = num_faces(mesh(fe.domain),d)
-    if d == 1
-        [Int32[edge] for edge in 1:nfaces]
-    else
-        [Int32[] for _ in 1:nfaces]
-    end
-end
+face_own_dofs(fe::NedelecFaceSpace,d) = fe.workspace.entity_dofs[d+1]
 
 function face_dofs(fe::NedelecFaceSpace,d)
-    D = num_dims(fe.domain)
-    edge_nodes = fe.workspace.edge_nodes
-    nedges = length(edge_nodes)
-    if d == 0
-        [Int32[] for _ in 1:num_faces(mesh(fe.domain),0)]
-    elseif d == 1
-        face_own_dofs(fe,d)
-    elseif d == D
-        [collect(Int32,1:nedges)]
-    else
-        # Closure: the edges whose two nodes belong to the face.
-        map(face_nodes(mesh(fe.domain),d)) do nodes
-            Int32[edge for edge in 1:nedges if all(in(nodes),edge_nodes[edge])]
-        end
+    # Closure: the DOFs of every entity whose vertices belong to the d-face.
+    (;entity_nodes,dof_entity) = fe.workspace
+    map(entity_nodes[d+1]) do nodes
+        Int32[dof for (dof,(dd,entity)) in enumerate(dof_entity) if dd <= d && all(in(nodes),entity_nodes[dd+1][entity])]
     end
 end
 
 function face_own_dof_permutations(fe::NedelecFaceSpace,d)
-    # One DOF per edge: reversing an edge changes the sign of its shape function,
-    # which the mesh space handles with the edge signs, not with a permutation.
+    # Each cell is evaluated in its sorted frame, where a shared entity's own DOFs are
+    # ordered the same way from every cell, so no permutation is needed.
     own_dofs = face_own_dofs(fe,d)
     nperms = nedelec_num_face_permutations(fe,d)
     map(own_dofs,nperms) do dofs,n
         [collect(Int32,1:length(dofs)) for _ in 1:n]
     end
+end
+
+# Oriented reference shape function ψᴾ_slot = Σⱼ Cᴾ[slot,j] φ̂ⱼ.
+function nedelec_oriented_shape_function(fe::NedelecFaceSpace,slot,P)
+    C = fe.workspace.orientation_matrices
+    φ̂ = fe.workspace.shape_functions
+    ξ -> sum(j -> C[slot,j,P]*φ̂[j](ξ),1:length(φ̂))
 end
 
 function nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothing)
@@ -164,9 +286,9 @@ function nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothi
             "Nédélec spaces require linear (affine) simplex geometry"))
     end
     ctype_to_reffe = map(refface->nedelec_space(GT.domain(refface),order),ctype_to_refface)
-    dof_signs = nedelec_dof_signs(mesh,D,ctype_to_reffe)
+    orientation = nedelec_cell_orientation(mesh,D,ctype_to_reffe)
     workspace = nothing
-    NedelecMeshSpace(domain,order,dirichlet_boundary,ctype_to_reffe,dof_signs,workspace) |> setup_space
+    NedelecMeshSpace(domain,order,dirichlet_boundary,ctype_to_reffe,orientation,workspace) |> setup_space
 end
 
 struct NedelecMeshSpace{A,B,C,E,S,W} <: AbstractSpace
@@ -174,7 +296,7 @@ struct NedelecMeshSpace{A,B,C,E,S,W} <: AbstractSpace
     order::B
     dirichlet_boundary::C
     reference_spaces::E
-    dof_signs::S # Matrix{Int8}: [local_dof,mesh_cell] -> ±1
+    cell_orientation::S # Vector{Int8}: [mesh_cell] -> index of the vertex permutation of its sorted frame
     workspace::W
 end
 
@@ -191,35 +313,32 @@ function face_reference_id(a::NedelecMeshSpace)
 end
 
 function replace_workspace(a::NedelecMeshSpace,workspace)
-    NedelecMeshSpace(a.domain,a.order,a.dirichlet_boundary,a.reference_spaces,a.dof_signs,workspace)
+    NedelecMeshSpace(a.domain,a.order,a.dirichlet_boundary,a.reference_spaces,a.cell_orientation,workspace)
 end
 
 """
-    nedelec_dof_signs(space)
+    nedelec_cell_orientation(space)
 
-Return the matrix `signs[local_dof,mesh_cell]` with the factor ±1 that relates the local edge orientation of
-`mesh_cell` to the global one (from the lower to the higher global node ID).
+Return the vector `orientation[mesh_cell]` with, for each cell, the index of the permutation of the reference vertices
+that sorts the cell's vertices by global node ID. The cell's shape functions are evaluated in that sorted frame, which
+makes every shared edge and face oriented consistently (for the lowest order, edges point from the lower to the higher
+global node ID).
 
 # Level
 
 Advanced
 """
-nedelec_dof_signs(a::NedelecMeshSpace) = a.dof_signs
+nedelec_cell_orientation(a::NedelecMeshSpace) = a.cell_orientation
 
-function nedelec_dof_signs(mesh,D,ctype_to_reffe)
+function nedelec_cell_orientation(mesh,D,ctype_to_reffe)
     Dface_to_nodes = face_nodes(mesh,D)
     Dface_to_ctype = face_reference_id(mesh,D)
-    nDfaces = length(Dface_to_nodes)
-    max_ndofs = maximum(num_dofs,ctype_to_reffe)
-    signs = ones(Int8,max_ndofs,nDfaces)
-    for Dface in 1:nDfaces
-        fe = ctype_to_reffe[Dface_to_ctype[Dface]]
-        nodes = Dface_to_nodes[Dface]
-        for (edge,(a,b)) in enumerate(fe.workspace.edge_nodes)
-            signs[edge,Dface] = nodes[a] < nodes[b] ? Int8(1) : Int8(-1)
-        end
+    lookup = map(ctype_to_reffe) do fe
+        Dict(perm=>Int8(P) for (P,perm) in enumerate(fe.workspace.orientation_permutations))
     end
-    signs
+    map(1:length(Dface_to_nodes)) do Dface
+        lookup[Dface_to_ctype[Dface]][sortperm(collect(Dface_to_nodes[Dface]))]
+    end
 end
 
 # Code generation for the compiler (serial, threaded and CUDA execution).
@@ -233,9 +352,38 @@ function nedelec_check_integration_domain(V,Q)
     nothing
 end
 
+"""
+    nedelec_reference_table(f,V,Q)
+
+Tabulate `f` (`value` or `ForwardDiff.jacobian`) of the oriented reference shape functions of the Nédélec space `V`
+at the reference points of the quadrature `Q`. The result `table[slot,point,P]` holds one table per vertex
+permutation `P` of the reference cell (see [`nedelec_cell_orientation`](@ref)).
+
+# Level
+
+Advanced
+"""
+function nedelec_reference_table(f,V::NedelecMeshSpace,Q::AbstractQuadrature)
+    mesh = GT.mesh(GT.domain(Q))
+    d = num_dims(GT.domain(Q))
+    rids = face_reference_id(mesh,d)
+    rid = first(rids)
+    @assert all(==(rid),rids) # one cell type, as in space_integration_data
+    points = coordinates(reference_quadratures(Q)[rid])
+    fe = reference_spaces(V)[rid]
+    T0 = tabulator(fe)(f,points) # [point,dof] in the reference frame
+    C = fe.workspace.orientation_matrices
+    ndofs,npoints,nperms = size(C,1),length(points),size(C,3)
+    table = Array{eltype(T0),3}(undef,ndofs,npoints,nperms)
+    for P in 1:nperms, q in 1:npoints, slot in 1:ndofs
+        table[slot,q,P] = sum(j -> C[slot,j,P]*T0[q,j],1:ndofs)
+    end
+    table
+end
+
 function mapped_shape_function_expr(::CovariantPiolaMap,func,mesh,V,Q,mesh_expr,V_expr,Q_expr,f_expr,q_expr,i_expr)
     nedelec_check_integration_domain(V,Q)
-    sign_expr = :(nedelec_dof_signs($V_expr)[$i_expr,$f_expr])
+    orientation_expr = :(Int(nedelec_cell_orientation($V_expr)[$f_expr]))
     is_tabulated = func === value || func === ForwardDiff.jacobian
     if !is_tabulated
         func === ForwardDiff.gradient && throw(ArgumentError(
@@ -243,7 +391,7 @@ function mapped_shape_function_expr(::CovariantPiolaMap,func,mesh,V,Q,mesh_expr,
         d = num_dims(GT.domain(V))
         rid = first(face_reference_id(Q))
         xi0 = zero(eltype(coordinates(reference_quadratures(Q)[rid])))
-        shape_expr = :(shape_functions(reference_spaces($V_expr)[$rid])[$i_expr])
+        shape_expr = :(nedelec_oriented_shape_function(reference_spaces($V_expr)[$rid],$i_expr,$orientation_expr))
         geometry_functions_expr = :(shape_functions(reference_spaces($mesh_expr, Val($d))[$rid]))
         mesh_data_expr = :(mesh_integration_data($mesh_expr, $Q_expr))
         node_x_expr = :(node_coordinates($mesh_data_expr))
@@ -251,24 +399,23 @@ function mapped_shape_function_expr(::CovariantPiolaMap,func,mesh,V,Q,mesh_expr,
         geometry_space_expr = :(mesh_space($mesh_expr, Val($d)))
         geometry_data_expr = :(space_integration_data(value, $geometry_space_expr, $Q_expr))
         geometry_values_expr = :(reference_tabulator($geometry_data_expr))
-        return :(evaluate_physical_covariant_shape($func, $shape_expr, $sign_expr, $geometry_functions_expr,
+        return :(evaluate_physical_covariant_shape($func, $shape_expr, $geometry_functions_expr,
             $node_x_expr, $nodes_expr, $geometry_values_expr, $q_expr, $xi0))
     end
-    space_data_expr = :(space_integration_data($func, $V_expr, $Q_expr))
-    v_expr = :(reference_tabulator($space_data_expr)[$i_expr, $q_expr])
+    v_expr = :(nedelec_reference_table($func, $V_expr, $Q_expr)[$i_expr, $q_expr, $orientation_expr])
     J_expr = jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
     invJ_expr = :(adjugate($J_expr) * inv(det($J_expr)))
     if func === value
-        :($sign_expr * (transpose($invJ_expr) * $v_expr))
+        :(transpose($invJ_expr) * $v_expr)
     else
-        :($sign_expr * (transpose($invJ_expr) * $v_expr * $invJ_expr))
+        :(transpose($invJ_expr) * $v_expr * $invJ_expr)
     end
 end
 
 function mapped_shape_function_expr(::CovariantPiolaMap,V,mesh_expr,V_expr,f_expr,i_expr)
     rid_expr = :(face_reference_id($V_expr)[$f_expr])
-    shape_expr = :(shape_functions(reference_spaces($V_expr)[$rid_expr])[$i_expr])
-    sign_expr = :(nedelec_dof_signs($V_expr)[$i_expr,$f_expr])
+    orientation_expr = :(Int(nedelec_cell_orientation($V_expr)[$f_expr]))
+    shape_expr = :(nedelec_oriented_shape_function(reference_spaces($V_expr)[$rid_expr],$i_expr,$orientation_expr))
     d = num_dims(GT.domain(V))
     geometry_rid_expr = :(face_reference_id($mesh_expr, $d)[$f_expr])
     geometry_space_expr = :(reference_spaces($mesh_expr, Val($d))[$geometry_rid_expr])
@@ -276,44 +423,51 @@ function mapped_shape_function_expr(::CovariantPiolaMap,V,mesh_expr,V_expr,f_exp
     node_x_expr = :(node_coordinates($mesh_expr))
     nodes_expr = :(face_nodes($mesh_expr, $d)[$f_expr])
     xi0_expr = :(zero(first(node_coordinates($geometry_space_expr))))
-    :(physical_covariant_shape_function($shape_expr, $sign_expr, $functions_expr, $node_x_expr, $nodes_expr, $xi0_expr))
+    :(physical_covariant_shape_function($shape_expr, $functions_expr, $node_x_expr, $nodes_expr, $xi0_expr))
 end
 
-function physical_covariant_shape_function(s_ref, sign, geometry_functions, node_x, nodes, xi0)
+function physical_covariant_shape_function(s_ref, geometry_functions, node_x, nodes, xi0)
     function phi(xi)
         physical_map_value(xi, geometry_functions, node_x, nodes)
     end
-    affine_covariant_shape_function(s_ref, sign, phi, xi0)
+    affine_covariant_shape_function(s_ref, phi, xi0)
 end
 
 # Nédélec spaces only accept affine cells, so the geometry map is inverted in
 # closed form, ξ = ξ0 + J⁻¹(x - φ(ξ0)). This is exact and, unlike a Newton
 # inverse, can be differentiated with ForwardDiff.
-function affine_covariant_shape_function(s_ref, sign, phi, xi0)
+function affine_covariant_shape_function(s_ref, phi, xi0)
     J = ForwardDiff.jacobian(phi, xi0)
     x0 = phi(xi0)
     x -> begin
         xi = xi0 + J \ (x - x0)
-        sign * (transpose(J) \ s_ref(xi))
+        transpose(J) \ s_ref(xi)
     end
 end
 
-function evaluate_physical_covariant_shape(func, s_ref, sign, geometry_functions, node_x,
+function evaluate_physical_covariant_shape(func, s_ref, geometry_functions, node_x,
         nodes, reference_values, point, xi0)
-    s_phys = physical_covariant_shape_function(s_ref, sign, geometry_functions, node_x, nodes, xi0)
+    s_phys = physical_covariant_shape_function(s_ref, geometry_functions, node_x, nodes, xi0)
     x_q = physical_point_value(node_x, nodes, reference_values, point)
     func(s_phys, x_q)
 end
 
 # Accessors (discrete fields used as data, sampling).
 
+# Per cell (mesh face ID), per local DOF: (dof_v,invJ) -> transform(Σⱼ Cᴾ[dof,j] dof_v(j), invJ),
+# where dof_v gives the reference-frame values of all DOFs at the current point.
 function nedelec_shape_function_accessor_modifier(space::NedelecMeshSpace,transform)
-    signs = nedelec_dof_signs(space)
-    prototype = (v,invJ) -> transform(v,invJ)
+    orientation = nedelec_cell_orientation(space)
+    Dface_to_ctype = face_reference_id(space)
+    ctype_to_C = map(fe->fe.workspace.orientation_matrices,reference_spaces(space))
+    C0 = first(ctype_to_C)
+    prototype = (dof_v,invJ) -> transform(C0[1,1,1]*dof_v(1),invJ)
     function face_dof_modifier(face,face_around=nothing)
+        C = ctype_to_C[Dface_to_ctype[face]]
+        P = Int(orientation[face])
+        ndofs = size(C,1)
         function dof_modifier(dof)
-            sign = signs[dof,face]
-            (v,invJ) -> sign*transform(v,invJ)
+            (dof_v,invJ) -> transform(sum(j -> C[dof,j,P]*dof_v(j),1:ndofs),invJ)
         end
     end
     accessor(face_dof_modifier,prototype)
@@ -332,7 +486,8 @@ function shape_function_accessor_modifier(f::typeof(ForwardDiff.gradient),space:
         "Nédélec shape functions are vector-valued; use ForwardDiff.jacobian instead of ForwardDiff.gradient"))
 end
 
-# The generic tabulated accessor passes no Jacobian for `value`; the covariant map needs it.
+# The generic tabulated accessor passes no Jacobian for `value` and maps each DOF on
+# its own; the Nédélec map needs the Jacobian and combines the DOFs of a cell.
 for T in (:value,:(ForwardDiff.jacobian))
     for B in (false,true)
         @eval function shape_function_accessor_physical(f::typeof($T),space::NedelecMeshSpace,
@@ -348,7 +503,8 @@ function nedelec_shape_function_accessor_physical(f,space,measure)
     D = num_dims(GT.domain(space))
     face_point_Dphi = jacobian_accessor(measure,Val(D))
     J0 = GT.prototype(face_point_Dphi)
-    prototype = GT.prototype(dface_to_modif)(GT.prototype(face_point_dof_v),inv(J0))
+    v0 = GT.prototype(face_point_dof_v)
+    prototype = GT.prototype(dface_to_modif)(j->v0,inv(J0))
     function face_point_dof_s(face,face_around=nothing)
         point_dof_v = face_point_dof_v(face,face_around)
         dof_modif = dface_to_modif(face,face_around)
@@ -358,58 +514,87 @@ function nedelec_shape_function_accessor_physical(f,space,measure)
             invJ = inv(J2)
             dof_v = point_dof_v(point)
             function dof_s(dof)
-                dof_modif(dof)(dof_v(dof),invJ)
+                dof_modif(dof)(dof_v,invJ)
             end
         end
     end
     accessor(face_point_dof_s,prototype)
 end
 
-# Untabulated physical shape functions: x -> s J⁻ᵀ φ̂(ξ) with ξ = φ⁻¹(x) (affine cells).
+# Untabulated physical shape functions: x -> J⁻ᵀ ψᴾ(ξ) with ξ = φ⁻¹(x) (affine cells).
 function shape_function_accessor_physical(f,space::NedelecMeshSpace)
     domain = GT.domain(space)
     D = num_dims(domain)
     mesh = GT.mesh(domain)
-    face_dof_s_ref = shape_function_accessor_reference(value,space)
     face_phi = physical_map_accessor(value,mesh,Val(D))
-    signs = nedelec_dof_signs(space)
+    orientation = nedelec_cell_orientation(space)
+    Dface_to_ctype = face_reference_id(space)
+    ctype_to_reffe = reference_spaces(space)
     x0 = zero(SVector{D,Float64})
-    s_ref0 = GT.prototype(face_dof_s_ref)
-    prototype = q->f(x->s_ref0(x),q)
+    s0 = first(shape_functions(first(ctype_to_reffe)))
+    prototype = q->f(x->s0(x),q)
     function face_dof_s_phys(face,face_around=nothing)
         phi = face_phi(face)
-        dof_s_ref = face_dof_s_ref(face)
+        fe = ctype_to_reffe[Dface_to_ctype[face]]
+        P = Int(orientation[face])
         function dof_s_phys(dof)
-            s_phys = affine_covariant_shape_function(dof_s_ref(dof),signs[dof,face],phi,x0)
+            s_phys = affine_covariant_shape_function(nedelec_oriented_shape_function(fe,dof,P),phi,x0)
             x->f(s_phys,x)
         end
     end
     accessor(face_dof_s_phys,prototype)
 end
 
-# Space and field accessors (space_accessor, field_accessor).
-nedelec_accessor_sign(space,::AnyIndex,mesh_accessor) = one(Int8)
-function nedelec_accessor_sign(space,dof::Integer,mesh_accessor)
+# Space and field accessors (space_accessor, field_accessor). The generic loop maps
+# each DOF on its own (map_shape_function); here all DOFs of the cell are combined.
+function shape_functions(f,a::SpaceAccessor{AtInterior,<:NedelecMeshSpace})
+    (;space,mesh_accessor,reference_space_accessor) = a
+    dof_sref = GT.shape_functions(f,reference_space_accessor)
+    nedelec_map_shape_functions!(workspace(f,a),f,space,mesh_accessor,dof_sref)
+end
+
+function shape_functions(f,a::SpaceAccessor{AtSkeleton,<:NedelecMeshSpace})
+    (;space,mesh_accessor,reference_space_accessor) = a
+    face_around = mesh_accessor.space_accessor.location.face_around
+    dof_sref = GT.shape_functions(f,reference_space_accessor)
+    nedelec_map_shape_functions!(workspace(f,a)[face_around],f,space,mesh_accessor,dof_sref)
+end
+
+function nedelec_map_shape_functions!(dof_sphys,f,space,mesh_accessor,dof_sref)
     cell = mesh_accessor.space_accessor.location.Dface
-    nedelec_dof_signs(space)[dof,cell]
-end
-
-function map_shape_function(::typeof(GT.value),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+    fe = reference_spaces(space)[face_reference_id(space)[cell]]
+    C = fe.workspace.orientation_matrices
+    P = Int(nedelec_cell_orientation(space)[cell])
     J = coordinate(ForwardDiff.jacobian,mesh_accessor)
-    nedelec_accessor_sign(space,dof,mesh_accessor)*(transpose(J)\sref)
+    ndofs = length(dof_sref)
+    for dof in 1:ndofs
+        s = sum(j -> C[dof,j,P]*dof_sref[j],1:ndofs)
+        dof_sphys[dof] = nedelec_covariant_map(f,J,s)
+    end
+    view(dof_sphys,1:ndofs)
 end
 
-function map_shape_function(::typeof(ForwardDiff.jacobian),space::NedelecMeshSpace,dof,mesh_accessor,sref)
-    J = coordinate(ForwardDiff.jacobian,mesh_accessor)
-    nedelec_accessor_sign(space,dof,mesh_accessor)*((transpose(J)\sref)/J)
+nedelec_covariant_map(::typeof(GT.value),J,s) = transpose(J)\s
+nedelec_covariant_map(::typeof(ForwardDiff.jacobian),J,s) = (transpose(J)\s)/J
+
+# The generic accessors call map_shape_function with dof = AnyIndex() only to size
+# their workspaces; a concrete DOF cannot be mapped on its own.
+for T in (:(GT.value),:(ForwardDiff.jacobian))
+    @eval function map_shape_function(f::typeof($T),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+        dof isa AnyIndex || throw(ArgumentError(
+            "Nédélec shape functions of a cell are mapped together, not one DOF at a time"))
+        nedelec_covariant_map(f,coordinate(ForwardDiff.jacobian,mesh_accessor),sref)
+    end
 end
 
-function map_shape_function(::typeof(ForwardDiff.gradient),space::NedelecMeshSpace,dof,mesh_accessor,sref)
+function map_shape_function(f::typeof(ForwardDiff.gradient),space::NedelecMeshSpace,dof,mesh_accessor,sref)
     throw(ArgumentError(
         "Nédélec shape functions are vector-valued; use ForwardDiff.jacobian instead of ForwardDiff.gradient"))
 end
 
-# Interpolation: each global DOF is the tangential moment along its globally oriented edge.
+# Interpolation: in each cell's sorted frame, the DOF values are the reference
+# moments of the covariant pull-back û(ξ) = J_sᵀ u(φ_s(ξ)). Shared edges and faces
+# get the same values from every cell.
 
 function interpolate_impl!(
     f::AnalyticalField,
@@ -429,15 +614,21 @@ function interpolate_impl!(
     Dface_to_dofs = face_dofs(space)
     Dface_to_ctype = face_reference_id(space)
     ctype_to_reffe = reference_spaces(space)
+    orientation = nedelec_cell_orientation(space)
     dirichlet_dof_location = GT.dirichlet_dof_location(space)
-    s,w = gausslegendre(4)
-    ss,ws = (s .+ 1) ./ 2, w ./ 2
     for Dface in faces(domain)
         fe = ctype_to_reffe[Dface_to_ctype[Dface]]
+        (;dual_basis,entity_nodes,entity_dofs,dof_entity,orientation_permutations) = fe.workspace
+        perm = orientation_permutations[orientation[Dface]]
         nodes = Dface_to_nodes[Dface]
+        # Sorted frame: φ_s(ξ) = x₁ + J_s ξ, with the vertices in ascending global node ID.
+        xs = [node_x[nodes[perm[i]]] for i in 1:D+1]
+        Js = hcat(ntuple(i->xs[i+1]-xs[1],Val(D))...)
+        û = ξ -> transpose(Js)*fun(xs[1]+Js*ξ)
+        inverse = invperm(perm)
         dofs = Dface_to_dofs[Dface]
-        for (edge,(a,b)) in enumerate(fe.workspace.edge_nodes)
-            dof = dofs[edge]
+        for (slot,(d,entity)) in enumerate(dof_entity)
+            dof = dofs[slot]
             if dof > 0
                 free_or_diri == DIRICHLET && continue
             else
@@ -446,13 +637,11 @@ function interpolate_impl!(
                 # boundary piece; an ordinary field (location === nothing) writes all of them.
                 location === nothing || dirichlet_dof_location[-dof] == location || continue
             end
-            na,nb = minmax(nodes[a],nodes[b])
-            xa,xb = node_x[na],node_x[nb]
-            t = xb - xa
-            v = sum(1:length(ss)) do k
-                ux = fun(xa + ss[k]*t)
-                ws[k]*sum(map(*,ux,t))
-            end
+            # The sorted-frame DOF that corresponds to this slot (as in nedelec_orientation_matrices).
+            sorted_nodes = sort([inverse[v] for v in entity_nodes[d+1][entity]])
+            sorted_entity = findfirst(==(sorted_nodes),entity_nodes[d+1])
+            own = findfirst(==(slot),entity_dofs[d+1][entity])
+            v = dual_basis[entity_dofs[d+1][sorted_entity][own]](û)
             if dof > 0
                 free_vals[dof] = v
             else
