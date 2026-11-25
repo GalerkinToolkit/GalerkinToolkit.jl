@@ -21,10 +21,12 @@ curl(J::SMatrix{2,2}) = J[2,1]-J[1,2]
         V = dirichlet ? GT.nedelec_space(omega,0;dirichlet_boundary=GT.boundary(mesh)) :
             GT.nedelec_space(omega,0)
         measure = GT.measure(omega,2)
-        scale = 1.25
-        a = (u,v)->GT.∫(x->dot(GT.call(curl,ForwardDiff.jacobian(u,x)),GT.call(curl,ForwardDiff.jacobian(v,x)))+
+        # curl-curl plus a parameterized mass term; the CPU references are fresh forms with the scale baked in.
+        form(scale) = (u,v)->GT.∫(x->dot(GT.call(curl,ForwardDiff.jacobian(u,x)),GT.call(curl,ForwardDiff.jacobian(v,x)))+
             scale*dot(u(x),v(x)),measure)
-        expected = GT.assemble_matrix(a,Float64,V,V;parameters=(scale,),reuse=Val(false),assembly_method)
+        scale = 1.25
+        a = form(scale)
+        expected = GT.assemble_matrix(a,Float64,V,V;assembly_method)
         execution = GT.CUDAExecution()
         A,cache = GT.assemble_matrix(a,Float64,V,V;execution,assembly_method,parameters=(scale,),reuse=Val(true))
         @test A isa CuSparseCSC
@@ -32,8 +34,8 @@ curl(J::SMatrix{2,2}) = J[2,1]-J[1,2]
         @test isbitstype(typeof(CUDA.cudaconvert(only(cache.loops).data)))
         for factor in (3.0,0.0)
             @test GT.update_matrix!(A,cache;parameters=(factor,)) === A
-            shifted = GT.assemble_matrix(a,Float64,V,V;parameters=(factor,),reuse=Val(false),assembly_method)
-            @test SparseMatrixCSC(A) ≈ shifted rtol=2e-11 atol=1e-12
+            reference = GT.assemble_matrix(form(factor),Float64,V,V;assembly_method)
+            @test SparseMatrixCSC(A) ≈ reference rtol=2e-11 atol=1e-12
         end
     end
 end
