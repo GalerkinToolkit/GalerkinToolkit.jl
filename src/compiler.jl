@@ -33,15 +33,17 @@ end
 macro term(expr)
 end
 
-const EVALUATED_EXPRS = Dict{Expr,Any}()
+const EVALUATED_EXPRS = Dict{Tuple{Expr,Bool},Any}()
 
-function evaluate(expr,captured_data)
-    if !haskey(EVALUATED_EXPRS,expr)
-        EVALUATED_EXPRS[expr] = eval(:(@fastmath $expr))
+function evaluate(expr,captured_data,execution::AbstractAssemblyExecution=SerialExecution())
+    fastmath = assembly_fastmath(execution)
+    f = get!(EVALUATED_EXPRS,(expr,fastmath)) do
+        lowered = fastmath ?
+            ast_expr(:macrocall,ast_leaf(GlobalRef(Base,Symbol("@fastmath"))),
+                ast_leaf(LineNumberNode(0)),expr) : expr
+        eval(lowered)
     end
-    f1 = EVALUATED_EXPRS[expr]
-    f2 = Base.invokelatest(f1, captured_data...)
-    f2
+    Base.invokelatest(f,captured_data...)
 end
 
 # No bindings by default
@@ -1115,14 +1117,14 @@ end
 
 # TODO: work on ScalarAssemblyTerm, SampleTerm, FaceContributionTerm, ... after the matrix and vector assembly is done
 # Later we need to review the testing for the older version
-function generate_assemble_scalar(contribution::DomainContribution;parameters=())
+function generate_assemble_scalar(execution::SerialExecution,contribution::DomainContribution;parameters=())
     term_0 = write_assemble_scalar(contribution)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_1,captured_data,execution)
     f
 end
 
@@ -1139,18 +1141,21 @@ function write_assemble_scalar(contribution::DomainContribution)
 end
 
 
-function generate_assemble_vector(contribution::DomainContribution,space::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
+function generate_assemble_vector(execution::AbstractAssemblyExecution,
+        contribution::DomainContribution,space::AbstractSpace;
+        parameters=(),optimize_options=nothing,allocation=nothing)
     term_0 = write_assemble_vector(contribution,space; optimize_options,allocation)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
+    workspaces = assembly_uses_workers(execution)
     if workspaces
         domain_face_symbol = bindings(term_1)[2]
         expr_0 = ast_element_range_assembly(expr_0,domain_face_symbol)
     end
     expr_1 = ast_initialization_code_motion(expr_0;workspaces)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_1,captured_data,execution)
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
     f
@@ -1176,11 +1181,13 @@ end
 function generate_assemble_matrix(execution::Union{SerialExecution,CPUThreadedExecution},
         contribution,trial_space,test_space,prototype;parameters,optimize_options)
     generate_assemble_matrix_impl(contribution,trial_space,test_space;
-        parameters,optimize_options,allocation=prototype,workspaces=assembly_uses_workers(execution))
+        parameters,optimize_options,allocation=prototype,workspaces=assembly_uses_workers(execution),
+        workspace_backend=execution)
 end
 
-function generate_assemble_matrix_impl(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false)
-    term_0 = write_assemble_matrix(contribution,space_trial, space_test;optimize_options,allocation)
+function generate_assemble_matrix_impl(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;
+        parameters=(),optimize_options=nothing,allocation=nothing,workspaces=false,workspace_backend=nothing)
+    term_0 = write_assemble_matrix(contribution,space_trial,space_test;optimize_options,allocation,workspace_backend)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
@@ -1190,13 +1197,14 @@ function generate_assemble_matrix_impl(contribution::DomainContribution,space_tr
         expr_0 = ast_element_range_assembly(expr_0,domain_face_symbol)
     end
     expr_1 = ast_initialization_code_motion(expr_0;workspaces)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_1,captured_data,something(workspace_backend,SerialExecution()))
     # expr_1 = statements_expr(expr_0)
     # f = evaluate(expr_1,captured_data)
     f
 end
 
-function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;optimize_options=nothing,allocation=nothing)
+function write_assemble_matrix(contribution::DomainContribution,space_trial::AbstractSpace,space_test::AbstractSpace;
+        optimize_options=nothing,allocation=nothing,workspace_backend=nothing)
     quadrature = GT.quadrature(contribution)
     domain = GT.domain(quadrature)
     arity = Val(2)
@@ -1212,7 +1220,8 @@ function write_assemble_matrix(contribution::DomainContribution,space_trial::Abs
     field_n_faces_around_test = [max_num_faces_around(GT.domain(field_space),domain) for field_space in fields(space_test)]
     
 
-    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options)
+    MatrixAssemblyTerm(term,space_trial_term,space_test_term,quadrature_term,alloc,alloc_arg,index,
+        field_n_faces_around_trial,field_n_faces_around_test,optimize_options,workspace_backend)
 end
 
 #TODO: code generation
@@ -1286,14 +1295,14 @@ function sample_loop!(face_point_w,face_point_v)
     face_point_w
 end
 
-function generate_assemble_face_contribution(contribution::DomainContribution;parameters=())
+function generate_assemble_face_contribution(execution::SerialExecution,contribution::DomainContribution;parameters=())
     term_0 = write_assemble_face_contribution(contribution)
     term_1 = optimize(term_0)
     term_2 = parametrize(term_1,parameters...)
     term_3, captured_data = capture(term_2)
     expr_0 = expression(term_3)
     expr_1 = statements_expr(expr_0)
-    f = evaluate(expr_1,captured_data)
+    f = evaluate(expr_1,captured_data,execution)
     f
 end
 
@@ -1393,6 +1402,7 @@ struct MatrixAssemblyTerm <: AbstractTerm
     field_n_faces_around_trial::Vector{Int}
     field_n_faces_around_test::Vector{Int}
     optimize_options
+    workspace_backend
 end
 
 function bindings(term::ScalarAssemblyTerm)
@@ -1453,8 +1463,9 @@ end
 
 function replace_dependencies(term::MatrixAssemblyTerm,dependencies)
     (term2,space_trial,space_test,quadrature,alloc) = dependencies
-    (;alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options) = term
-    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options)
+    (;alloc_arg,index,field_n_faces_around_trial,field_n_faces_around_test,optimize_options,workspace_backend) = term
+    MatrixAssemblyTerm(term2,space_trial,space_test,quadrature,alloc,alloc_arg,index,
+        field_n_faces_around_trial,field_n_faces_around_test,optimize_options,workspace_backend)
 end
 
 
@@ -1471,6 +1482,7 @@ end
 # We can specialize for particular cases if needed
 function expression(term::VectorAssemblyTerm)
     (term2,space,quadrature,alloc) = map(expression,dependencies(term))
+    # TODO: Pass the execution policy through the vector term and prepare Jacobian coordinates here.
     (alloc_arg,face,point,field,face_around,dof) = bindings(term)
     options = term.optimize_options
     # dof_v = :($dof -> $term2)
@@ -1510,6 +1522,7 @@ end
 
 function expression(term::MatrixAssemblyTerm)
     (term2,space_trial,space_test,quadrature,alloc) = map(expression,dependencies(term))
+    term2 = ast_prepare_jacobian_coordinates(term2,term.workspace_backend)
     (alloc_arg,face,point,field_trial,field_test,face_around_trial,face_around_test,dof_trial,dof_test) = bindings(term)
     options = term.optimize_options
     # V0: hand-written
@@ -2071,7 +2084,7 @@ function ast_optimize_3(expr, non_unroll_loop_vars, options = nothing)
     expr9
 end
 
-# include array cse in addition to ast_optimize_4
+# Include array CSE after tabulation and ordinary CSE.
 function ast_optimize_4(expr, non_unroll_loop_vars, options = nothing)
     expr2 = ast_loop_unroll(expr, non_unroll_loop_vars) |> ast_constant_folding
 
@@ -2084,7 +2097,8 @@ function ast_optimize_4(expr, non_unroll_loop_vars, options = nothing)
     expr5 = ast_array_unroll(expr4)
 
           
-    expr6, var_count = ast_tabulate(expr5, var_count)
+    tabulated_buffers = Dict{Any,Tuple}()
+    expr6, var_count = ast_tabulate(expr5, var_count;tabulated_buffers)
     
     # expr6
 
@@ -2106,7 +2120,7 @@ function ast_optimize_4(expr, non_unroll_loop_vars, options = nothing)
 
     expr9 = ast_remove_dead_code(expr9)
 
-    expr10, var_count = ast_array_cse(expr9, var_count)
+    expr10, var_count = ast_array_cse(expr9, var_count;tabulated_buffers)
     
     expr10 |> GT.ast_topological_sort |> GT.ast_remove_dead_code
     

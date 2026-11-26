@@ -20,6 +20,17 @@ end
 
 scaled_map_operator(scale) = (phi,xi) -> scale*sum(abs2,phi(xi))
 
+@testset "Generated fast-math mode and external arithmetic" begin
+    expr = :((check,) -> x -> (isnan(x),check(x)))
+    external_check = x -> isnan(x)
+    default = GT.evaluate(expr,(external_check,))
+    ordinary = GT.evaluate(expr,(external_check,),GT.SerialExecution(fastmath=false))
+    fast = GT.evaluate(expr,(external_check,),GT.CPUThreadedExecution())
+    @test Base.invokelatest(default,NaN) == (false,true)
+    @test Base.invokelatest(ordinary,NaN) == (true,true)
+    @test Base.invokelatest(fast,NaN) == (false,true)
+end
+
 @testset "DOF data and metadata-selected lookups" begin
     mesh = GT.cartesian_mesh((0,2,0,2),(2,2);simplexify=false)
     omega = GT.interior(mesh)

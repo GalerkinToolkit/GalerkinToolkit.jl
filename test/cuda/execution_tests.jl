@@ -4,13 +4,18 @@ using Test, CUDA, LinearAlgebra, SparseArrays, StaticArrays
 import ForwardDiff
 import GalerkinToolkit as GT
 
-const CuSparseCSC = Base.get_extension(GT,:GalerkinToolkitCUDAExt).CuSparseMatrixCSC
+const Ext = Base.get_extension(GT,:GalerkinToolkitCUDAExt)
+const CuSparseCSC = Ext.CuSparseMatrixCSC
 const assembly_method = (;matrix=GT.element_csc_assembly())
 CUDA.allowscalar(false)
 
 @testset "Generated CUDA CG matrix assembly" begin
     @test GT.CUDAExecution().threads == 128
+    @test GT.CUDAExecution().opt_level == 3
+    @test GT.CUDAExecution().fastmath
     @test_throws ArgumentError GT.CUDAExecution(threads=0)
+    @test_throws ArgumentError GT.CUDAExecution(opt_level=-1)
+    @test_throws ArgumentError GT.CUDAExecution(opt_level=4)
     for (dim,simplexify) in ((1,false),(2,false),(2,true),(3,false),(3,true)), k in 1:3
         mesh = GT.cartesian_mesh(ntuple(i->isodd(i) ? 0 : 1,2dim),ntuple(_->2,dim);simplexify)
         mesh = GT.replace_node_coordinates(mesh,
@@ -83,14 +88,21 @@ end
     V = GT.lagrange_space(omega,1)
     measure = GT.measure(omega,2)
     a = (u,v)->GT.∫(x->u(x)*v(x),measure)
-    execution = GT.CUDAExecution()
-    for T in (Float32,Float64)
-        expected = GT.assemble_matrix(a,T,V,V)
+    for (T,opt_level) in ((Float32,2),(Float64,3))
+        fastmath = T === Float64
+        execution = GT.CUDAExecution(;opt_level,fastmath)
+        options = Ext.CUDAAssemblyCompilerOptions(execution.opt_level,execution.fastmath)
+        config = Ext.CUDACompilerBackend.compiler_config(CUDA.device();name=options)
+        @test config.opt_level == opt_level
+        @test config.always_inline && config.target.fastmath == fastmath
+        expected = GT.assemble_matrix(a,T,V,V;execution=GT.SerialExecution(;fastmath))
         A,cache = GT.assemble_matrix(a,T,V,V;execution,assembly_method,reuse=Val(true))
         @test SparseMatrixCSC(A) ≈ expected
+        @test only(cache.loops).execution === execution
         @test GT.update_matrix!(A,cache) === A
         @test SparseMatrixCSC(A) ≈ expected
     end
+    execution = GT.CUDAExecution()
     @test_throws ArgumentError GT.assemble_matrix(a,Float64,V,V;
         execution=GT.CUDAExecution(threads=10_000),assembly_method)
     @test_throws ArgumentError GT.assemble_matrix(a,Float64,V,V;execution,
@@ -141,13 +153,15 @@ end
     end
     cpu = GT.assemble_matrix(a,Float64,U,V;assembly_method)
     @test Matrix(cpu) ≈ expected rtol=2e-11 atol=1e-12
-    A,cache = GT.assemble_matrix(a,Float64,U,V;execution=GT.CUDAExecution(),
-        assembly_method,reuse=Val(true))
-    @test size(A) == size(expected)
-    @test size(A,1) != size(A,2)
-    @test Matrix(SparseMatrixCSC(A)) ≈ expected rtol=2e-11 atol=1e-12
-    @test GT.update_matrix!(A,cache) === A
-    @test Matrix(SparseMatrixCSC(A)) ≈ expected rtol=2e-11 atol=1e-12
+    for (trial,test,reference) in ((U,V,expected),(V,U,transpose(expected)))
+        A,cache = GT.assemble_matrix(a,Float64,trial,test;execution=GT.CUDAExecution(),
+            assembly_method,reuse=Val(true))
+        @test size(A) == size(reference)
+        @test size(A,1) != size(A,2)
+        @test Matrix(SparseMatrixCSC(A)) ≈ reference rtol=2e-11 atol=1e-12
+        @test GT.update_matrix!(A,cache) === A
+        @test Matrix(SparseMatrixCSC(A)) ≈ reference rtol=2e-11 atol=1e-12
+    end
 end
 
 end # module

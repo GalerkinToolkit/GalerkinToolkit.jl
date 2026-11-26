@@ -247,7 +247,7 @@ end
 
 
 
-function jacobian_sum_body_expr(Di, Dj, z, nlnodes; is_simplex=false) # TODO: implement for simplex elements
+function jacobian_sum_body_expr(Di, Dj, z, nlnodes; is_simplex=false, gathered=false, unroll_nodes=false) # TODO: implement for simplex elements
     # copied from another file. maybe we want to change it later to have a faster jacobian computation
     result = Expr(:block)
     symbols = []
@@ -260,8 +260,12 @@ function jacobian_sum_body_expr(Di, Dj, z, nlnodes; is_simplex=false) # TODO: im
     end
     
     body = []
-    push!(body, :(node = lnode_to_node[lnode]))
-    push!(body, :(x = node_to_x[node]))
+    if gathered
+        push!(body, :(x = coordinates[lnode]))
+    else
+        push!(body, :(node = lnode_to_node[lnode]))
+        push!(body, :(x = node_to_x[node]))
+    end
     push!(body, :(s = lnode_s[lnode, point]))
     for i in 1:Di
         for j in 1:Dj
@@ -276,6 +280,9 @@ function jacobian_sum_body_expr(Di, Dj, z, nlnodes; is_simplex=false) # TODO: im
         end
     end
 
+    if unroll_nodes
+        loop = ast_loop_unroll(loop)
+    end
     push!(result.args, loop)
     push!(result.args, :(SMatrix{$Di, $Dj}($(symbols...))) )
     result
@@ -295,6 +302,20 @@ struct JacobianSumCallable{Di,Dj,Z,N,Simplex} <: Function end
 @inline @generated function (::JacobianSumCallable{Di,Dj,Z,N,Simplex})(
         lnode_to_node,node_to_x,lnode_s,point) where {Di,Dj,Z,N,Simplex}
     jacobian_sum_body_expr(Di,Dj,Z,N;is_simplex=Simplex)
+end
+
+@inline function gather_element_coordinates(nodes::SVector{N},coordinates) where N
+    SVector(ntuple(i -> (@inbounds coordinates[nodes[i]]),Val(N)))
+end
+
+struct GatheredJacobianSumCallable{Sum,Unroll} <: Function end
+
+GatheredJacobianSumCallable(::Sum,::Val{Unroll}) where {Sum<:JacobianSumCallable,Unroll} =
+    GatheredJacobianSumCallable{Sum,Unroll}()
+
+@inline @generated function (::GatheredJacobianSumCallable{JacobianSumCallable{Di,Dj,Z,N,Simplex},Unroll})(
+        coordinates::SVector{N},lnode_s,point) where {Di,Dj,Z,N,Simplex,Unroll}
+    jacobian_sum_body_expr(Di,Dj,Z,N;is_simplex=Simplex,gathered=true,unroll_nodes=Unroll)
 end
 
 function coordinate_expr(Q, mesh_expr, Q_expr, f_expr, q_expr)

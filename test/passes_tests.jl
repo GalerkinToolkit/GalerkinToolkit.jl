@@ -72,6 +72,89 @@ function array_cse_contains(node, expected)
     isequal(node,expected) || (node isa Expr && any(child -> array_cse_contains(child,expected),node.args))
 end
 
+@testset "Forward loads into separate tabulation scopes" begin
+    f = (i,j) -> Float64(i+j)
+    g = (value,i,j,k) -> value*(i+j+k)
+    original = Base.remove_linenums!(quote
+        result = zeros(2,3)
+        for k in 1:2
+            for i in 1:3
+                load = a[1,i,2]
+                factor = $f(i,1)
+                product = load * factor
+                other = $g(load,i,1,k)
+                result[k,i] = product + other
+            end
+        end
+        result
+    end)
+    buffers = Dict()
+    tabulated,_ = GT.ast_tabulate(original;tabulated_buffers=buffers)
+    tabulated = GT.ast_remove_dead_code(tabulated)
+    @test haskey(buffers,:product)
+    @test !haskey(buffers,:load)
+    prepare,assemble = filter(GT.ast_is_loop,GT.ast_children(tabulated))
+    @test GT.ast_loop_index(prepare) == :i
+    @test GT.ast_loop_index(assemble) == :k
+    @test array_cse_contains(prepare,:(a[1,i,2]))
+    @test array_cse_contains(assemble,:(a[1,i,2]))
+    a = PermutedDimsArray(reshape(collect(1.0:12.0),2,2,3),(1,3,2))
+    evaluate = code -> Base.invokelatest(Core.eval(GT,:((a) -> $code)),a)
+    @test evaluate(tabulated) == evaluate(original)
+end
+
+@testset "Forward tabulated copies exposed by array CSE" begin
+    original = Base.remove_linenums!(quote
+        cache = alloc_zeros("cache",Float64,3)
+        result = zeros(3)
+        for i in 1:3
+            load = a[1,i]
+            masked = ifelse(false,2.0,zero(Float64))
+            cache[i] = load + masked
+        end
+        for j in 1:3
+            value = cache[j]
+            result[j] = sizeof(value)
+        end
+        result
+    end)
+    forwarded,_ = GT.ast_array_cse(original;tabulated_buffers=Dict(:cache=>(:i,)))
+    forwarded = GT.ast_remove_dead_code(forwarded)
+    @test array_cse_contains(forwarded,:(convert(Float64,a[1,j])))
+    @test !array_cse_contains(forwarded,:cache)
+    a = reshape(Float32.(1:6),2,3)
+    evaluate = code -> Base.invokelatest(Core.eval(GT,:((a) -> $code)),a)
+    @test evaluate(forwarded) == evaluate(original)
+end
+
+@testset "Partial indexing requires a read-only source" begin
+    sources,_ = GT.ast_partial_load_info(quote
+        value = source[1,i]
+        rolled_value = rolled[i,j]
+        original = modified[1,i]
+        modified[1,i] = original + 1
+        escaped_value = escaped[1,i]
+        consume(escaped)
+        alias = other
+        aliased_value = alias[1,i]
+        other[1,i] = 2
+        wrapper = view(backing,:,:)
+        wrapped_value = wrapper[1,i]
+        backing[1,i] = 3
+        field = data.array
+        field_value = field[1,i]
+        data.array[1,i] = 4
+        rebinding = original_backing
+        nested_alias = view(rebinding,:,:)
+        nested_alias[1,i] = 5
+        rebinding = different_backing
+        original_value = original_backing[1,i]
+        readonly_wrapper = view(readonly_backing,:,:)
+        readonly_value = readonly_wrapper[1,i]
+    end)
+    @test sources == Set([:source,:readonly_wrapper])
+end
+
 @testset "Array aliasing with fully indexed fills" begin
     original = Base.remove_linenums!(quote
         cache = zeros(Float64,8)

@@ -27,6 +27,8 @@ cuda_scratch_shape(dims::Integer...) = Val(Tuple(Int.(dims)))
     isbitstype(T) || return :(throw(ArgumentError("CUDA assembly scratch requires an isbits element type")))
     bytes = Base.aligned_sizeof(T)*prod(S)
     alignment = Base.datatype_alignment(T)
+    # Align matrix bases for vectorized accesses to adjacent entries.
+    length(S) == 2 && (alignment = max(alignment,16))
     # Raw stack storage avoids the zeroing emitted for MArray allocations. The
     # lifetime starts here and lasts through the inlined caller's use of the buffer.
     pointer_type, lifetime_start = VERSION < v"1.11" ? ("i8*", "llvm.lifetime.start.p0i8") :
@@ -206,7 +208,7 @@ function GT.ast_assembly_workspaces(::GT.CUDAExecution,captured,parameters,kerne
         GT.ast_block(Any[input_bindings...,rename(device_body)]))
     captured_inputs = map(node -> GT.ast_call(GT.ast_leaf(cuda_capture),node),inputs)
     captured_data = GT.ast_expr(:tuple,captured_inputs...)
-    prepared = GT.ast_call(GT.ast_leaf(CUDAAssemblyProgram),device_kernel,captured_data)
+    prepared = GT.ast_expr(:tuple,device_kernel,captured_data)
     host_body = GT.ast_block(Any[shared_setup...,host_descriptors...,prepared])
     GT.ast_replace_children(captured,captured_args,host_body)
 end
@@ -221,6 +223,24 @@ function GT.generate_assemble_matrix(execution::GT.CUDAExecution,contribution,tr
     device
 end
 
+# Bake the prepared lookup width and packed dimensions into the device call.
+function ast_cuda_contributions(node,index_type)
+    GT.ast_is_leaf(node) && return node
+    GT.ast_head(node) === :quote && return node
+    children = GT.ast_children(node)
+    if GT.ast_is_call(node) && length(children) == 7 &&
+            GT.ast_leaf_value(first(children)) == :(GT.contribute_element_block_atomic!)
+        _,alloc,values,face,base,rows,cols = children
+        dims = (GT.ast_leaf_value(rows),GT.ast_leaf_value(cols))
+        if all(d -> d isa Integer,dims)
+            shape = Val(dims)
+            return GT.ast_call(GT.ast_leaf(cuda_contribute_element_block_atomic!),alloc,values,face,base,
+                GT.ast_leaf(shape),GT.ast_leaf(index_type))
+        end
+    end
+    GT.ast_replace_children(node,map(child->ast_cuda_contributions(child,index_type),children)...)
+end
+
 function generate_cuda_matrix(execution,contribution,trial_space,test_space,prototype;
         parameters,optimize_options)
     GT.num_fields(trial_space) == GT.num_fields(test_space) == 1 ||
@@ -230,12 +250,16 @@ function generate_cuda_matrix(execution,contribution,trial_space,test_space,prot
         throw(ArgumentError("CUDA matrix generation currently supports volume assembly"))
     GT.num_faces(domain) == 0 && return CUDAAssemblyProgram(empty_cuda_assembly!,())
     term = GT.optimize(GT.write_assemble_matrix(contribution,trial_space,test_space;
-        optimize_options,allocation=prototype))
+        optimize_options,allocation=prototype,workspace_backend=execution))
     captured,values = GT.capture(GT.parametrize(term,parameters...))
     domain_face_symbol = GT.bindings(term)[2]
     expression = GT.ast_element_range_assembly(GT.expression(captured),domain_face_symbol)
     lowered = GT.ast_initialization_code_motion(expression;workspaces=true,workspace_backend=execution)
-    GT.evaluate(lowered,values)
+    storage = GT.element_csc_matrix_storage(prototype.allocation)
+    positions = GT.element_csc_single_domain_cache(storage).positions
+    lowered = ast_cuda_contributions(lowered,cuda_index_type(length(positions)))
+    kernel,data = GT.evaluate(lowered,values,execution)
+    CUDAAssemblyProgram(kernel,data)
 end
 
 @inline empty_cuda_assembly!(allocation,data,worker,parameters) = nothing

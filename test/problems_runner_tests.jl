@@ -91,7 +91,8 @@ function public_runner_tests()
     @test collect.(other) ≈ expected_samples
 
     integral = GT.∫(x -> 1,Q)
-    value,loops = GT.assemble_scalar(integral;reuse=Val(true))
+    execution = GT.SerialExecution(fastmath=false)
+    value,loops = GT.assemble_scalar(integral;execution,reuse=Val(true))
     @test value ≈ 1
     @test GT.update_scalar(loops) ≈ value
     doubled,double_loops = GT.assemble_scalar(integral+integral;reuse=Val(true))
@@ -101,7 +102,7 @@ function public_runner_tests()
 
     contribution = only(GT.contributions(integral))
     faces = zeros(GT.num_faces(omega))
-    result,face_cache = GT.assemble_face_contribution!(faces,contribution;reuse=Val(true))
+    result,face_cache = GT.assemble_face_contribution!(faces,contribution;execution,reuse=Val(true))
     @test result === faces
     @test sum(faces) ≈ value
     fill!(faces,-1)
@@ -110,13 +111,13 @@ function public_runner_tests()
     other_faces = zeros(Float32,length(faces))
     GT.update_face_contribution!(other_faces,face_cache)
     @test sum(other_faces) ≈ value
-    @test sum(GT.face_contribution(integral,omega)) ≈ value
+    @test sum(GT.face_contribution(integral,omega;execution)) ≈ value
 
     V = GT.lagrange_space(omega,1)
     a = (u,v) -> GT.∫(x -> u(x)*v(x),Q)
     l = v -> GT.∫(x -> v(x),Q)
-    A,matrix_cache = GT.assemble_matrix(a,Float64,V,V;reuse=Val(true),assembly_method=(;))
-    b,vector_cache = GT.assemble_vector(l,Float64,V;reuse=Val(true),assembly_method=(;))
+    A,matrix_cache = GT.assemble_matrix(a,Float64,V,V;execution,reuse=Val(true),assembly_method=(;))
+    b,vector_cache = GT.assemble_vector(l,Float64,V;execution,reuse=Val(true),assembly_method=(;))
     @test sum(A) ≈ value
     @test sum(b) ≈ value
     @test warmed_update_allocations(GT.update_matrix!,A,matrix_cache) == (0,0)

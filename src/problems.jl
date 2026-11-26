@@ -127,22 +127,27 @@ end
 """
     AbstractAssemblyExecution
 
-Execution policy for matrix/vector assembly, independent of the storage method.
+Execution policy for assembly, independent of the storage method. The built-in
+policies enable `fastmath` by default.
 """
 abstract type AbstractAssemblyExecution <: AbstractType end
 
 """
-    SerialExecution()
+    SerialExecution(; fastmath=true)
 
 Sequential assembly using the selected storage method. This is the default.
 """
-struct SerialExecution <: AbstractAssemblyExecution end
+struct SerialExecution <: AbstractAssemblyExecution
+    fastmath::Bool
+end
+
+SerialExecution(;fastmath::Bool=true) = SerialExecution(fastmath)
 
 
 # TODO: Support other assembly methods for multithreading.
 # Matrix storage currently needs `element_csc_assembly()`; vector storage needs `direct_vector_assembly()`.
 """
-    CPUThreadedExecution(; workers=Threads.nthreads(), distribution=:contiguous)
+    CPUThreadedExecution(; workers=Threads.nthreads(), distribution=:contiguous, fastmath=true)
 
 CPU assembly with one reusable workspace per logical worker and atomic global
 updates. `workers` is the number of tasks, capped at the number of elements;
@@ -154,21 +159,22 @@ policy/descriptor when needed, rather than fields shared by every backend.
 """
 struct CPUThreadedExecution{Distribution} <: AbstractAssemblyExecution
     workers::Int
-    function CPUThreadedExecution{D}(workers::Integer) where D
+    fastmath::Bool
+    function CPUThreadedExecution{D}(workers::Integer,fastmath::Bool=true) where D
         workers > 0 || throw(ArgumentError("workers must be positive"))
         D in (:contiguous,:cyclic) || throw(ArgumentError("distribution must be :contiguous or :cyclic"))
-        new{D}(Int(workers))
+        new{D}(Int(workers),fastmath)
     end
 end
 
-CPUThreadedExecution(;workers=Threads.nthreads(),distribution=:contiguous) =
-    CPUThreadedExecution{distribution}(workers)
+CPUThreadedExecution(;workers=Threads.nthreads(),distribution=:contiguous,fastmath::Bool=true) =
+    CPUThreadedExecution{distribution}(workers,fastmath)
 
 assembly_uses_workers(::SerialExecution) = false
 assembly_uses_workers(::CPUThreadedExecution) = true
 
 """
-    CUDAExecution(; threads=128)
+    CUDAExecution(; threads=128, opt_level=3, fastmath=true)
 
 Single-GPU matrix assembly. Load CUDA and select `element_csc_assembly()` as
 the matrix storage method. Prepared numeric inputs and matrix storage persist
@@ -176,16 +182,24 @@ in the assembly cache. Each GPU thread constructs its own scratch space.
 
 The variational form is compiled automatically for the GPU. Geometry and reference
 tabulations are prepared on the host and uploaded once during assembly setup.
+`opt_level` selects the GPUCompiler optimization level (0–3) before PTX generation.
+CUDA assembly requires a CUDA.jl toolchain whose GPUCompiler supports this option.
 """
 struct CUDAExecution <: AbstractAssemblyExecution
     threads::Int
-    function CUDAExecution(;threads::Integer=128)
+    opt_level::Int
+    fastmath::Bool
+    function CUDAExecution(;threads::Integer=128,opt_level::Integer=3,fastmath::Bool=true)
         threads > 0 || throw(ArgumentError("threads must be positive"))
-        new(Int(threads))
+        0 <= opt_level <= 3 || throw(ArgumentError("opt_level must be between 0 and 3"))
+        new(Int(threads),Int(opt_level),fastmath)
     end
 end
 
 assembly_uses_workers(::CUDAExecution) = false
+
+assembly_fastmath(::AbstractAssemblyExecution) = true
+assembly_fastmath(execution::Union{SerialExecution,CPUThreadedExecution,CUDAExecution}) = execution.fastmath
 
 function validate_matrix_assembly(execution::AbstractAssemblyExecution)
     throw(ArgumentError("No matrix assembly backend for $(typeof(execution)); load its extension"))
@@ -468,11 +482,12 @@ end
 function assemble_scalar(integral::Integral;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
+        execution::SerialExecution = SerialExecution(),
     )
     contributions = GT.contributions(integral)
     loops = map(contributions) do contribution
         init = zero(prototype(contribution))
-        params_loop = generate_assemble_scalar(contribution; parameters)
+        params_loop = generate_assemble_scalar(execution,contribution;parameters)
         runner = ScalarAssemblyRunner(params_loop,init)
         run_assembly!(runner,parameters)
         runner
@@ -499,8 +514,9 @@ end
 function assemble_face_contribution!(face_to_val,contribution::DomainContribution;
         parameters = (),
         reuse = isempty(parameters) ? Val(false) : Val(true),
+        execution::SerialExecution = SerialExecution(),
     )
-    params_loop = generate_assemble_face_contribution(contribution;parameters)
+    params_loop = generate_assemble_face_contribution(execution,contribution;parameters)
     runner = AssemblyRunner(params_loop,face_to_val)
     run_assembly!(runner,parameters)
     if val_parameter(reuse)
@@ -515,17 +531,17 @@ function update_face_contribution!(face_to_val,runner;parameters=())
     face_to_val
 end
 
-function face_contribution(int::Integral,domain::AbstractDomain)
+function face_contribution(int::Integral,domain::AbstractDomain;execution::SerialExecution=SerialExecution())
     contribution = GT.contribution(int,domain)
     nfaces = num_faces(GT.domain(contribution))
     T = typeof(prototype(contribution))
     face_to_val = zeros(T,nfaces)
-    assemble_face_contribution!(face_to_val,contribution)
+    assemble_face_contribution!(face_to_val,contribution;execution)
 end
 
-function face_contribution!(a,int::Integral,domain::AbstractDomain)
+function face_contribution!(a,int::Integral,domain::AbstractDomain;execution::SerialExecution=SerialExecution())
     contribution = GT.contribution(int,domain)
-    assemble_face_contribution!(a,contribution)
+    assemble_face_contribution!(a,contribution;execution)
 end
 
 # 1-forms
@@ -537,6 +553,8 @@ Assemble a linear form. `execution` selects hardware execution and scheduling;
 `assembly_method.vector` independently selects the output storage/update method.
 Use `CPUThreadedExecution(workers=n, distribution=:contiguous)` for threaded
 direct-vector assembly. `reuse=Val(true)` returns an update cache.
+Set `fastmath=false` on the execution policy to disable Julia's `@fastmath`
+annotation on the generated assembly code.
 """
 function assemble_vector(f,::Type{T},space;
     parameters = (),
@@ -545,6 +563,7 @@ function assemble_vector(f,::Type{T},space;
     kwargs...
     ) where T
 
+    haskey(kwargs,:fastmath) && throw(ArgumentError("set fastmath on the execution policy"))
     threaded = assembly_uses_workers(execution)
     arg = 1
     dv = form_argument_quantity(space,arg)
@@ -561,7 +580,8 @@ function assemble_vector(f,::Type{T},space;
         nothing
     end
     loops = map(contributions) do contribution
-        params_loop = generate_assemble_vector(contribution,space;parameters,optimize_options,allocation=alloc,workspaces=threaded)
+        params_loop = generate_assemble_vector(execution,contribution,space;
+            parameters,optimize_options,allocation=alloc)
         runner = assembly_runner(execution,params_loop,alloc,num_faces(GT.domain(contribution)))
         run_assembly!(runner,parameters)
         runner
@@ -629,6 +649,11 @@ the default. `reuse=Val(true)` returns a cache for `update_matrix!`.
 For `CUDAExecution()`, select `assembly_method=(;matrix=element_csc_assembly())`.
 The form is compiled for CUDA automatically. Subsequent updates reuse the
 prepared numeric inputs and device matrix storage.
+
+Set `fastmath=false` on the execution policy to disable Julia's `@fastmath`
+annotation on the generated assembly code. CUDA also applies the setting to device compilation,
+including user functions called by the kernel. An update cache reuses the mode
+selected at assembly time.
 """
 function assemble_matrix(f,::Type{T},trial_space,test_space;
     parameters = (),
@@ -637,6 +662,7 @@ function assemble_matrix(f,::Type{T},trial_space,test_space;
     optimize_options = nothing,
     kwargs...
     ) where T
+    haskey(kwargs,:fastmath) && throw(ArgumentError("set fastmath on the execution policy"))
     validate_matrix_assembly(execution)
     validate_matrix_parameters(execution,parameters)
     threaded = assembly_uses_workers(execution)

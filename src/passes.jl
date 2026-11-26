@@ -490,14 +490,89 @@ function lca_deps(a::Int, b::Int)
     return result # bitmap a - lca
 end
 
-# Note: must be applied after flatten
-function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
+function ast_is_partial_index(node)
+    ast_is_index(node) || return false
+    indices = ast_children(node)[2:end]
+    literal(i) = ast_leaf_value(i) isa Integer
+    any(literal,indices) && !all(literal,indices)
+end
+
+# A store, a rebinding, or an opaque statement using the whole array
+# disqualifies the source. As in tabulation, assigned expressions are pure.
+function ast_partial_load_info(ast)
+    candidates,unstable = Set(),Set()
+    indexed = Set()
+    definitions = Dict()
+    bindings = []
+    projection(node) = ast_is_index(node) || (!ast_is_leaf(node) && ast_head(node) === :.)
+    function visit(node,in_value=false)
+        if ast_is_definition(node) || ast_is_incremental(node)
+            lhs,rhs = ast_lhs(node),ast_rhs(node)
+            if ast_is_definition(node) && ast_is_leaf(lhs)
+                push!(bindings,(lhs,rhs))
+                haskey(definitions,lhs) && push!(unstable,lhs)
+                definitions[lhs] = haskey(definitions,lhs) ? nothing : rhs
+            else
+                root = lhs
+                while projection(root)
+                    root = first(ast_children(root))
+                end
+                push!(unstable,root)
+                visit(lhs,true)
+            end
+            visit(rhs,true)
+        elseif ast_is_index(node)
+            base,indices... = ast_children(node)
+            if ast_is_leaf(base)
+                push!(indexed,base)
+                ast_is_partial_index(node) && push!(candidates,base)
+            else
+                visit(base)
+            end
+            foreach(i -> visit(i,true),indices)
+        elseif ast_is_leaf(node)
+            in_value || push!(unstable,node)
+        elseif ast_head(node) !== :quote
+            foreach(child -> visit(child,in_value),ast_children(node))
+        end
+    end
+    visit(ast)
+    isempty(candidates) && return candidates,definitions
+
+    # Array-valued bindings may wrap another array. A scalar load does
+    # not itself alias the storage it was read from.
+    while true
+        previous_count = length(unstable) + length(indexed)
+        for (name,rhs) in bindings
+            ast_is_alloc(rhs) && continue
+            inputs = ast_is_call(rhs) ? ast_children(rhs)[2:end] :
+                projection(rhs) ? (first(ast_children(rhs)),) : (rhs,)
+            (name in indexed || ast_is_leaf(rhs) ||
+                (ast_is_call(rhs) && name in unstable && any(in(indexed),inputs))) || continue
+            for input in inputs
+                ast_leaf_value(input) isa Symbol && input !== :(:) || continue
+                name in indexed && push!(indexed,input)
+                (name in unstable || input in unstable) && push!(unstable,name,input)
+            end
+        end
+        previous_count == length(unstable) + length(indexed) && break
+    end
+    setdiff!(candidates,unstable),definitions
+end
+
+ast_is_direct_source_load(node,sources) =
+    ast_is_partial_index(node) && first(ast_children(node)) in sources
+
+# Apply after flattening. tabulated_buffers can record fill indices for array CSE.
+function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict();
+        tabulated_buffers=nothing)
     var_dependencies = Dict() # bitset
     var_alloc_shape = Dict()
     loop_index_range = Dict()
     var_alloc_index = Dict() # loop vars indexing alloc arrays
     loop_index_depth = Dict()
     dependencies = []
+    load_sources,definitions = ast_partial_load_info(ast)
 
     binomial_tree_blocks = [ast_block()]
     accumulate_vars = ast_accumulate_vars(ast)
@@ -611,7 +686,7 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
             map(x -> ast_tabulate_impl!(x, depth), ast_children(node))
         elseif ast_is_definition(node)
             children_deps = get_deps(ast_rhs(node))
-            node_deps = if (ast_lhs(node) in accumulate_vars) || !ast_is_leaf(ast_lhs(node)) # || ast_is_index(ast_rhs(node))
+            node_deps = if ast_lhs(node) in accumulate_vars || !ast_is_leaf(ast_lhs(node))
                 (2^depth)-1
             else
                 reduce_deps(children_deps)
@@ -649,11 +724,17 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
 
     function ast_tabulate_replace_tabulated_symbols(node)
         if ast_is_leaf(node)
-            if haskey(var_alloc_index, node)
+            if haskey(forwarded_loads,node)
+                ast_tabulate_replace_tabulated_symbols(forwarded_loads[node])
+            elseif haskey(var_alloc_index, node)
                 ast_index(node, var_alloc_index[node]...)
             else
                 node
             end
+        elseif ast_is_definition(node) && haskey(forwarded_loads,ast_lhs(node))
+            ast_leaf(nothing)
+        elseif !isempty(forwarded_loads) && ast_head(node) === :quote
+            node
         else 
             new_children = map(ast_tabulate_replace_tabulated_symbols, ast_children(node))
             ast_replace_children(node, new_children...)
@@ -663,6 +744,21 @@ function ast_tabulate(ast, var_count = 0, loop_var_maxlength = Dict())
     # 2 tabulate the code, without mem alloc
     ast_tabulate_impl!(ast)
     tabulated_block = binomial_tree_blocks[1]
+
+    # Keep the placement of each consumer. Replace the loads that would
+    # otherwise need a new array between the producer and consumer loops.
+    forwarded_loads = Dict()
+    for (var,rhs) in definitions
+        rhs !== nothing && haskey(var_alloc_index,var) && !(var in accumulate_vars) || continue
+        if ast_is_direct_source_load(rhs,load_sources) &&
+                all(i -> ast_is_number(i) || haskey(loop_index_depth,i),ast_children(rhs)[2:end])
+            forwarded_loads[var] = rhs
+            delete!(var_alloc_index,var)
+            delete!(var_alloc_shape,var)
+        elseif tabulated_buffers !== nothing
+            tabulated_buffers[var] = Tuple(var_alloc_index[var])
+        end
+    end
 
     # 3 allocate memory for tabulated arrays
     alloc_block = ast_tabulate_alloc_block(var_alloc_shape, var_proto)
@@ -1191,7 +1287,15 @@ end
 #   symmetry. The experiment covered full 2D/3D/4D caches, partial dependency sets,
 #   multiple consumers and unused caches; these are useful future regression cases.
 # a normal cse & dce is required for the prototype (so we don't need to enter the loops). We can do it outside the function
-function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
+function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict();
+        tabulated_buffers=nothing)
+    load_sources,definitions = ast_partial_load_info(ast)
+    forward_copies = !isempty(load_sources)
+    # Earlier reuses and aliases can expose a zero term after tabulation.
+    if forward_copies
+        ast = ast_constant_folding(ast)
+        load_sources,definitions = ast_partial_load_info(ast)
+    end
     loop_vars = [] # element: (var name, upperbound hash, upperbound)
     loopvar_info = Dict() # key:var name  value: (var index, upperbound hash)
     var_summary = Dict() 
@@ -1208,8 +1312,44 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     undo_logs = [[]] # TODO: use another flag for undo logs. now it uses nothing to label undo.
     delay_cache_scalar = [[]]
     array_scope_logs = [Set{Any}()] # tables expire with their innermost non-indexed dependency
+    copy_loads = Dict()
 
+    function direct_load(rhs)
+        forward_copies || return nothing
+        rhs = ast_is_leaf(rhs) ? get(definitions,rhs,rhs) : rhs
+        ast_is_direct_source_load(rhs,load_sources) ? rhs : nothing
+    end
 
+    function register_copy!(lhs,rhs)
+        tabulated_buffers === nothing && return false
+        load = direct_load(rhs)
+        ast_is_index(load) || return false
+        array,indices... = ast_children(lhs)
+        get(tabulated_buffers,array,nothing) == Tuple(indices) || return false
+        allocation = get(definitions,array,nothing)
+        ast_is_alloc(allocation) || return false
+        all(i -> ast_is_number(i) || i in indices,ast_children(load)[2:end]) || return false
+        copy_loads[array] = (indices,load,ast_alloc_type(allocation))
+        true
+    end
+
+    function forward_copy_reads(node)
+        isempty(copy_loads) && return node
+        ast_is_leaf(node) && return node
+        ast_head(node) === :quote && return node
+        children = map(forward_copy_reads,ast_children(node))
+        if ast_is_index(node) && haskey(copy_loads,first(children))
+            indices,load,element_type = copy_loads[first(children)]
+            if length(children) == length(indices)+1
+                array,source_indices... = ast_children(load)
+                from_copy = Dict(zip(indices,children[2:end]))
+                read = ast_index(array,map(i -> get(from_copy,i,i),source_indices)...)
+                # The original assignment converts to the scratch element type.
+                return ast_call(ast_leaf(:convert),element_type,read)
+            end
+        end
+        ast_replace_children(node,children...)
+    end
 
     function subexpression_placeholder()
         -1
@@ -1425,9 +1565,12 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
     end
 
     function rewrite_rhs(rhs)
+        forwarded = forward_copy_reads(rhs)
+        projected = ast_is_index(rhs) && ast_is_call(forwarded)
+        rhs = forwarded
         summary = summary_expr(rhs)
-        if ast_is_leaf(rhs) 
-            return rhs, summary, false
+        if projected || ast_is_leaf(rhs) || direct_load(rhs) !== nothing
+            return rhs,summary,projected
         end
         load = find_array_reuse(summary) 
         if load === nothing
@@ -1562,7 +1705,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             # push!(result_block, result)
             # result
         elseif ast_is_loop(node)
-            signature = ast_loop_signature(node)
+            signature = forward_copy_reads(ast_loop_signature(node))
             loop_index = ast_loop_index(node)
             upperbound = ast_loop_signature_upperbound(signature)
             push!(loop_vars, (loop_index, hash_expr(upperbound), upperbound))
@@ -1611,12 +1754,15 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
 
             if ast_is_leaf(lhs)
                 if !ast_is_alloc(rhs)
-                    set_scalar!(lhs, summary)
-                    if !reused
-                        cache_scalar!(lhs, rhs, summary, result_block)
+                    set_scalar!(lhs,summary)
+                    if forward_copies && get(definitions,lhs,nothing) !== nothing
+                        definitions[lhs] = rhs2
+                    end
+                    if !reused && direct_load(rhs2) === nothing
+                        cache_scalar!(lhs,rhs2,summary,result_block)
                     end
                 end
-            elseif ast_is_index(lhs)  &&  ast_is_leaf(ast_children(lhs)[1]) 
+            elseif ast_is_index(lhs) && ast_is_leaf(ast_children(lhs)[1]) && !register_copy!(lhs,rhs2)
                 indexed = index_placeholders_for_lhs(lhs, summary)
                 if indexed !== nothing
                     placeholders, ranges = indexed
@@ -1633,8 +1779,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
             result = ast_replace_children(node, lhs, rhs2)
             push!(result_block, result)
         else
-            # TODO: check other cases
-            push!(result_block, node)
+            push!(result_block,forward_copy_reads(node))
         end
     end
 
@@ -1724,7 +1869,7 @@ function ast_array_cse(ast, var_count = 0, loop_var_maxlength = Dict())
         elseif ast_is_incremental(node)
             push!(result_block, node)
         else
-            push!(result_block, node)
+            push!(result_block,node)
         end
     end
 
@@ -1976,10 +2121,11 @@ end
 # topo sort 
 
 
+const MAX_UNROLL_SIZE = 10
+
 # assuming that the loop range of unrolled loops are all constant integers
 # Keep loops whose indices are in non_unroll_loop_vars, even with short literal bounds.
 function ast_loop_unroll(ast, non_unroll_loop_vars = ())
-    MAX_UNROLL_SIZE = 10 # TODO: define the max loop length for unrolling. if not, we can do partial unrolling with it
     unroll_indices = []
     loop_var_unrolled_val = Dict()
     loop_vars = Set()
@@ -2346,6 +2492,30 @@ end
 # =============================================================================
 # End of existing code. AI-generated compiler passes follow.
 # =============================================================================
+
+# Select the coordinate gathering policy before optimizing the assembly loops.
+ast_prepare_jacobian_coordinates(ast,workspace_backend) = ast
+
+ast_prepare_jacobian_coordinates(ast,::Union{SerialExecution,CPUThreadedExecution}) =
+    ast_gather_jacobian_coordinates(ast,Val(false))
+
+# Expose coordinate gathering as a cell dependency shared across quadrature points.
+function ast_gather_jacobian_coordinates(ast,unroll_nodes)
+    function visit(node)
+        ast_is_leaf(node) && return node
+        ast_head(node) === :quote && return node
+        children = map(visit,ast_children(node))
+        if ast_is_call(node) && length(children) == 5 &&
+                ast_leaf_value(first(children)) isa JacobianSumCallable
+            sum, nodes, coordinates, gradients, point = children
+            gathered = ast_call(ast_leaf(gather_element_coordinates),nodes,coordinates)
+            jacobian = GatheredJacobianSumCallable(ast_leaf_value(sum),unroll_nodes)
+            return ast_call(ast_leaf(jacobian),gathered,gradients,point)
+        end
+        ast_replace_children(node,children...)
+    end
+    visit(ast)
+end
 
 """
     ast_element_range_assembly(ast, element)

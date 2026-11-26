@@ -7,8 +7,8 @@ import GalerkinToolkit as GT
 
 @testset "Element ranges preserve domain-local IDs" begin
     @test isbitstype(GT.SerialExecution)
-    @test fieldcount(GT.SerialExecution) == 0
-    @test fieldnames(typeof(GT.CPUThreadedExecution())) == (:workers,)
+    @test GT.SerialExecution().fastmath
+    @test GT.CPUThreadedExecution().fastmath
     @test_throws ArgumentError GT.CPUThreadedExecution(workers=0)
     @test_throws ArgumentError GT.CPUThreadedExecution(distribution=:invalid)
     for n in (0,1,7,16), workers in (1,3,20), distribution in (:contiguous,:cyclic)
@@ -354,7 +354,7 @@ function generated_assembly_tests()
     # reference_b = GT.assemble_vector(l,Float64,V;assembly_method=vector_method)
     for (workers,distribution) in ((1,:contiguous),(3,:contiguous),(3,:cyclic))
         A,cache = GT.assemble_matrix(a,Float64,V,V;assembly_method=matrix_method,
-            execution=GT.CPUThreadedExecution(;workers,distribution),parameters=(scale,),reuse=Val(true))
+            execution=GT.CPUThreadedExecution(;workers,distribution,fastmath=false),parameters=(scale,),reuse=Val(true))
         #= TODO: Re-enable threaded load vectors.
         b,bcache = GT.assemble_vector(l,Float64,V;assembly_method=vector_method,
             execution=GT.CPUThreadedExecution(;workers,distribution),parameters=(scale,),reuse=Val(true))

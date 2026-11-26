@@ -1,5 +1,23 @@
+const CUDACompilerBackend = parentmodule(CUDA.cufunction)
+
+struct CUDAAssemblyCompilerOptions
+    opt_level::Int
+    fastmath::Bool
+end
+
+# CUDA.jl forwards `name` to compiler_config and includes it in the kernel cache.
+# Only our option type intercepts that keyword to set GPUCompiler's opt_level.
+function Core.kwcall(kwargs::NamedTuple{(:name,),Tuple{CUDAAssemblyCompilerOptions}},
+        ::typeof(CUDACompilerBackend.compiler_config),device::CUDA.CuDevice)
+    options = kwargs.name
+    config = CUDACompilerBackend.compiler_config(device;always_inline=true,fastmath=options.fastmath)
+    CUDACompilerBackend.CompilerConfig(config;opt_level=options.opt_level)
+end
+
 function GT.validate_matrix_assembly(execution::GT.CUDAExecution)
     CUDA.functional(true) || throw(ArgumentError("CUDA matrix assembly requires a functional GPU"))
+    hasfield(CUDACompilerBackend.CompilerConfig,:opt_level) || throw(ArgumentError(
+        "CUDA matrix assembly requires a GPUCompiler version with opt_level support"))
     limit = CUDA.attribute(CUDA.device(),CUDA.DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK)
     execution.threads <= limit || throw(ArgumentError("threads exceeds the device's per-block limit"))
     nothing
@@ -58,7 +76,8 @@ function (runner::CUDAAssemblyRunner)(parameters::Tuple)
     blocks = cld(runner.nelements,threads)
     # Keep even the final grid-stride increment representable in the index type.
     index_type = blocks <= div(typemax(Int32)-runner.nelements,threads) ? Int32 : Int
-    @cuda threads=threads blocks=blocks cuda_assembly_kernel!(
+    options = CUDAAssemblyCompilerOptions(runner.execution.opt_level,runner.execution.fastmath)
+    @cuda threads=threads blocks=blocks name=options cuda_assembly_kernel!(
         runner.kernel,runner.argument,runner.data,parameters,index_type(runner.nelements))
     nothing
 end

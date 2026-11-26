@@ -7,6 +7,7 @@ const CUDAElementCSCPositions = Union{
     CUDA.CuDeviceArray{<:Integer,2},
     Transpose{<:Integer,<:CUDA.CuDeviceArray{<:Integer,2}},
 }
+const CUDA_SCATTER_BATCH_WIDTH = 32
 
 @inline cuda_index_type(n) = n <= typemax(Int32) ? Int32 : Int
 
@@ -32,18 +33,60 @@ end
     end
 end
 
-# Generated CUDA calls select the lookup width from the prepared host table.
-@inline function cuda_contribute_element_block_atomic!(malloc,vals,face,base,nrows,ncols,::Type{I}) where I
+# The generated caller supplies the packed shape and lookup width from the host.
+@inline function cuda_contribute_element_block_atomic!(malloc,vals,face,base,
+        shape::Val{S},::Type{I}) where {S,I}
     base == -1 && return nothing
     alloc = GT.element_csc_matrix_storage(malloc.allocation)
     cache = GT.element_csc_single_domain_cache(alloc)
-    cuda_scatter_packed!(alloc.nzval,cache.positions,vals,face,base,nrows,I)
+    if min(S...) <= GT.MAX_UNROLL_SIZE && size(vals) == S
+        lookup,offset,stride = cuda_scatter_lookup(cache.positions,face,base,I)
+        cuda_scatter_dofs!(alloc.nzval,lookup,vals,offset,stride,shape)
+    else
+        cuda_scatter_packed!(alloc.nzval,cache.positions,vals,face,base,S[1],I)
+    end
+    nothing
+end
+
+@inline function cuda_scatter_dof!(nzval,lookup,vals,offset::I,stride,entry) where I
+    @inbounds begin
+        slot = lookup[offset + I(entry)*stride + one(I)]
+        if slot != 0
+            GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(entry+one(entry))]
+        end
+    end
+    nothing
+end
+
+@inline @generated function cuda_scatter_dofs!(nzval,lookup,vals,offset,stride,::Val{S}) where S
+    rows,cols = S
+    index_type = cuda_index_type(prod(S))
+    function dof_loop(body,name,n)
+        if n <= GT.MAX_UNROLL_SIZE
+            return GT.ast_block([body(GT.ast_leaf(index_type(i))) for i in 0:n-1])
+        end
+        index = GT.ast_leaf(gensym(name))
+        quote
+            $index = $(zero(index_type))
+            while $index < $(index_type(n))
+                $(body(index))
+                $index += $(one(index_type))
+            end
+        end
+    end
+    loops = dof_loop(:col,cols) do col
+        dof_loop(:row,rows) do row
+            entry = :($col * $(index_type(rows)) + $row)
+            GT.ast_call(GT.ast_leaf(:cuda_scatter_dof!),:nzval,:lookup,:vals,:offset,:stride,entry)
+        end
+    end
+    GT.ast_block([loops,GT.ast_leaf(nothing)])
 end
 
 @inline function cuda_scatter_packed!(nzval,positions,vals,face,base,nrows,::Type{I}) where I
     lookup,offset,stride = cuda_scatter_lookup(positions,face,base,I)
     n = length(vals)
-    if I === Int32 && 32 <= n <= typemax(Int32) && size(vals,1) == nrows
+    if I === Int32 && CUDA_SCATTER_BATCH_WIDTH <= n <= typemax(Int32) && size(vals,1) == nrows
         cuda_scatter_batches!(nzval,lookup,vals,offset,stride,Int32(n))
     elseif n <= typemax(Int32)
         cuda_scatter_atomic!(nzval,lookup,vals,offset,stride,nrows,Int32)
@@ -53,12 +96,16 @@ end
 end
 
 @inline function cuda_scatter_batches!(nzval,lookup,vals,offset,stride,n)
-    width = Int32(32)
+    width = Int32(CUDA_SCATTER_BATCH_WIDTH)
     start = Int32(0)
     while start <= n-width
-        cuda_scatter_batch!(nzval,lookup,vals,offset+start*stride,start,stride,Val(32))
+        cuda_scatter_batch!(nzval,lookup,vals,offset+start*stride,start,stride,Val(CUDA_SCATTER_BATCH_WIDTH))
         start += width
     end
+    cuda_scatter_tail!(nzval,lookup,vals,offset,stride,start,n)
+end
+
+@inline function cuda_scatter_tail!(nzval,lookup,vals,offset,stride,start,n)
     @inbounds while start < n
         slot = lookup[offset + start*stride + Int32(1)]
         start += Int32(1)
@@ -71,7 +118,7 @@ end
 
 @inline function cuda_scatter_batch!(nzval,lookup,vals,offset,start,stride,::Val{B}) where B
     # Materialize this batch before the slot checks so the compiler can group its loads.
-    entries = GT.SVector{B}(ntuple(j -> (@inbounds vals[Int(start)+j]),Val(B)))
+    entries = GT.SVector{B}(ntuple(j -> (@inbounds vals[Int(start+Int32(j))]),Val(B)))
     ntuple(Val(B)) do j
         @inbounds begin
             slot = lookup[offset + (Int32(j)-Int32(1))*stride + Int32(1)]
