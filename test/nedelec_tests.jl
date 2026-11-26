@@ -165,16 +165,22 @@ function dirichlet_edges(V,mesh,D)
     edges
 end
 
+# Unstructured mesh of the unit square or cube with element size h. With Mesh.MeshSizeMax
+# alone the mesh was the same for every h tried (0.3 to 0.45 in 2D, 0.4 to 2 in 3D), finer
+# than all of them, so the minimum is set too and the mesh follows h. In 3D, h = 0.25 and
+# 0.2 give tetrahedra in all 24 vertex orders; in 2D, the triangles came in 2 of the 6
+# vertex orders at every h tried (0.1 to 0.45).
 function gmsh_simplex_mesh(D,h)
     GT.with_gmsh() do gmsh
         gmsh.option.setNumber("General.Verbosity",0)
+        gmsh.option.setNumber("Mesh.MeshSizeMin",h)
+        gmsh.option.setNumber("Mesh.MeshSizeMax",h)
         if D == 3
             gmsh.model.occ.addBox(0,0,0,1,1,1)
         else
             gmsh.model.occ.addRectangle(0,0,0,1,1)
         end
         gmsh.model.occ.synchronize()
-        gmsh.option.setNumber("Mesh.MeshSizeMax",h)
         gmsh.model.mesh.generate(D)
         GT.mesh_from_gmsh(gmsh)
     end
@@ -182,9 +188,9 @@ end
 
 meshes = [
     (2,GT.cartesian_mesh((0,1,0,1),(3,2);simplexify=true)),
-    (2,gmsh_simplex_mesh(2,0.3)),
+    (2,gmsh_simplex_mesh(2,0.12)),
     (3,GT.cartesian_mesh((0,2,0,1,0,0.5),(2,2,2);simplexify=true)),
-    (3,gmsh_simplex_mesh(3,0.5)),
+    (3,gmsh_simplex_mesh(3,0.2)),
 ]
 
 for (D,mesh) in meshes
@@ -543,8 +549,8 @@ function tangential_jumps(V,mesh,D;maxfaces=20)
     tangential,total,nchecked
 end
 
-meshes_k = [(2,sheared_simplex_mesh(2,2)),(2,gmsh_simplex_mesh(2,0.45)),
-            (3,sheared_simplex_mesh(3,2)),(3,gmsh_simplex_mesh(3,0.7))]
+meshes_k = [(2,sheared_simplex_mesh(2,2)),(2,gmsh_simplex_mesh(2,0.1)),
+            (3,sheared_simplex_mesh(3,2)),(3,gmsh_simplex_mesh(3,0.25))]
 
 for (D,mesh) in meshes_k, k in (1,2)
     Ω = GT.interior(mesh)

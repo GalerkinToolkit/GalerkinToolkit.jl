@@ -3,10 +3,23 @@
 # Reference element of order k (k = 0 is the lowest order), on the reference
 # triangle or tetrahedron:
 #   NED_k = P_k^D ⊕ S_{k+1},  S_{k+1} = {p ∈ homogeneous P_{k+1}^D : p⋅x = 0}.
-# Degrees of freedom, per entity, with the entity's vertices in ascending order:
-#   edge (a,b), t = x_b - x_a:        ∫₀¹ (v⋅t) Lⱼ(2s-1) ds (Legendre), j = 0..k
-#   face (a,b,c) (3D, k ≥ 1):         ∫ (v⋅tᵢ) u^α w^β dÂ, tᵢ ∈ {x_b-x_a, x_c-x_a}, α+β ≤ k-1
-#   interior (2D k ≥ 1, 3D k ≥ 2):    ∫ v⋅q, q monomial vectors of degree ≤ k-1 (2D) or ≤ k-2 (3D)
+# (The primal basis is written in powers of x - c, c the centroid: the same space,
+# better conditioned at higher order.)
+# Degrees of freedom, per entity, with the entity's vertices in ascending order. Each
+# is a mean over the entity's parameter domain against a weight from a basis that is
+# orthonormal for that mean:
+#   edge (a,b), t = x_b - x_a:        ∫₀¹ (v⋅t) ℓⱼ(s) ds, ℓⱼ(s) = √(2j+1) Lⱼ(2s-1) (Legendre), j = 0..k
+#   face (a,b,c) (3D, k ≥ 1):         2 ∫ (v⋅tᵢ) qᵣ(u,w) dÂ over the unit triangle, x = x_a + u t₁ + w t₂,
+#                                     tᵢ ∈ {t₁,t₂} = {x_b-x_a, x_c-x_a}, qᵣ of degree ≤ k-1
+#   interior (2D k ≥ 1, 3D k ≥ 2):    |K̂|⁻¹ ∫ v_d qᵣ dx̂, d = 1..D, qᵣ of degree ≤ k-1 (2D) or ≤ k-2 (3D)
+# The qᵣ come from Gram–Schmidt, in order of degree, of products of shifted Legendre
+# polynomials (see nedelec_orthonormal_values). The weights span the same spaces as
+# monomial weights, so the element is the same; only the basis changes. With monomial
+# face and interior weights and plain integrals, cond(K+M) (K the curl-curl and M the
+# mass matrix) on the reference element at k = 1 to 3 was 4.3 to about 2400 times that
+# of Gridap's Nédélec element; with these weights it is 0.45 to 2.6 times.
+# Face weights depend only on (u,w), i.e. on the face's vertex order, so every cell
+# sharing a face sees the same moments.
 #
 # Mesh space and orientation: each cell is given a "sorted frame", the reference
 # map whose i-th reference vertex goes to the cell vertex with the i-th smallest
@@ -16,8 +29,6 @@
 # R the affine map of the reference simplex such that φ∘R is the sorted frame,
 # the cell's shape function in local slot s is
 #   φ_s(x) = J⁻ᵀ ψᴾ_s(ξ),  ψᴾ_s(ξ) = A_R⁻ᵀ φ̂_{perm(s)}(R⁻¹ξ),  ξ = φ⁻¹(x),
-# (The primal basis is written in powers of x - c, c the centroid: the same space,
-# better conditioned at higher order.)
 # where perm(s) is the reference DOF of the sorted-frame entity that R maps to the
 # slot's entity. NED_k is invariant under such maps, so ψᴾ_s = Σⱼ Cᴾ[s,j] φ̂ⱼ with
 # a matrix Cᴾ precomputed for each of the (D+1)! vertex permutations P. At order
@@ -103,6 +114,21 @@ function nedelec_legendre(j,t)
     p1
 end
 
+# Values at the quadrature points xs (weights ws) of a basis of the polynomials of
+# degree ≤ n in dim variables, orthonormal for the mean over the quadrature's domain:
+# Σ_q ws[q] p_r(xs[q]) p_s(xs[q]) / Σ_q ws[q] = δ_rs. Gram–Schmidt, in order of degree,
+# of products of Legendre polynomials in 2x_i - 1, done by a QR factorization of the
+# weighted values (R with a positive diagonal is the Cholesky factor of the Gram matrix,
+# without forming that matrix). The quadrature must integrate degree 2n exactly.
+function nedelec_orthonormal_values(dim,n,xs,ws)
+    exponents = sort(nedelec_exponents(dim,n),by=sum)
+    P = [prod(ntuple(i->nedelec_legendre(e[i],2x[i]-1),dim)) for x in xs, e in exponents]
+    sqrtW = Diagonal(sqrt.(collect(ws) ./ sum(ws)))
+    R = qr(sqrtW*P).R
+    R = Diagonal(sign.(diag(R)))*R
+    P/UpperTriangular(R)
+end
+
 function nedelec_unit_vector(::Val{D},d,m) where D
     SVector{D}(ntuple(i -> i == d ? m : zero(m),Val(D)))
 end
@@ -154,24 +180,30 @@ function nedelec_setup(domain,k)
     entity_nodes = [map(nodes->sort(Int.(collect(nodes))),face_nodes(cell_mesh,d)) for d in 0:D]
     dual_basis = Function[]
     dof_entity = Tuple{Int,Int}[] # dof -> (dimension, entity)
+    # Each moment is Σ_q ω[q] f(x_q): ω folds the quadrature weight, the division by the
+    # entity's parametric measure and the weight polynomial (see the top of this file).
     # Edge moments.
     s,w = gausslegendre(k+3)
-    ss,ws = (s .+ 1) ./ 2, w ./ 2
+    ss = (s .+ 1) ./ 2
+    edge_ω = [w[q]/2*sqrt(2j+1)*nedelec_legendre(j,s[q]) for q in eachindex(s), j in 0:k]
     for (edge,(a,b)) in enumerate(entity_nodes[2]), j in 0:k
         xa,t = node_x[a],node_x[b]-node_x[a]
-        push!(dual_basis,v -> sum(q -> ws[q]*dot(t,v(xa+ss[q]*t))*nedelec_legendre(j,2ss[q]-1),1:length(ss)))
+        ω = edge_ω[:,j+1]
+        push!(dual_basis,v -> sum(q -> ω[q]*dot(t,v(xa+ss[q]*t)),1:length(ss)))
         push!(dof_entity,(1,edge))
     end
     # Face moments (3D).
     if D == 3 && k >= 1
         face_quadrature = quadrature(unit_simplex(Val(2)),2k+3)
         uw,wf = coordinates(face_quadrature),weights(face_quadrature)
-        for (face,(a,b,c)) in enumerate(entity_nodes[3]), e in nedelec_exponents(2,k-1), i in 1:2
+        qf = nedelec_orthonormal_values(2,k-1,uw,wf)
+        face_ω = [wf[q]/sum(wf)*qf[q,r] for q in eachindex(wf), r in axes(qf,2)]
+        for (face,(a,b,c)) in enumerate(entity_nodes[3]), r in axes(face_ω,2), i in 1:2
             xa = node_x[a]
             t1,t2 = node_x[b]-xa,node_x[c]-xa
             t = i == 1 ? t1 : t2
-            push!(dual_basis,v -> sum(q -> wf[q]*dot(t,v(xa+uw[q][1]*t1+uw[q][2]*t2))*nedelec_monomial(e,uw[q]),
-                1:length(wf)))
+            ω = face_ω[:,r]
+            push!(dual_basis,v -> sum(q -> ω[q]*dot(t,v(xa+uw[q][1]*t1+uw[q][2]*t2)),1:length(wf)))
             push!(dof_entity,(2,face))
         end
     end
@@ -180,8 +212,11 @@ function nedelec_setup(domain,k)
     if interior_degree >= 0
         cell_quadrature = quadrature(domain,2k+3)
         xs,wc = coordinates(cell_quadrature),weights(cell_quadrature)
-        for e in nedelec_exponents(D,interior_degree), d in 1:D
-            push!(dual_basis,v -> sum(q -> wc[q]*v(xs[q])[d]*nedelec_monomial(e,xs[q]),1:length(wc)))
+        qc = nedelec_orthonormal_values(D,interior_degree,xs,wc)
+        cell_ω = [wc[q]/sum(wc)*qc[q,r] for q in eachindex(wc), r in axes(qc,2)]
+        for r in axes(cell_ω,2), d in 1:D
+            ω = cell_ω[:,r]
+            push!(dual_basis,v -> sum(q -> ω[q]*v(xs[q])[d],1:length(wc)))
             push!(dof_entity,(D,1))
         end
     end
