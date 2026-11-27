@@ -245,7 +245,9 @@ end
     integral = a(GT.form_argument_quantity(V,2),GT.form_argument_quantity(V,1))
     contribution = only(GT.contributions(integral))
     Q = GT.quadrature(contribution)
-    A,cache = GT.assemble_matrix(a,Float64,V,V;reuse=Val(true),assembly_method=(;))
+    # COO scatters through global DOF IDs, so the kernel also reads DOFData.
+    coo = (;matrix=GT.monolithic_assembly(GT.coo_assembly()))
+    A,cache = GT.assemble_matrix(a,Float64,V,V;reuse=Val(true),assembly_method=coo)
     term = GT.optimize(GT.write_assemble_matrix(contribution,V,V;allocation=cache.alloc))
     captured,data = GT.capture(GT.parametrize(term))
     assembly = captured.body.body

@@ -145,7 +145,8 @@ SerialExecution(;fastmath::Bool=true) = SerialExecution(fastmath)
 
 
 # TODO: Support other assembly methods for multithreading.
-# Matrix storage currently needs `element_csc_assembly()`; vector storage needs `direct_vector_assembly()`.
+# Matrix storage currently needs `element_csc_assembly()` and vector storage needs
+# `direct_vector_assembly()`; both are the defaults.
 """
     CPUThreadedExecution(; workers=Threads.nthreads(), distribution=:contiguous, fastmath=true)
 
@@ -176,8 +177,8 @@ assembly_uses_workers(::CPUThreadedExecution) = true
 """
     CUDAExecution(; threads=128, opt_level=3, fastmath=true)
 
-Single-GPU matrix assembly. Load CUDA and select `element_csc_assembly()` as
-the matrix storage method. Prepared numeric inputs and matrix storage persist
+Single-GPU matrix assembly. Load CUDA; the matrix storage method must be
+`element_csc_assembly()` (the default). Prepared numeric inputs and matrix storage persist
 in the assembly cache. Each GPU thread constructs its own scratch space.
 
 The variational form is compiled automatically for the GPU. Geometry and reference
@@ -642,12 +643,12 @@ end
 
 Assemble a bilinear form. `execution` selects hardware execution and scheduling;
 `assembly_method.matrix` independently selects the output storage/update method.
-For example, combine `execution=CPUThreadedExecution(workers=n)` with
-`assembly_method=(;matrix=element_csc_assembly())`. Sequential execution remains
-the default. `reuse=Val(true)` returns a cache for `update_matrix!`.
+The default is `monolithic_assembly(element_csc_assembly())`, which is also
+the method required by `CPUThreadedExecution(workers=n)` and `CUDAExecution()`.
+Sequential execution remains the default. `reuse=Val(true)` returns a cache for
+`update_matrix!`.
 
-For `CUDAExecution()`, select `assembly_method=(;matrix=element_csc_assembly())`.
-The form is compiled for CUDA automatically. Subsequent updates reuse the
+For `CUDAExecution()`, the form is compiled for CUDA automatically. Subsequent updates reuse the
 prepared numeric inputs and device matrix storage.
 
 Set `fastmath=false` on the execution policy to disable Julia's `@fastmath`

@@ -446,7 +446,12 @@ function generated_assembly_tests()
         =#
     end
 
-    @test_throws ArgumentError GT.assemble_matrix(a,Float64,V,V;execution=GT.CPUThreadedExecution())
+    coo = (;matrix=GT.monolithic_assembly(GT.coo_assembly()))
+    @test_throws ArgumentError GT.assemble_matrix(a,Float64,V,V;assembly_method=coo,
+        execution=GT.CPUThreadedExecution())
+    # The default matrix method (element CSC) supports threaded execution.
+    @test GT.assemble_matrix(a,Float64,V,V;execution=GT.CPUThreadedExecution(workers=2),
+        parameters=(scale,),reuse=Val(false)) ≈ reference_A
     # @test_throws ArgumentError GT.assemble_vector(l,Float64,V;execution=GT.CPUThreadedExecution())
     @test_throws TypeError GT.assemble_matrix(a,Float64,V,V;execution=:invalid)
 end

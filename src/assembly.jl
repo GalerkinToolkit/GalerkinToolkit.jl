@@ -1,11 +1,11 @@
 
 
 function default_vector_assembly_method()
-    monolithic_assembly(coo_assembly())
+    monolithic_assembly(direct_vector_assembly())
 end
 
 function default_matrix_assembly_method()
-    monolithic_assembly(coo_assembly())
+    monolithic_assembly(element_csc_assembly())
 end
 
 function vector_assembly_method(;vector=default_vector_assembly_method(),matrix=nothing)
@@ -909,10 +909,11 @@ end
 """
     element_csc_assembly()
 
-Sequential matrix assembly with domain-local element-indexed CSC positions. Select
-`monolithic_assembly(element_csc_assembly())` through the existing
-`assembly_method.matrix` option of `allocate_matrix`.
-The existing assembly methods and defaults are kept for comparison.
+Matrix assembly with domain-local element-indexed CSC positions. This is the
+default (`monolithic_assembly(element_csc_assembly())`) of the
+`assembly_method.matrix` option of `allocate_matrix`. Select
+`monolithic_assembly(coo_assembly())` or `monolithic_assembly(csc_assembly())`
+for the generic methods.
 """
 element_csc_assembly() = ElementCSCAssembly()
 
@@ -1456,8 +1457,9 @@ end
 """
     direct_vector_assembly()
 
-Sequential updates directly into a dense vector. Select
-`monolithic_assembly(direct_vector_assembly())` with `assembly_method.vector`.
+Updates directly into a dense vector. This is the default
+(`monolithic_assembly(direct_vector_assembly())`) of `assembly_method.vector`.
+Select `monolithic_assembly(coo_assembly())` for COO vector assembly.
 """
 direct_vector_assembly() = DirectVectorAssembly()
 

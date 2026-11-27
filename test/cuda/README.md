@@ -30,8 +30,7 @@ V = GT.lagrange_space(Ω, k)
 dΩ = GT.measure(Ω, 2k)
 a = (u,v) -> GT.∫(x -> dot(ForwardDiff.gradient(u,x), ForwardDiff.gradient(v,x)), dΩ)
 A, cache = GT.assemble_matrix(a, Float64, V, V;
-    execution=GT.CUDAExecution(),
-    assembly_method=(;matrix=GT.element_csc_assembly()), reuse=Val(true))
+    execution=GT.CUDAExecution(), reuse=Val(true))
 GT.update_matrix!(A, cache; parameters=())
 ```
 
