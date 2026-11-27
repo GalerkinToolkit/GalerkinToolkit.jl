@@ -164,4 +164,60 @@ end
     end
 end
 
+@testset "Generated CUDA matrix assembly with discrete-field coefficients" begin
+    ∇ = ForwardDiff.gradient
+    distort(mesh,dim) = GT.replace_node_coordinates(mesh,
+        [SVector{dim}(ntuple(i->x[i]+0.08*sin(2x[mod1(i+1,dim)])+0.05*x[i]*x[mod1(i+1,dim)],dim))
+         for x in GT.node_coordinates(mesh)])
+    g = x -> 1 + x[1]^2 - x[1]*x[end]/2 + 3sin(3x[end])/10
+    form(uh,dμ) = (u,v)->GT.∫(x->uh(x)*u(x)*v(x) + dot(∇(uh,x),∇(u,x))*v(x) +
+        uh(x)^2*dot(∇(u,x),∇(v,x)),dμ)
+    # The field is captured by the form; its arrays become device inputs of the kernel.
+    for (dim,simplexify,kf,k) in ((2,false,2,1),(3,true,1,1),(3,true,2,2),(3,false,2,1))
+        mesh = distort(GT.cartesian_mesh(ntuple(i->isodd(i) ? 0 : 1,2dim),ntuple(_->2,dim);simplexify),dim)
+        ncells = GT.num_faces(mesh,dim)
+        GT.group_faces(mesh,dim)["CUDA field subset"] = Int32[1,ncells]
+        Ω = GT.interior(mesh)
+        Ωs = GT.interior(mesh;group_names=["CUDA field subset"])
+        uh = GT.interpolate(GT.analytical_field(g,Ω),
+            GT.lagrange_space(Ω,kf;dirichlet_boundary=GT.boundary(mesh)))
+        @test GT.num_dirichlet_dofs(GT.space(uh)) > 0
+        V = GT.lagrange_space(Ω,k)
+        for dμ in (GT.measure(Ω,2kf+k),GT.measure(Ωs,2kf+k))
+            a = form(uh,dμ)
+            expected = GT.assemble_matrix(a,Float64,V,V;assembly_method)
+            A,cache = GT.assemble_matrix(a,Float64,V,V;
+                execution=GT.CUDAExecution(),assembly_method,reuse=Val(true))
+            @test SparseMatrixCSC(A) ≈ expected rtol=2e-11 atol=1e-12
+            runner = only(cache.loops)
+            @test isbitstype(typeof(CUDA.cudaconvert(runner.data)))
+            @test GT.update_matrix!(A,cache;parameters=()) === A
+            @test SparseMatrixCSC(A) ≈ expected rtol=2e-11 atol=1e-12
+        end
+    end
+    # Field values held on the device are read by reference: changing them in place
+    # changes the next update_matrix!.
+    mesh = distort(GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true),3)
+    Ω = GT.interior(mesh)
+    Pf = GT.lagrange_space(Ω,2;dirichlet_boundary=GT.boundary(mesh))
+    V = GT.lagrange_space(Ω,1)
+    dμ = GT.measure(Ω,5)
+    host = GT.interpolate(GT.analytical_field(g,Ω),Pf)
+    free,diri = CuArray(GT.free_values(host)),CuArray(GT.dirichlet_values(host))
+    uh = GT.discrete_field(Pf,free,diri)
+    @test GT.tabulated_lagrange_discrete_field(GT.value,uh,GT.leaf_term(nothing),Ω)
+    A,cache = GT.assemble_matrix(form(uh,dμ),Float64,V,V;
+        execution=GT.CUDAExecution(),assembly_method,reuse=Val(true))
+    @test SparseMatrixCSC(A) ≈ GT.assemble_matrix(form(host,dμ),Float64,V,V;assembly_method) rtol=2e-11 atol=1e-12
+    for scale in (2.0,-0.5)
+        new_free,new_diri = scale*GT.free_values(host),(1+scale)*GT.dirichlet_values(host)
+        copyto!(free,new_free)
+        copyto!(diri,new_diri)
+        expected = GT.assemble_matrix(form(GT.discrete_field(Pf,new_free,new_diri),dμ),Float64,V,V;
+            assembly_method)
+        @test GT.update_matrix!(A,cache;parameters=()) === A
+        @test SparseMatrixCSC(A) ≈ expected rtol=2e-11 atol=1e-12
+    end
+end
+
 end # module

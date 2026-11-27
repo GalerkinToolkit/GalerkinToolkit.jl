@@ -610,6 +610,14 @@ function shape_function_expr(func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr
             $node_x_expr, $nodes_expr, $geometry_values_expr, $q_expr, $xi0))
     end
 
+    invJ_expr = physical_inverse_jacobian_expr(mesh, V, Q, mesh_expr, Q_expr, f_expr, q_expr)
+    modif_expr(func, v_expr, invJ_expr)
+
+end
+
+# Inverse (or pseudo-inverse) of the cell Jacobian at a quadrature point, used to
+# map tabulated reference derivatives of the space V to physical derivatives.
+function physical_inverse_jacobian_expr(mesh, V, Q, mesh_expr, Q_expr, f_expr, q_expr)
     J_expr = jacobian_expr(mesh, Q, mesh_expr, Q_expr, f_expr, q_expr)
     z = zero(eltype(GT.node_coordinates(mesh)))
     d = num_dims(GT.domain(V))
@@ -619,12 +627,31 @@ function shape_function_expr(func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr
 
     # TODO: (can we process external functions on GPUs?)
 
-    invJ_expr = if Di == Dj # inv(J) = adj(J)/det(J) for square matrices
+    if Di == Dj # inv(J) = adj(J)/det(J) for square matrices
         :(adjugate($J_expr) * inv(det($J_expr)))
     else
         :(jacobian_pinv($J_expr))
     end
+end
 
-    modif_expr(func, v_expr, invJ_expr)
-
+# Tabulated value (or reference derivative) of a discrete field at quadrature
+# point q of a mesh cell: the sum over the cell DOFs of the coefficient times the
+# tabulated shape function. Positive DOF IDs index free values, negative IDs
+# Dirichlet values (see DOFData). Each coefficient is multiplied by the table
+# entry as it is stored, as in the accessor path, so free and Dirichlet values of
+# different element types are not converted to a common type first. All arguments
+# are plain arrays, so the same code runs on the CPU and inside generated GPU kernels.
+@inline function discrete_field_tabulated(face_dofs, cell, free_values, dirichlet_values, tabulator, q)
+    zb = zero(eltype(tabulator))
+    s = zero(eltype(free_values)) * zb + zero(eltype(dirichlet_values)) * zb
+    for i in 1:size(face_dofs, 1)
+        dof = face_dofs[i, cell]
+        b = tabulator[i, q]
+        if dof > 0
+            s += free_values[dof] * b
+        else
+            s += dirichlet_values[-dof] * b
+        end
+    end
+    s
 end

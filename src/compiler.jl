@@ -790,6 +790,57 @@ function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point)
     :(discrete_field_accessor($f,$uh,$quadrature)($face,$face_around)($point))
 end
 
+# Lagrange fields defined on all cells of the integration mesh are lowered to
+# plain array reads (DOF table, free and Dirichlet values, reference tabulation),
+# so the generated code needs no accessor closures and can run in GPU kernels.
+# Lagrange derivatives map to the physical cell by the same linear transformation
+# for every DOF, so the transformation is applied once to the sum. Other spaces
+# (e.g. those with sign flips or Piola maps), traces, skeletons and fields on
+# subsets of the mesh keep using the accessor above.
+function expression_TabulatedTerm(parent::DiscreteFieldTerm,quadrature,point,Q)
+    (f,uh,domain,face,face_around) = dependencies(parent)
+    func = prototype(f)
+    uh_value = prototype(uh)
+    Q_domain = GT.domain(Q)
+    tabulated_lagrange_discrete_field(func,uh_value,face_around,Q_domain) ||
+        return expression_TabulatedTerm(parent,quadrature,point)
+    V = GT.space(uh_value)
+    mesh = GT.mesh(Q_domain)
+    mesh_expr = integration_mesh_expr(quadrature)
+    mesh_face = integration_face_expr(quadrature,expression(face))
+    uh_expr = expression(uh)
+    V_expr = :(GT.space($uh_expr))
+    tabulator_expr = :(reference_tabulator(space_integration_data($func,$V_expr,$quadrature)))
+    s = :(discrete_field_tabulated(face_dofs(DOFData($V_expr)),$mesh_face,
+        free_values($uh_expr),dirichlet_values($uh_expr),$tabulator_expr,$point))
+    (is_reference_domain(GT.domain(V)) || func === value) && return s
+    invJ = physical_inverse_jacobian_expr(mesh,V,Q,mesh_expr,quadrature,mesh_face,point)
+    modif_expr(func,s,invJ)
+end
+
+function tabulated_lagrange_discrete_field(func,uh,face_around,Q_domain)
+    (func === value || func === ForwardDiff.gradient || func === ForwardDiff.jacobian) || return false
+    (face_around isa LeafTerm && prototype(face_around) === nothing) || return false
+    uh isa DiscreteField || return false
+    V = GT.space(uh)
+    V isa LagrangeMeshSpace || return false
+    num_fields(V) == 1 || return false
+    is_partitioned(GT.mesh(GT.domain(V))) && return false
+    V_domain = GT.domain(V)
+    D = num_dims(V_domain)
+    D == num_dims(Q_domain) || return false
+    mesh = GT.mesh(Q_domain)
+    GT.mesh(V_domain) === mesh || return false
+    # DOFData columns are indexed by mesh cell, as in dofs_expr.
+    faces(V_domain) == 1:num_faces(mesh,D) || return false
+    # The reference tabulation is built for one cell type (space_integration_data).
+    cell_to_rid = face_reference_id(mesh,D)
+    isempty(cell_to_rid) || all(==(first(cell_to_rid)),cell_to_rid) || return false
+    # Plain (CPU or GPU) vectors only; partitioned or blocked values use the accessor.
+    values = (free_values(uh),dirichlet_values(uh))
+    all(v -> v isa DenseVector || v isa FillArrays.AbstractFill,values)
+end
+
 #function expression(term::TabulatedTerm{<:DiscreteFieldTerm})
 #    point = expression(term.point)
 #    form_arg = term.parent
