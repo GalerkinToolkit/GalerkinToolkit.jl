@@ -43,6 +43,32 @@ CUDA.allowscalar(false)
     end
 end
 
+@testset "Generated CUDA complex matrix assembly" begin
+    # Orders 1-2 use the unrolled scatter; order 3 uses the batched one (with a tail on simplices).
+    # At order 3 the form has no mass term. With it, the generated kernel keeps an n_dofs x n_dofs x n_points table
+    # per thread (0.2-0.4 MB on tetrahedra, 2-4 MB on hexahedra) and does not launch on a 32 GB V100, for real and
+    # complex types alike: on tetrahedra the local memory reserved for all resident threads exceeds the device
+    # memory (out of memory), and on hexahedra the frame exceeds the per-thread limit (invalid value).
+    # The real CG tests above use the gradient term alone at every order.
+    for (simplexify,k) in ((true,1),(true,2),(true,3),(false,3)), T in (ComplexF32,ComplexF64)
+        mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify)
+        omega = GT.interior(mesh)
+        V = GT.lagrange_space(omega,k)
+        measure = GT.measure(omega,2k)
+        a = k <= 2 ?
+            (u,v)->GT.∫(x->(2-1im)*dot(ForwardDiff.gradient(u,x),ForwardDiff.gradient(v,x))+
+                (0.5+3im)*u(x)*v(x),measure) :
+            (u,v)->GT.∫(x->(2-1im)*dot(ForwardDiff.gradient(u,x),ForwardDiff.gradient(v,x)),measure)
+        expected = GT.assemble_matrix(a,ComplexF64,V,V;assembly_method)
+        A,cache = GT.assemble_matrix(a,T,V,V;execution=GT.CUDAExecution(),assembly_method,reuse=Val(true))
+        @test A isa CuSparseCSC{T}
+        rtol = T === ComplexF32 ? 1e-5 : 2e-11
+        @test SparseMatrixCSC(A) ≈ expected rtol=rtol
+        @test GT.update_matrix!(A,cache;parameters=()) === A
+        @test SparseMatrixCSC(A) ≈ expected rtol=rtol
+    end
+end
+
 @testset "Generated CUDA parameters, overlapping subsets and constrained DOFs" begin
     for k in (1,2),dirichlet in (false,true)
         mesh = GT.cartesian_mesh((0,1,0,1,0,1),(3,3,3);simplexify=false)

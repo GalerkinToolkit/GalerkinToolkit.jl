@@ -1424,9 +1424,26 @@ end
     @inbounds for j in axes(vals,2), i in axes(vals,1)
         p = element_csc_position(positions,position_base+indices[i,j],face)
         if p != 0
-            Atomix.@atomic :monotonic nzval[p] += vals[i,j]
+            atomic_add!(nzval,p,vals[i,j])
         end
     end
+    nothing
+end
+
+# Add v to a[i] atomically. The callers' @inbounds propagates to the indexing below.
+Base.@propagate_inbounds function atomic_add!(a,i,v)
+    Atomix.@atomic :monotonic a[i] += v
+    nothing
+end
+
+# Atomix supports real numbers only, so a complex entry is added as two real
+# atomic adds on its (real, imaginary) storage. GPU extensions specialize this
+# for their device arrays.
+Base.@propagate_inbounds function atomic_add!(a::AbstractVector{Complex{T}},i,v) where T
+    w = convert(Complex{T},v)
+    parts = reinterpret(reshape,T,a)
+    Atomix.@atomic :monotonic parts[1,i] += real(w)
+    Atomix.@atomic :monotonic parts[2,i] += imag(w)
     nothing
 end
 
@@ -1517,7 +1534,7 @@ function contribute_atomic!(alloc::MonolithicAssemblyAllocation,v,i,field_i)
 end
 
 function contribute_atomic!(alloc::DirectVectorAllocation,v,i,field_i)
-    @inbounds Atomix.@atomic :monotonic alloc.vector[i] += v
+    @inbounds atomic_add!(alloc.vector,i,v)
     nothing
 end
 

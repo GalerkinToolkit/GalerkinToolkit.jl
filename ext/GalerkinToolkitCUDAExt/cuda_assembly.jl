@@ -11,6 +11,16 @@ const CUDA_SCATTER_BATCH_WIDTH = 32
 
 @inline cuda_index_type(n) = n <= typemax(Int32) ? Int32 : Int
 
+# Device atomics act on real numbers only, so a complex entry is added as two
+# real atomic adds on its (real, imaginary) storage.
+@inline function GT.atomic_add!(nzval::CUDA.CuDeviceArray{Complex{T},1,A},slot,v) where {T,A}
+    w = convert(Complex{T},v)
+    re = reinterpret(Core.LLVMPtr{T,A},pointer(nzval,slot))
+    CUDA.atomic_add!(re,real(w))
+    CUDA.atomic_add!(re+sizeof(T),imag(w))
+    nothing
+end
+
 @inline function cuda_scatter_lookup(positions::CUDA.CuDeviceArray,face,base,::Type{I}) where I
     offset = (I(face)-one(I))*I(size(positions,1)) + I(base)
     CUDA.Const(positions),offset,one(I)
@@ -52,7 +62,7 @@ end
     @inbounds begin
         slot = lookup[offset + I(entry)*stride + one(I)]
         if slot != 0
-            GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(entry+one(entry))]
+            GT.atomic_add!(nzval,slot,vals[Int(entry+one(entry))])
         end
     end
     nothing
@@ -110,7 +120,7 @@ end
         slot = lookup[offset + start*stride + Int32(1)]
         start += Int32(1)
         if slot != 0
-            GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(start)]
+            GT.atomic_add!(nzval,slot,vals[Int(start)])
         end
     end
     nothing
@@ -123,7 +133,7 @@ end
         @inbounds begin
             slot = lookup[offset + (Int32(j)-Int32(1))*stride + Int32(1)]
             if slot != 0
-                GT.Atomix.@atomic :monotonic nzval[slot] += entries[j]
+                GT.atomic_add!(nzval,slot,entries[j])
             end
         end
         nothing
@@ -142,7 +152,7 @@ end
         while row < rows
             slot = lookup[lookup_col + I(row)*stride + one(I)]
             if slot != 0
-                GT.Atomix.@atomic :monotonic nzval[slot] += vals[Int(tile_col + row + one(J))]
+                GT.atomic_add!(nzval,slot,vals[Int(tile_col + row + one(J))])
             end
             row += one(J)
         end
