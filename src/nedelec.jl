@@ -34,10 +34,15 @@
 # a matrix Cᴾ precomputed for each of the (D+1)! vertex permutations P. At order
 # 0, Cᴾ is diagonal with entries ±1 (the classical edge signs). Jacobians transform
 # as J⁻ᵀ ∇̂ψᴾ J⁻¹, which is exact for the affine (linear simplex) cells accepted.
+#
+# Periodic spaces: the sorted frame uses the owner of each node (see periodic_node_owners)
+# in place of its ID. A face and its periodic image then have their vertices in the same
+# order, and, being translates of each other, the same moments. The DOF numbering maps
+# each image to its master face (see periodic_dof_face_incidence), with no signs.
 
 """
     nedelec_space(domain::AbstractFaceDomain,order)
-    nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothing)
+    nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothing,periodic=Val(false))
 
 Return the Nédélec space of the first kind (H(curl)-conforming) of the given `order` on `domain`.
 
@@ -46,6 +51,19 @@ Return the Nédélec space of the first kind (H(curl)-conforming) of the given `
 simplex geometry. Its shape functions use the covariant Piola map, and each cell is oriented by the global node IDs
 of its vertices (see [`nedelec_cell_orientation`](@ref)). A `dirichlet_boundary` fixes the tangential trace: the DOFs
 of the edges and faces in the closure of the given boundary faces become Dirichlet DOFs.
+
+With `periodic = Val(true)`, the DOFs on the periodic images of an edge or face are identified with those of the
+master edge or face, following the periodic nodes of the mesh (see [`periodic_nodes`](@ref)). Two faces are periodic
+images when their vertices have the same owners (see [`periodic_node_owners`](@ref)) and one translation maps the
+vertices of one onto those of the other. Only translational periodicity is supported (a gmsh mesh with a rotational
+periodic transform is not detected and gives a wrong space). The coordinates of periodic nodes must be translates of
+each other up to rounding, and must resolve the cells, on a domain of the dimension of the node coordinates (see
+[`lagrange_space`](@ref) for the conditions and the errors raised otherwise). The identification is the identity
+(no phase, e.g. for a Bloch phase carried by the operator), and the cells are oriented by the owners of their nodes
+in place of the node IDs. An `ArgumentError` is raised for a cell with two vertices of the same owner (a cell that
+spans a whole period) and for a domain that contains two periodic images of a cell. A DOF shared by the two sides is
+a Dirichlet DOF if either side is on `dirichlet_boundary`. Interpolation uses the moments of one of the sides for a
+shared DOF, so interpolate periodic functions only.
 
 Shape functions support `value` and `ForwardDiff.jacobian` (from which the curl follows). Trace (boundary or
 skeleton) integration of Nédélec form arguments is not implemented and raises an error.
@@ -308,7 +326,7 @@ function nedelec_oriented_shape_function(fe::NedelecFaceSpace,slot,P)
     ξ -> sum(j -> C[slot,j,P]*φ̂[j](ξ),1:length(φ̂))
 end
 
-function nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothing)
+function nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothing,periodic=Val(false))
     nedelec_check_order(order)
     mesh = GT.mesh(domain)
     D = num_dims(domain)
@@ -321,17 +339,24 @@ function nedelec_space(domain::AbstractMeshDomain,order;dirichlet_boundary=nothi
             "Nédélec spaces require linear (affine) simplex geometry"))
     end
     ctype_to_reffe = map(refface->nedelec_space(GT.domain(refface),order),ctype_to_refface)
-    orientation = nedelec_cell_orientation(mesh,D,ctype_to_reffe)
+    if val_parameter(periodic)
+        node_to_key = periodic_node_owners(mesh)
+    else
+        node_to_key = nothing
+    end
+    orientation = nedelec_cell_orientation(mesh,D,ctype_to_reffe,node_to_key)
     workspace = nothing
-    NedelecMeshSpace(domain,order,dirichlet_boundary,ctype_to_reffe,orientation,workspace) |> setup_space
+    NedelecMeshSpace(domain,order,dirichlet_boundary,ctype_to_reffe,orientation,
+                     Val(val_parameter(periodic)),workspace) |> setup_space
 end
 
-struct NedelecMeshSpace{A,B,C,E,S,W} <: AbstractSpace
+struct NedelecMeshSpace{A,B,C,E,S,P,W} <: AbstractSpace
     domain::A
     order::B
     dirichlet_boundary::C
     reference_spaces::E
     cell_orientation::S # Vector{Int8}: [mesh_cell] -> index of the vertex permutation of its sorted frame
+    periodic::Val{P}
     workspace::W
 end
 
@@ -340,6 +365,7 @@ order(a::NedelecMeshSpace) = a.order
 continuous(a::NedelecMeshSpace) = true
 dirichlet_boundary(a::NedelecMeshSpace) = a.dirichlet_boundary
 reference_spaces(a::NedelecMeshSpace) = a.reference_spaces
+is_periodic(a::NedelecMeshSpace) = val_parameter(a.periodic)
 workspace(a::NedelecMeshSpace) = a.workspace
 
 function face_reference_id(a::NedelecMeshSpace)
@@ -348,7 +374,7 @@ function face_reference_id(a::NedelecMeshSpace)
 end
 
 function replace_workspace(a::NedelecMeshSpace,workspace)
-    NedelecMeshSpace(a.domain,a.order,a.dirichlet_boundary,a.reference_spaces,a.cell_orientation,workspace)
+    NedelecMeshSpace(a.domain,a.order,a.dirichlet_boundary,a.reference_spaces,a.cell_orientation,a.periodic,workspace)
 end
 
 """
@@ -357,7 +383,8 @@ end
 Return the vector `orientation[mesh_cell]` with, for each cell, the index of the permutation of the reference vertices
 that sorts the cell's vertices by global node ID. The cell's shape functions are evaluated in that sorted frame, which
 makes every shared edge and face oriented consistently (for the lowest order, edges point from the lower to the higher
-global node ID).
+global node ID). For a periodic space, the vertices are sorted by the owners of their nodes (see
+[`periodic_node_owners`](@ref)), so a face and its periodic images are oriented in the same way.
 
 # Level
 
@@ -365,14 +392,16 @@ Advanced
 """
 nedelec_cell_orientation(a::NedelecMeshSpace) = a.cell_orientation
 
-function nedelec_cell_orientation(mesh,D,ctype_to_reffe)
+function nedelec_cell_orientation(mesh,D,ctype_to_reffe,node_to_key=nothing)
     Dface_to_nodes = face_nodes(mesh,D)
     Dface_to_ctype = face_reference_id(mesh,D)
     lookup = map(ctype_to_reffe) do fe
         Dict(perm=>Int8(P) for (P,perm) in enumerate(fe.workspace.orientation_permutations))
     end
     map(1:length(Dface_to_nodes)) do Dface
-        lookup[Dface_to_ctype[Dface]][sortperm(collect(Dface_to_nodes[Dface]))]
+        nodes = collect(Dface_to_nodes[Dface])
+        keys = node_to_key === nothing ? nodes : node_to_key[nodes]
+        lookup[Dface_to_ctype[Dface]][sortperm(keys)]
     end
 end
 

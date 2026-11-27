@@ -48,6 +48,18 @@ end
 
 workspace(space::AbstractSpace) = nothing
 
+"""
+    is_periodic(space)
+
+Return `true` if the DOFs of `space` are identified across the periodic boundaries of its mesh, as set by the
+`periodic` keyword of [`lagrange_space`](@ref) and [`nedelec_space`](@ref).
+
+# Level
+
+Advanced
+"""
+is_periodic(space::AbstractSpace) = false
+
 function generate_workspace(space::AbstractSpace)
     state = generate_dof_ids(space)
     face_dofs = state.Dface_to_dofs
@@ -330,11 +342,22 @@ function generate_dof_ids_step_1(space,state0)
     d_to_dface_to_dof_offset = map(d->zeros(Int32,GT.num_faces(topology,d)),0:D)
     d_to_Dface_to_dfaces = map(d->face_incidence(topology,D,d),0:D)
     d_to_Dface_to_ldface_to_pindex = map(d->face_permutation_ids(topology,D,d),0:D)
+    # The DOFs are numbered on these faces. For a periodic space, each periodic image of a face is replaced by
+    # its master face, so both sides share one set of DOFs. The original incidence is kept for the Dirichlet
+    # tagging in step 2.
+    if is_periodic(space)
+        d_to_Dface_to_dofdfaces, d_to_Dface_to_ldface_to_dofpindex =
+            periodic_dof_face_incidence(space,d_to_Dface_to_dfaces,d_to_Dface_to_ldface_to_pindex,
+                                        d_to_ctype_to_ldface_to_num_own_dofs)
+    else
+        d_to_Dface_to_dofdfaces = d_to_Dface_to_dfaces
+        d_to_Dface_to_ldface_to_dofpindex = d_to_Dface_to_ldface_to_pindex
+    end
     dof_offset = 0
     for d in 0:D
         ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
-        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        Dface_to_dfaces = d_to_Dface_to_dofdfaces[d+1]
         ndfaces = length(dface_to_dof_offset)
         for cell in 1:ncells
             Dface = cell_to_Dface[cell]
@@ -370,11 +393,11 @@ function generate_dof_ids_step_1(space,state0)
     # Optimize for the oriented case?
     # TODO add different numbering strategies
     for d in 0:D
-        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        Dface_to_dfaces = d_to_Dface_to_dofdfaces[d+1]
         ctype_to_ldface_to_own_ldofs = d_to_ctype_to_ldface_to_own_dofs[d+1]
         ctype_to_ldface_to_pindex_to_perm = d_to_ctype_to_ldface_to_pindex_to_perm[d+1]
         dface_to_dof_offset = d_to_dface_to_dof_offset[d+1]
-        Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_pindex[d+1]
+        Dface_to_ldface_to_pindex = d_to_Dface_to_ldface_to_dofpindex[d+1]
         for cell in 1:ncells
             Dface = cell_to_Dface[cell]
             ctype = Dface_to_ctype[Dface]
@@ -405,6 +428,347 @@ function generate_dof_ids_step_1(space,state0)
     (;ndofs,Dface_to_dofs,d_to_Dface_to_dfaces,
      d_to_ctype_to_ldface_to_dofs,d_to_ndfaces,
      Dface_to_ctype,cell_to_Dface,dof_local_indices)
+end
+
+# Periodic DOF identification.
+#
+# The periodic nodes of the mesh say which node owns which (see periodic_node_owners). Each vertex has an offset,
+# its position minus the position of its owner (a sum of periods). Two d-faces (d < D) whose vertices are all
+# periodic are periodic images of each other when their vertices have the same owners and one translation maps
+# the vertices of one onto the vertices of the other, i.e. the offsets of the vertices with the same owner differ
+# by the same vector for every vertex. Faces with the same owners but no common translation (possible on coarse
+# meshes, or when owners are reached through different periods) are distinct faces and keep their own DOFs.
+# Offsets are sums of periods, so for exact coordinates the translations of the vertices of two such faces differ
+# either by zero (images) or by a nonzero period. A cell does not overlap its translate by a nonzero period, so the
+# period is at least twice the inradius of any ball inside the cell (periodic_cell_inradius). The test uses a
+# rounding tolerance below, and half that inradius above (see periodic_vertex_owners); a mismatch in between is
+# an error.
+# The images of a face are merged into one master face: the one with the fewest slave vertices (the lowest ID on a
+# tie). The DOF loops of generate_dof_ids_step_1 see the master face in place of each of its images, with the
+# permutation index computed against the master's vertices (vertices are matched through their owners), so all
+# images share the DOFs of the master. The identification is the identity: no sign or phase is applied.
+
+# The node of each vertex of the topology, read from the faces of the mesh as in fill_face_vertices_mesh_topology!
+# (the IDs of the 0-faces of a mesh need not be the IDs of the vertices of its topology, e.g. after complexify).
+function periodic_vertex_nodes(mesh,topology)
+    vertex_to_node = zeros(Int32,num_faces(topology,0))
+    for d in 1:num_dims(mesh)
+        dface_to_vertices = face_incidence(topology,d,0)
+        dface_to_nodes = face_nodes(mesh,d)
+        dface_to_refid = face_reference_id(mesh,d)
+        refid_to_lvertex_to_lnodes = map(refface->face_nodes(remove_interior(complexify(refface)),0),reference_spaces(mesh,d))
+        for dface in 1:length(dface_to_vertices)
+            vertices = dface_to_vertices[dface]
+            nodes = dface_to_nodes[dface]
+            lvertex_to_lnodes = refid_to_lvertex_to_lnodes[dface_to_refid[dface]]
+            for (lvertex,vertex) in enumerate(vertices)
+                node = nodes[first(lvertex_to_lnodes[lvertex])]
+                if vertex_to_node[vertex] == 0
+                    vertex_to_node[vertex] = node
+                elseif vertex_to_node[vertex] != node
+                    throw(ArgumentError("The vertex $vertex of the mesh topology is at two different nodes"))
+                end
+            end
+        end
+    end
+    vertex_to_node
+end
+
+# The volume of the simplex with the vertices x (the vertex count minus one is its dimension; a point has volume 1),
+# from a QR factorization of its edge vectors (forming their Gram matrix would square its condition number).
+function periodic_simplex_volume(x)
+    T = float(eltype(eltype(x)))
+    k = length(x)-1
+    k == 0 && return one(T)
+    E = T[x[j+1][i]-x[1][i] for i in 1:length(x[1]), j in 1:k]
+    abs(prod(diag(qr(E).R)))/factorial(k)
+end
+
+# The inradius of the simplex with the vertices x: its dimension times its volume over the volume of its facets.
+function periodic_simplex_inradius(x)
+    k = length(x)-1
+    facets = sum(i->periodic_simplex_volume(x[[1:(i-1);(i+1):(k+1)]]),1:(k+1))
+    iszero(facets) ? facets : k*periodic_simplex_volume(x)/facets
+end
+
+# The largest inradius of a simplex inside a cell, over the cells of a full-dimensional domain (D equal to the
+# number of coordinates). The simplex is that of the first vertex of the cell and its neighbours along the edges of
+# the reference cell (the cell itself for a simplex). Only cells for which it is known to lie inside the cell count:
+# cells whose nodes are the affine image of the nodes of the reference cell up to the tolerance tol (simplices with
+# straight edges, parallelograms, parallelepipeds), and strictly convex quadrilaterals with four nodes. Zero if no
+# cell counts.
+function periodic_cell_inradius(mesh,D,cell_to_Dface,tol)
+    node_x = node_coordinates(mesh)
+    T = float(eltype(eltype(node_x)))
+    Dface_to_nodes = face_nodes(mesh,D)
+    Dface_to_rid = face_reference_id(mesh,D)
+    rid_to_data = map(reference_spaces(mesh,D)) do refface
+        lnode_to_ξ = node_coordinates(refface)
+        lvertex_to_lnode = map(first,face_nodes(remove_interior(complexify(refface)),0))
+        lvertex_to_ξ = lnode_to_ξ[lvertex_to_lnode]
+        nlvertices = length(lvertex_to_lnode)
+        lvertices = if nlvertices == D+1
+            collect(1:nlvertices)
+        elseif nlvertices == 2^D
+            # n-cube: the neighbours of vertex 1 differ from it in one reference coordinate.
+            [1;[lv for lv in 2:nlvertices if count(i->lvertex_to_ξ[lv][i] != lvertex_to_ξ[1][i],1:D) == 1]]
+        else
+            Int[]
+        end
+        length(lvertices) == D+1 || return nothing
+        corner_lnodes = lvertex_to_lnode[lvertices]
+        Ê = T[lnode_to_ξ[corner_lnodes[j+1]][i]-lnode_to_ξ[corner_lnodes[1]][i] for i in 1:D, j in 1:D]
+        # The vertices of a quadrilateral with four nodes, in cyclic order.
+        quad_cycle = (D == 2 && nlvertices == 4 && length(lnode_to_ξ) == 4) ?
+            sort(1:4,by=lv->atan(lvertex_to_ξ[lv][2]-1/2,lvertex_to_ξ[lv][1]-1/2)) : nothing
+        (;corner_lnodes,lnode_to_ξ,Êinv=inv(Ê),lvertex_to_lnode,quad_cycle)
+    end
+    r = zero(T)
+    for Dface in cell_to_Dface
+        data = rid_to_data[Dface_to_rid[Dface]]
+        data === nothing && continue
+        (;corner_lnodes,lnode_to_ξ,Êinv,lvertex_to_lnode,quad_cycle) = data
+        nodes = Dface_to_nodes[Dface]
+        corner_x = [node_x[nodes[lnode]] for lnode in corner_lnodes]
+        x0, ξ0 = corner_x[1], lnode_to_ξ[corner_lnodes[1]]
+        E = T[corner_x[j+1][i]-x0[i] for i in 1:D, j in 1:D]
+        M = E*Êinv
+        affine = all(eachindex(nodes)) do lnode
+            norm(x0 + M*(lnode_to_ξ[lnode]-ξ0) - node_x[nodes[lnode]]) <= tol
+        end
+        convex_quad = !affine && quad_cycle !== nothing && begin
+            y = [node_x[nodes[lvertex_to_lnode[lv]]] for lv in quad_cycle]
+            turn(i) = (a = y[mod1(i+1,4)]-y[i]; b = y[mod1(i+2,4)]-y[mod1(i+1,4)]; a[1]*b[2]-a[2]*b[1])
+            all(i->turn(i) > 0,1:4) || all(i->turn(i) < 0,1:4)
+        end
+        (affine || convex_quad) || continue
+        r = max(r,periodic_simplex_inradius(corner_x))
+    end
+    r
+end
+
+function periodic_vertex_owners(mesh,topology,D,cell_to_Dface)
+    node_to_owner = periodic_node_owners(mesh)
+    nnodes = length(node_to_owner)
+    node_is_periodic = fill(false,nnodes)
+    for node in 1:nnodes
+        owner = node_to_owner[node]
+        if owner != node
+            node_is_periodic[node] = true
+            node_is_periodic[owner] = true
+        end
+    end
+    vertex_to_node = periodic_vertex_nodes(mesh,topology)
+    nvertices = length(vertex_to_node)
+    node_x = node_coordinates(mesh)
+    vertex_to_owner = zeros(Int32,nvertices)
+    vertex_is_slave = fill(false,nvertices)
+    vertex_is_periodic = fill(false,nvertices)
+    vertex_to_offset = fill(zero(eltype(node_x)),nvertices)
+    for vertex in 1:nvertices
+        node = vertex_to_node[vertex]
+        # A vertex on no face of positive dimension carries no DOFs of a space and is left alone.
+        node == 0 && continue
+        owner = node_to_owner[node]
+        vertex_to_owner[vertex] = owner
+        vertex_is_slave[vertex] = owner != node
+        vertex_is_periodic[vertex] = node_is_periodic[node]
+        vertex_to_offset[vertex] = node_x[node] - node_x[owner]
+    end
+    # Offsets are sums of periods. Two translations between faces are taken as equal up to a rounding tolerance
+    # relative to the size and the position of the mesh (coordinates of periodic nodes are translates up to
+    # rounding). A nonzero period is at least 2r, with r from periodic_cell_inradius, so translations that differ
+    # by at least sep = r/2 differ by a nonzero period. The coordinates must resolve the cells, i.e. tol < sep, so
+    # that the two cases cannot be confused. (The domain has cells; D > 0, see periodic_dof_face_incidence.)
+    T = float(eltype(eltype(node_x)))
+    lo = reduce((a,b)->min.(a,b),node_x)
+    hi = reduce((a,b)->max.(a,b),node_x)
+    scale = max(norm(hi-lo),maximum(norm,node_x))
+    tol = 1000*eps(T)*scale
+    r = periodic_cell_inradius(mesh,D,cell_to_Dface,tol)
+    r > 0 || throw(ArgumentError(
+        "Periodic DOF identification needs a cell whose geometry is affine (a simplex with straight edges, a "*
+        "parallelogram or a parallelepiped) or a convex quadrilateral, to bound the length of the periods; the "*
+        "domain has none (up to the tolerance $tol)."))
+    sep = r/2
+    tol < sep || throw(ArgumentError(
+        "The node coordinates do not resolve the cells well enough to identify periodic faces: the rounding "*
+        "tolerance $tol (for coordinates up to $scale) is not below $sep, half the largest inradius of a simplex "*
+        "in a cell. Translate the mesh closer to the origin or scale it up."))
+    (;vertex_to_owner,vertex_is_slave,vertex_is_periodic,vertex_to_offset,tol,sep)
+end
+
+# The largest difference between the translations that map the vertices of face b onto the vertices of face a
+# (vertices with the same owner correspond; the owners of the vertices of a face are distinct, as checked on the
+# cells). The faces are periodic images of each other when it is zero up to the tolerance.
+function periodic_translation_mismatch(a,b,dface_to_vertices,vertex_to_owner,vertex_to_offset)
+    va = sort(dface_to_vertices[a],by=vertex->vertex_to_owner[vertex])
+    vb = sort(dface_to_vertices[b],by=vertex->vertex_to_owner[vertex])
+    t = vertex_to_offset[va[1]] - vertex_to_offset[vb[1]]
+    maximum(i->norm(vertex_to_offset[va[i]] - vertex_to_offset[vb[i]] - t),eachindex(va);init=zero(norm(t)))
+end
+
+# The sorted owners of the vertices of a face.
+periodic_owner_key(dface,dface_to_vertices,vertex_to_owner) =
+    sort!(Int32[vertex_to_owner[vertex] for vertex in dface_to_vertices[dface]])
+
+# The classes of faces among dfaces that are periodic images of each other (classes of one face included):
+# faces with the same sorted vertex owners, split by their translations.
+function periodic_face_groups(dface_to_vertices,dfaces,vertex_to_owner,vertex_is_periodic,vertex_to_offset,tol,
+                              sep)
+    key_to_dfaces = Dict{Vector{Int32},Vector{Int32}}()
+    for dface in dfaces
+        all(vertex->vertex_is_periodic[vertex],dface_to_vertices[dface]) || continue
+        key = periodic_owner_key(dface,dface_to_vertices,vertex_to_owner)
+        push!(get!(()->Int32[],key_to_dfaces,key),Int32(dface))
+    end
+    classes = Vector{Int32}[]
+    for key_dfaces in Base.values(key_to_dfaces)
+        key_classes = Vector{Int32}[]
+        for dface in key_dfaces
+            mismatches = map(key_classes) do class
+                periodic_translation_mismatch(first(class),dface,dface_to_vertices,vertex_to_owner,vertex_to_offset)
+            end
+            i = findfirst(<=(tol),mismatches)
+            if i === nothing
+                # Distinct faces with the same owners differ by a nonzero period, at least sep; a smaller mismatch
+                # means periodic nodes that are not translates of each other up to the tolerance.
+                for (class,mismatch) in zip(key_classes,mismatches)
+                    mismatch < sep && throw(ArgumentError(
+                        "The faces $(first(class)) and $dface have the same periodic owners but differ from a "*
+                        "translation by $mismatch (tolerance $tol, nonzero periods at least $sep): the periodic "*
+                        "nodes are not translates of each other."))
+                end
+                push!(key_classes,Int32[dface])
+            else
+                push!(key_classes[i],dface)
+            end
+        end
+        append!(classes,key_classes)
+    end
+    classes
+end
+
+function periodic_face_masters(topology,d,dfaces,vertex_to_owner,vertex_is_slave,vertex_is_periodic,
+                               vertex_to_offset,tol,sep)
+    dface_to_vertices = face_incidence(topology,d,0)
+    ndfaces = length(dface_to_vertices)
+    dface_to_master = collect(Int32,1:ndfaces)
+    classes = periodic_face_groups(dface_to_vertices,dfaces,vertex_to_owner,vertex_is_periodic,vertex_to_offset,tol,
+                                   sep)
+    num_slaves = dface -> count(vertex->vertex_is_slave[vertex],dface_to_vertices[dface])
+    for dfaces in classes
+        length(dfaces) == 1 && continue
+        # Faces related by a translation and sharing a vertex would be the same face (zero translation).
+        for i in 1:length(dfaces), j in (i+1):length(dfaces)
+            isdisjoint(dface_to_vertices[dfaces[i]],dface_to_vertices[dfaces[j]]) ||
+                error("Internal error: the periodic images $(dfaces[i]) and $(dfaces[j]) of a $d-face share a vertex")
+        end
+        master = dfaces[1]
+        for dface in dfaces
+            if num_slaves(dface) < num_slaves(master)
+                master = dface
+            end
+        end
+        dface_to_master[dfaces] .= master
+    end
+    dface_to_master
+end
+
+function periodic_dof_face_incidence(space,d_to_Dface_to_dfaces,d_to_Dface_to_ldface_to_pindex,
+                                     d_to_ctype_to_ldface_to_num_own_dofs)
+    continuous(space) || throw(ArgumentError("Periodic DOF identification requires a continuous space"))
+    domain = GT.domain(space)
+    D = num_dims(domain)
+    mesh = GT.mesh(domain)
+    topology = GT.topology(mesh)
+    cell_to_Dface = faces(domain)
+    # The bound on the periods (periodic_cell_inradius) holds for cells of the full dimension only.
+    (D >= 1 && D == num_ambient_dims(mesh)) || throw(ArgumentError(
+        "Periodic DOF identification requires a domain of the same dimension as the node coordinates, at least 1 "*
+        "(the domain has dimension $D and the coordinates $(num_ambient_dims(mesh)))."))
+    # A domain without cells has no faces to identify.
+    isempty(cell_to_Dface) && return d_to_Dface_to_dfaces, d_to_Dface_to_ldface_to_pindex
+    (;vertex_to_owner,vertex_is_slave,vertex_is_periodic,vertex_to_offset,tol,sep) =
+        periodic_vertex_owners(mesh,topology,D,cell_to_Dface)
+    Dface_to_vertices = JaggedArray(face_incidence(topology,D,0))
+    # The owners of the vertices of a cell must be distinct, otherwise the cell would be glued to itself.
+    for Dface in cell_to_Dface
+        vertices = Dface_to_vertices[Dface]
+        n = length(vertices)
+        for i in 1:n, j in (i+1):n
+            vertex_to_owner[vertices[i]] == vertex_to_owner[vertices[j]] && throw(ArgumentError(
+                "Cell $Dface has two vertices identified by the periodic boundary conditions "*
+                "(it spans a whole period). The mesh is too coarse in a periodic direction."))
+        end
+    end
+    # The cells are not identified with each other: a domain that holds two periodic images of a cell
+    # (e.g. both sides of a periodic boundary) is not supported.
+    for Dfaces in periodic_face_groups(Dface_to_vertices,cell_to_Dface,vertex_to_owner,vertex_is_periodic,
+                                       vertex_to_offset,tol,sep)
+        length(Dfaces) == 1 || throw(ArgumentError(
+            "The cells $(Dfaces[1]) and $(Dfaces[2]) are periodic images of each other. "*
+            "Periodic spaces on a domain that contains both sides of a periodic boundary are not supported."))
+    end
+    Dface_to_ctype = face_reference_id(topology,D)
+    ctype_to_refDface = reference_topologies(topology,D)
+    d_to_Dface_to_dofdfaces = map(d_to_Dface_to_dfaces) do Dface_to_dfaces
+        a = JaggedArray(Dface_to_dfaces)
+        JaggedArray(copy(a.data),a.ptrs)
+    end
+    d_to_Dface_to_ldface_to_dofpindex = map(d_to_Dface_to_ldface_to_pindex) do Dface_to_ldface_to_pindex
+        a = JaggedArray(Dface_to_ldface_to_pindex)
+        JaggedArray(copy(a.data),a.ptrs)
+    end
+    for d in 0:(D-1)
+        # Faces of a dimension that carries no DOFs need no identification.
+        ctype_to_ldface_to_num_own_dofs = d_to_ctype_to_ldface_to_num_own_dofs[d+1]
+        any(ldface_to_num_own_dofs->any(!iszero,ldface_to_num_own_dofs),ctype_to_ldface_to_num_own_dofs) || continue
+        # Only the faces of the cells of the domain are identified (and checked).
+        Dface_to_dfaces = d_to_Dface_to_dfaces[d+1]
+        dfaces = sort!(unique(dface for Dface in cell_to_Dface for dface in Dface_to_dfaces[Dface]))
+        dface_to_master = periodic_face_masters(topology,d,dfaces,vertex_to_owner,vertex_is_slave,
+                                                vertex_is_periodic,vertex_to_offset,tol,sep)
+        dface_to_vertices = JaggedArray(face_incidence(topology,d,0))
+        dface_to_ftype = face_reference_id(topology,d)
+        ftype_to_pindex_to_cfvertex_to_fvertex = map(vertex_permutations,reference_topologies(topology,d))
+        ctype_to_ldface_to_cvertices = map(refDface->face_incidence(boundary(refDface),d,0),ctype_to_refDface)
+        Dface_to_dofdfaces = d_to_Dface_to_dofdfaces[d+1]
+        Dface_to_ldface_to_dofpindex = d_to_Dface_to_ldface_to_dofpindex[d+1]
+        for Dface in cell_to_Dface
+            cvertices = Dface_to_vertices[Dface]
+            ldface_to_cvertices = ctype_to_ldface_to_cvertices[Dface_to_ctype[Dface]]
+            p = Dface_to_dofdfaces.ptrs[Dface]-1
+            nldfaces = Dface_to_dofdfaces.ptrs[Dface+1]-Dface_to_dofdfaces.ptrs[Dface]
+            for ldface in 1:nldfaces
+                dface = Dface_to_dofdfaces.data[p+ldface]
+                master = dface_to_master[dface]
+                master == dface && continue
+                Dface_to_dofdfaces.data[p+ldface] = master
+                # Vertices have a single permutation (as in fill_face_permutation_ids!).
+                d == 0 && continue
+                # The permutation index as in fill_face_permutation_ids!, with the vertices of the master face
+                # matched to the vertices of the cell through their owners.
+                cfvertex_to_cvertex = ldface_to_cvertices[ldface]
+                fvertex_to_vertex = dface_to_vertices[master]
+                pindex_to_cfvertex_to_fvertex = ftype_to_pindex_to_cfvertex_to_fvertex[dface_to_ftype[master]]
+                found = false
+                for (pindex,cfvertex_to_fvertex) in enumerate(pindex_to_cfvertex_to_fvertex)
+                    found = all(eachindex(cfvertex_to_fvertex)) do cfvertex
+                        vertex1 = fvertex_to_vertex[cfvertex_to_fvertex[cfvertex]]
+                        vertex2 = cvertices[cfvertex_to_cvertex[cfvertex]]
+                        vertex_to_owner[vertex1] == vertex_to_owner[vertex2]
+                    end
+                    if found
+                        Dface_to_ldface_to_dofpindex.data[p+ldface] = pindex
+                        break
+                    end
+                end
+                @assert found "Valid periodic pindex not found"
+            end
+        end
+    end
+    d_to_Dface_to_dofdfaces, d_to_Dface_to_ldface_to_dofpindex
 end
 
 function generate_dof_ids_step_2(space,state,dirichlet_boundary::Nothing)
@@ -1589,12 +1953,47 @@ function simplexify(ref_face::LagrangeFaceSpace)
     mesh_complex
 end
 
+"""
+    lagrange_space(domain::AbstractDomain,order;
+        continuous = Val(true),
+        dirichlet_boundary = nothing,
+        space_type = Val(:default),
+        major = Val(:component),
+        tensor_size = Val(:scalar),
+        periodic = Val(false),
+        workspace = nothing,
+        setup = Val(true))
+
+Return a Lagrange space of the given `order` on the faces of `domain`.
+
+With `periodic = Val(true)`, the DOFs on the periodic images of a face are identified with the DOFs of the master
+face, following the periodic nodes of the mesh (see [`periodic_nodes`](@ref)). Two faces are periodic images when
+their vertices have the same owners (see [`periodic_node_owners`](@ref)) and one translation maps the vertices of
+one onto those of the other. Only translational periodicity is supported (a gmsh mesh with a rotational periodic
+transform is not detected and gives a wrong space). The domain must have the dimension of the node coordinates. The
+coordinates of periodic nodes must be translates of each other up to a tolerance of 1000 machine epsilons relative
+to the size and position of the mesh, and must resolve the cells. Let r be the largest inradius of the simplex of
+the first vertex of a cell and its neighbours, over the cells of the domain that are affine (simplices with straight
+edges, parallelograms, parallelepipeds) or convex four-node quadrilaterals; a nonzero period is at least 2r. An
+`ArgumentError` is raised for faces whose translations differ by more than the tolerance but less than r/2, when
+the tolerance is not below r/2 (e.g. a tiny mesh far from the origin), and when no cell of the domain is of these
+kinds (e.g. a mesh of curved cells only). The identification is the identity (no phase). It requires a continuous
+space. An `ArgumentError` is raised for a cell with two vertices of the same owner (a cell that spans a whole
+period) and for a domain that contains two periodic images of a cell. A DOF shared by the two sides is a Dirichlet
+DOF if either side is on `dirichlet_boundary`. Interpolation and node coordinates use the values of one of the sides
+for a shared DOF, so interpolate periodic functions only.
+
+# Level
+
+Beginner
+"""
 function lagrange_space(domain::AbstractDomain,order;
     continuous = Val(true),
     dirichlet_boundary=nothing,
     space_type = Val(:default),
     major = Val(:component),
     tensor_size = Val(:scalar),
+    periodic = Val(false),
     workspace = nothing,
     setup = Val(true),
     )
@@ -1607,6 +2006,7 @@ function lagrange_space(domain::AbstractDomain,order;
                         space_type,
                         major,
                         tensor_size,
+                        periodic,
                         workspace,
                        )
     if val_parameter(setup)
@@ -1624,8 +2024,11 @@ function lagrange_mesh_space(;
         space_type,
         major,
         tensor_size,
+        periodic = Val(false),
         workspace,
     )
+    val_parameter(periodic) && !val_parameter(continuous) && throw(ArgumentError(
+        "Periodic DOF identification requires a continuous space"))
     LagrangeMeshSpace(
         domain,
         order,
@@ -1634,11 +2037,12 @@ function lagrange_mesh_space(;
         Val(val_parameter(space_type)),
         Val(val_parameter(major)),
         Val(val_parameter(tensor_size)),
+        Val(val_parameter(periodic)),
         workspace,
        )
 end
 
-struct LagrangeMeshSpace{A,B,C,D,E,F,G,W} <: AbstractSpace
+struct LagrangeMeshSpace{A,B,C,D,E,F,G,P,W} <: AbstractSpace
     domain::A
     order::B
     continuous::Val{C}
@@ -1646,6 +2050,7 @@ struct LagrangeMeshSpace{A,B,C,D,E,F,G,W} <: AbstractSpace
     space_type::Val{E}
     major::Val{F}
     tensor_size::Val{G}
+    periodic::Val{P}
     workspace::W
 end
 
@@ -1693,6 +2098,7 @@ order(space::LagrangeMeshSpace) = space.order
 space_type(space::LagrangeMeshSpace) = val_parameter(space.space_type)
 major(space::LagrangeMeshSpace) = val_parameter(space.major)
 tensor_size(space::LagrangeMeshSpace) = val_parameter(space.tensor_size)
+is_periodic(space::LagrangeMeshSpace) = val_parameter(space.periodic)
 workspace(space::LagrangeMeshSpace) = space.workspace
 
 function replace_workspace(space::LagrangeMeshSpace,workspace)
@@ -1704,6 +2110,7 @@ function replace_workspace(space::LagrangeMeshSpace,workspace)
                       space.space_type,
                       space.major,
                       space.tensor_size,
+                      space.periodic,
                       workspace)
 end
 
@@ -1749,7 +2156,8 @@ function face_nodes(a::LagrangeMeshSpace)
                        domain(a),
                        order(a);
                        continuous = GT.continuous(a),
-                       space_type = space_type(a))
+                       space_type = space_type(a),
+                       periodic = Val(is_periodic(a)))
 
     face_dofs(V)
 end
@@ -1783,7 +2191,8 @@ function node_coordinates(a::LagrangeMeshSpace)
                        GT.domain(a),
                        GT.order(a);
                        continuous = Val(GT.continuous(a)),
-                       space_type = Val(GT.space_type(a)))
+                       space_type = Val(GT.space_type(a)),
+                       periodic = Val(is_periodic(a)))
     vrid_to_reffe = reference_spaces(V)
     mface_to_vrid = face_reference_id(V)
     domain = GT.domain(a)
@@ -1848,7 +2257,8 @@ function free_and_dirichlet_dof_node(space::LagrangeMeshSpace)
                        GT.domain(space),
                        GT.order(space);
                        continuous = GT.continuous(space),
-                       space_type = GT.space_type(space))
+                       space_type = GT.space_type(space),
+                       periodic = Val(is_periodic(space)))
     face_to_nodes = GT.face_dofs(V)
     face_to_dofs = GT.face_dofs(space)
     nfree = length(free_dofs(space))
