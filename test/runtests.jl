@@ -27,9 +27,8 @@ using Test
     @testset "Atomic assembly" begin include("atomic_assembly_tests.jl") end
     @testset "Threaded assembly" begin include("threaded_assembly_tests.jl") end
     @testset "Passes" begin include("passes_tests.jl") end
-    # TODO: Re-enable the weak boundary Poisson regressions with trace tabulation.
-    # @testset "Issue 224" begin include("issue_224.jl") end
-    # @testset "Issue 230" begin include("issue_230.jl") end
+    @testset "Issue 224" begin include("issue_224.jl") end
+    @testset "Issue 230" begin include("issue_230.jl") end
 end
 
 end # module

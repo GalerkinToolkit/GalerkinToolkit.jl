@@ -663,6 +663,148 @@ let
     @test GT.dirichlet_values(uh) ≈ [alone[l][i] for (i,l) in enumerate(locations)]
 end
 
+# Traces on faces of dimension D-1. Fields of the space are reproduced exactly on
+# the boundary, and face matrices and vectors agree with integrals of the interpolant.
+for D in (2,3), k in (0,1,2)
+    mesh = GT.cartesian_mesh(D == 3 ? (0,1,0,1,0,1) : (0,1,0,1),ntuple(_->2,D);simplexify=true)
+    Ω = GT.interior(mesh)
+    V = GT.nedelec_space(Ω,k)
+    a = SVector{D}(ntuple(i->0.3i-0.5,D))
+    B = SMatrix{D,D}(ntuple(i->sin(1.3i),D*D))
+    # x ↦ x×q(x) (3D) or q(x)(-x2,x1) (2D), with q homogeneous of degree k-1 or k: in NED_k.
+    rot = D == 3 ? (x->cross(x,SVector(0.0,0.0,x[1]^max(k-1,0)*x[2]))) : (x->x[1]^k*SVector(-x[2],x[1]))
+    quad = x->SVector{D}(ntuple(c->x[c]*x[mod1(c+1,D)]-0.5*x[1]^2,D))
+    f = k == 0 ? (D == 3 ? (x->SVector(0.3,-1.2,0.7)+cross(SVector(1.1,0.4,-0.5),x)) : (x->SVector(0.3,-1.2)+0.8*SVector(-x[2],x[1]))) :
+        k == 1 ? (x->a+B*x+rot(x)) : (x->a+B*x+quad(x)+0.7*rot(x))
+    u = GT.analytical_field(f,Ω)
+    uh = GT.interpolate(u,V)
+    x = GT.free_values(uh)
+    dΓ = GT.measure(GT.boundary(mesh),2k+2)
+    uu = GT.assemble_scalar(GT.∫(q->u(q)⋅u(q),dΓ))
+    @test GT.assemble_scalar(GT.∫(q->norm(u(q)-uh(q))^2,dΓ)) < 1e-20*uu
+    MΓ = GT.assemble_matrix((u,v)->GT.∫(q->u(q)⋅v(q),dΓ),Float64,V,V)
+    @test x'*MΓ*x ≈ uu rtol=1e-12
+    bΓ = GT.assemble_vector(v->GT.∫(q->u(q)⋅v(q),dΓ),Float64,V)
+    @test bΓ'*x ≈ uu rtol=1e-12
+end
+
+# Curl on boundary faces: for u = a + b×x, curl u = 2b, so ∫|curl u|² over the boundary
+# of the unit cube is 4|b|²·6.
+let
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
+    Ω = GT.interior(mesh)
+    dΓ = GT.measure(GT.boundary(mesh),2)
+    b = SVector(1.1,0.4,-0.5)
+    expected = 4*dot(b,b)*6
+    for k in (0,1)
+        V = GT.nedelec_space(Ω,k)
+        uh = GT.interpolate(GT.analytical_field(x->SVector(0.3,-1.2,0.7)+cross(b,x),Ω),V)
+        cc = GT.assemble_scalar(GT.∫(q->GT.call(curl,ForwardDiff.jacobian(uh,q))⋅GT.call(curl,ForwardDiff.jacobian(uh,q)),dΓ))
+        @test cc ≈ expected rtol=1e-12
+        K = GT.assemble_matrix((u,v)->GT.∫(q->GT.call(curl,ForwardDiff.jacobian(u,q))⋅GT.call(curl,ForwardDiff.jacobian(v,q)),dΓ),Float64,V,V)
+        x = GT.free_values(uh)
+        @test x'*K*x ≈ expected rtol=1e-12
+    end
+end
+
+# Interior faces. A face group inside the mesh is integrated from one incident cell,
+# chosen by faces_around (default: the first incident cell), or as the boundary of a
+# subdomain. The field below is (c,1) below the plane x_D = 1/2 and (c,2) above it: it
+# lies in the space (its tangential trace on the plane is continuous), and its normal
+# component on the plane depends on the side.
+for D in (2,3)
+    mesh = GT.cartesian_mesh(D == 3 ? (0,1,0,1,0,1) : (0,1,0,1),ntuple(_->2,D);simplexify=true)
+    xn = GT.node_coordinates(mesh)
+    fnodes = GT.face_nodes(mesh,D-1)
+    cnodes = GT.face_nodes(mesh,D)
+    height(nodes) = sum(i->xn[i][D],nodes)/length(nodes)
+    GT.group_faces(mesh,D-1)["mid"] = findall(nodes->all(i->abs(xn[i][D]-0.5)<1e-12,nodes),fnodes)
+    GT.group_faces(mesh,D)["low"] = findall(nodes->height(nodes)<0.5,cnodes)
+    Ω = GT.interior(mesh)
+    face_to_cells = GT.face_incidence(GT.topology(mesh),D-1,D)
+    Γ = GT.boundary(mesh;group_names=["mid"])
+    mid = GT.faces(Γ)
+    below = [findfirst(c->height(cnodes[c])<0.5,face_to_cells[f]) for f in mid]
+    above = [findfirst(c->height(cnodes[c])>0.5,face_to_cells[f]) for f in mid]
+    @test all(f->length(face_to_cells[f])==2,mid)
+    sides = (;below=GT.boundary(mesh;group_names=["mid"],faces_around=below),
+              above=GT.boundary(mesh;group_names=["mid"],faces_around=above),
+              low=GT.boundary(GT.interior(mesh;group_names=["low"]);group_names=["mid"]),
+              dflt=Γ,
+              first=GT.boundary(mesh;group_names=["mid"],faces_around=fill(1,length(mid))),
+              mixed=GT.boundary(mesh;group_names=["mid"],
+                  faces_around=[isodd(i) ? below[i] : above[i] for i in eachindex(mid)]))
+    @test collect(GT.faces_around(sides.low)) == below
+    c = D == 3 ? SVector(0.3,0.2) : SVector(0.3)
+    e = SVector{D}(ntuple(i->Float64(i==D),D))
+    t = SVector{D}(ntuple(i->i<D ? 1.0+i : 0.0,D))
+    T = SMatrix{D,D}(ntuple(i->(1.0+0.1i)+0.3im*sin(i),D*D))
+    for k in (0,1)
+        V = GT.nedelec_space(Ω,k)
+        uh = GT.interpolate(GT.analytical_field(x->SVector(c...,x[D]<0.5 ? 1.0 : 2.0),Ω),V)
+        x = GT.free_values(uh)
+        values = map(sides) do Γs
+            dΓs = GT.measure(Γs,2k+2)
+            (normal=GT.assemble_scalar(GT.∫(q->uh(q)[D]^2,dΓs)),
+             mass=x'*GT.assemble_matrix((u,v)->GT.∫(q->u(q)⋅v(q),dΓs),Float64,V,V)*x,
+             load_n=GT.assemble_vector(v->GT.∫(q->v(q)⋅GT.uniform_quantity(e),dΓs),Float64,V),
+             load_t=GT.assemble_vector(v->GT.∫(q->v(q)⋅GT.uniform_quantity(t),dΓs),Float64,V),
+             tensor=transpose(x)*GT.assemble_matrix((u,v)->GT.∫(q->im*(v(q)⋅(GT.uniform_quantity(T)*u(q))),dΓs),ComplexF64,V,V)*x)
+        end
+        @test values.below.normal ≈ 1 rtol=1e-12
+        @test values.above.normal ≈ 4 rtol=1e-12
+        @test values.low.normal ≈ 1 rtol=1e-12
+        @test values.below.mass ≈ dot(c,c)+1 rtol=1e-12
+        @test values.above.mass ≈ dot(c,c)+4 rtol=1e-12
+        @test values.below.load_n'*x ≈ 1 rtol=1e-12
+        @test values.above.load_n'*x ≈ 2 rtol=1e-12
+        @test values.low.load_n ≈ values.below.load_n
+        # A tangential load is the same from either side.
+        @test values.below.load_t ≈ values.above.load_t rtol=1e-12
+        @test values.below.load_t'*x ≈ dot(t[1:D-1],c) rtol=1e-12
+        ub = SVector(c...,1.0); ua = SVector(c...,2.0)
+        @test values.below.tensor ≈ im*dot(ub,T*ub) rtol=1e-12
+        @test values.above.tensor ≈ im*dot(ua,T*ua) rtol=1e-12
+        # The default side is the first incident cell of each face. The faces on the
+        # plane have equal measure, so the normal integral counts the faces whose first
+        # incident cell is below (1) or above (4).
+        nbelow = count(==(1),below)
+        @test values.dflt.normal ≈ values.first.normal rtol=1e-12
+        @test values.dflt.normal ≈ (nbelow+4*(length(mid)-nbelow))/length(mid) rtol=1e-12
+        @test values.dflt.mass ≈ values.first.mass rtol=1e-12
+        @test values.dflt.load_n ≈ values.first.load_n
+        @test values.dflt.load_t ≈ values.below.load_t rtol=1e-12
+        @test values.dflt.tensor ≈ values.first.tensor rtol=1e-12
+        # On these meshes the first incident cell of every face on the plane is the one below.
+        # The mixed side takes the cell below on odd faces and the cell above on even ones.
+        n = length(mid); nb = count(isodd,1:n); na = n-nb
+        @test 0 < na && 0 < nb
+        @test values.mixed.normal ≈ (nb+4na)/n rtol=1e-12
+        @test values.mixed.mass ≈ (nb*(dot(c,c)+1)+na*(dot(c,c)+4))/n rtol=1e-12
+        @test values.mixed.load_n'*x ≈ (nb+2na)/n rtol=1e-12
+        @test values.mixed.load_t ≈ values.below.load_t rtol=1e-12
+        @test values.mixed.tensor ≈ im*(nb*dot(ub,T*ub)+na*dot(ua,T*ua))/n rtol=1e-12
+    end
+end
+
+# On the skeleton, the tangential jump of a field of the space vanishes and the normal
+# jump does not.
+let
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
+    Ω = GT.interior(mesh)
+    dΛ = GT.measure(GT.skeleton(mesh),4)
+    n = GT.unit_normal(mesh,2)
+    V = GT.nedelec_space(Ω,1)
+    uh = GT.interpolate(GT.analytical_field(x->SVector(sin(x[1]+x[3]),cos(2x[2]-x[3]),x[1]*x[3]+exp(x[3])),Ω),V)
+    tangential = GT.assemble_scalar(GT.∫(q->norm(cross(n[1](q),uh[2](q)-uh[1](q)))^2,dΛ))
+    normal = GT.assemble_scalar(GT.∫(q->(n[1](q)⋅(uh[2](q)-uh[1](q)))^2,dΛ))
+    @test tangential < 1e-24
+    @test normal > 1e-4
+    A = GT.assemble_matrix((u,v)->GT.∫(q->(u[2](q)-u[1](q))⋅(v[2](q)-v[1](q)),dΛ),Float64,V,V)
+    x = GT.free_values(uh)
+    @test x'*A*x ≈ normal rtol=1e-10
+end
+
 # Unsupported uses raise errors instead of silently using the Lagrange map.
 let
     mesh = GT.cartesian_mesh((0,1,0,1),(2,2);simplexify=true)
@@ -671,8 +813,19 @@ let
     dΩ = GT.measure(Ω,2)
     g(u,v) = GT.∫(x->ForwardDiff.gradient(u,x)⋅ForwardDiff.gradient(v,x),dΩ)
     @test_throws ArgumentError GT.assemble_matrix(g,Float64,V,V)
-    dΓ = GT.measure(GT.boundary(mesh),2)
-    @test_throws ArgumentError GT.assemble_matrix((u,v)->GT.∫(x->u(x)⋅v(x),dΓ),Float64,V,V)
+    # Only cells and faces of dimension D-1 are supported (here, edges of tetrahedra); the message
+    # identifies the check.
+    mesh3 = GT.cartesian_mesh((0,1,0,1,0,1),(1,1,1);simplexify=true)
+    V3 = GT.nedelec_space(GT.interior(mesh3),0)
+    dE = GT.measure(GT.domain(mesh3,1),2)
+    @test_throws r"faces of dimension D-1 only" GT.assemble_matrix((u,v)->GT.∫(x->u(x)⋅v(x),dE),Float64,V3,V3)
+    uh3 = GT.zero_field(Float64,V3)
+    @test_throws r"faces of dimension D-1 only" GT.assemble_scalar(GT.∫(x->uh3(x)⋅uh3(x),dE))
+    # The same check guards the accessors used outside assembly.
+    @test_throws r"faces of dimension D-1 only" GT.space_accessor(V3,dE;tabulate=(GT.value,))
+    @test_throws r"faces of dimension D-1 only" GT.field_accessor(uh3,dE)
+    @test_throws r"faces of dimension D-1 only" GT.shape_function_accessor_reference(GT.value,V3,dE)
+    @test_throws r"faces of dimension D-1 only" GT.shape_function_accessor(GT.value,V3,dE)
     # Curved (quadratic) triangles are rejected.
     curved = GT.mesh_from_msh(joinpath(@__DIR__,"..","assets","higher_order_2D.msh"))
     @test_throws ArgumentError GT.nedelec_space(GT.interior(curved),0)

@@ -34,6 +34,10 @@
 # a matrix Cᴾ precomputed for each of the (D+1)! vertex permutations P. At order
 # 0, Cᴾ is diagonal with entries ±1 (the classical edge signs). Jacobians transform
 # as J⁻ᵀ ∇̂ψᴾ J⁻¹, which is exact for the affine (linear simplex) cells accepted.
+# On a face of dimension D-1 (traces), the same formulas hold with ξ the face
+# quadrature point mapped into the selected incident cell and J that cell's D x D
+# Jacobian; Cᴾ is the cell's matrix. The reference values are tabulated per local
+# face and face permutation.
 
 """
     nedelec_space(domain::AbstractFaceDomain,order)
@@ -47,8 +51,11 @@ simplex geometry. Its shape functions use the covariant Piola map, and each cell
 of its vertices (see [`nedelec_cell_orientation`](@ref)). A `dirichlet_boundary` fixes the tangential trace: the DOFs
 of the edges and faces in the closure of the given boundary faces become Dirichlet DOFs.
 
-Shape functions support `value` and `ForwardDiff.jacobian` (from which the curl follows). Trace (boundary or
-skeleton) integration of Nédélec form arguments is not implemented and raises an error.
+Shape functions support `value` and `ForwardDiff.jacobian` (from which the curl follows). Form arguments and
+discrete fields can be integrated on cells and on faces of dimension `D-1` (boundary and skeleton domains). On a
+face, the full vector of the selected incident cell is evaluated: the cell is given by the `faces_around` of the
+domain (on a boundary domain made of interior faces, `boundary(mesh;...)` takes the first incident cell unless
+`faces_around` is given) or by the side index on a skeleton. Lower-dimensional domains raise an `ArgumentError`.
 
 # Level
 
@@ -380,9 +387,22 @@ end
 
 shape_function_map(::NedelecMeshSpace) = CovariantPiolaMap()
 
+# The generated code below evaluates on cells only. Traces (faces of dimension
+# D-1) take the accessor path (nedelec_shape_function_accessor_physical), which
+# tabulates the incident cell's shape functions at the face points.
 function nedelec_check_integration_domain(V,Q)
     if num_dims(GT.domain(Q)) != num_dims(GT.domain(V))
-        throw(ArgumentError("Trace integration of Nédélec form arguments is not implemented"))
+        error("Nédélec cell code generation reached with a quadrature of dimension $(num_dims(GT.domain(Q)))")
+    end
+    nothing
+end
+
+function check_integration_domain(space::NedelecMeshSpace,domain::AbstractDomain)
+    D = num_dims(GT.domain(space))
+    d = num_dims(domain)
+    if d < D-1
+        throw(ArgumentError(
+            "Nédélec shape functions can be integrated on cells and on faces of dimension D-1 only (D=$D, got $d)"))
     end
     nothing
 end
@@ -532,7 +552,11 @@ for T in (:value,:(ForwardDiff.jacobian))
     end
 end
 
+# On a face of dimension D-1 the reference values are those of the incident cell
+# (selected by the domain's faces_around, or by the side on a skeleton) at the
+# face points mapped into that cell, and J is the cell's D x D Jacobian there.
 function nedelec_shape_function_accessor_physical(f,space,measure)
+    check_integration_domain(space,GT.domain(measure))
     face_point_dof_v = shape_function_accessor_reference(f,space,measure)
     dface_to_modif = shape_function_accessor_modifier(f,space,GT.domain(measure))
     D = num_dims(GT.domain(space))
