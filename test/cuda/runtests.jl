@@ -48,7 +48,7 @@ end
 @testset "CUDA element CSC assembly" begin
     @test Base.get_extension(GT,:GalerkinToolkitCUDAExt) !== nothing
     @testset "Adapt, layouts, and repeated atomic scatter" begin
-        for T in (Float32,Float64), Ti in (Int32,Int64), layout in (GT.ElementMajorLayout(),GT.EntryMajorLayout()), nelements in (0,1,257)
+        for T in (Float32,Float64,ComplexF32,ComplexF64), Ti in (Int32,Int64), layout in (GT.ElementMajorLayout(),GT.EntryMajorLayout()), nelements in (0,1,257)
             # Rectangular sub-block with a nonzero base and padded row capacity.
             # Many elements share entries; zero encodes a constrained entry.
             positions = reshape(Ti[mod(i,14) for i in 1:30nelements],30,nelements)
@@ -70,7 +70,7 @@ end
             else
                 @test lookup isa CuMatrix{Ti}
             end
-            values = reshape(T.(1:6),2,3)
+            values = reshape(T <: Complex ? T.(complex.(1:6,7:12)) : T.(1:6),2,3)
             device_values = CuArray(values)
             expected = zeros(T,13)
             for element in 1:nelements, j in 1:3, i in 1:2

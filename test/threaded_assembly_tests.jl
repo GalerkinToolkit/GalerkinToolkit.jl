@@ -460,4 +460,28 @@ end
     generated_assembly_tests()
 end
 
+@testset "Threaded generated complex matrix assembly" begin
+    mesh = GT.cartesian_mesh((0,1,0,1,0,1),(2,2,2);simplexify=true)
+    omega = GT.interior(mesh)
+    gradient = ForwardDiff.gradient
+    for k in (1,2)
+        V = GT.lagrange_space(omega,k)
+        measure = GT.measure(omega,2k)
+        a = (u,v)->GT.∫(x->(2-1im)*(gradient(u,x)⋅gradient(v,x))+(0.5+3im)*u(x)*v(x),measure)
+        for T in (ComplexF32,ComplexF64)
+            expected = GT.assemble_matrix(a,T,V,V;assembly_method=matrix_method)
+            @test eltype(expected) === T
+            @test !iszero(imag.(expected))
+            for (workers,distribution) in ((1,:contiguous),(2,:contiguous),(4,:cyclic))
+                A,cache = GT.assemble_matrix(a,T,V,V;assembly_method=matrix_method,
+                    execution=GT.CPUThreadedExecution(;workers,distribution,fastmath=false),reuse=Val(true))
+                @test eltype(A) === T
+                @test A ≈ expected
+                @test GT.update_matrix!(A,cache) === A
+                @test A ≈ expected
+            end
+        end
+    end
+end
+
 end # module

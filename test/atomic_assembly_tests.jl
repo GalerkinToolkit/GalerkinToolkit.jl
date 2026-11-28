@@ -17,14 +17,14 @@ function no_warm_allocations(f::F) where F
 end
 
 @testset "Atomic element CSC contributions" begin
-    for T in (Float32,Float64),Ti in (Int32,Int64)
+    for T in (Float32,Float64,ComplexF32,ComplexF64),Ti in (Int32,Int64)
         positions = reshape(Ti.(1:90),30,3)
         positions[5,2] = 0
         nzval = zeros(T,90)
         argument = matrix_argument(nzval,positions,reshape(Ti[4,5,1,1],4,1,1))
-        values = reshape(T.(1:6),2,3)
+        values = reshape(T <: Complex ? T.(complex.(1:6,7:12)) : T.(1:6),2,3)
         expected = zeros(T,90)
-        expected[[34,38,39,42,43]] = T[1,3,4,5,6]
+        expected[[34,38,39,42,43]] = values[[1,3,4,5,6]]
         @test GT.contribute_element_block_atomic!(argument,values,2,3,4,5) === nothing
         @test nzval == expected
         @test GT.contribute_element_block_atomic!(argument,values,2,-1,4,5) === nothing
@@ -158,16 +158,17 @@ end
 
 =#
 @testset "Concurrent atomic matrix updates" begin
-    for T in (Float32,Float64)
+    for T in (Float32,Float64,ComplexF32,ComplexF64)
         positions = repeat(reshape(Int32[1,2,0,3],4,1),1,4)
         nzval = zeros(T,3)
         argument = matrix_argument(nzval,positions,reshape(Int32[2,2,1,1],4,1,1))
-        values = ones(T,2,2)
+        unit = T <: Complex ? T(1+2im) : one(T)
+        values = fill(unit,2,2)
         repetitions = 1_000
         for _ in 1:3
             fill!(nzval,0)
             concurrent_matrix!(argument,values,repetitions)
-            @test nzval == fill(T(4repetitions*Threads.nthreads()),3)
+            @test nzval == fill(T(4repetitions*Threads.nthreads())*unit,3)
         end
         #= TODO: Re-enable concurrent vector assembly.
         storage = GT.DirectVectorAllocation(zeros(T,2))
@@ -179,6 +180,46 @@ end
             @test storage.vector == fill(T(2repetitions*Threads.nthreads()),2)
         end
         =#
+    end
+end
+
+# The added value is converted to the element type of the array (here a ComplexF64 and an Int into ComplexF32
+# storage, and an Int into Float64 storage).
+@testset "Atomic adds convert the value" begin
+    a = zeros(ComplexF32,3)
+    GT.atomic_add!(a,2,1.5+2.5im)
+    GT.atomic_add!(a,2,1)
+    @test a == ComplexF32[0,2.5+2.5im,0]
+    b = zeros(Float64,2)
+    GT.atomic_add!(b,1,2)
+    @test b == [2.0,0.0]
+end
+
+# Complex entries are added as two real atomic adds on the CPU too.
+function concurrent_direct_vector!(storage,value,repetitions)
+    @sync for _ in 1:Threads.nthreads()
+        Threads.@spawn begin
+            for _ in 1:repetitions,i in (1,2,1,2)
+                GT.contribute_atomic!(storage,value,i,1)
+            end
+        end
+    end
+end
+
+@testset "Concurrent atomic direct vector updates" begin
+    for T in (Float32,Float64,ComplexF32,ComplexF64)
+        storage = GT.DirectVectorAllocation(zeros(T,2))
+        value = T <: Complex ? T(1+2im) : one(T)
+        repetitions = 1_000
+        for _ in 1:3
+            GT.reset!(storage)
+            concurrent_direct_vector!(storage,value,repetitions)
+            @test storage.vector == fill(T(2repetitions*Threads.nthreads())*value,2)
+        end
+        call = let storage=storage,value=value
+            ()->GT.contribute_atomic!(storage,value,2,1)
+        end
+        @test no_warm_allocations(call)
     end
 end
 

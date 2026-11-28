@@ -53,7 +53,8 @@ allocation and its workspace factory are unchanged.
 See `execution_tests.jl` for generated Poisson and mass-matrix checks. The suite
 covers CG orders 1–3 on tensor-product and simplex meshes, overlapping domains,
 parameter updates, and output reuse. The rectangular variable-coefficient case
-uses an independent quadrature reference.
+uses an independent quadrature reference. Complex matrices (`ComplexF32`, `ComplexF64`)
+are checked against CPU assembly; their entries are scattered as two real atomic adds.
 
 Prepared mesh, space, domain, and DOF data can also be transferred directly:
 
