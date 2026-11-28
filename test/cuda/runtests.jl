@@ -186,3 +186,4 @@ end
 include("compiler_data_tests.jl")
 include("poisson_numeric_tests.jl")
 include("execution_tests.jl")
+include("nedelec_tests.jl")

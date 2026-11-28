@@ -559,12 +559,20 @@ function form_argument_function(func, shape, mask)
     end
 end
 
+# Map from reference to physical shape functions. Lagrange spaces use the
+# identity for values; spaces such as Nédélec (covariant Piola) define
+# mapped_shape_function_expr for their map.
+struct IdentityShapeMap end
+shape_function_map(V) = IdentityShapeMap()
+
 # Untabulated shape, returned as a function of reference or physical coordinates.
 # As in the tabulated overload, f_expr is a global mesh face ID.
 function shape_function_expr(V, mesh_expr, V_expr, f_expr, i_expr)
     rid_expr = :(face_reference_id($V_expr)[$f_expr])
     shape_expr = :(shape_functions(reference_spaces($V_expr)[$rid_expr])[$i_expr])
     is_reference_domain(GT.domain(V)) && return shape_expr
+    shape_map = shape_function_map(V)
+    shape_map isa IdentityShapeMap || return mapped_shape_function_expr(shape_map, V, mesh_expr, V_expr, f_expr, i_expr)
 
     d = num_dims(GT.domain(V))
     geometry_rid_expr = :(face_reference_id($mesh_expr, $d)[$f_expr])
@@ -579,6 +587,10 @@ end
 # tabulate function (can be gradient, value, etc.), space, quadrature rule, face id, quadrature point id, dof id
 # f_expr indexes mesh faces directly, following the convention in jacobian_expr.
 function shape_function_expr(func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr, q_expr, i_expr) 
+    shape_map = shape_function_map(V)
+    if !(shape_map isa IdentityShapeMap) && !is_reference_domain(GT.domain(V))
+        return mapped_shape_function_expr(shape_map, func, mesh, V, Q, mesh_expr, V_expr, Q_expr, f_expr, q_expr, i_expr)
+    end
     is_tabulated = func === value || func === ForwardDiff.gradient || func === ForwardDiff.jacobian
     space_data_expr = :(space_integration_data($func, $V_expr, $Q_expr))
     v_expr = :(reference_tabulator($space_data_expr)[$i_expr, $q_expr])

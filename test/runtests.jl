@@ -13,6 +13,7 @@ using Test
     @testset "Field" begin include("field_tests.jl") end
     @testset "Integration" begin include("integration_tests.jl") end
     @testset "Space" begin include("space_tests.jl") end
+    @testset "Nedelec" begin include("nedelec_tests.jl") end
     @testset "Accessors" begin include("accessors_tests.jl") end
     @testset "Visualization" begin include("visualization_tests.jl") end
     @testset "Compiler" begin include("compiler_tests.jl") end
@@ -26,9 +27,8 @@ using Test
     @testset "Atomic assembly" begin include("atomic_assembly_tests.jl") end
     @testset "Threaded assembly" begin include("threaded_assembly_tests.jl") end
     @testset "Passes" begin include("passes_tests.jl") end
-    # TODO: Re-enable the weak boundary Poisson regressions with trace tabulation.
-    # @testset "Issue 224" begin include("issue_224.jl") end
-    # @testset "Issue 230" begin include("issue_230.jl") end
+    @testset "Issue 224" begin include("issue_224.jl") end
+    @testset "Issue 230" begin include("issue_230.jl") end
 end
 
 end # module

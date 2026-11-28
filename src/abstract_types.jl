@@ -155,6 +155,7 @@ Basic
 
 [`lagrange_space`](@ref)
 [`raviart_thomas_space`](@ref)
+[`nedelec_space`](@ref)
 
 # Basic queries
 

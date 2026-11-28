@@ -219,6 +219,11 @@ function optimize_CallTerm_LeafTerm(value,callee::LeafTerm,u::RefTerm,x)
     u2 = optimize(u)
     x2 = optimize(x)
     term = call_term(callee2,u2,x2)
+    # Optimize again only if the RefTerm was rewritten (e.g. a skeleton side),
+    # otherwise this method would be dispatched again forever (e.g. uh(x)[i]^2).
+    if u2 isa RefTerm
+        return term
+    end
     optimize(term)
 end
 
@@ -515,6 +520,7 @@ function form_argument_quantity(space::AbstractSpace,arg,the_field=1)
         (space_term, domain_term, face_term, field_term, dof_term, face_around_term) = map(leaf_term, (space, domain, face, field, dof, face_around))
         to_leaf_term = x -> (x isa AbstractTerm) ? x : leaf_term(x)
         is_reference = is_reference_domain(space_domain)
+        check_integration_domain(space,domain)
 
         if D == d
             # the_face_around_term = leaf_term(nothing, is_compile_constant=true)
@@ -635,13 +641,15 @@ function term(uh::DiscreteField,opts)
     index = GT.index(opts)
     face = domain_face_index(index)
     f = value
+    check_integration_domain(space,domain)
     if D == d
         face_around = nothing
         dependencies = map(leaf_term,(f,uh,domain,face,face_around))
         DiscreteFieldTerm(dependencies)
     elseif D==d+1 && faces_around !== nothing
         dependencies = map(leaf_term,(f,uh,domain,face,))
-        the_face_around_term = face_around_term(index,d,D)
+        # The incident cell selected by the boundary domain.
+        the_face_around_term = RefTerm(leaf_term(GT.faces_around(domain)),leaf_term(face))
         DiscreteFieldTerm((dependencies...,the_face_around_term))
     else
         face_around = :the_face_around
@@ -753,16 +761,17 @@ end
 
 function expression_TabulatedTerm(parent::FormArgumentTerm,quadrature,point,Q)
     (f,space,domain,face,the_field,field,dof,the_face_around,face_around) = dependencies(parent)
-    #= TODO: Re-enable lower-dimensional form argument tabulation.
     if parent.D != num_dims(GT.domain(Q))
-        # Traces evaluate the basis and Jacobian of the selected incident cell.
+        # Traces (boundary and skeleton faces of dimension D-1) evaluate the
+        # shape functions of the selected incident cell at the face quadrature
+        # points. The physical map of the cell (D x D Jacobian) is used,
+        # not the one of the face.
         f_expr,space_expr,face_expr,field_id,field_expr,dof_expr,side,side_expr =
             map(expression,(f,space,face,the_field,field,dof,the_face_around,face_around))
         J = :(jacobian_accessor($quadrature, $(Val(parent.D)))($face_expr,$side)($point))
         return form_argument_accessor_term(f_expr,space_expr,quadrature,field_id,face_expr,
             side,point,J,dof_expr,field_expr,side_expr,parent.is_reference,parent.integral_type)
     end
-    =#
     V = prototype(space)
     func = prototype(f)
     mesh = GT.mesh(GT.domain(Q))

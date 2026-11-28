@@ -97,6 +97,7 @@ end
 
 function reference_space_accessor(space::AbstractSpace,quadrature::AbstractQuadrature;compute=(),tabulate=())
     domain = GT.domain(quadrature)
+    check_integration_domain(space,domain)
     mesh = GT.mesh(space)
     d = Val(num_dims(domain))
     D = Val(num_dims(GT.domain(space)))
@@ -1552,6 +1553,7 @@ end
 # Tabulated
 function shape_function_accessor_reference(f,space::AbstractSpace,measure::AbstractQuadrature)
     domain_measure = domain(measure)
+    check_integration_domain(space,domain_measure)
     domain_space = domain(space)
     d = num_dims(domain_measure)
     D = num_dims(domain_space)
@@ -2249,7 +2251,16 @@ for T in (:value,:(ForwardDiff.gradient),:(ForwardDiff.jacobian))
     end # @eval
 end # for
 
+"""
+    check_integration_domain(space,domain)
+
+Throw an error if functions of `space` cannot be integrated on `domain`.
+Spaces that support only some domain dimensions add methods.
+"""
+check_integration_domain(space,domain) = nothing
+
 function dofs_accessor(space::AbstractSpace,domain::AbstractDomain)
+    check_integration_domain(space,domain)
     D = num_dims(space)
     d = num_dims(domain)
     faces_around = GT.faces_around(domain)
