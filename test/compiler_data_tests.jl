@@ -505,6 +505,147 @@ original_change_of_measure(J) = sqrt(det(transpose(J)*J))
     end
 end
 
+@testset "Tabulated Lagrange discrete fields" begin
+    ∇ = ForwardDiff.gradient
+    no_face_around = GT.leaf_term(nothing)
+    forms(f,gf,dμ) = (
+        (u,v)->GT.∫(x->f(x)*u(x)*v(x) + dot(gf(x),∇(u,x))*v(x),dμ),
+        v->GT.∫(x->f(x)*v(x) + dot(gf(x),∇(v,x)),dμ),
+        ()->sum(GT.∫(x->f(x)^2 + dot(gf(x),gf(x)),dμ)))
+
+    # Affine cells: an order-k Lagrange field reproduces a degree-k polynomial, so the
+    # array-read field and its physical gradient equal the analytical ones at every point.
+    for (dim,simplexify,k,T,dirichlet) in ((2,false,1,Float64,true),(2,false,2,ComplexF64,false),
+            (2,true,2,Float64,true),(2,true,1,ComplexF64,true),(3,true,1,Float64,false),
+            (3,true,2,ComplexF64,true))
+        mesh = GT.cartesian_mesh(ntuple(i->isodd(i) ? 0 : 1,2dim),ntuple(_->2,dim);simplexify)
+        mesh = GT.replace_node_coordinates(mesh,
+            [SVector{dim}(ntuple(i->1.2x[i]+0.1(sum(x)-x[i]),dim)) for x in GT.node_coordinates(mesh)])
+        Ω = GT.interior(mesh)
+        c = T <: Complex ? T(1,2) : one(T)
+        q = k == 2 ? 1.0 : 0.0
+        p = x -> c*(1 + x[1] - x[dim]/2 + q*(x[1]*x[dim] - 3x[1]^2/10))
+        gp = x -> c*SVector{dim}(ntuple(i -> i == 1 ? 1 + q*(x[dim] - 3x[1]/5) :
+            i == dim ? -1/2 + q*x[1] : 0.0,dim))
+        Pf = dirichlet ? GT.lagrange_space(Ω,k;dirichlet_boundary=GT.boundary(mesh)) :
+            GT.lagrange_space(Ω,k)
+        uh = GT.interpolate(GT.analytical_field(p,Ω),Pf)
+        @test eltype(GT.free_values(uh)) == T
+        @test (GT.num_dirichlet_dofs(Pf) > 0) == dirichlet
+        @test GT.tabulated_lagrange_discrete_field(GT.value,uh,no_face_around,Ω)
+        @test GT.tabulated_lagrange_discrete_field(ForwardDiff.gradient,uh,no_face_around,Ω)
+        @test !GT.tabulated_lagrange_discrete_field(ForwardDiff.hessian,uh,no_face_around,Ω)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,uh,GT.leaf_term(1),Ω)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,uh,no_face_around,GT.boundary(mesh))
+        u_exact,g_exact = GT.analytical_field(p,Ω),GT.analytical_field(gp,Ω)
+        V = GT.lagrange_space(Ω,1)
+        dμ = GT.measure(Ω,2k+2)
+        a,l,s = forms(uh,x->∇(uh,x),dμ)
+        a_ref,l_ref,s_ref = forms(u_exact,g_exact,dμ)
+        @test GT.assemble_matrix(a,T,V,V) ≈ GT.assemble_matrix(a_ref,T,V,V) rtol=1e-12
+        @test GT.assemble_vector(l,T,V) ≈ GT.assemble_vector(l_ref,T,V) rtol=1e-12
+        @test s() ≈ s_ref() rtol=1e-12
+
+        # A vector-valued field that is affine in x, with a nonsymmetric Jacobian A, reproduced exactly.
+        # The contraction with a nonsymmetric C sees every entry of the Jacobian (a transposed one fails).
+        A = SMatrix{dim,dim}([i == j ? 1.0 : i < j ? 0.5i+j : -0.25j for i in 1:dim, j in 1:dim])
+        C = SMatrix{dim,dim}([i + 3j/4 for i in 1:dim, j in 1:dim])
+        @test abs(dot(c*A,C) - dot(transpose(c*A),C)) > 0.1
+        pv = x -> c*(SVector{dim}(ntuple(i->i/2,dim)) + A*x)
+        Pv = dirichlet ? GT.lagrange_space(Ω,k;tensor_size=Val((dim,)),dirichlet_boundary=GT.boundary(mesh)) :
+            GT.lagrange_space(Ω,k;tensor_size=Val((dim,)))
+        uhv = GT.interpolate(GT.analytical_field(pv,Ω),Pv)
+        @test GT.tabulated_lagrange_discrete_field(ForwardDiff.jacobian,uhv,no_face_around,Ω)
+        κ = dot(c*A,C)
+        Cq = GT.uniform_quantity(C)
+        lv = v->GT.∫(x->dot(ForwardDiff.jacobian(uhv,x),Cq)*v(x),dμ)
+        lv_ref = v->GT.∫(x->κ*v(x),dμ)
+        @test GT.assemble_vector(lv,T,V) ≈ GT.assemble_vector(lv_ref,T,V) rtol=1e-12
+    end
+
+    # Free and Dirichlet values of different element types: each coefficient is multiplied by the table entry
+    # as stored, as in the accessor path. Converting the Int64 free values to Float32 (the promotion of the two
+    # value types) would turn 16777217 into 16777216.
+    mesh = GT.cartesian_mesh((0,1,0,1),(2,2))
+    Ω = GT.interior(mesh)
+    V = GT.lagrange_space(Ω,1)
+    dμ = GT.measure(Ω,2)
+    for Pf in (GT.lagrange_space(Ω,1),GT.lagrange_space(Ω,1;dirichlet_boundary=GT.boundary(mesh)))
+        big = 16_777_217
+        free = fill(big,GT.num_free_dofs(Pf))
+        diri = fill(0.5f0,GT.num_dirichlet_dofs(Pf))
+        uh = GT.discrete_field(Pf,free,diri)
+        uv = GT.discrete_field(Pf,view(free,:),view(diri,:))
+        @test GT.tabulated_lagrange_discrete_field(GT.value,uh,no_face_around,Ω)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,uv,no_face_around,Ω)
+        s = f->sum(GT.∫(x->f(x),dμ))
+        @test s(uh) ≈ s(uv) rtol=1e-14
+        GT.num_dirichlet_dofs(Pf) == 0 && @test s(uh) ≈ big rtol=1e-14
+        a = f->((u,v)->GT.∫(x->f(x)*u(x)*v(x),dμ))
+        @test GT.assemble_matrix(a(uh),Float64,V,V) ≈ GT.assemble_matrix(a(uv),Float64,V,V) rtol=1e-14
+    end
+
+    # Non-affine cells and a subset of the cells: the array-read field (space on all cells)
+    # against the same field on a space over the subset, which keeps the accessor path, and
+    # against a field whose values are a view, which also keeps the accessor path.
+    for (dim,simplexify,k) in ((2,false,2),(3,false,1),(3,true,2))
+        mesh = GT.cartesian_mesh(ntuple(i->isodd(i) ? 0 : 1,2dim),ntuple(_->2,dim);simplexify)
+        mesh = GT.replace_node_coordinates(mesh,
+            [SVector{dim}(ntuple(i->x[i]+0.08*sin(2x[mod1(i+1,dim)])+0.05*x[i]*x[mod1(i+1,dim)],dim))
+             for x in GT.node_coordinates(mesh)])
+        ncells = GT.num_faces(mesh,dim)
+        GT.group_faces(mesh,dim)["tabulated field subset"] = Int32[1,ncells÷2,ncells]
+        Ω = GT.interior(mesh)
+        Ωs = GT.interior(mesh;group_names=["tabulated field subset"])
+        g = x -> 1 + x[1]^2 - x[1]*x[dim]/2 + 3sin(3x[dim])/10
+        Pf = GT.lagrange_space(Ω,k;dirichlet_boundary=GT.boundary(mesh))
+        uh = GT.interpolate(GT.analytical_field(g,Ω),Pf)
+        us = GT.interpolate(GT.analytical_field(g,Ωs),GT.lagrange_space(Ωs,k))
+        uv = GT.discrete_field(Pf,view(GT.free_values(uh),:),GT.dirichlet_values(uh))
+        @test GT.tabulated_lagrange_discrete_field(GT.value,uh,no_face_around,Ωs)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,us,no_face_around,Ωs)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,uv,no_face_around,Ωs)
+        V = GT.lagrange_space(Ω,1)
+        dμ = GT.measure(Ωs,2k+2)
+        a,l,s = forms(uh,x->∇(uh,x),dμ)
+        for f in (us,uv)
+            a_ref,l_ref,s_ref = forms(f,x->∇(f,x),dμ)
+            @test GT.assemble_matrix(a,Float64,V,V) ≈ GT.assemble_matrix(a_ref,Float64,V,V) rtol=1e-12
+            @test GT.assemble_vector(l,Float64,V) ≈ GT.assemble_vector(l_ref,Float64,V) rtol=1e-12
+            @test s() ≈ s_ref() rtol=1e-12
+        end
+
+        # Free values held in a Fill (dirichlet_field) take the array-read path; the reference holds the same
+        # values in views, which keep the accessor path.
+        ud = GT.dirichlet_field(Pf,copy(GT.dirichlet_values(uh)))
+        @test !(GT.free_values(ud) isa DenseVector)
+        udv = GT.discrete_field(Pf,view(collect(GT.free_values(ud)),:),view(copy(GT.dirichlet_values(ud)),:))
+        @test GT.tabulated_lagrange_discrete_field(GT.value,ud,no_face_around,Ωs)
+        @test !GT.tabulated_lagrange_discrete_field(GT.value,udv,no_face_around,Ωs)
+        ad,ld,sd = forms(ud,x->∇(ud,x),dμ)
+        ad_ref,ld_ref,sd_ref = forms(udv,x->∇(udv,x),dμ)
+        @test GT.assemble_matrix(ad,Float64,V,V) ≈ GT.assemble_matrix(ad_ref,Float64,V,V) rtol=1e-12
+        @test GT.assemble_vector(ld,Float64,V) ≈ GT.assemble_vector(ld_ref,Float64,V) rtol=1e-12
+        @test sd() ≈ sd_ref() rtol=1e-12
+
+        # Vector-valued fields: value and Jacobian, against the same field with view values.
+        J = ForwardDiff.jacobian
+        gv = x -> SVector{dim}(ntuple(i->g(x)+i*x[i],dim))
+        Pv = GT.lagrange_space(Ω,k;tensor_size=Val((dim,)),dirichlet_boundary=GT.boundary(mesh))
+        uhv = GT.interpolate(GT.analytical_field(gv,Ω),Pv)
+        uvv = GT.discrete_field(Pv,view(GT.free_values(uhv),:),GT.dirichlet_values(uhv))
+        @test GT.tabulated_lagrange_discrete_field(J,uhv,no_face_around,Ωs)
+        @test !GT.tabulated_lagrange_discrete_field(J,uvv,no_face_around,Ωs)
+        Cq = GT.uniform_quantity(SMatrix{dim,dim}([i + 3j/4 for i in 1:dim, j in 1:dim]))
+        vforms(f) = ((u,v)->GT.∫(x->dot(f(x),f(x))*u(x)*v(x) + tr(J(f,x))*dot(∇(u,x),∇(v,x)),dμ),
+                     ()->sum(GT.∫(x->tr(J(f,x))^2 + dot(f(x),f(x)) + dot(J(f,x),Cq),dμ)))
+        av,sv = vforms(uhv)
+        av_ref,sv_ref = vforms(uvv)
+        @test GT.assemble_matrix(av,Float64,V,V) ≈ GT.assemble_matrix(av_ref,Float64,V,V) rtol=1e-12
+        @test sv() ≈ sv_ref() rtol=1e-12
+    end
+end
+
 # Timing experiments live outside the correctness suite in an ignored local file.
 
 end # module

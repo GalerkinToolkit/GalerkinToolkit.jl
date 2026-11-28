@@ -50,6 +50,21 @@ launches, and compression/copies use the current task's CUDA stream, with one
 stream synchronization at the public assembly/update boundary. CPU worker-local
 allocation and its workspace factory are unchanged.
 
+Forms can use a discrete field as a coefficient, for example
+`a = (u,v) -> GT.∫(x -> uh(x)*u(x)*v(x), dΩ)`, when the field's space is a
+single-field Lagrange space on every cell of the integration mesh, and the
+cells of the mesh are all of one type. The field's
+value, gradient and Jacobian are then read from its cell DOFs, its free and
+Dirichlet values, and the reference tabulation, so these arrays become kernel
+inputs. Capture the field in the form's closure; the CUDA backend does not
+accept fields passed through `parameters`. Host value vectors are copied to the
+device once, at preparation, so later in-place changes to them are not seen by
+`update_matrix!`. Values already held in `CuArray`s are read by
+reference: change them in place (for example with `copyto!`) and call
+`update_matrix!`. Fields on spaces over a subset of the cells, multi-field
+fields, and values in other containers keep the general accessor path, which
+CUDA generation does not support.
+
 See `execution_tests.jl` for generated Poisson and mass-matrix checks. The suite
 covers CG orders 1–3 on tensor-product and simplex meshes, overlapping domains,
 parameter updates, and output reuse. The rectangular variable-coefficient case
