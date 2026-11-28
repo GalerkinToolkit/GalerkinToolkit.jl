@@ -679,6 +679,66 @@ function default_periodic_nodes(reference_spaces)
     Ti[] => Ti[]
 end
 
+"""
+    periodic_node_owners(mesh)
+
+Return the vector `node_to_owner` that maps each node of `mesh` to the node that owns it under the periodic
+identification given by [`periodic_nodes`](@ref). A node that is not periodic owns itself. Chains of identifications
+are followed to their end (in a box that is periodic in several directions, a corner node can point to a node that
+is itself periodic), so every owner owns itself. Each periodic node has one master: an `ArgumentError` is thrown if a
+node is listed twice with different masters, or if the identification has a cycle.
+
+# Level
+
+Advanced
+"""
+function periodic_node_owners(mesh::AbstractMesh)
+    nnodes = num_nodes(mesh)
+    pnode_to_node, pnode_to_master = periodic_nodes(mesh)
+    length(pnode_to_node) == length(pnode_to_master) || throw(ArgumentError(
+        "The periodic nodes and their masters have different lengths"))
+    node_to_master = collect(Int32,1:nnodes)
+    node_is_listed = fill(false,nnodes)
+    for (node,master) in zip(pnode_to_node,pnode_to_master)
+        if node_is_listed[node] && node_to_master[node] != master
+            throw(ArgumentError("The periodic node $node has two masters, $(node_to_master[node]) and $master"))
+        end
+        node_is_listed[node] = true
+        node_to_master[node] = master
+    end
+    node_to_owner = zeros(Int32,nnodes)
+    # 0: not visited, 1: on the chain being followed, 2: owner known.
+    node_to_state = zeros(Int8,nnodes)
+    chain = Int32[]
+    for start in 1:nnodes
+        node_to_state[start] == 2 && continue
+        empty!(chain)
+        node = Int32(start)
+        owner = Int32(0)
+        while true
+            if node_to_state[node] == 2
+                owner = node_to_owner[node]
+                break
+            end
+            node_to_state[node] == 1 && throw(ArgumentError(
+                "The periodic node identification has a cycle through node $node"))
+            node_to_state[node] = 1
+            push!(chain,node)
+            master = node_to_master[node]
+            if master == node
+                owner = node
+                break
+            end
+            node = master
+        end
+        for node in chain
+            node_to_owner[node] = owner
+            node_to_state[node] = 2
+        end
+    end
+    node_to_owner
+end
+
 function normals(m::Mesh)
     m.normals
 end

@@ -41,6 +41,7 @@ include("problems.jl")
 include("passes.jl")
 include("compiler_data.jl")
 include("compiler.jl")
+include("nedelec.jl")
 include("visualization.jl")
 include("precompile.jl")
 
